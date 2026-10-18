@@ -70,6 +70,25 @@ def child(arguments):
             helper = smgr.createInstanceWithContext("com.sun.star.frame.DispatchHelper", context)
             toolkit = smgr.createInstanceWithContext("com.sun.star.awt.Toolkit", context)
             workbook = directory / "synthetic.ods"
+            def xdotool(*words):
+                return subprocess.run(
+                    ["xdotool", *words], check=True, capture_output=True, text=True, timeout=30
+                ).stdout.split()
+
+            def activate(title):
+                window = xdotool("search", "--sync", "--onlyvisible", "--name", title)[-1]
+                xdotool("windowactivate", "--sync", window)
+                time.sleep(0.3)
+
+            def text_documents():
+                found = []
+                enumeration = desktop.getComponents().createEnumeration()
+                while enumeration.hasMoreElements():
+                    component = enumeration.nextElement()
+                    if component.supportsService("com.sun.star.text.TextDocument"):
+                        found.append(component)
+                return found
+
             # Open documents form a stack: steps act on the newest; close pops it.
             state = {"docs": [], "frame": None}
             observations = {}
@@ -96,6 +115,28 @@ def child(arguments):
                             "listeners": [],
                         }
                     )
+                elif name == "kbactivate":
+                    activate("LibreOffice " + value)
+                elif name == "key":
+                    xdotool("key", "--clearmodifiers", value)
+                    time.sleep(0.3)
+                elif name == "alive":
+                    # One cheap remote call: fails if the office has died.
+                    observations.setdefault("alive", []).append(desktop.getFrames().getCount())
+                elif name == "kbnewwriter":
+                    # A person's File > New > Text Document, handled on the office's main thread.
+                    activate("LibreOffice Calc")
+                    for key in ("alt+f", "n", "t"):
+                        xdotool("key", "--clearmodifiers", key)
+                        time.sleep(0.3)
+                    writer = wait_for(lambda: text_documents(), "a keyboard-created Writer document")
+                    state["docs"].append({"doc": writer[0], "listeners": []})
+                elif name == "kbclose":
+                    # Ctrl+W on the frontmost Writer window, handled on the office's main thread.
+                    activate("LibreOffice Writer")
+                    xdotool("key", "--clearmodifiers", "ctrl+w")
+                    wait_for(lambda: not text_documents(), "the keyboard-closed Writer document")
+                    state["docs"].pop()
                 elif name == "ro":
                     state["docs"].append(
                         {
