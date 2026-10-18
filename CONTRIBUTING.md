@@ -6,6 +6,10 @@ request descriptions rather than code, so write them for a reader who has not se
 Agents maintaining the repository also follow [AGENTS.md](AGENTS.md). Everyone follows the
 [code of conduct](CODE_OF_CONDUCT.md).
 
+If an AI agent wrote or submitted your issue, pull request, or comment, say so at the start: which
+agent, for whom, and whether a person reviewed it. The maintainers' own posts open with such a
+note.
+
 ## Report a defect
 
 Search the open and closed [issues](https://github.com/viell-dev/slop-calc-sheet-manager/issues)
