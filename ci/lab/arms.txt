@@ -1,9 +1,10 @@
 # Investigation of #8. One arm per line: NAME=ext|noext:STEP,STEP,...
-# Experiment 2: is termination involved, and does a user-like sequence crash?
+# Experiment 3 (panel fix for #18 applied): how long after opening can Writer's close crash,
+# and does a keyboard-only sequence (all on the office's main thread) crash?
 test=ext:factory,calc,deck=SheetManagerDeck,resize,svg,shot,save,close,ro,deck=SheetManagerDeck,close,writer,wquery,close
-testsleep=ext:factory,calc,deck=SheetManagerDeck,resize,svg,shot,save,close,ro,deck=SheetManagerDeck,close,writer,wquery,close,sleep=3
-control=noext:calc,resize,save,close,ro,close,writer,close
-controlwq=noext:calc,resize,save,close,ro,close,writer,wquery,close
-extpy=ext:factory,calc,resize,save,close,ro,close,writer,close
-user=ext:calc,deck=SheetManagerDeck,writer,close,sleep=2,cell,sleep=1,close
-usernoext=noext:calc,deck=NavigatorDeck,writer,close,sleep=2,cell,sleep=1,close
+noextnav=noext:calc,deck=NavigatorDeck,resize,save,close,ro,deck=NavigatorDeck,close,writer,wquery,close
+navsleep100=noext:calc,deck=NavigatorDeck,resize,save,close,ro,deck=NavigatorDeck,close,writer,sleep=0.1,close
+navsleep500=noext:calc,deck=NavigatorDeck,resize,save,close,ro,deck=NavigatorDeck,close,writer,sleep=0.5,close
+navsleep2000=noext:calc,deck=NavigatorDeck,resize,save,close,ro,deck=NavigatorDeck,close,writer,sleep=2,close
+kbuser=ext:calc,deck=SheetManagerDeck,kbnewwriter,sleep=0.5,kbclose,sleep=2,cell,sleep=1,close
+kbusernoext=noext:calc,deck=NavigatorDeck,kbnewwriter,sleep=0.5,kbclose,sleep=2,cell,sleep=1,close

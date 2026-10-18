@@ -133,9 +133,13 @@ def child(arguments):
                     state["docs"].append({"doc": writer[0], "listeners": []})
                 elif name == "kbclose":
                     # Ctrl+W on the frontmost Writer window, handled on the office's main thread.
+                    frames = desktop.getFrames().getCount()
                     activate("LibreOffice Writer")
                     xdotool("key", "--clearmodifiers", "ctrl+w")
-                    wait_for(lambda: not text_documents(), "the keyboard-closed Writer document")
+                    wait_for(
+                        lambda: desktop.getFrames().getCount() < frames,
+                        "the keyboard-closed Writer window",
+                    )
                     state["docs"].pop()
                 elif name == "ro":
                     state["docs"].append(
@@ -202,7 +206,7 @@ def child(arguments):
                             "-c",
                             "from PIL import ImageGrab; import sys; "
                             "ImageGrab.grab().save(sys.argv[1])",
-                            str(output / "screen.png"),
+                            str(output / f"screen-{value or 'shot'}.png"),
                         ],
                         check=True,
                     )

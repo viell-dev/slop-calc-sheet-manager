@@ -1,3 +1,2 @@
-# Instrumented runs: log view, shell and dispatcher lifetimes; scan crash frames for objects.
+# Instrumented runs: log view, shell, dispatcher and toolbox lifetimes; scan crash frames.
 test=ext:factory,calc,deck=SheetManagerDeck,resize,svg,shot,save,close,ro,deck=SheetManagerDeck,close,writer,wquery,close
-extpy=ext:factory,calc,resize,save,close,ro,close,writer,close

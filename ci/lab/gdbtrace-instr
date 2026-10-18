@@ -31,10 +31,17 @@ silent
 printf "BP t%d SwWrtShell::~SwWrtShell shell=%p\n", $_thread, $rdi
 continue
 end
-break SwBaseShell::~SwBaseShell()
+break ToolBox::ToolBox(vcl::Window*, long)
 commands
 silent
-printf "BP t%d SwBaseShell::~SwBaseShell baseshell=%p\n", $_thread, $rdi
+printf "BP t%d ToolBox::ToolBox toolbox=%p parent=%p\n", $_thread, $rdi, $rsi
+bt 18
+continue
+end
+break ToolBox::dispose()
+commands
+silent
+printf "BP t%d ToolBox::dispose toolbox=%p\n", $_thread, $rdi
 continue
 end
 break SfxDispatcher::SfxDispatcher(SfxViewFrame*)
@@ -74,6 +81,9 @@ p $_siginfo._sifields._sigfault.si_addr
 info registers rip rdi rsi rax rbx rcx rdx rbp rsp r12 r13 r14 r15
 echo \n=== objects ===\n
 python ouscan.frames([3, 4, 5, 6, 7, 8, 9])
+echo \n=== toolbar manager words ===\n
+frame 9
+x/96gx $rbp
 echo \n=== libraries ===\n
 info sharedlibrary
 echo \n=== threads ===\n
