@@ -77,7 +77,9 @@ class ListKeyHandler(unohelper.Base, XKeyHandler):
             # PyUNO passes a UNO char as uno.Char; its value is the one-character string.
             char = getattr(event.KeyChar, "value", event.KeyChar)
             route = route_key(event.KeyCode, event.Modifiers, char)
-            if route is KeyRoute.SHORTCUT:
+            if route is KeyRoute.TREE:
+                self._list.tree_key(event.KeyCode, event.Modifiers)
+            elif route is KeyRoute.SHORTCUT:
                 command = self._shortcuts.command(event.KeyCode, event.Modifiers)
                 if command:
                     self._list.run_command(command)

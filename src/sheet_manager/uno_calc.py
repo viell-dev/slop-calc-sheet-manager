@@ -67,24 +67,22 @@ class MainThread:
         return timer
 
 
-def read_rows(document, controller) -> list[SheetRow]:
-    sheets = document.getSheets()
+def read_rows(controller, observed) -> list[SheetRow]:
+    """The list's rows for a snapshot, read through its retained sheet handles."""
     try:
         active = controller.getActiveSheet().getName()
     except Exception:
         active = None
     rows: list[SheetRow] = []
-    for index in range(sheets.getCount()):
-        sheet = sheets.getByIndex(index)
-        name = sheet.getName()
+    for sheet, handle in zip(observed.sheets, observed.handles, strict=True):
         rows.append(
             SheetRow(
-                name=name,
-                visible=bool(sheet.IsVisible),
-                active=name == active,
-                protected=bool(sheet.isProtected()),
-                scenario=bool(sheet.getIsScenario()),
-                color=tab_color(sheet.TabColor),
+                name=sheet.name,
+                visible=bool(handle.IsVisible),
+                active=sheet.name == active,
+                protected=bool(handle.isProtected()),
+                scenario=sheet.scenario,
+                color=tab_color(handle.TabColor),
             )
         )
     return rows

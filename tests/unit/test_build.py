@@ -47,6 +47,7 @@ def test_two_builds_are_identical_and_allowlisted(tmp_path: Path) -> None:
                     "uno_menu",
                     "uno_panel",
                     "uno_reorder",
+                    "uno_show",
                 )
             ),
         }

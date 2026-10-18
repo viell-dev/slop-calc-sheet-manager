@@ -70,15 +70,24 @@ instead. Take screenshots only of this workbook.
     are hidden. Press Ctrl+Z.
 16. **Menu by keyboard.** Click "Golf" and press the Menu key; press Esc. Then press Shift+F10.
     Expected: the same menu opens each time, positioned at the Golf row.
-17. **Hidden sheets only.** Click "Hotel" (hidden), then right-click it.
+17. **A click ends the menu's grouping.** Click "Charlie", Ctrl+click "Echo", press the Menu key,
+    and press Esc. Then click "Charlie", click a cell of the sheet, type `x`, and press Enter.
+    Expected: after the click the tab bar shows only Charlie selected, and the `x` appears only on
+    Charlie, not on Echo. Delete the `x` afterwards.
+18. **Keyboard position survives changes.** Open Window ▸ New Window. In the first window click
+    "Bravo" and press Ctrl+Down twice. In the second window colour another sheet's tab with
+    Sheet ▸ Sheet Tab Color, return to the first window, and press Ctrl+Space.
+    Expected: Bravo and Delta are selected: the keyboard position stayed on Delta. Close the
+    second window.
+19. **Hidden sheets only.** Click "Hotel" (hidden), then right-click it.
     Expected: Calc's active sheet does not change; a short menu offers only Show Sheet, which shows
     Hotel as one undo step.
-18. **Other windows.** Open a second workbook, type in its cells, and use its shortcuts; then
+20. **Other windows.** Open a second workbook, type in its cells, and use its shortcuts; then
     return to the first workbook and click a row of its list.
     Expected: the second workbook behaves exactly as without the extension; the first list still
     works.
-19. **Another deck.** Switch the sidebar to the Properties deck and type into a cell.
+21. **Another deck.** Switch the sidebar to the Properties deck and type into a cell.
     Expected: typing reaches the cell as usual.
-20. **Look.** Repeat step 1 and step 5 with a dark theme and, if available, at 150 % or 200 %
+22. **Look.** Repeat step 1 and step 5 with a dark theme and, if available, at 150 % or 200 %
     display scaling.
     Expected: all text and swatches are readable and the insertion line is visible.

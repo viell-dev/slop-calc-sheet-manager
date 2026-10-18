@@ -25,8 +25,8 @@ from com.sun.star.awt import XMouseMotionListener  # noqa: E402
 from run import office_session, wait_for  # noqa: E402
 from xinput import RIGHT, Pointer, XInput  # noqa: E402
 
+from sheet_manager.reorder import Sheet, target_order  # noqa: E402
 from sheet_manager.sheet_list import ACTIVE_MARK  # noqa: E402
-from sheet_manager.temporary_move import block_target  # noqa: E402
 
 NATO = [
     "Alfa",
@@ -273,7 +273,8 @@ def check_drag_two_sheets(book, fraction, gap):
     wait_until(lambda: book.selection() == [NAMES[2], NAMES[5]], "two separate rows selected")
     before, undo_before = book.order(), book.undo_titles()
     active, tabs = book.active(), book.calc_tabs()
-    expected = block_target(before, [NAMES[2], NAMES[5]], gap)
+    sheets = [Sheet(name) for name in before]
+    expected = list(target_order(sheets, [NAMES[2], NAMES[5]], "drop", gap))
     drag(book, 5, 12, fraction, shot=f"drag-gap-{gap}")
     wait_until(lambda: book.order() != before, "the drop to move the sheets")
     after, undo_after = book.order(), book.undo_titles()
@@ -529,6 +530,102 @@ def check_menu_hidden_only(book):
     return evidence
 
 
+def replace(document, name):
+    """Delete a sheet and insert a different one with the same name at the same place."""
+    sheets = document.getSheets()
+    index = list(sheets.getElementNames()).index(name)
+    sheets.removeByName(name)
+    sheets.insertNewByName(name, index)
+    sheets.getByName(name).getCellRangeByName("A1").setString("replacement")
+
+
+def check_plain_click_ends_group(book):
+    """After the menu grouped two tabs, a plain click leaves one; typing edits one sheet (#25)."""
+    book.click(1)
+    book.click(3, modifiers=("Control_L",))
+    wait_until(lambda: book.selection() == [NAMES[1], NAMES[3]], "Bravo and Delta selected")
+    book.lab.input.tap("Menu", pause=0.8)
+    wait_until(lambda: book.calc_tabs() == [NAMES[1], NAMES[3]], "the menu to group the tabs")
+    book.lab.input.tap("Escape", pause=0.5)
+    book.click(1)
+    wait_until(lambda: book.calc_tabs() == [NAMES[1]], "a plain click to leave one selected tab")
+    # Click a cell of the sheet, as a user does, and type there.
+    book.lab.input.move(260, 420)
+    book.lab.input.button(1, True)
+    book.lab.input.button(1, False)
+    time.sleep(0.6)
+    address = book.controller.getSelection().getRangeAddress()
+    book.lab.input.tap("x")
+    book.lab.input.tap("Return", pause=0.6)
+    sheets = book.document.getSheets()
+
+    def cell(name):
+        sheet = sheets.getByName(name)
+        return sheet.getCellByPosition(address.StartColumn, address.StartRow).getString()
+
+    evidence = {
+        "tabs": book.calc_tabs(),
+        "cell": [address.Sheet, address.StartColumn, address.StartRow],
+        "bravo": cell(NAMES[1]),
+        "delta": cell(NAMES[3]),
+    }
+    assert address.Sheet == 1 and evidence["bravo"] == "x" and evidence["delta"] == "", evidence
+    sheets.getByName(NAMES[1]).getCellByPosition(address.StartColumn, address.StartRow).setString(
+        ""
+    )
+    return evidence
+
+
+def check_cursor_across_refresh(book):
+    """A refresh keeps the keyboard cursor where it was, not on the first selected row (#29)."""
+    foxtrot = book.document.getSheets().getByName(NAMES[5])
+
+    def graphic():
+        return book.nodes()[5].getNodeGraphicURL()
+
+    evidence = {}
+    for keysym, modifiers in (("space", ("Control_L",)), ("Down", ("Shift_L",))):
+        outcomes = []
+        for refreshed in (False, True):
+            foxtrot.TabColor = -1
+            wait_until(lambda: graphic() == book.nodes()[0].getNodeGraphicURL(), "no colour")
+            book.click(1)
+            book.lab.input.tap("Down", ("Control_L",))
+            book.lab.input.tap("Down", ("Control_L",), pause=0.4)
+            if refreshed:
+                plain = graphic()
+                foxtrot.TabColor = 0x3FAF46
+                wait_until(lambda p=plain: graphic() != p, "the list to rebuild")
+                time.sleep(0.4)
+            book.lab.input.tap(keysym, modifiers, pause=0.5)
+            outcomes.append(book.selection())
+        evidence[f"{'+'.join(modifiers)}+{keysym}"] = outcomes
+        assert outcomes[0] == outcomes[1], evidence
+    assert evidence["Control_L+space"][1] == [NAMES[1], NAMES[3]], evidence
+    foxtrot.TabColor = -1
+    return evidence
+
+
+def check_drop_after_replacement(book):
+    """A drop is refused when a sheet was replaced during the drag (#28)."""
+    book.click(2)
+    before = book.order()
+    start = book.point(2)
+    end = book.point(10, 0.25)
+    book.pointer.press(*start)
+    book.pointer.glide(start, (start[0], start[1] + 12))
+    book.pointer.glide((start[0], start[1] + 12), end)
+    replace(book.document, NAMES[7])
+    time.sleep(0.6)
+    book.pointer.release()
+    time.sleep(1.2)
+    book.lab.screenshot("drop-refused")
+    book.lab.input.tap("Return", pause=0.6)  # Close the refusal message.
+    evidence = {"order_unchanged": book.order() == before, "undo": book.undo_titles()}
+    assert evidence["order_unchanged"] and "Move Sheets" not in evidence["undo"], evidence
+    return evidence
+
+
 def check_other_document(lab, book):
     book.focus_list()
     other = Workbook(lab, "other", ["One", "Two", "Three"])
@@ -575,6 +672,9 @@ def run_checks(lab, output):
         ("menu_right_click", lambda: check_menu_right_click(book)),
         ("menu_keyboard", lambda: check_menu_keyboard(book)),
         ("menu_hidden_only", lambda: check_menu_hidden_only(book)),
+        ("plain_click_ends_group", lambda: check_plain_click_ends_group(book)),
+        ("cursor_across_refresh", lambda: check_cursor_across_refresh(book)),
+        ("drop_after_replacement", lambda: check_drop_after_replacement(book)),
         ("other_document", lambda: check_other_document(lab, book)),
     ]
     results = {}

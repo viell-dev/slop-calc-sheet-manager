@@ -19,6 +19,19 @@ SHOW = cast(int, uno.getConstantByName("com.sun.star.awt.WindowAttribute.SHOW"))
 POSSIZE = cast(int, uno.getConstantByName("com.sun.star.awt.PosSize.POSSIZE"))
 
 
+def _add_hidden_page(tab_control):
+    """Keep the page-less tab control from crashing LibreOffice (#18).
+
+    When a modifier key changes, VCL's mnemonic handling (gtk3, Windows) recurses into the
+    current page of every tab control in the window and crashes on a control without pages.
+    One hidden, empty page prevents that; a shown page would cover the list. The tab control
+    shows a page again only when switching pages.
+    """
+    tab_control.insertTab()
+    for page in tab_control.getWindows():
+        page.setVisible(False)
+
+
 class SheetPanel(
     unohelper.Base, XUIElement, XToolPanel, XSidebarPanel, XComponent, XWindowListener
 ):
@@ -41,13 +54,7 @@ class SheetPanel(
         descriptor.Bounds = Rectangle(0, 0, bounds.Width, bounds.Height)
         descriptor.WindowAttributes = SHOW
         self.Window = self._parent.getToolkit().createWindow(descriptor)
-        # When a modifier key changes, VCL's mnemonic handling (gtk3, Windows) recurses into
-        # the current page of every tab control in the window and crashes on a control
-        # without pages. One hidden, empty page prevents that; a shown page would cover the
-        # list. The tab control shows a page again only when switching pages.
-        self.Window.insertTab()
-        for page in self.Window.getWindows():
-            page.setVisible(False)
+        _add_hidden_page(self.Window)
         self.list = None
         try:
             self.list = SheetList(context, self.Frame, self.Window)

@@ -1,9 +1,15 @@
 """The sheet list: a flat TreeControl showing the document's sheets.
 
-A single click on a row goes to that sheet; Ctrl+click and Shift+click only change the list's
-own selection. The selected sheets can be dragged to another place in the list. The list's
-selection follows Calc's whenever the active sheet changes, but the list groups Calc's tabs
-only to open the sheet tab menu (see ``uno_menu``).
+A single click on a row goes to that sheet and leaves it as Calc's only selected tab; Ctrl+click
+and Shift+click only change the list's own selection. The selected sheets can be dragged to
+another place in the list through the reorder layer (``uno_reorder``). The list's selection
+follows Calc's whenever the active sheet changes, but the list groups Calc's tabs only to open
+the sheet tab menu (see ``uno_menu``).
+
+The list keeps the reorder layer's snapshot of the sheets it shows. A selected row survives a
+refresh only while the sheet handle retained for it still has that row's name, so a sheet that
+was deleted and recreated, or renamed and reused, drops out of the selection rather than passing
+it to a different sheet. Drags, the menu, and Show check the same identity again when they run.
 
 Every listener only records state or posts work to the main thread: LibreOffice calls some
 of them from other threads or in the middle of a change.
@@ -14,7 +20,7 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass
-from typing import cast
+from typing import Any, cast
 
 import uno
 import unohelper
@@ -29,21 +35,32 @@ from com.sun.star.sheet import XActivationEventListener
 from com.sun.star.util import XModifyListener
 
 from sheet_manager.i18n import tr
-from sheet_manager.keys import TypeAhead, find_prefix
+from sheet_manager.keys import (
+    MOVING,
+    PAGEDOWN,
+    PAGEUP,
+    TypeAhead,
+    anchor_after,
+    cursor_after,
+    find_prefix,
+    range_end,
+)
+from sheet_manager.reorder import plan_move
 from sheet_manager.sheet_list import RowGeometry, SheetRow, ordered, row_label
-from sheet_manager.temporary_move import move_block, refusal
 from sheet_manager.uno_calc import (
     MainThread,
     dispatch,
+    prop,
     read_rows,
     report,
-    select_tabs,
     selected_tabs,
     show_error,
     swatch_url,
 )
 from sheet_manager.uno_keys import ListKeyHandler, Shortcuts
-from sheet_manager.uno_menu import SHOW, SheetMenu, show_sheets
+from sheet_manager.uno_menu import SHOW, SheetMenu
+from sheet_manager.uno_reorder import Snapshot, apply_order, is_current, snapshot
+from sheet_manager.uno_show import show_sheets
 
 MULTI = uno.Enum("com.sun.star.view.SelectionType", "MULTI")
 SINGLE = uno.Enum("com.sun.star.view.SelectionType", "SINGLE")
@@ -58,7 +75,9 @@ ACTION_MOVE = cast(
 
 # A private type: nothing outside this list accepts a sheet drag that leaves the panel.
 MIME = "application/x-sheet-manager-sheets"
-REFRESH_DELAY = 0.2
+REFRESH_DELAY = 0.2  # Quiet time after a change before the list reads the sheets again.
+REFRESH_COST_FACTOR = 4  # Wait at least this many times as long as the last refresh took.
+REFRESH_MAX_WAIT = 2.0  # During continuous changes, refresh at least this often (scaled too).
 SCROLL_INTERVAL = 0.1
 
 
@@ -73,7 +92,7 @@ def _guarded(where, function, *arguments):
 @dataclass(frozen=True)
 class _Drag:
     names: list[str]  # The dragged sheets, in document order.
-    order: list[str]  # The document's order when the drag started.
+    observed: Snapshot  # The sheets the list showed when the drag started.
     transferable: object
 
 
@@ -238,14 +257,29 @@ class SheetList:
         self.document = self.controller.getModel()
         self.toolkit = parent_window.getToolkit()
         self.rows: list[SheetRow] = []
+        self._observed: Snapshot | None = None
+        self._handles: dict[str, Any] = {}
         self._nodes: list[object] = []
+        # The tree's keyboard cursor and Shift anchor, by sheet name: the tree has no API for them.
+        self._cursor: str | None = None
+        self._anchor: str | None = None
         self._disposed = False
         self._busy = False
         self._main = MainThread(context)
-        self._menu = SheetMenu(context, frame, self.document, self.controller)
+        self._menu = SheetMenu(
+            context,
+            frame,
+            self.document,
+            self.controller,
+            lambda work: self.post(work, "releasing the menu guard"),
+            lambda: self.post(self._command_refused, "refusing a stale command"),
+        )
         self._keys = ListKeyHandler(self, Shortcuts(context, self.document))
         self._keys_registered = False
         self._refresh_timer: threading.Timer | None = None
+        self._changed_at = 0.0  # The last document change.
+        self._stale_since: float | None = None  # The first change not yet shown.
+        self._refresh_cost = 0.0  # How long the last refresh took.
         self._press: tuple[int | None, int] | None = None
         self._drag: _Drag | None = None
         self._gap: int | None = None
@@ -325,26 +359,58 @@ class SheetList:
                 remove()
         self.tree.dispose()
 
-    # Rows
+    # Rows and identity
 
     def names(self) -> list[str]:
         return [row.name for row in self.rows]
 
+    def still_shown(self, name: str) -> bool:
+        """Whether the sheet the list shows as `name` still exists under that name."""
+        handle = self._handles.get(name)
+        try:
+            return handle is not None and handle.getName() == name
+        except Exception:
+            return False
+
     def refresh(self) -> None:
+        """Read the sheets again; keep only selected rows whose sheets are still the same."""
         if self._disposed:
             return
-        rows = read_rows(self.document, self.controller)
-        if rows != self.rows or not self._nodes:
-            self._rebuild(rows)
+        started = time.monotonic()
+        try:
+            self._refresh()
+        finally:
+            self._refresh_cost = time.monotonic() - started
+            self._stale_since = None
 
-    def _rebuild(self, rows: list[SheetRow]) -> None:
+    def _refresh(self) -> None:
+        observed = snapshot(self.document)
+        rows = read_rows(self.controller, observed)
+        names = {row.name for row in rows}
+        picked = self.selected_names()
+        kept = [name for name in picked if name in names and self.still_shown(name)]
+        cursor = self._cursor
+        if cursor is not None and (cursor not in names or not self.still_shown(cursor)):
+            cursor = None
+        anchor = self._anchor if self._anchor in names and self.still_shown(self._anchor) else None
+        changed = rows != self.rows or not self._nodes
+        invalidated = kept != picked or cursor != self._cursor or anchor != self._anchor
+        self._observed = observed
+        self._handles = dict(
+            zip((sheet.name for sheet in observed.sheets), observed.handles, strict=True)
+        )
+        if changed or invalidated:
+            self._rebuild(rows, kept, cursor)
+
+    def _rebuild(self, rows: list[SheetRow], picked: list[str], cursor: str | None) -> None:
         """Replace the whole data model.
 
         With a hidden root, the tree control mishandles every change event of the data model:
         changing one node's text re-parents all rows under a newly shown root. So the list
-        never changes nodes in place; it builds a new model and restores selection and scroll.
+        never changes nodes in place; it builds a new model and restores the selection, the
+        scroll position, and the keyboard cursor. The tree's Shift anchor cannot be restored:
+        the next Shift move starts a new range at the cursor.
         """
-        picked = self.selected_names()
         top = self._first_visible_name()
         model = self.context.ServiceManager.createInstanceWithContext(
             "com.sun.star.awt.tree.MutableTreeDataModel", self.context
@@ -360,23 +426,31 @@ class SheetList:
             nodes.append(node)
         self.tree.getModel().DataModel = model
         self._nodes, self.rows = nodes, rows
+        self._anchor = None
         names = self.names()
         if top in names and nodes:
             # Scroll to the end first, so that showing the old top row puts it at the top.
             self.tree.makeNodeVisible(nodes[-1])
             self.tree.makeNodeVisible(nodes[names.index(top)])
-        self._select(picked)
+        self._select(picked, cursor)
 
-    def _select(self, names: list[str]) -> None:
-        """Select these rows; the keyboard cursor goes to the first, so arrows continue there."""
+    def _select(self, names: list[str], cursor: str | None = None) -> None:
+        """Select these rows and put the keyboard cursor on `cursor`, or on the first of them."""
         wanted = set(names)
         indices = [index for index, row in enumerate(self.rows) if row.name in wanted]
-        if not indices:
+        all_names = self.names()
+        if cursor not in all_names:
+            cursor = all_names[indices[0]] if indices else None
+        if cursor is None:
             self.tree.clearSelection()
+            self._cursor = None
             return
-        self._focus_row(indices[0], scroll=False)
-        for index in indices[1:]:
-            self.tree.addSelection(self._nodes[index])
+        self._focus_row(all_names.index(cursor), scroll=False)
+        if cursor not in wanted:
+            self.tree.clearSelection()  # Keeps the cursor where it is.
+        for index in indices:
+            if all_names[index] != cursor:
+                self.tree.addSelection(self._nodes[index])
 
     def geometry(self) -> RowGeometry:
         if not self._nodes:
@@ -392,7 +466,7 @@ class SheetList:
             return None
         return self.rows[self.geometry().first_visible()].name
 
-    # Selection and activation
+    # Selection, keyboard cursor, and activation
 
     def selected_names(self) -> list[str]:
         selection = self.tree.getSelection()
@@ -400,6 +474,10 @@ class SheetList:
             return []
         nodes = selection if isinstance(selection, tuple) else (selection,)
         return ordered(self.names(), {node.DataValue for node in nodes})
+
+    def _selected_indices(self) -> list[int]:
+        picked = set(self.selected_names())
+        return [index for index, row in enumerate(self.rows) if row.name in picked]
 
     def _focus_row(self, index: int, scroll: bool = True) -> None:
         """Select only this row and move the tree's keyboard cursor to it.
@@ -413,24 +491,73 @@ class SheetList:
             self.tree.select(self._nodes[index])
         finally:
             model.SelectionType = MULTI
+        self._cursor = self.rows[index].name
         if scroll:
             self.tree.makeNodeVisible(self._nodes[index])
+
+    def tree_key(self, code: int, modifiers: int) -> None:
+        """Track the tree's cursor for a key that the tree is about to handle itself."""
+        names = self.names()
+        cursor = names.index(self._cursor) if self._cursor in names else None
+        anchor = names.index(self._anchor) if self._anchor in names else None
+        anchor = anchor_after(code, modifiers, cursor, anchor)
+        self._anchor = names[anchor] if anchor is not None else None
+        moved = cursor_after(code, cursor, len(names))
+        if moved is not None:
+            self._cursor = names[moved]
+        elif code in (PAGEUP, PAGEDOWN):
+            shift = bool(modifiers & SHIFT)
+            self.post(lambda: self._cursor_from_selection(shift), "following the cursor")
+        elif code in MOVING:
+            self._cursor = None
+
+    def _cursor_from_selection(self, shift: bool) -> None:
+        """After Page Up or Page Down the selection shows where the cursor went."""
+        selected = self._selected_indices()
+        names = self.names()
+        if not shift:
+            self._cursor = names[selected[0]] if len(selected) == 1 else None
+        elif self._anchor in names and names.index(self._anchor) in selected:
+            self._cursor = names[range_end(selected, names.index(self._anchor))]
+        else:
+            self._cursor = None
 
     def follow_calc_selection(self) -> None:
         try:
             indices = selected_tabs(self.context, self.controller)
+            active = self.controller.getActiveSheet().getName()
         except Exception:
             report("reading Calc's selected sheets")
             return
         names = self.names()
-        self._select([names[index] for index in indices if 0 <= index < len(names)])
+        self._select([names[index] for index in indices if 0 <= index < len(names)], active)
 
     def activate(self, name: str) -> None:
-        """Go to the sheet, unless it is hidden: Calc cannot show a hidden sheet."""
+        """Go to the sheet and make it Calc's only selected tab, as a click on its tab does.
+
+        Calc keeps an existing group when the sheet is already part of it, which would make a
+        cell edit change every grouped sheet, so the single selection is established and read
+        back. A hidden sheet cannot be shown, so it never becomes active.
+        """
         row = next((row for row in self.rows if row.name == name), None)
+        if row is None or not row.visible or not self.still_shown(name):
+            return
         sheets = self.document.getSheets()
-        if row is not None and row.visible and sheets.hasByName(name):
-            self.controller.setActiveSheet(sheets.getByName(name))
+        self.controller.setActiveSheet(sheets.getByName(name))
+        index = list(sheets.getElementNames()).index(name)
+        if selected_tabs(self.context, self.controller) != [index]:
+            dispatch(
+                self.context, self.frame, ".uno:TableDeselectAll", (prop("SynchronMode", True),)
+            )
+        if (
+            selected_tabs(self.context, self.controller) != [index]
+            or self.controller.getActiveSheet().getName() != name
+        ):
+            show_error(
+                self.peer,
+                tr("Sheet Manager"),
+                tr("Calc kept other sheets selected. Click the sheet's tab before editing cells."),
+            )
 
     def activate_selection(self) -> None:
         picked = self.selected_names()
@@ -440,25 +567,47 @@ class SheetList:
     def type_ahead(self, char: str) -> None:
         prefix = self._type_ahead.feed(char, time.monotonic())
         names = self.names()
-        picked = self.selected_names()
-        current = names.index(picked[0]) if picked else None
+        current = names.index(self._cursor) if self._cursor in names else None
         match = find_prefix(names, prefix, current)
         if match is not None:
             self._focus_row(match)
 
     # Events from Calc
 
+    def _refresh_delay(self) -> float:
+        # Reading many sheets and rebuilding the tree takes time on the main thread; scaling the
+        # wait by that cost keeps the list from slowing bulk changes, such as macros or moves.
+        return max(REFRESH_DELAY, REFRESH_COST_FACTOR * self._refresh_cost)
+
     def document_modified(self) -> None:
-        if self._disposed or self._refresh_timer is not None:
+        """Refresh once changes pause, or at the latest after a bounded wait."""
+        if self._disposed:
             return
-        self._refresh_timer = self._main.later(
-            REFRESH_DELAY, self._timed_refresh, "refreshing the sheet list"
-        )
+        now = time.monotonic()
+        self._changed_at = now
+        if self._stale_since is None:
+            self._stale_since = now
+        if self._refresh_timer is None:
+            self._refresh_timer = self._main.later(
+                self._refresh_delay(), self._timed_refresh, "refreshing the sheet list"
+            )
 
     def _timed_refresh(self) -> None:
         self._refresh_timer = None
-        if not self._busy:  # A move refreshes the list itself when it ends.
-            self.refresh()
+        if self._disposed or self._stale_since is None:
+            return
+        now = time.monotonic()
+        delay = self._refresh_delay()
+        quiet = now - self._changed_at
+        waited = now - self._stale_since
+        if quiet < delay and waited < max(REFRESH_MAX_WAIT, delay * REFRESH_COST_FACTOR):
+            self._refresh_timer = self._main.later(
+                delay - quiet, self._timed_refresh, "refreshing the sheet list"
+            )
+            return
+        if self._busy:  # A move refreshes the list itself when it ends.
+            return
+        self.refresh()
 
     def active_sheet_changed(self) -> None:
         """Follow Calc's tab selection when the user went to another sheet.
@@ -500,8 +649,17 @@ class SheetList:
             self._press = None
             if row is not None and self.rows[row].name not in self.selected_names():
                 self._focus_row(row)
+                self._anchor = None
         elif event.Buttons & LEFT:
             self._press = (row, event.Modifiers)
+            if row is not None:
+                # The tree has already handled the press: its cursor is on this row. Shift
+                # keeps or starts the range at the old cursor; other clicks end it.
+                if event.Modifiers & SHIFT:
+                    self._anchor = self._anchor or self._cursor
+                else:
+                    self._anchor = None
+                self._cursor = self.rows[row].name
 
     def mouse_released(self, event) -> None:
         if event.Buttons & RIGHT:
@@ -528,30 +686,41 @@ class SheetList:
 
     def _open_menu(self, x: int, y: int) -> None:
         picked = self.selected_names()
-        if self._disposed or self._busy or not picked:
+        if self._disposed or self._busy or not picked or self._observed is None:
             return
-        hidden = {row.name for row in self.rows if not row.visible}
-        chosen = self._menu.show(self.peer, x, y, picked, hidden)
+        if not all(self.still_shown(name) for name in picked):
+            self.refresh()  # A picked sheet was replaced or renamed: drop it, open nothing.
+            return
+        observed = self._observed
+        chosen = self._menu.show(self.peer, x, y, observed, picked)
         if chosen == SHOW:
-            if not show_sheets(self.document, picked):
-                show_error(self.peer, tr("Sheet Manager"), tr("The sheets changed; try again."))
+            result = show_sheets(self.context, self.document, observed, picked)
             self.refresh()
+            if result.status != "done":
+                show_error(self.peer, tr("Sheet Manager"), result.message)
+
+    def _command_refused(self) -> None:
+        self.refresh()
+        show_error(
+            self.peer,
+            tr("Sheet Manager"),
+            tr("The sheets changed while the menu was open. The command was not run."),
+        )
 
     # Drag and drop
 
     def start_drag(self, event) -> None:
         self._press = None  # A drag is not a click.
-        if self._busy or self._drag is not None:
+        if self._busy or self._drag is not None or self._observed is None:
             return
         picked = self.selected_names()
-        order = self.names()
-        if not picked or refusal(self.document):
+        if not picked or self.document.isReadonly() or self.document.isProtected():
             return
-        if list(self.document.getSheets().getElementNames()) != order:
+        if not is_current(self.document, self._observed):
             self.refresh()
             return
         transferable = _Transferable(uuid.uuid4().hex)
-        self._drag = _Drag(picked, order, transferable)
+        self._drag = _Drag(picked, self._observed, transferable)
         try:
             self._drag_source.startDrag(
                 event, ACTION_MOVE, 0, 0, transferable, self._listeners["source"]
@@ -649,32 +818,28 @@ class SheetList:
             self.peer.invalidate(0)
 
     def _move(self, drag: _Drag, gap: int) -> None:
+        """Move the dragged sheets through the reorder layer (docs/reordering.md).
+
+        The plan uses the snapshot the list showed when the drag started; the layer refuses it
+        if any sheet has changed since, and keeps the active sheet and Calc's tab selection.
+        """
         if self._disposed:
             return
+        try:
+            plan = plan_move(drag.observed.sheets, drag.names, "drop", gap)
+        except ValueError as error:
+            show_error(self.peer, tr("Sheet Manager"), str(error))
+            return
+        if not plan.moves:
+            return  # Dropped in place.
         self._busy = True
         try:
             if not self.frame.isActive():
                 self.frame.activate()  # Calc's undo of sheet moves needs the active view.
-            active = self.controller.getActiveSheet().getName()
-            order = list(self.document.getSheets().getElementNames())
-            tabs = [order[index] for index in selected_tabs(self.context, self.controller)]
-            result = move_block(self.document, drag.order, drag.names, gap)
-            if result.status == "moved":
-                self._restore_view(active, tabs)
+            result = apply_order(self.context, self.document, drag.observed, plan)
         finally:
             self._busy = False
             self.refresh()
-        if set(drag.names) <= set(self.names()):
-            self._select(drag.names)
-        if result.message:
+        if result.status != "done" or result.message != tr("Sheets moved."):
+            # Refusals, failures, and a successful move whose view could not be restored.
             show_error(self.peer, tr("Sheet Manager"), result.message)
-
-    def _restore_view(self, active: str, tabs: list[str]) -> None:
-        """Keep the active sheet and Calc's tab selection as they were before the move."""
-        sheets = self.document.getSheets()
-        if self.controller.getActiveSheet().getName() != active and sheets.hasByName(active):
-            self.controller.setActiveSheet(sheets.getByName(active))
-        order = list(sheets.getElementNames())
-        wanted = sorted(order.index(name) for name in tabs if name in order)
-        if wanted and selected_tabs(self.context, self.controller) != wanted:
-            select_tabs(self.context, self.frame, wanted)

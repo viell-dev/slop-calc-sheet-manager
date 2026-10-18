@@ -137,11 +137,11 @@ The generator uses a separate private profile and saves only its newly created s
 
 The integration runner installs the built OXT into a fresh temporary profile, connects over a
 unique local UNO pipe, and checks the factory, tab-control peer, exact panel resizing and disposal,
-read-only Calc documents, Writer exclusion, and SVG decoding. Headless sessions also check the
-sheet list: its rows and their states, refreshing after sheet changes, following the active
-sheet, clicks and the sheet tab menu through LibreOffice's synthetic input, and the drop mover's
-single undo step. Every workbook is synthetic and loaded visibly, even when the office process
-itself is headless. It retries only startup, up to
+read-only Calc documents, Writer exclusion, and SVG decoding. The sheet list's feature suite
+checks its rows and their states, refreshing after sheet changes, following the active sheet,
+dropping replaced or renamed sheets from the selection, clicks and the sheet tab menu through
+LibreOffice's synthetic input, and Show's undo and recovery rules. Every workbook is synthetic and
+loaded visibly, even when the office process itself is headless. It retries only startup, up to
 three times, to tolerate a Windows crash just after connecting. It never attaches to an existing
 office or uses the normal LibreOffice profile.
 
@@ -198,7 +198,9 @@ They click, Ctrl+click, and Shift+click rows, drag two separate sheets above and
 midpoint and check the order and the single undo step, cancel a drag with Esc, auto-scroll and
 wheel-scroll the list, type into the focused list and check that no cell changes, use Ctrl+Page
 Down, Ctrl+Z, and Ctrl+S from the list, open the sheet tab menu by right click, Menu key, and
-Shift+F10, and switch documents. Results and screenshots are in `test-results/<lane>/ui-gtk3/`
+Shift+F10, check that a plain click after the menu leaves one selected tab so that typing edits
+one sheet, keep the keyboard position across a refresh, refuse a drop after a sheet was replaced
+during the drag, and switch documents. Results and screenshots are in `test-results/<lane>/ui-gtk3/`
 and `ui-gen/`. LibreOffice's synthetic input on Windows bypasses key handlers and cannot start a
 native drag; those checks are on the [manual checklist](docs/manual-tests.md), with a synthetic
 workbook from `python tools/manual_workbook.py`.

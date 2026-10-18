@@ -93,15 +93,22 @@ one as not planned, and close an accepted one through the pull request that fixe
   named ranges, and charts at 200/1,000 sheets and emit median complete-move/undo timings.
   `generate_workbooks.py` retains copies for inspection using the same synthetic generator.
 - `src/sheet_manager/` ships under `pythonpath/sheet_manager/`. Keep pure logic importable without
-  `uno` (`keys.py`, `sheet_list.py`, `swatch.py`, `temporary_move.py`); the `uno_*.py` modules
-  adapt it: `uno_panel.py` owns the UNO factory and panel, `uno_list.py` the tree control, its
-  drag and drop and refresh, `uno_keys.py` the key handler, `uno_menu.py` the sheet tab menu, and
-  `uno_calc.py` shared Calc helpers. Tests observe only public UNO: the `XPanel.getDialog()`
-  window, its child tree control (`tests/integration/sheet_list_view.py`), and its
-  `XEventListener`; keep test hooks out of the production factory.
-- `temporary_move.py` is a deliberately minimal drop handler until #4's reorder layer replaces it:
-  it moves the dragged sheets as one block with one `moveByName` per sheet in one undo context
-  and refuses workbooks with scenarios. Do not grow it into a planner.
+  `uno` (`keys.py`, `sheet_list.py`, `swatch.py`, `reorder.py`); the `uno_*.py` modules adapt
+  it: `uno_panel.py` owns the UNO factory and panel, `uno_list.py` the tree control, its drag and
+  drop and refresh, `uno_keys.py` the key handler, `uno_menu.py` the sheet tab menu, `uno_show.py`
+  the list's own Show operation, and `uno_calc.py` shared Calc helpers. Tests observe only public
+  UNO: the `XPanel.getDialog()` window, its child tree control
+  (`tests/integration/sheet_list_view.py`), and its `XEventListener`; keep test hooks out of the
+  production factory.
+- The list keeps the `uno_reorder.snapshot` that produced its rows. A selected row survives a
+  refresh only while its retained handle still has the row's name, so a replaced or renamed sheet
+  leaves the selection instead of passing it to another sheet. Drops plan against the snapshot of
+  the drag's start through `apply_order`, which refuses stale state. While the built-in sheet tab
+  menu is open, a dispatch interceptor on the frame checks at dispatch time that the picked sheets
+  are unchanged and are exactly Calc's selected tabs. `uno_show.show_sheets` applies the reorder
+  layer's undo rules: refuse without undo or beyond the undo limit, one group, undo only its own
+  group on failure, verify. A plain click or Enter makes the sheet Calc's only selected tab and
+  reads that back: `setActiveSheet` keeps an existing group when the sheet belongs to it.
 - `extension/description.xml` is the version source. `extension/sheet-manager.components` and
   `registration.py` provide passive Python registration. `Factories.xcu` maps tool-panel URLs to
   that factory; `Sidebar.xcu` registers the Calc-only deck and panel. `tools/build.py` explicitly
@@ -118,8 +125,11 @@ one as not planned, and close an accepted one through the pull request that fixe
 - The list is a borderless `TreeControl` (so that it is a direct child of the panel window) with
   a hidden root. With a hidden root, the tree peer mishandles every data-model change event and
   re-parents all rows under the root, so never change nodes in place: build a new data model and
-  restore selection, scroll position, and keyboard cursor. Listener callbacks can arrive on other
-  threads or during a change; they only record state or post work through `AsyncCallback`.
+  restore selection, scroll position, and keyboard cursor. The tree exposes no cursor, so the list
+  tracks it from clicks and the keys it passes to the tree (`keys.cursor_after`); a rebuild cannot
+  restore the tree's Shift anchor, so the next Shift move starts a range at the cursor. Listener
+  callbacks can arrive on other threads or during a change; they only record state or post work
+  through `AsyncCallback`.
 - Keys: a toolkit `XKeyHandler` is registered only while the tree has focus and checks
   `hasFocus()` again for every key. Navigation keys go to the tree (the sidebar swallows what the
   tree ignores); Enter, typed characters, and the menu keys are handled by the list; other
@@ -130,8 +140,9 @@ one as not planned, and close an accepted one through the pull request that fixe
   temporary profile, starts only its own process with a unique pipe, and disposes it afterwards.
   Open documents visibly even in headless runs: hidden documents do not reliably execute Calc
   commands or undo. Startup retries end before document creation and never retry failed tests.
-  `--sessions headless|gtk3|both` selects sessions; default headless. Headless sessions also run
-  `sheet_list_checks.py` (list contents, refresh, robot clicks and menu, the temporary mover).
+  `--sessions headless|gtk3|both` selects sessions; default headless. The feature suite
+  `test_sheet_list.py` checks the list's contents, refresh, identity, robot clicks and menu, and
+  Show with LibreOffice's synthetic input.
   Real-input UI tests live in `tests/ui/run_ui.py`, use XTEST under Xvfb with separate gtk3 and
   gen sessions, and run in the `linux-gtk3` jobs through `tools/linux_integration.py <lane> --ui`.
   What neither can reach is on the manual checklist, `docs/manual-tests.md`; keep it current.

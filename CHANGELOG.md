@@ -8,17 +8,23 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 - Added the sheet list to the panel: every sheet in document order with its tab colour and its
   active, hidden, protected, and scenario state. A click goes to a sheet; Ctrl+click and
   Shift+click select several without changing the active sheet. Selected sheets can be dragged,
-  with an insertion line and auto-scroll, to a new place in one undo step; Esc cancels. Keys typed
-  in the list stay out of the sheet while Calc's shortcuts keep working, and the sheet tab menu
-  opens by right click, Menu key, or Shift+F10 for exactly the selected sheets
-  ([#2](https://github.com/viell-dev/slop-calc-sheet-manager/issues/2)).
+  with an insertion line and auto-scroll, to a new place through the reorder layer, in one undo
+  step; Esc cancels. Keys typed in the list stay out of the sheet while Calc's shortcuts keep
+  working, and the sheet tab menu opens by right click, Menu key, or Shift+F10 for exactly the
+  selected sheets ([#2](https://github.com/viell-dev/slop-calc-sheet-manager/issues/2)). A sheet
+  deleted and recreated, or renamed and reused, leaves the selection rather than being acted on
+  ([#28](https://github.com/viell-dev/slop-calc-sheet-manager/issues/28)); a click ends any
+  grouping of Calc's tabs ([#25](https://github.com/viell-dev/slop-calc-sheet-manager/issues/25));
+  showing hidden sheets needs undo and is undone on failure
+  ([#27](https://github.com/viell-dev/slop-calc-sheet-manager/issues/27)); refreshing keeps the
+  keyboard position ([#29](https://github.com/viell-dev/slop-calc-sheet-manager/issues/29)).
 - Fixed LibreOffice aborting on gtk3 when Ctrl, Shift, or Alt was pressed while the panel had the
   focus: VCL's mnemonic handling cannot cope with the panel's tab control having no page.
 - Added real-input UI tests with gtk3 and gen, headless sheet list checks, and a manual checklist
   with a synthetic workbook for what automation cannot reach.
 - Added the reorder operation layer for drag/drop and Top, Up, Down, and Bottom: minimum-call
   planning, scenario blocks, permission checks, one undo step, and verified failure recovery.
-  The sidebar controls will use this interface when the list panel is integrated.
+  The sheet list's drag and drop uses it.
   Planning stays responsive in large workbooks; recovery preserves the user's previous action at a full
   undo stack, and view-restoration failures warn without undoing a verified move. Both success and
   rollback restore the view before unlocking controllers to avoid an intermediate repaint. Balanced groups

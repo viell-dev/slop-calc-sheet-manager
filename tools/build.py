@@ -38,6 +38,7 @@ PACKAGE_FILES = (
     "uno_menu.py",
     "uno_panel.py",
     "uno_reorder.py",
+    "uno_show.py",
 )
 DESCRIPTION_NS = "{http://openoffice.org/extensions/description/2006}"
 
