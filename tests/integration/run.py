@@ -104,12 +104,16 @@ def office_session(
             command.append("--headless")
         if backtrace:
             command.append("--backtrace")
+            # The bundled Python launcher exports paths incompatible with gdb's Python.
+            environment.pop("PYTHONHOME", None)
+            environment.pop("PYTHONPATH", None)
         trace_path = output / f"gdbtrace-{headless}-{attempt}.log" if backtrace else None
         log_path = output / f"soffice-{headless}-{attempt}.log"
         log = log_path.open("w", encoding="utf-8")
         process = subprocess.Popen(
             command,
             env=environment,
+            stdin=subprocess.DEVNULL,
             stdout=log,
             stderr=subprocess.STDOUT,
             text=True,
@@ -137,17 +141,19 @@ def office_session(
                             trace = generated_trace.read_text(encoding="utf-8", errors="replace")
                             if normal_startup_restart(trace):
                                 # Match the normal launcher's profile bootstrap, only before UNO.
-                                (output / f"startup-restart-{attempt}.log").write_text(
+                                (output / f"startup-restart-{headless}-{attempt}.log").write_text(
                                     trace,
                                     encoding="utf-8",
                                 )
                                 result["office_startup_restart"] = 81
                                 restarted = True
-                                # gdb's script otherwise appends on restart.
+                                # gdbtrace enables logging before setting overwrite on;
+                                # otherwise gdb appends the bootstrap exit to the final trace.
                                 generated_trace.unlink()
                                 process = subprocess.Popen(
                                     command,
                                     env=environment,
+                                    stdin=subprocess.DEVNULL,
                                     stdout=log,
                                     stderr=subprocess.STDOUT,
                                     text=True,
@@ -288,7 +294,7 @@ def exercise(context, desktop, directory, output, *, screenshot):
             stable_geometry, "two matching initial frame/panel measurements"
         )
     finally:
-        (output / "resize-initial.json").write_text(
+        (output / f"resize-initial-{not screenshot}.json").write_text(
             json.dumps(measurements, indent=2) + "\n",
             encoding="utf-8",
         )
@@ -427,8 +433,19 @@ def main():
         parser.error("--backtrace requires the Linux test image with gdb")
     output = arguments.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
-    for artifact in ("results.json", "deck.png"):
-        (output / artifact).unlink(missing_ok=True)
+    for pattern in (
+        "results.json",
+        "deck.png",
+        "refusal.log",
+        "resize-initial*.json",
+        "install-*.log",
+        "soffice-*.log",
+        "gdbtrace-*.log",
+        "startup-*.json",
+        "startup-restart-*.log",
+    ):
+        for artifact in output.glob(pattern):
+            artifact.unlink()
     package = arguments.oxt.resolve()
     program = arguments.program.resolve()
     results: list[dict[str, object]] = []
