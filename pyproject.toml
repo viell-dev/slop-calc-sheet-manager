@@ -12,6 +12,7 @@ typeCheckingMode = "strict"
 include = ["src", "tools", "tests", "extension/registration.py"]
 extraPaths = ["src", "tools"]
 executionEnvironments = [
+  { root = "src/sheet_manager/uno_reorder.py", reportUnknownMemberType = false, reportUnknownVariableType = false, reportUnknownArgumentType = false, reportMissingTypeStubs = false },
   { root = "src/sheet_manager/uno_panel.py", reportUnknownParameterType = false, reportMissingParameterType = false, reportUnknownMemberType = false, reportUnknownVariableType = false, reportUnknownArgumentType = false, reportMissingTypeStubs = false, reportIncompatibleMethodOverride = false },
   { root = "tests/integration", reportUnknownParameterType = false, reportMissingParameterType = false, reportUnknownMemberType = false, reportUnknownVariableType = false, reportUnknownArgumentType = false, reportUnknownLambdaType = false, reportMissingTypeStubs = false },
   { root = "." },
