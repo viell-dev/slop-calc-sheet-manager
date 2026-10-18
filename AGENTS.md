@@ -152,7 +152,7 @@ agents get the same scrutiny as reports from people.
   exception needs evidence that all assertions passed and failure occurred during shutdown,
   recorded in the PR. The generic fatal message alone is not proof of #8 and is never allowed
   in the runner. `gtk3-soak.yml` and `tests/integration/soak.py` repeat fresh painted sessions in
-  installed/absent modes; CI's manual trigger can call the branch workflow before it is merged.
+  installed/absent modes; dispatch that workflow on the branch to measure once it exists on `main`.
   `--backtrace` uses LibreOffice's gdb wrapper; validate its trace as well as the wrapper status.
   That wrapper bypasses the normal launcher's exit-81 bootstrap restart. The runner handles it
   once, only before connecting UNO, and preserves the initialization trace; never extend this

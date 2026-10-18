@@ -164,11 +164,10 @@ every attempted session contributes to the measurement. The absent-extension con
 Calc/save/reopen-read-only/Writer lifecycle and frame requests, but cannot exercise the panel or
 its disposal. It is a control, not equivalent extension coverage.
 
-Before this workflow exists on the default branch, dispatch the existing **CI** workflow on the
-task branch with `soak_sessions`; it calls the same soak workflow from that branch. For example:
+Once `gtk3-soak.yml` exists on the default branch, dispatch it on the branch to measure:
 
 ```text
-gh workflow run ci.yml --ref ci-reliability -f soak_sessions=20
+gh workflow run gtk3-soak.yml --ref <branch> -f sessions=20
 ```
 
 Locally, use `python tools/linux_integration.py minimum --sessions gtk3 --soak 20 --backtrace`.
