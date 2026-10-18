@@ -135,6 +135,10 @@ agents get the same scrutiny as reports from people.
 - The panel uses a `"tabcontrol"` peer. A plain `"window"` does not consume mouse-down events,
   which lets VCL interpret clicks as the start of sidebar undocking. Retain the tab-control
   interface assertion when adding controls, and keep the panel filling its container on resize.
+  The tab control sits inside a plain `"window"` of the same size: on Alt, VCL's access-key walk
+  enters each tab control's current page and crashes on a tab control without pages (#18), but
+  it does not descend into plain windows. Keep any page-less tab control out of that walk, and
+  keep the painted Alt-key test.
 - `tests/integration/run.py` runs with the tested office's bundled Python, installs into a new
   temporary profile, starts only its own process with a unique pipe, and disposes it afterwards.
   Open documents visibly even in headless runs: hidden documents do not reliably execute Calc
