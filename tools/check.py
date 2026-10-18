@@ -1,5 +1,6 @@
 """Run all local static checks, pure tests, and the reproducible build."""
 
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -9,6 +10,8 @@ from build import ROOT, build
 
 
 def main() -> None:
+    if shutil.which("node") is None:
+        raise SystemExit("Node.js is required for Pyright; install it before running checks")
     for command in (
         ["ruff", "check", "."],
         ["ruff", "format", "--check", "."],

@@ -15,9 +15,12 @@ def main() -> None:
     parser.add_argument("--skip-build", action="store_true", help="Use an already built CI image")
     parser.add_argument("--screenshot", action="store_true")
     arguments = parser.parse_args()
-    uid, gid = (os.getuid(), os.getgid()) if os.name == "posix" else (1000, 1000)
-    if uid == 0:
-        raise SystemExit("Run the integration helper as an unprivileged host user")
+    if os.name == "posix":
+        uid, gid = os.getuid(), os.getgid()
+        if uid == 0:
+            raise SystemExit("Run the integration helper as an unprivileged host user")
+    else:
+        uid, gid = 1000, 1000
     pins = cast(dict[str, dict[str, str]], json.loads((ROOT / "ci/libreoffice.json").read_text()))
     pin = pins[arguments.lane]
     image = "sheet-manager-ci:" + pin["version"]

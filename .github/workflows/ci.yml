@@ -10,7 +10,7 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   checks:
@@ -29,6 +29,10 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
           cache: pip
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24.21.0"
+          package-manager-cache: false
       - run: python -m venv .venv
       - run: .venv/bin/python -m pip install --require-hashes -r requirements-dev.txt
       - run: .venv/bin/python tools/check.py
@@ -97,8 +101,14 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24.21.0"
+          package-manager-cache: false
+      - run: python -m venv .venv
+      - run: ./.venv/Scripts/python.exe -m pip install --require-hashes -r requirements-dev.txt
+      - run: ./.venv/Scripts/python.exe tools/check.py
       - run: ./ci/install-windows.ps1
-      - run: python tools/build.py
       - name: Install, activate, resize, and close the panel
         run: |
           $package = (Get-ChildItem -LiteralPath dist -Filter '*.oxt').FullName
@@ -111,5 +121,11 @@ jobs:
           name: windows-integration
           path: |
             test-results/
-            ${{ runner.temp }}/sheet-manager-msi.log
+            dist/
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: windows-installer-failure
+          path: ${{ runner.temp }}/sheet-manager-msi.log
           if-no-files-found: warn
