@@ -121,7 +121,9 @@ def dispatch(context, frame, command: str, arguments=()) -> bool:
 
 def select_tabs(context, frame, indices: list[int]) -> None:
     """Replace Calc's tab selection; the handler keeps or activates a selected visible sheet."""
-    tables = prop("Tables", uno.Any("[]long", tuple(indices)))
+    # The handler needs a typed sequence<long>; types-unopy does not declare uno.Any.
+    typed = uno.Any("[]long", tuple(indices))  # pyright: ignore[reportAttributeAccessIssue]
+    tables = prop("Tables", typed)
     dispatch(context, frame, ".uno:SelectTables", (tables, prop("SynchronMode", True)))
 
 

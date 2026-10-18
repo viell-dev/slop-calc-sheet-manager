@@ -28,11 +28,13 @@ class Shortcuts:
         manager = self._context.ServiceManager
         loaders = (
             lambda: self._document.getUIConfigurationManager().getShortCutManager(),
-            lambda: manager.createInstanceWithContext(
-                "com.sun.star.ui.ModuleUIConfigurationManagerSupplier", self._context
-            )
-            .getUIConfigurationManager(CALC_MODULE)
-            .getShortCutManager(),
+            lambda: (
+                manager.createInstanceWithContext(
+                    "com.sun.star.ui.ModuleUIConfigurationManagerSupplier", self._context
+                )
+                .getUIConfigurationManager(CALC_MODULE)
+                .getShortCutManager()
+            ),
             lambda: manager.createInstanceWithContext(
                 "com.sun.star.ui.GlobalAcceleratorConfiguration", self._context
             ),

@@ -9,10 +9,12 @@ Every listener only records state or posts work to the main thread: LibreOffice 
 of them from other threads or in the middle of a change.
 """
 
+import contextlib
 import threading
 import time
 import uuid
 from dataclasses import dataclass
+from typing import cast
 
 import uno
 import unohelper
@@ -45,12 +47,14 @@ from sheet_manager.uno_menu import SHOW, SheetMenu, show_sheets
 
 MULTI = uno.Enum("com.sun.star.view.SelectionType", "MULTI")
 SINGLE = uno.Enum("com.sun.star.view.SelectionType", "SINGLE")
-LEFT = uno.getConstantByName("com.sun.star.awt.MouseButton.LEFT")
-RIGHT = uno.getConstantByName("com.sun.star.awt.MouseButton.RIGHT")
-SHIFT = uno.getConstantByName("com.sun.star.awt.KeyModifier.SHIFT")
-MOD1 = uno.getConstantByName("com.sun.star.awt.KeyModifier.MOD1")
-POSSIZE = uno.getConstantByName("com.sun.star.awt.PosSize.POSSIZE")
-ACTION_MOVE = uno.getConstantByName("com.sun.star.datatransfer.dnd.DNDConstants.ACTION_MOVE")
+LEFT = cast(int, uno.getConstantByName("com.sun.star.awt.MouseButton.LEFT"))
+RIGHT = cast(int, uno.getConstantByName("com.sun.star.awt.MouseButton.RIGHT"))
+SHIFT = cast(int, uno.getConstantByName("com.sun.star.awt.KeyModifier.SHIFT"))
+MOD1 = cast(int, uno.getConstantByName("com.sun.star.awt.KeyModifier.MOD1"))
+POSSIZE = cast(int, uno.getConstantByName("com.sun.star.awt.PosSize.POSSIZE"))
+ACTION_MOVE = cast(
+    int, uno.getConstantByName("com.sun.star.datatransfer.dnd.DNDConstants.ACTION_MOVE")
+)
 
 # A private type: nothing outside this list accepts a sheet drag that leaves the panel.
 MIME = "application/x-sheet-manager-sheets"
@@ -252,9 +256,7 @@ class SheetList:
         self._type_ahead = TypeAhead()
 
         manager = context.ServiceManager
-        model = manager.createInstanceWithContext(
-            "com.sun.star.awt.tree.TreeControlModel", context
-        )
+        model = manager.createInstanceWithContext("com.sun.star.awt.tree.TreeControlModel", context)
         model.SelectionType = MULTI
         model.RootDisplayed = False
         model.ShowsHandles = False
@@ -319,10 +321,8 @@ class SheetList:
             lambda: self._drop_target.removeDropTargetListener(self._listeners["target"]),
             lambda: self._gestures.removeDragGestureListener(self._listeners["gesture"]),
         ):
-            try:
+            with contextlib.suppress(Exception):  # The document or toolkit may be gone.
                 remove()
-            except Exception:
-                pass  # The document or toolkit may already be gone.
         self.tree.dispose()
 
     # Rows

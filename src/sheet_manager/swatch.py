@@ -14,7 +14,11 @@ def _chunk(tag: bytes, data: bytes) -> bytes:
 
 def swatch_png(color: int | None, size: int = SIZE) -> bytes:
     """A size x size RGBA PNG: a grey frame filled with color, or transparent when None."""
-    fill = (0, 0, 0, 0) if color is None else ((color >> 16) & 255, (color >> 8) & 255, color & 255, 255)
+    fill = (
+        (0, 0, 0, 0)
+        if color is None
+        else ((color >> 16) & 255, (color >> 8) & 255, color & 255, 255)
+    )
     rows = bytearray()
     for y in range(size):
         rows.append(0)  # PNG filter type "none" for this scanline.

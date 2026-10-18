@@ -46,10 +46,10 @@ class KeyRoute(Enum):
 
 
 def typed_character(char: str, modifiers: int) -> bool:
-    """A printable character typed without Ctrl or Alt, or with both (AltGr on Windows)."""
+    """A printable character typed without Ctrl, Alt, or macOS Ctrl, or with Ctrl+Alt (AltGr)."""
     if len(char) != 1 or not char.isprintable() or char.isspace():
         return False
-    held = modifiers & (MOD1 | MOD2)
+    held = modifiers & (MOD1 | MOD2 | MOD3)
     return held in (0, MOD1 | MOD2)
 
 

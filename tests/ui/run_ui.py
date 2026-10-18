@@ -23,16 +23,40 @@ sys.path[:0] = [str(HERE), str(ROOT / "tests" / "integration"), str(ROOT / "src"
 import unohelper  # noqa: E402
 from com.sun.star.awt import XMouseMotionListener  # noqa: E402
 from com.sun.star.frame import XStatusListener  # noqa: E402
-from run import DECK, office_session, property_value, wait_for  # noqa: E402
+from run import DECK, office_session, wait_for  # noqa: E402
 from xinput import RIGHT, Pointer, XInput  # noqa: E402
 
 from sheet_manager.sheet_list import ACTIVE_MARK  # noqa: E402
 from sheet_manager.temporary_move import block_target  # noqa: E402
 
-NATO = (
-    "Alfa Bravo Charlie Delta Echo Foxtrot Golf Hotel India Juliett Kilo Lima Mike November "
-    "Oscar Papa Quebec Romeo Sierra Tango Uniform Victor Whiskey X-ray Yankee Zulu"
-).split()
+NATO = [
+    "Alfa",
+    "Bravo",
+    "Charlie",
+    "Delta",
+    "Echo",
+    "Foxtrot",
+    "Golf",
+    "Hotel",
+    "India",
+    "Juliett",
+    "Kilo",
+    "Lima",
+    "Mike",
+    "November",
+    "Oscar",
+    "Papa",
+    "Quebec",
+    "Romeo",
+    "Sierra",
+    "Tango",
+    "Uniform",
+    "Victor",
+    "Whiskey",
+    "X-ray",
+    "Yankee",
+    "Zulu",
+]
 NAMES = NATO + [f"Sheet {number}" for number in range(27, 81)]
 MENU_FILE = Path("/opt/lo/share/config/soffice.cfg/modules/scalc/popupmenu/sheettab.xml")
 MENU_NS = "{http://openoffice.org/2001/menu}"
@@ -286,7 +310,7 @@ class Lab:
             tree.removeMouseMotionListener(tracker)
 
 
-def wait_until(function, what, timeout=10.0):
+def wait_until(function, what, timeout=10):
     return wait_for(function, what, timeout=timeout)
 
 
@@ -520,9 +544,13 @@ def reset(book):
         sheets.getByIndex(index).IsVisible = True
     book.controller.setActiveSheet(sheets.getByIndex(0))
     book.document.getUndoManager().clear()
-    wait_until(lambda: [label.split(" (")[0] for label in book.labels()] == [
-        (ACTIVE_MARK if index == 0 else "") + name for index, name in enumerate(NAMES)
-    ], "the list to show the original workbook")
+    wait_until(
+        lambda: (
+            [label.split(" (")[0] for label in book.labels()]
+            == [(ACTIVE_MARK if index == 0 else "") + name for index, name in enumerate(NAMES)]
+        ),
+        "the list to show the original workbook",
+    )
 
 
 def hide_through_menu(book, picked, opener):
