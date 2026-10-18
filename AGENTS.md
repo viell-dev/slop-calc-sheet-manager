@@ -154,6 +154,9 @@ agents get the same scrutiny as reports from people.
   in the runner. `gtk3-soak.yml` and `tests/integration/soak.py` repeat fresh painted sessions in
   installed/absent modes; CI's manual trigger can call the branch workflow before it is merged.
   `--backtrace` uses LibreOffice's gdb wrapper; validate its trace as well as the wrapper status.
+  That wrapper bypasses the normal launcher's exit-81 bootstrap restart. The runner handles it
+  once, only before connecting UNO, and preserves the initialization trace; never extend this
+  startup handling into retrying test assertions or shutdown failures.
 - `.github/rulesets/main.json` records the main ruleset with the CI job names to require after
   this workflow is merged. `release-tags.json` records immutable version tags. These are API
   request bodies captured from rulesets 25349507 and 25349508; recording them does not apply them.

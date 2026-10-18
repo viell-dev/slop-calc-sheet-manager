@@ -10,6 +10,8 @@ from pathlib import Path
 
 
 def main():
+    if os.name != "posix":
+        raise SystemExit("Run the soak inside the Linux test image")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--program", type=Path, required=True)
     parser.add_argument("--oxt", type=Path, required=True)
@@ -47,6 +49,8 @@ def main():
                     str(directory),
                     "--sessions",
                     "gtk3",
+                    "--startup-attempts",
+                    "1",
                 ]
                 if mode == "absent":
                     command.append("--without-extension")
@@ -62,7 +66,8 @@ def main():
                     try:
                         status = process.wait(timeout=180)
                     except subprocess.TimeoutExpired:
-                        os.killpg(process.pid, signal.SIGKILL)
+                        if os.name == "posix":
+                            os.killpg(process.pid, signal.SIGKILL)
                         process.wait()
                         status = 124
                 result_path = directory / "results.json"

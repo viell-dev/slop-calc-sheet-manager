@@ -113,7 +113,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch'
     uses: ./.github/workflows/gtk3-soak.yml
     with:
-      sessions: ${{ inputs.soak_sessions }}
+      sessions: ${{ fromJSON(inputs.soak_sessions || '20') }}
 
   refusal:
     if: github.event_name != 'workflow_dispatch'

@@ -20,7 +20,7 @@ import uno
 import unohelper
 from com.sun.star.beans import PropertyValue
 from com.sun.star.lang import XEventListener
-from office_process import assert_clean_shutdown, finish_process
+from office_process import assert_clean_shutdown, finish_process, normal_startup_restart
 
 FACTORY = "dev.viell.sheetmanager.PanelFactory"
 DECK = "SheetManagerDeck"
@@ -43,10 +43,19 @@ def wait_for(function, description, timeout=20):
 
 
 @contextmanager
-def office_session(program, package, output, result, *, headless, backtrace=False):
+def office_session(
+    program,
+    package,
+    output,
+    result,
+    *,
+    headless,
+    backtrace=False,
+    startup_attempts=3,
+):
     # Retry only startup, before opening documents or making test assertions. Windows
     # occasionally loses soffice.bin just after a successful UNO connection.
-    for attempt in range(3):
+    for attempt in range(startup_attempts):
         temporary = tempfile.TemporaryDirectory(prefix="sheet-manager-integration-")
         directory = Path(temporary.name)
         profile = "-env:UserInstallation=" + (directory / "profile").as_uri()
@@ -114,6 +123,7 @@ def office_session(program, package, output, result, *, headless, backtrace=Fals
             )
             deadline = time.monotonic() + 30
             context = None
+            restarted = False
             while time.monotonic() < deadline:
                 try:
                     context = resolver.resolve(
@@ -122,6 +132,28 @@ def office_session(program, package, output, result, *, headless, backtrace=Fals
                     break
                 except Exception:
                     if process.poll() is not None:
+                        generated_trace = directory / "gdbtrace.log"
+                        if backtrace and not restarted and generated_trace.exists():
+                            trace = generated_trace.read_text(encoding="utf-8", errors="replace")
+                            if normal_startup_restart(trace):
+                                # Match the normal launcher's profile bootstrap, only before UNO.
+                                (output / f"startup-restart-{attempt}.log").write_text(
+                                    trace,
+                                    encoding="utf-8",
+                                )
+                                result["office_startup_restart"] = 81
+                                restarted = True
+                                # gdb's script otherwise appends on restart.
+                                generated_trace.unlink()
+                                process = subprocess.Popen(
+                                    command,
+                                    env=environment,
+                                    stdout=log,
+                                    stderr=subprocess.STDOUT,
+                                    text=True,
+                                    cwd=directory,
+                                )
+                                continue
                         raise RuntimeError("Private soffice exited during startup") from None
                     time.sleep(0.1)
             if context is None:
@@ -147,7 +179,9 @@ def office_session(program, package, output, result, *, headless, backtrace=Fals
                 json.dumps(startup, indent=2) + "\n", encoding="utf-8"
             )
             temporary.cleanup()
-            if attempt == 2:
+            if attempt == startup_attempts - 1:
+                result.update(startup)
+                result["failure_stage"] = "startup"
                 raise
             continue
         try:
@@ -228,6 +262,7 @@ def exercise(context, desktop, directory, output, *, screenshot):
     # gtk3 can report a 475px frame height for a 500px native request (#9).
     # Establish the actual baseline, then require both frame and panel to grow by 150px.
     previous: tuple[int, ...] | None = None
+    measurements = []
 
     def stable_geometry():
         nonlocal previous
@@ -240,6 +275,7 @@ def exercise(context, desktop, directory, output, *, screenshot):
             panel_size.Width,
             panel_size.Height,
         )
+        measurements.append(measured)
         stable = measured == previous and frame.Width == 1000 and 100 < frame.Height <= 500
         previous = measured
         if stable:
@@ -247,9 +283,15 @@ def exercise(context, desktop, directory, output, *, screenshot):
         time.sleep(0.25)
         return None
 
-    frame_before, before = wait_for(
-        stable_geometry, "two matching initial frame/panel measurements"
-    )
+    try:
+        frame_before, before = wait_for(
+            stable_geometry, "two matching initial frame/panel measurements"
+        )
+    finally:
+        (output / "resize-initial.json").write_text(
+            json.dumps(measurements, indent=2) + "\n",
+            encoding="utf-8",
+        )
     window.setPosSize(0, 0, 1000, 650, 15)
     wait_for(
         lambda: window.getPosSize().Height == frame_before.Height + 150, "frame resize by 150px"
@@ -376,6 +418,7 @@ def main():
     parser.add_argument("--screenshot", action="store_true")
     parser.add_argument("--sessions", choices=["headless", "gtk3", "both"])
     parser.add_argument("--without-extension", action="store_true")
+    parser.add_argument("--startup-attempts", type=int, choices=[1, 3], default=3)
     parser.add_argument(
         "--backtrace", action="store_true", help="Linux only: use LibreOffice's gdb wrapper"
     )
@@ -407,6 +450,7 @@ def main():
                     result,
                     headless=headless,
                     backtrace=arguments.backtrace,
+                    startup_attempts=arguments.startup_attempts,
                 ) as session:
                     context, desktop, directory = session
                     if arguments.without_extension:

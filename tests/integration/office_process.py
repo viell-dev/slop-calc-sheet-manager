@@ -1,9 +1,23 @@
 """Collect and validate private office process shutdown without a UNO dependency."""
 
+import re
 import subprocess
 from pathlib import Path
 
 FATAL_MARKERS = ("Unspecified Application Error", "Fatal exception")
+
+
+def normal_startup_restart(trace: str) -> bool:
+    """soffice.bin requests one profile-initialization restart before exposing UNO.
+
+    LibreOffice's normal launcher handles EXITHELPER_NORMAL_RESTART (81); its gdb
+    wrapper does not. Gdb prints inferior exit statuses in octal (0121).
+    """
+    return (
+        re.findall(r"exited with code ([0-7]+)", trace) == ["0121"]
+        and "received signal" not in trace
+        and not any(marker in trace for marker in FATAL_MARKERS)
+    )
 
 
 def stop_process(process: subprocess.Popen[str]) -> None:

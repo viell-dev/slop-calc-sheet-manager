@@ -6,7 +6,11 @@ from pathlib import Path
 
 import pytest
 
-from tests.integration.office_process import assert_clean_shutdown, finish_process
+from tests.integration.office_process import (
+    assert_clean_shutdown,
+    finish_process,
+    normal_startup_restart,
+)
 
 
 @pytest.mark.parametrize(
@@ -75,3 +79,18 @@ def test_debugger_cannot_hide_inferior_failure(
     else:
         with pytest.raises(AssertionError):
             assert_clean_shutdown(result)
+
+
+@pytest.mark.parametrize(
+    ("trace", "restart"),
+    [
+        ("[Inferior 1 (process 123) exited with code 0121]", True),
+        ("[Inferior 1 (process 123) exited with code 0117]", False),
+        ("[Inferior 1 (process 123) exited normally]", False),
+        ("received signal SIGABRT\nexited with code 0121", False),
+        ("Unspecified Application Error\nexited with code 0121", False),
+        ("exited with code 0121\nexited with code 0121", False),
+    ],
+)
+def test_only_normal_bootstrap_restart_is_recognized(trace: str, restart: bool) -> None:
+    assert normal_startup_restart(trace) is restart

@@ -159,7 +159,8 @@ before merging. No error message is treated as an allowed crash.
 Run the **Painted gtk3 soak** workflow manually with `sessions` between 1 and 100 (default 20).
 Each lane runs that many fresh gtk3 profiles with the extension and that many without it, retaining
 per-session runner logs, office logs, results and debugger traces, plus a job summary. A failed
-session fails the job after all measurements finish. The absent-extension control repeats the
+session fails the job after all measurements finish. The soak disables startup retries too, so
+every attempted session contributes to the measurement. The absent-extension control repeats the
 Calc/save/reopen-read-only/Writer lifecycle and frame requests, but cannot exercise the panel or
 its disposal. It is a control, not equivalent extension coverage.
 
@@ -176,6 +177,9 @@ its `gdbtrace.log` under each session's output directory. The recorded process e
 exit in this mode, so the runner also rejects debugger signal/nonzero-inferior-exit markers,
 missing traces and incomplete exits. Debugging can change timing, and a clean soak does not rule
 out an intermittent crash. No host ptrace capability or relaxed container security is required.
+Before UNO is exposed, the debugger path handles one normal profile-initialization restart
+(LibreOffice exit 81), as the normal launcher does, and preserves its trace separately. A signal,
+fatal marker or different nonzero exit never qualifies; test assertions and shutdown are not retried.
 
 `ci/libreoffice.json` pins the minimum 26.2.1 build, the newest tested 26.2 and 26.8 builds, the
 unsupported 26.2.0 build, and Windows. When updating a lane, verify the current TDF catalogue and
