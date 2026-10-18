@@ -134,17 +134,48 @@ extension, and runs the container unprivileged with networking disabled. Source 
 mounted read-only; only `test-results/<lane>/` is writable on the host. On Linux, run as a non-root
 user: the helper maps that user's UID/GID into the container so artifacts remain writable. The
 container has a temporary home directory. It uses Xvfb and Openbox inside the container and
-never mounts a host display socket. `--skip-build` reuses the corresponding `sheet-manager-ci`
-image. `--screenshot` also starts a separate painted gtk3 session and saves `deck.png`; the default
-session always checks the headless mode used by automation. The `unsupported` lane asserts that
+never mounts a host display socket. `--skip-build` reuses only an image matching the Dockerfile,
+lane pin and host UID/GID; a missing or outdated image is rebuilt. `--sessions headless` (the
+default), `--sessions gtk3`, and `--sessions both` select independent office sessions. Painted
+gtk3 sessions save `deck.png`; `--screenshot` remains an alias for running both sessions when
+`--sessions` is omitted. The `unsupported` lane asserts that
 26.2.0 refuses installation for a dependency error and leaves the extension uninstalled.
 
 Logs, actual office/Python versions, package inventory, and results are in `test-results/` and in
 CI artifacts. The runner records the exit status of each office session and rejects nonzero exits,
-forced shutdowns, and fatal-error messages, including during termination. The intermittent minimum
-version gtk3 abort is tracked in [issue #8](https://github.com/viell-dev/slop-calc-sheet-manager/issues/8).
+forced shutdowns after a 30-second grace period, and fatal-error messages, including during
+termination. The intermittent gtk3 shutdown abort, observed on both 26.2.1.2 and 26.8.1.1, is tracked
+in [issue #8](https://github.com/viell-dev/slop-calc-sheet-manager/issues/8).
 Windows CI verifies a pinned MSI before silently installing it; this installation script is for
 disposable CI runners, not a contributor's existing installation.
+
+Required Linux jobs keep the names `Linux (LibreOffice …)` and run only headless checks.
+`Linux gtk3 (LibreOffice …)` jobs run the painted checks separately and are not required yet.
+They still fail on every test or shutdown failure and upload artifacts; inspect a red gtk3 job
+before merging. No error message is treated as an allowed crash.
+
+### Investigate the painted shutdown abort
+
+Run the **Painted gtk3 soak** workflow manually with `sessions` between 1 and 100 (default 20).
+Each lane runs that many fresh gtk3 profiles with the extension and that many without it, retaining
+per-session runner logs, office logs, results and debugger traces, plus a job summary. A failed
+session fails the job after all measurements finish. The absent-extension control repeats the
+Calc/save/reopen-read-only/Writer lifecycle and frame requests, but cannot exercise the panel or
+its disposal. It is a control, not equivalent extension coverage.
+
+Before this workflow exists on the default branch, dispatch the existing **CI** workflow on the
+task branch with `soak_sessions`; it calls the same soak workflow from that branch. For example:
+
+```text
+gh workflow run ci.yml --ref ci-reliability -f soak_sessions=20
+```
+
+Locally, use `python tools/linux_integration.py minimum --sessions gtk3 --soak 20 --backtrace`.
+The test image includes `gdb`; `--backtrace` starts LibreOffice's own debugger wrapper and preserves
+its `gdbtrace.log` under each session's output directory. The recorded process exit is the wrapper's
+exit in this mode, so the runner also rejects debugger signal/nonzero-inferior-exit markers,
+missing traces and incomplete exits. Debugging can change timing, and a clean soak does not rule
+out an intermittent crash. No host ptrace capability or relaxed container security is required.
 
 `ci/libreoffice.json` pins the minimum 26.2.1 build, the newest tested 26.2 and 26.8 builds, the
 unsupported 26.2.0 build, and Windows. When updating a lane, verify the current TDF catalogue and
