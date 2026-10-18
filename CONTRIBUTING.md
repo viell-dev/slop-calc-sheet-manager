@@ -98,7 +98,8 @@ Unit tests need no LibreOffice and run as part of the checks. To run them alone:
 
 The integration runner installs the built OXT into a fresh temporary profile, connects over a
 unique local UNO pipe, and checks the factory, tab-control peer, exact panel resizing and disposal,
-read-only Calc documents, Writer exclusion, and SVG decoding. Every workbook is synthetic and
+read-only Calc documents, Writer exclusion, and SVG decoding. Painted gtk3 sessions also press a
+real Alt key with `xdotool` while the panel is shown. Every workbook is synthetic and
 loaded visibly, even when the office process itself is headless. It retries only startup, up to
 three times, to tolerate a Windows crash just after connecting. It never attaches to an existing
 office or uses the normal LibreOffice profile.
