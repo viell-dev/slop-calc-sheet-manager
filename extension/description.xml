@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<description xmlns="http://openoffice.org/extensions/description/2006"
+             xmlns:xlink="http://www.w3.org/1999/xlink"
+             xmlns:lo="http://libreoffice.org/extensions/description/2011">
+  <identifier value="dev.viell.sheetmanager"/>
+  <version value="0.0.1"/>
+  <platform value="all"/>
+  <display-name><name lang="en">{{Sheet Manager}}</name></display-name>
+  <publisher>
+    <name lang="en" xlink:href="https://github.com/viell-dev/slop-calc-sheet-manager">viell</name>
+  </publisher>
+  <dependencies>
+    <lo:LibreOffice-minimal-version value="26.2.1"/>
+  </dependencies>
+  <extension-description><src lang="en" xlink:href="description-en.txt"/></extension-description>
+</description>
