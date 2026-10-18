@@ -1,0 +1,62 @@
+[
+  {
+    "name": "Type: Bug",
+    "color": "d73a4a",
+    "description": "Incorrect behaviour, broken functionality, or a regression."
+  },
+  {
+    "name": "Type: Feature",
+    "color": "0e8a16",
+    "description": "A new capability or an improvement to an existing one."
+  },
+  {
+    "name": "Type: Maintenance",
+    "color": "6a737d",
+    "description": "Dependencies, CI, releases, refactoring, or repository upkeep."
+  },
+  {
+    "name": "Type: Documentation",
+    "color": "0075ca",
+    "description": "Documentation or contributor instructions."
+  },
+  {
+    "name": "Type: Question",
+    "color": "d876e3",
+    "description": "How the extension works or how to use it."
+  },
+  {
+    "name": "Status: Confirmed",
+    "color": "0e8a16",
+    "description": "Reproduced defect or accepted request; not a delivery commitment."
+  },
+  {
+    "name": "Status: Needs Information",
+    "color": "fbca04",
+    "description": "Waiting for details, answers, or validation results."
+  },
+  {
+    "name": "Status: Needs Owner Testing",
+    "color": "c5def5",
+    "description": "Waiting for a check on a real desktop by the owner."
+  },
+  {
+    "name": "Status: Blocked",
+    "color": "d93f0b",
+    "description": "Accepted work waiting on an identified external dependency."
+  },
+  {
+    "name": "Status: Can't Reproduce",
+    "color": "fef2c0",
+    "description": "A documented reproduction attempt did not reproduce the report."
+  },
+  {
+    "name": "Status: Duplicate",
+    "color": "cfd3d7",
+    "description": "Already tracked elsewhere; the canonical item is linked."
+  },
+  {
+    "name": "Status: Won't Do",
+    "color": "666666",
+    "description": "Declined as out of scope or unsuitable in its proposed form."
+  }
+]
