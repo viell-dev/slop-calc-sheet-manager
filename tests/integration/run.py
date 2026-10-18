@@ -5,6 +5,7 @@ The default run is headless; --screenshot adds a separate painted gtk3/Xvfb run.
 """
 
 import argparse
+import importlib.util
 import json
 import os
 import subprocess
@@ -319,6 +320,16 @@ def main():
                     result.update(
                         exercise(context, desktop, directory, output, screenshot=not headless)
                     )
+                    # Additive feature suites exercise the packaged modules, not src/.
+                    sys.path.insert(0, str(package) + "/pythonpath")
+                    for suite_path in sorted(Path(__file__).parent.glob("test_*.py")):
+                        spec = importlib.util.spec_from_file_location(suite_path.stem, suite_path)
+                        assert spec is not None and spec.loader is not None
+                        suite = importlib.util.module_from_spec(spec)
+                        spec.loader.exec_module(suite)
+                        result[suite_path.stem] = suite.exercise(
+                            context, desktop, directory, output
+                        )
     finally:
         (output / "results.json").write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(results, indent=2))

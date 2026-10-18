@@ -34,7 +34,9 @@ def test_two_builds_are_identical_and_allowlisted(tmp_path: Path) -> None:
             "LICENSE.txt",
             "pythonpath/sheet_manager/__init__.py",
             "pythonpath/sheet_manager/i18n.py",
+            "pythonpath/sheet_manager/reorder.py",
             "pythonpath/sheet_manager/uno_panel.py",
+            "pythonpath/sheet_manager/uno_reorder.py",
         }
         for member in archive.infolist():
             assert member.date_time == (2000, 1, 1, 0, 0, 0)
@@ -100,6 +102,7 @@ def test_pure_package_does_not_import_uno() -> None:
     code = (
         "import sys; sys.path.insert(0, 'src'); "
         "from sheet_manager.i18n import tr; assert tr('Sheet Manager') == 'Sheet Manager'; "
+        "from sheet_manager import reorder; assert reorder.Sheet('A').name == 'A'; "
         "assert 'uno' not in sys.modules; assert 'unohelper' not in sys.modules"
     )
     subprocess.run([sys.executable, "-I", "-c", code], cwd=ROOT, check=True)

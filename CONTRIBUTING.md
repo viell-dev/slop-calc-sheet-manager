@@ -96,6 +96,26 @@ Unit tests need no LibreOffice and run as part of the checks. To run them alone:
 .venv/bin/python -m pytest
 ```
 
+The reorder suite exhausts all permutations through seven sheets and all scenario partitions and
+block orders through seven. It checks the minimum call count against an independent
+longest-common-subsequence oracle. The panel-facing contract is in
+[docs/reordering.md](docs/reordering.md).
+
+The runner also discovers `tests/integration/test_*.py` modules with an
+`exercise(context, desktop, directory, output)` entry point. These suites import the built OXT's
+modules through zipimport, so allowlist omissions fail integration. Keep feature suites additive
+and keep failure injection in test-only forwarding adapters. Reorder checks cover active-sheet
+and native selection preservation, one undo and redo, permission refusals, stale handles, hidden
+sheets, scenario ownership, failures after each real mutation, and a silently ineffective undo.
+
+The reorder suite generates 200- and 1,000-sheet workbooks with a cross-sheet formula and named
+range per sheet plus charts referencing distant sheets. It measures first-sheet, half-selection,
+all-but-last, and alternating-selection moves to the bottom, three times each, and verifies direct
+references before and after undo. `reorder-performance.json` records median milliseconds. Move
+timing includes snapshot, planning, preflight, application, and final verification; undo timing
+covers Calc's undo call, followed by separate integrity assertions. Workbooks use only synthetic
+data and remain in the private test session's temporary directory.
+
 The integration runner installs the built OXT into a fresh temporary profile, connects over a
 unique local UNO pipe, and checks the factory, tab-control peer, exact panel resizing and disposal,
 read-only Calc documents, Writer exclusion, and SVG decoding. Every workbook is synthetic and

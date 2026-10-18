@@ -5,6 +5,9 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Added the reorder operation layer for drag/drop and Top, Up, Down, and Bottom: minimum-call
+  planning, scenario blocks, permission checks, one undo step, and verified failure recovery.
+  The sidebar controls will use this interface when the list panel is integrated.
 - Added an empty Sheet Manager deck to Calc's sidebar as the foundation for the sheet list.
 - Added Windows development checks, durable LibreOffice download pins, and integration checks that
   reject crashes or fatal-error logs during shutdown. The intermittent gtk3 abort on the minimum
