@@ -151,8 +151,11 @@ Image changes retain older `sheet-manager-ci:<version>-<fingerprint>` tags local
 Logs, actual office/Python versions, package inventory, and results are in `test-results/` and in
 CI artifacts. The runner records the exit status of each office session and rejects nonzero exits,
 forced shutdowns after a 30-second grace period, and fatal-error messages, including during
-termination. The intermittent gtk3 shutdown abort, observed on both 26.2.1.2 and 26.8.1.1, is tracked
-in [issue #8](https://github.com/viell-dev/slop-calc-sheet-manager/issues/8).
+termination. The intermittent gtk3 abort of
+[issue #8](https://github.com/viell-dev/slop-calc-sheet-manager/issues/8) was a LibreOffice crash
+when a test closed Writer within milliseconds of opening it
+([#30](https://github.com/viell-dev/slop-calc-sheet-manager/issues/30)); the runner now waits a
+second before closing Writer.
 Windows CI verifies a pinned MSI before silently installing it; this installation script is for
 disposable CI runners, not a contributor's existing installation.
 
@@ -161,7 +164,7 @@ Required Linux jobs keep the names `Linux (LibreOffice …)` and run only headle
 They still fail on every test or shutdown failure and upload artifacts; inspect a red gtk3 job
 before merging. No error message is treated as an allowed crash.
 
-### Investigate the painted shutdown abort
+### Soak painted sessions
 
 Run the **Painted gtk3 soak** workflow manually with `sessions` between 1 and 100 (default 20).
 Each lane runs that many fresh gtk3 profiles with the extension and that many without it, retaining

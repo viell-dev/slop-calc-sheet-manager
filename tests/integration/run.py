@@ -24,12 +24,22 @@ from office_process import assert_clean_shutdown, finish_process, normal_startup
 
 FACTORY = "dev.viell.sheetmanager.PanelFactory"
 DECK = "SheetManagerDeck"
+# LibreOffice defect #30: on gtk3, a new Writer window reads the clipboard within milliseconds
+# and releases LibreOffice's lock while it waits; closing the document from this process during
+# that wait crashes the office (#8). Closing 100 ms or more after loading never crashed.
+WRITER_SETTLE_SECONDS = 1.0
 
 
 def property_value(name, value):
     item = PropertyValue()
     item.Name, item.Value = name, value
     return item
+
+
+def close_writer(writer):
+    """Close a Writer document after its start-up toolbar update has had time to finish."""
+    time.sleep(WRITER_SETTLE_SECONDS)
+    writer.close(True)
 
 
 def wait_for(function, description, timeout=20):
@@ -349,7 +359,7 @@ def exercise(context, desktop, directory, output, *, screenshot):
     assert writer is not None
     decks = writer.getCurrentController().getSidebar().getDecks()
     assert not decks.hasByName(DECK), "Sheet Manager must be Calc-only"
-    writer.close(True)
+    close_writer(writer)
     return {
         "factory": FACTORY,
         "panel_types": peer_types,
@@ -386,7 +396,7 @@ def exercise_without_extension(context, desktop, directory):
     document.close(True)
     writer = desktop.loadComponentFromURL("private:factory/swriter", "_blank", 0, ())
     assert writer is not None
-    writer.close(True)
+    close_writer(writer)
     return {"extension_absent": True, "document_lifecycle": True, "python": sys.version}
 
 
