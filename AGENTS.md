@@ -108,14 +108,43 @@ agents get the same scrutiny as reports from people.
   documentation, dependency updates, and these instructions. Branch names are short kebab-case
   descriptions.
 - Merge with a merge commit after checking the exact head
-  (`gh pr merge --merge --match-head-commit SHA`); squash and rebase merges are disabled so that
-  history and attribution survive. Never bypass the branch rules.
+  (`gh pr merge --merge --match-head-commit SHA --body "Assisted-by: <model> via <harness>"`);
+  squash and rebase merges are disabled so that history and attribution survive. Never bypass
+  the branch rules.
 - Pull requests need not be up to date with `main` before merging, so that they do not wait for one
   another; CI runs again on `main` after every merge, and a failure there is fixed forward first.
 - Use focused commits, push early so that an interrupted session loses little, and never rewrite
   shared history. Delete a branch once its pull request is merged or closed, unless active work
   depends on it.
 - Agents working in parallel use one branch and one worktree each.
+
+## Technical map
+
+- `src/sheet_manager/` ships under `pythonpath/sheet_manager/`. Keep pure logic importable without
+  `uno`; `uno_panel.py` owns the UNO factory and panel. The factory's `XNameAccess` exposes only
+  already created panels through weak references, for read-only activation diagnostics.
+- `extension/description.xml` is the version source. `extension/sheet-manager.components` and
+  `registration.py` provide passive Python registration. `Factories.xcu` maps tool-panel URLs to
+  that factory; `Sidebar.xcu` registers the Calc-only deck and panel. `tools/build.py` explicitly
+  allowlists every packaged file and includes the root licence as `LICENSE.txt`.
+- Python UI strings go through `sheet_manager.i18n.tr`. Metadata templates use `{{message}}`,
+  rendered through that helper at build time; sidebar titles retain their XCU locale attributes.
+  Keep English as the fallback when adding translation catalogues.
+- The panel uses a `"tabcontrol"` peer. A plain `"window"` does not consume mouse-down events,
+  which lets VCL interpret clicks as the start of sidebar undocking. Retain the tab-control
+  interface assertion when adding controls, and keep the panel filling its container on resize.
+- `tests/integration/run.py` runs with the tested office's bundled Python, installs into a new
+  temporary profile, starts only its own process with a unique pipe, and disposes it afterwards.
+  Open documents visibly even in headless runs: hidden documents do not reliably execute Calc
+  commands or undo. Startup retries end before document creation and never retry failed tests.
+- `ci/libreoffice.json`, `ci/Dockerfile`, and `tools/linux_integration.py` define the same Linux
+  lab for CI and local tests. Headless checks use svp; screenshot checks use gtk3 under Xvfb.
+  Never mount host display sockets or use an existing office profile. The Windows MSI installer
+  helper is only for disposable CI runners; use the existing installation on developer machines.
+- `.github/rulesets/main.json` records the main ruleset with the CI job names to require after
+  this workflow is merged. `release-tags.json` records immutable version tags. These are API
+  request bodies captured from rulesets 25349507 and 25349508; recording them does not apply them.
+  Keep required contexts identical to the workflow's job names and strict up-to-date policy off.
 
 ## Releases
 

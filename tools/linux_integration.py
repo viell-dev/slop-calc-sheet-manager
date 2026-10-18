@@ -26,7 +26,8 @@ def main() -> None:
     output = ROOT / "test-results" / arguments.lane
     output.mkdir(parents=True, exist_ok=True)
     # Docker Desktop and Linux both accept these argument-array mounts; no shell quoting.
-    command = ["docker", "run", "--rm", "--network", "none", "--shm-size", "512m"]
+    # xvfb-run waits for a readiness signal; keep its shell away from PID 1's signal semantics.
+    command = ["docker", "run", "--rm", "--init", "--network", "none", "--shm-size", "512m"]
     for source, destination, readonly in (
         (ROOT, "/work", True),
         (package, "/packages/extension.oxt", True),
