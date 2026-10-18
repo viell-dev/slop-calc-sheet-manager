@@ -180,8 +180,8 @@ def apply_order(context: Any, document: Any, observed: Snapshot, plan: Plan) -> 
     def execute(moves: tuple[Move, ...]) -> None:
         nonlocal attempted, completed, depth
         if len(moves) > capacity:
-            # ScDocShell::GetUndoManager resets the *current* undo array's limit
-            # to configured Steps. A flat group silently loses early actions.
+            # Calc limits the current undo array to configured Steps during
+            # native moves. A flat group silently loses early actions.
             # Balanced subgroups keep every level within that limit (>= 2).
             middle = len(moves) // 2
             for portion in (moves[:middle], moves[middle:]):
