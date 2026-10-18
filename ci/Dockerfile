@@ -2,6 +2,7 @@ FROM debian:13-slim@sha256:a29215f6a35e51e22adffa17f89e9d2ef06214e64a2bad10d765c
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates curl python3 python3-pil xvfb xauth x11-utils xdotool dbus-x11 openbox fonts-dejavu-core \
+    gdb \
     libgtk-3-0 libxtst6 libxinerama1 libxrender1 libxrandr2 libgl1 libglu1-mesa \
     libcups2 libdbus-glib-1-2 libsm6 libice6 libnss3 libxslt1.1 libx11-xcb1 libxcb-shm0 \
     && rm -rf /var/lib/apt/lists/*

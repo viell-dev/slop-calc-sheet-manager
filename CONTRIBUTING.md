@@ -123,9 +123,9 @@ Run the complete Linux matrix in Docker with these commands (PowerShell 7 and PO
 accept them; substitute the path to a working Python if `python` is unavailable):
 
 ```text
-python tools/linux_integration.py minimum --screenshot
-python tools/linux_integration.py current-26.2 --screenshot
-python tools/linux_integration.py current-26.8 --screenshot
+python tools/linux_integration.py minimum --sessions both
+python tools/linux_integration.py current-26.2 --sessions both
+python tools/linux_integration.py current-26.8 --sessions both
 python tools/linux_integration.py unsupported
 ```
 
@@ -134,17 +134,55 @@ extension, and runs the container unprivileged with networking disabled. Source 
 mounted read-only; only `test-results/<lane>/` is writable on the host. On Linux, run as a non-root
 user: the helper maps that user's UID/GID into the container so artifacts remain writable. The
 container has a temporary home directory. It uses Xvfb and Openbox inside the container and
-never mounts a host display socket. `--skip-build` reuses the corresponding `sheet-manager-ci`
-image. `--screenshot` also starts a separate painted gtk3 session and saves `deck.png`; the default
-session always checks the headless mode used by automation. The `unsupported` lane asserts that
+never mounts a host display socket. `--skip-build` reuses only an image matching the Dockerfile,
+lane pin and host UID/GID; a missing or outdated image is rebuilt. `--sessions headless` (the
+default), `--sessions gtk3`, and `--sessions both` select independent office sessions. Painted
+gtk3 sessions save `deck.png`; `--screenshot` remains an alias for running both sessions when
+`--sessions` is omitted. The `unsupported` lane asserts that
 26.2.0 refuses installation for a dependency error and leaves the extension uninstalled.
+Image changes retain older `sheet-manager-ci:<version>-<fingerprint>` tags locally; list them with
+`docker image ls sheet-manager-ci` and remove obsolete tags explicitly with `docker image rm <tag>`
+(including old unfingerprinted `sheet-manager-ci:<version>` tags, which are no longer reused).
 
 Logs, actual office/Python versions, package inventory, and results are in `test-results/` and in
 CI artifacts. The runner records the exit status of each office session and rejects nonzero exits,
-forced shutdowns, and fatal-error messages, including during termination. The intermittent minimum
-version gtk3 abort is tracked in [issue #8](https://github.com/viell-dev/slop-calc-sheet-manager/issues/8).
+forced shutdowns after a 30-second grace period, and fatal-error messages, including during
+termination. The intermittent gtk3 shutdown abort, observed on both 26.2.1.2 and 26.8.1.1, is tracked
+in [issue #8](https://github.com/viell-dev/slop-calc-sheet-manager/issues/8).
 Windows CI verifies a pinned MSI before silently installing it; this installation script is for
 disposable CI runners, not a contributor's existing installation.
+
+Required Linux jobs keep the names `Linux (LibreOffice …)` and run only headless checks.
+`Linux gtk3 (LibreOffice …)` jobs run the painted checks separately and are not required yet.
+They still fail on every test or shutdown failure and upload artifacts; inspect a red gtk3 job
+before merging. No error message is treated as an allowed crash.
+
+### Investigate the painted shutdown abort
+
+Run the **Painted gtk3 soak** workflow manually with `sessions` between 1 and 100 (default 20).
+Each lane runs that many fresh gtk3 profiles with the extension and that many without it, retaining
+per-session runner logs, office logs, results and debugger traces, plus a job summary. A failed
+session, including unreadable or missing results, fails the job after all measurements finish.
+The soak disables startup retries too, so
+every attempted session contributes to the measurement. The absent-extension control repeats the
+Calc/save/reopen-read-only/Writer lifecycle and frame requests, but cannot exercise the panel or
+its disposal. It is a control, not equivalent extension coverage.
+
+Once `gtk3-soak.yml` exists on the default branch, dispatch it on the branch to measure:
+
+```text
+gh workflow run gtk3-soak.yml --ref <branch> -f sessions=20
+```
+
+Locally, use `python tools/linux_integration.py minimum --sessions gtk3 --soak 20 --backtrace`.
+The test image includes `gdb`; `--backtrace` starts LibreOffice's own debugger wrapper and preserves
+its `gdbtrace.log` under each session's output directory. The recorded process exit is the wrapper's
+exit in this mode, so the runner also rejects debugger signal/nonzero-inferior-exit markers,
+missing traces and incomplete exits. Debugging can change timing, and a clean soak does not rule
+out an intermittent crash. No host ptrace capability or relaxed container security is required.
+Before UNO is exposed, the debugger path handles one normal profile-initialization restart
+(LibreOffice exit 81), as the normal launcher does, and preserves its trace separately. A signal,
+fatal marker or different nonzero exit never qualifies; test assertions and shutdown are not retried.
 
 `ci/libreoffice.json` pins the minimum 26.2.1 build, the newest tested 26.2 and 26.8 builds, the
 unsupported 26.2.0 build, and Windows. When updating a lane, verify the current TDF catalogue and
@@ -152,8 +190,16 @@ published SHA-256, update the version, URL and digest together, and run that lan
 `https://downloadarchive.documentfoundation.org/libreoffice/old/<full version>/` and the full
 four-part version in filenames: `stable/` downloads disappear when the offered releases change.
 These pins do not discover newer releases automatically. Dependabot checks development tools,
-GitHub-owned actions and Docker base images weekly after a seven-day cooldown. Action references remain
-full commit SHAs, with their versions in comments.
+GitHub-owned actions and Docker base images weekly after a seven-day cooldown. Action references
+remain full commit SHAs, with their versions in comments. The checks image's two base images are
+held on purpose. Python stays on 3.12, the oldest supported version, so Dependabot proposes only
+3.12 patch releases and digest refreshes for it. Node stays on its current major version, so
+Dependabot proposes newer Node 24 releases and digest refreshes but not Node 26. The workflow
+installs Node separately with its own `node-version`, which Dependabot cannot change: a pull
+request that moves the Node image to a new version must also change both `node-version` entries
+in `.github/workflows/ci.yml` and the Node version named in this file, so that local and CI checks
+use the same Node. Moving to a new major version of Python or Node is a deliberate change made by
+hand.
 
 ## Pull requests
 

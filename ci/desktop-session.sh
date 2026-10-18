@@ -18,7 +18,9 @@ if [ "$ready" != true ]; then
     exit 1
 fi
 runner=/work/tests/integration/run.py
-if [[ " $* " == *" --ui "* ]]; then
+if [[ " $* " == *" --soak "* ]]; then
+    runner=/work/tests/integration/soak.py
+elif [[ " $* " == *" --ui "* ]]; then
     runner=/work/tests/ui/run_ui.py
 fi
 /opt/lo/program/python "$runner" \

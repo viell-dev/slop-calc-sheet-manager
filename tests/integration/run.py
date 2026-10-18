@@ -1,7 +1,7 @@
 """Install into a fresh profile and assert the live sidebar through bundled PyUNO.
 
 Run with LibreOffice's program/python[.exe], never the development venv interpreter.
-The default run is headless; --screenshot adds a separate painted gtk3/Xvfb run.
+Choose headless, gtk3, or both with --sessions; gtk3 saves a screenshot.
 """
 
 import argparse
@@ -20,7 +20,7 @@ import uno
 import unohelper
 from com.sun.star.beans import PropertyValue
 from com.sun.star.lang import XEventListener
-from office_process import assert_clean_shutdown, finish_process
+from office_process import assert_clean_shutdown, finish_process, normal_startup_restart
 
 FACTORY = "dev.viell.sheetmanager.PanelFactory"
 DECK = "SheetManagerDeck"
@@ -43,10 +43,20 @@ def wait_for(function, description, timeout=20):
 
 
 @contextmanager
-def office_session(program, package, output, result, *, headless, vcl="gtk3"):
+def office_session(
+    program,
+    package,
+    output,
+    result,
+    *,
+    headless,
+    backtrace=False,
+    startup_attempts=3,
+    vcl="gtk3",
+):
     # Retry only startup, before opening documents or making test assertions. Windows
     # occasionally loses soffice.bin just after a successful UNO connection.
-    for attempt in range(3):
+    for attempt in range(startup_attempts):
         temporary = tempfile.TemporaryDirectory(prefix="sheet-manager-integration-")
         directory = Path(temporary.name)
         profile = "-env:UserInstallation=" + (directory / "profile").as_uri()
@@ -63,17 +73,22 @@ def office_session(program, package, output, result, *, headless, vcl="gtk3"):
         suffix = ".exe" if os.name == "nt" else ""
         installer = program / ("unopkg" + suffix)
         # Do not suppress the license here: installation must be noninteractive by metadata.
-        install = subprocess.run(
-            [str(installer), profile, "add", str(package)],
-            env=environment,
-            capture_output=True,
-            text=True,
-            timeout=90,
+        install = (
+            subprocess.run(
+                [str(installer), profile, "add", str(package)],
+                env=environment,
+                capture_output=True,
+                text=True,
+                timeout=90,
+            )
+            if package is not None
+            else None
         )
         (output / f"install-{headless}-{attempt}.log").write_text(
-            install.stdout + install.stderr, encoding="utf-8"
+            install.stdout + install.stderr if install is not None else "Extension not installed\n",
+            encoding="utf-8",
         )
-        if install.returncode:
+        if install is not None and install.returncode:
             temporary.cleanup()
             raise AssertionError(f"Installation failed: {install.stdout}\n{install.stderr}")
         command = [
@@ -88,10 +103,22 @@ def office_session(program, package, output, result, *, headless, vcl="gtk3"):
         ]
         if headless:
             command.append("--headless")
+        if backtrace:
+            command.append("--backtrace")
+            # The bundled Python launcher exports paths incompatible with gdb's Python.
+            environment.pop("PYTHONHOME", None)
+            environment.pop("PYTHONPATH", None)
+        trace_path = output / f"gdbtrace-{headless}-{attempt}.log" if backtrace else None
         log_path = output / f"soffice-{headless}-{attempt}.log"
         log = log_path.open("w", encoding="utf-8")
         process = subprocess.Popen(
-            command, env=environment, stdout=log, stderr=subprocess.STDOUT, text=True
+            command,
+            env=environment,
+            stdin=subprocess.DEVNULL,
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            text=True,
+            cwd=directory,
         )
         try:
             # The stub calls this UNO "Any"; the actual value is a dynamic XComponentContext.
@@ -101,6 +128,7 @@ def office_session(program, package, output, result, *, headless, vcl="gtk3"):
             )
             deadline = time.monotonic() + 30
             context = None
+            restarted = False
             while time.monotonic() < deadline:
                 try:
                     context = resolver.resolve(
@@ -109,6 +137,30 @@ def office_session(program, package, output, result, *, headless, vcl="gtk3"):
                     break
                 except Exception:
                     if process.poll() is not None:
+                        generated_trace = directory / "gdbtrace.log"
+                        if backtrace and not restarted and generated_trace.exists():
+                            trace = generated_trace.read_text(encoding="utf-8", errors="replace")
+                            if normal_startup_restart(trace):
+                                # Match the normal launcher's profile bootstrap, only before UNO.
+                                (output / f"startup-restart-{headless}-{attempt}.log").write_text(
+                                    trace,
+                                    encoding="utf-8",
+                                )
+                                result["office_startup_restart"] = 81
+                                restarted = True
+                                # gdbtrace enables logging before setting overwrite on;
+                                # otherwise gdb appends the bootstrap exit to the final trace.
+                                generated_trace.unlink()
+                                process = subprocess.Popen(
+                                    command,
+                                    env=environment,
+                                    stdin=subprocess.DEVNULL,
+                                    stdout=log,
+                                    stderr=subprocess.STDOUT,
+                                    text=True,
+                                    cwd=directory,
+                                )
+                                continue
                         raise RuntimeError("Private soffice exited during startup") from None
                     time.sleep(0.1)
             if context is None:
@@ -119,13 +171,24 @@ def office_session(program, package, output, result, *, headless, vcl="gtk3"):
             )
             desktop.getComponents().hasElements()  # Detect the post-connect startup crash.
         except Exception:
-            startup = finish_process(process, log_path, timeout=0)
+            generated_trace = directory / "gdbtrace.log"
+            startup = finish_process(
+                process,
+                log_path,
+                timeout=0,
+                backtrace_path=generated_trace if backtrace else None,
+            )
+            if trace_path is not None and generated_trace.exists():
+                trace_path.write_bytes(generated_trace.read_bytes())
+                startup["office_backtrace"] = trace_path.name
             log.close()
             (output / f"startup-{headless}-{attempt}.json").write_text(
                 json.dumps(startup, indent=2) + "\n", encoding="utf-8"
             )
             temporary.cleanup()
-            if attempt == 2:
+            if attempt == startup_attempts - 1:
+                result.update(startup)
+                result["failure_stage"] = "startup"
                 raise
             continue
         try:
@@ -135,7 +198,19 @@ def office_session(program, package, output, result, *, headless, vcl="gtk3"):
             with suppress(Exception):
                 desktop.terminate()
             try:
-                result.update(finish_process(process, log_path))
+                generated_trace = directory / "gdbtrace.log"
+                # finish_process must wait before copying the debugger's final output.
+                result.update(
+                    finish_process(
+                        process,
+                        log_path,
+                        backtrace_path=generated_trace if backtrace else None,
+                    )
+                )
+                if trace_path is not None:
+                    if generated_trace.exists():
+                        trace_path.write_bytes(generated_trace.read_bytes())
+                    result["office_backtrace"] = trace_path.name
             finally:
                 log.close()
                 temporary.cleanup()
@@ -193,13 +268,37 @@ def exercise(context, desktop, directory, output, *, screenshot):
     window.setPosSize(0, 0, 1000, 500, 15)
     # gtk3 can report a 475px frame height for a 500px native request (#9).
     # Establish the actual baseline, then require both frame and panel to grow by 150px.
-    wait_for(
-        lambda: window.getPosSize().Width == 1000 and 100 < window.getPosSize().Height <= 500,
-        "the initial frame geometry",
-    )
-    time.sleep(0.25)
-    frame_before = window.getPosSize()
-    before = panel.getPosSize()
+    previous: tuple[int, ...] | None = None
+    measurements = []
+
+    def stable_geometry():
+        nonlocal previous
+        frame, panel_size = window.getPosSize(), panel.getPosSize()
+        measured = (
+            frame.X,
+            frame.Y,
+            frame.Width,
+            frame.Height,
+            panel_size.Width,
+            panel_size.Height,
+        )
+        measurements.append(measured)
+        stable = measured == previous and frame.Width == 1000 and 100 < frame.Height <= 500
+        previous = measured
+        if stable:
+            return frame, panel_size
+        time.sleep(0.25)
+        return None
+
+    try:
+        frame_before, before = wait_for(
+            stable_geometry, "two matching initial frame/panel measurements"
+        )
+    finally:
+        (output / f"resize-initial-{not screenshot}.json").write_text(
+            json.dumps(measurements, indent=2) + "\n",
+            encoding="utf-8",
+        )
     window.setPosSize(0, 0, 1000, 650, 15)
     wait_for(
         lambda: window.getPosSize().Height == frame_before.Height + 150, "frame resize by 150px"
@@ -267,6 +366,31 @@ def exercise(context, desktop, directory, output, *, screenshot):
     }
 
 
+def exercise_without_extension(context, desktop, directory):
+    """Match the document lifecycle, omitting only extension-specific operations."""
+    assert context.ServiceManager.createInstanceWithContext(FACTORY, context) is None
+    document = desktop.loadComponentFromURL("private:factory/scalc", "_blank", 0, ())
+    sidebar = document.getCurrentController().getSidebar()
+    assert not sidebar.getDecks().hasByName(DECK)
+    window = document.getCurrentController().getFrame().getContainerWindow()
+    window.IsMaximized = False
+    for height in (500, 650):
+        window.setPosSize(0, 0, 1000, height, 15)
+        time.sleep(0.5)
+    workbook = directory / "synthetic.ods"
+    document.storeAsURL(workbook.as_uri(), ())
+    document.close(True)
+    document = desktop.loadComponentFromURL(
+        workbook.as_uri(), "_blank", 0, (property_value("ReadOnly", True),)
+    )
+    assert document.isReadonly()
+    document.close(True)
+    writer = desktop.loadComponentFromURL("private:factory/swriter", "_blank", 0, ())
+    assert writer is not None
+    writer.close(True)
+    return {"extension_absent": True, "document_lifecycle": True, "python": sys.version}
+
+
 def check_refusal(program, package, output) -> dict[str, object]:
     installer = program / ("unopkg.exe" if os.name == "nt" else "unopkg")
     with tempfile.TemporaryDirectory(prefix="sheet-manager-refusal-") as directory:
@@ -299,11 +423,30 @@ def main():
     parser.add_argument("--output", type=Path, default=Path("test-results/integration"))
     parser.add_argument("--expect-refusal", action="store_true")
     parser.add_argument("--screenshot", action="store_true")
+    parser.add_argument("--sessions", choices=["headless", "gtk3", "both"])
+    parser.add_argument("--without-extension", action="store_true")
+    parser.add_argument("--startup-attempts", type=int, choices=[1, 3], default=3)
+    parser.add_argument(
+        "--backtrace", action="store_true", help="Linux only: use LibreOffice's gdb wrapper"
+    )
     arguments = parser.parse_args()
+    if arguments.backtrace and os.name == "nt":
+        parser.error("--backtrace requires the Linux test image with gdb")
     output = arguments.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
-    for artifact in ("results.json", "deck.png"):
-        (output / artifact).unlink(missing_ok=True)
+    for pattern in (
+        "results.json",
+        "deck.png",
+        "refusal.log",
+        "resize-initial*.json",
+        "install-*.log",
+        "soffice-*.log",
+        "gdbtrace-*.log",
+        "startup-*.json",
+        "startup-restart-*.log",
+    ):
+        for artifact in output.glob(pattern):
+            artifact.unlink()
     package = arguments.oxt.resolve()
     program = arguments.program.resolve()
     results: list[dict[str, object]] = []
@@ -311,14 +454,30 @@ def main():
         if arguments.expect_refusal:
             results.append(check_refusal(program, package, output))
         else:
-            for headless in [True, False] if arguments.screenshot else [True]:
-                result: dict[str, object] = {"headless": headless}
+            sessions = arguments.sessions or ("both" if arguments.screenshot else "headless")
+            for headless in {"headless": [True], "gtk3": [False], "both": [True, False]}[sessions]:
+                result: dict[str, object] = {
+                    "headless": headless,
+                    "extension_installed": not arguments.without_extension,
+                }
                 results.append(result)
-                with office_session(program, package, output, result, headless=headless) as session:
+                with office_session(
+                    program,
+                    None if arguments.without_extension else package,
+                    output,
+                    result,
+                    headless=headless,
+                    backtrace=arguments.backtrace,
+                    startup_attempts=arguments.startup_attempts,
+                ) as session:
                     context, desktop, directory = session
-                    result.update(
-                        exercise(context, desktop, directory, output, screenshot=not headless)
-                    )
+                    if arguments.without_extension:
+                        result.update(exercise_without_extension(context, desktop, directory))
+                    else:
+                        result.update(
+                            exercise(context, desktop, directory, output, screenshot=not headless)
+                        )
+                    result["assertions_passed"] = True
     finally:
         (output / "results.json").write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(results, indent=2))
