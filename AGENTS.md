@@ -119,8 +119,10 @@ one as not planned, and close an accepted one through the pull request that fixe
   Never mount host display sockets or use an existing office profile. The Windows MSI installer
   helper is only for disposable CI runners; use the existing installation on developer machines.
   Required Linux jobs keep their existing names and run headless only; `Linux gtk3 (LibreOffice
-  …)` jobs are non-required while the intermittent gtk3 shutdown abort (#8), observed on both
-  26.2.1.2 and 26.8.1.1, is investigated. Inspect every red gtk3 artifact before merging; any
+  …)` jobs stay non-required until a soak on `main` shows painted sessions are reliable. Their
+  intermittent abort (#8) was LibreOffice crashing when the test closed Writer within
+  milliseconds of opening it (#30); close test documents in painted sessions only after they have
+  settled, as `close_writer()` does. Inspect every red gtk3 artifact before merging; any
   exception needs evidence that all assertions passed and failure occurred during shutdown,
   recorded in the PR. The generic fatal message alone is not proof of #8 and is never allowed
   in the runner. `gtk3-soak.yml` and `tests/integration/soak.py` repeat fresh painted sessions in

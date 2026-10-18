@@ -17,9 +17,10 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   ([#17](https://github.com/viell-dev/slop-calc-sheet-manager/issues/17)).
 - Added an empty Sheet Manager deck to Calc's sidebar as the foundation for the sheet list.
 - Added Windows development checks, durable LibreOffice download pins, and integration checks that
-  reject crashes or fatal-error logs during shutdown. The intermittent gtk3 shutdown abort,
-  observed on both 26.2.1.2 and 26.8.1.1, is tracked in
-  [#8](https://github.com/viell-dev/slop-calc-sheet-manager/issues/8).
+  reject crashes or fatal-error logs during shutdown.
+- Avoided an intermittent LibreOffice crash in painted integration sessions by waiting a second
+  before the tests close Writer ([#8](https://github.com/viell-dev/slop-calc-sheet-manager/issues/8),
+  [#30](https://github.com/viell-dev/slop-calc-sheet-manager/issues/30)).
 - Kept automatic dependency updates for the checks container on Python 3.12, the oldest supported
   version, and on the Node major version that CI uses.
 - Made the integration resize test use observed frame dimensions across gtk3 window layouts,
