@@ -30,8 +30,9 @@ def main():
         "Runner status and office/wrapper exit are separate; "
         "debugger fatal markers also fail a run.",
         "",
-        "| Mode | Session | Runner exit | Office/wrapper exit | Fatal markers | Assertions |",
-        "| --- | ---: | ---: | --- | --- | --- |",
+        "| Mode | Session | Runner exit | Office/wrapper exit | Fatal markers | Assertions | "
+        "Results error |",
+        "| --- | ---: | ---: | --- | --- | --- | --- |",
     ]
     try:
         for mode in ("installed", "absent"):
@@ -71,21 +72,33 @@ def main():
                         process.wait()
                         status = 124
                 result_path = directory / "results.json"
-                results = json.loads(result_path.read_text()) if result_path.exists() else []
-                row = {"mode": mode, "session": number, "runner_exit": status, "results": results}
+                results_error = None
+                try:
+                    results = json.loads(result_path.read_text(encoding="utf-8"))
+                except (json.JSONDecodeError, OSError) as error:
+                    results = None
+                    results_error = f"{type(error).__name__}: {error}"
+                row = {
+                    "mode": mode,
+                    "session": number,
+                    "runner_exit": status,
+                    "results": results,
+                    "results_error": results_error,
+                }
                 rows.append(row)
                 print(json.dumps(row), flush=True)
-                office = [result.get("office_exit_code") for result in results]
+                office = [result.get("office_exit_code") for result in results or []]
                 markers = [
                     marker
-                    for result in results
+                    for result in results or []
                     for marker in result.get("office_fatal_markers", [])
                 ]
                 assertions = bool(results) and all(
                     result.get("assertions_passed") for result in results
                 )
                 summary.append(
-                    f"| {mode} | {number} | {status} | {office} | {markers} | {assertions} |"
+                    f"| {mode} | {number} | {status} | {office} | {markers} | {assertions} | "
+                    f"{results_error or ''} |"
                 )
     finally:
         output.mkdir(parents=True, exist_ok=True)
@@ -93,7 +106,7 @@ def main():
             json.dumps(rows, indent=2) + "\n", encoding="utf-8"
         )
         (output / "soak-summary.md").write_text("\n".join(summary) + "\n", encoding="utf-8")
-    raise SystemExit(int(any(row["runner_exit"] for row in rows)))
+    raise SystemExit(int(any(row["runner_exit"] or row["results_error"] for row in rows)))
 
 
 if __name__ == "__main__":
