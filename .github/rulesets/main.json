@@ -59,6 +59,18 @@
             "integration_id": 15368
           },
           {
+            "context": "Linux gtk3 (LibreOffice 26.2.1)",
+            "integration_id": 15368
+          },
+          {
+            "context": "Linux gtk3 (LibreOffice 26.2 latest)",
+            "integration_id": 15368
+          },
+          {
+            "context": "Linux gtk3 (LibreOffice 26.8 latest)",
+            "integration_id": 15368
+          },
+          {
             "context": "Refuses LibreOffice 26.2.0",
             "integration_id": 15368
           },
