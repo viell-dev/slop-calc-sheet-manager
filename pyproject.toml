@@ -10,10 +10,15 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 pythonVersion = "3.12"
 typeCheckingMode = "strict"
 include = ["src", "tools", "tests", "extension/registration.py"]
-extraPaths = ["src", "tools"]
+extraPaths = ["src", "tools", "tests/integration"]
 executionEnvironments = [
+  { root = "src/sheet_manager/uno_calc.py", reportUnknownParameterType = false, reportMissingParameterType = false, reportUnknownMemberType = false, reportUnknownVariableType = false, reportUnknownArgumentType = false, reportUnknownLambdaType = false, reportMissingTypeStubs = false, reportIncompatibleMethodOverride = false },
+  { root = "src/sheet_manager/uno_keys.py", reportUnknownParameterType = false, reportMissingParameterType = false, reportUnknownMemberType = false, reportUnknownVariableType = false, reportUnknownArgumentType = false, reportUnknownLambdaType = false, reportMissingTypeStubs = false, reportIncompatibleMethodOverride = false },
+  { root = "src/sheet_manager/uno_list.py", reportUnknownParameterType = false, reportMissingParameterType = false, reportUnknownMemberType = false, reportUnknownVariableType = false, reportUnknownArgumentType = false, reportUnknownLambdaType = false, reportMissingTypeStubs = false, reportIncompatibleMethodOverride = false },
+  { root = "src/sheet_manager/uno_menu.py", reportUnknownParameterType = false, reportMissingParameterType = false, reportUnknownMemberType = false, reportUnknownVariableType = false, reportUnknownArgumentType = false, reportUnknownLambdaType = false, reportMissingTypeStubs = false, reportIncompatibleMethodOverride = false },
   { root = "src/sheet_manager/uno_panel.py", reportUnknownParameterType = false, reportMissingParameterType = false, reportUnknownMemberType = false, reportUnknownVariableType = false, reportUnknownArgumentType = false, reportMissingTypeStubs = false, reportIncompatibleMethodOverride = false },
   { root = "tests/integration", reportUnknownParameterType = false, reportMissingParameterType = false, reportUnknownMemberType = false, reportUnknownVariableType = false, reportUnknownArgumentType = false, reportUnknownLambdaType = false, reportMissingTypeStubs = false },
+  { root = "tests/ui", reportUnknownParameterType = false, reportMissingParameterType = false, reportUnknownMemberType = false, reportUnknownVariableType = false, reportUnknownArgumentType = false, reportUnknownLambdaType = false, reportMissingTypeStubs = false, reportIncompatibleMethodOverride = false },
   { root = "." },
 ]
 

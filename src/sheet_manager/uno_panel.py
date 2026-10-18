@@ -1,4 +1,4 @@
-"""UNO sidebar adapter. No document content or selection is changed here."""
+"""UNO sidebar adapter: the panel factory and the panel that holds the sheet list."""
 
 from typing import cast
 
@@ -9,6 +9,9 @@ from com.sun.star.container import NoSuchElementException
 from com.sun.star.lang import EventObject, XComponent, XServiceInfo
 from com.sun.star.ui import LayoutSize, XSidebarPanel, XToolPanel, XUIElement, XUIElementFactory
 
+from sheet_manager.uno_calc import report
+from sheet_manager.uno_list import SheetList
+
 FACTORY = "dev.viell.sheetmanager.PanelFactory"
 RESOURCE_URL = "private:resource/toolpanel/SheetManager/Panel"
 TOOLPANEL = cast(int, uno.getConstantByName("com.sun.star.ui.UIElementType.TOOLPANEL"))
@@ -16,10 +19,10 @@ SHOW = cast(int, uno.getConstantByName("com.sun.star.awt.WindowAttribute.SHOW"))
 POSSIZE = cast(int, uno.getConstantByName("com.sun.star.awt.PosSize.POSSIZE"))
 
 
-class EmptyPanel(
+class SheetPanel(
     unohelper.Base, XUIElement, XToolPanel, XSidebarPanel, XComponent, XWindowListener
 ):
-    """One empty tab-control peer, sized by the sidebar's panel container."""
+    """A tab-control peer, sized by the sidebar's panel container, holding the sheet list."""
 
     def __init__(self, context, resource_url, arguments):
         self.ResourceURL = resource_url
@@ -38,13 +41,27 @@ class EmptyPanel(
         descriptor.Bounds = Rectangle(0, 0, bounds.Width, bounds.Height)
         descriptor.WindowAttributes = SHOW
         self.Window = self._parent.getToolkit().createWindow(descriptor)
+        # When a modifier key changes, VCL's mnemonic handling (gtk3, Windows) recurses into
+        # the current page of every tab control in the window and crashes on a control
+        # without pages. One hidden, empty page prevents that; a shown page would cover the
+        # list. The tab control shows a page again only when switching pages.
+        self.Window.insertTab()
+        for page in self.Window.getWindows():
+            page.setVisible(False)
+        self.list = None
+        try:
+            self.list = SheetList(context, self.Frame, self.Window)
+            self.list.set_bounds(bounds.Width, bounds.Height)
+        except Exception:
+            # An empty panel is better than a sidebar that fails to open.
+            report("creating the sheet list")
         self._parent.addWindowListener(self)
 
     def getRealInterface(self):
         return self
 
     def createAccessible(self, parent_accessible):
-        # The empty shell has no accessible content. A native peer is an XWindow,
+        # The tree control provides its own accessible rows. A native peer is an XWindow,
         # not an XAccessible; do not return it as the wrong UNO interface.
         return None
 
@@ -59,6 +76,11 @@ class EmptyPanel(
             return
         self._disposed = True
         self._parent.removeWindowListener(self)
+        if self.list is not None:
+            try:
+                self.list.dispose()
+            except Exception:
+                report("disposing the sheet list")
         self.Window.dispose()
         listeners, self._listeners = self._listeners, []
         for listener in listeners:
@@ -77,6 +99,8 @@ class EmptyPanel(
     def windowResized(self, event):
         if not self._disposed:
             self.Window.setPosSize(0, 0, event.Width, event.Height, POSSIZE)
+            if self.list is not None:
+                self.list.set_bounds(event.Width, event.Height)
 
     def windowMoved(self, event):
         pass
@@ -85,7 +109,8 @@ class EmptyPanel(
         pass
 
     def windowHidden(self, event):
-        pass
+        if self.list is not None and not self._disposed:
+            self.list.panel_hidden()
 
     def disposing(self, event):
         self.dispose()
@@ -101,7 +126,7 @@ class PanelFactory(unohelper.Base, XUIElementFactory, XServiceInfo):
         if resource_url != RESOURCE_URL:
             raise NoSuchElementException(resource_url, self)
         named = {argument.Name: argument.Value for argument in arguments}
-        return EmptyPanel(self._context, resource_url, named)
+        return SheetPanel(self._context, resource_url, named)
 
     def getImplementationName(self):
         return FACTORY

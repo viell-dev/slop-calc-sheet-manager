@@ -14,7 +14,12 @@ def main() -> None:
     parser.add_argument("lane", choices=["minimum", "current-26.2", "current-26.8", "unsupported"])
     parser.add_argument("--skip-build", action="store_true", help="Use an already built CI image")
     parser.add_argument("--screenshot", action="store_true")
+    parser.add_argument(
+        "--ui", action="store_true", help="Run the real-input UI tests with gtk3 and gen instead"
+    )
     arguments = parser.parse_args()
+    if arguments.ui and (arguments.lane == "unsupported" or arguments.screenshot):
+        parser.error("--ui needs a supported lane and cannot be combined with --screenshot")
     if os.name == "posix":
         uid, gid = os.getuid(), os.getgid()
         if uid == 0:
@@ -54,6 +59,8 @@ def main() -> None:
     command.append(image)
     if arguments.lane == "unsupported":
         command.append("--expect-refusal")
+    elif arguments.ui:
+        command.append("--ui")
     elif arguments.screenshot:
         command.append("--screenshot")
     subprocess.run(command, check=True)

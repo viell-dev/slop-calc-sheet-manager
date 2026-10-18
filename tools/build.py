@@ -25,7 +25,19 @@ EXTENSION_FILES = (
     "registration.py",
     "sheet-manager.components",
 )
-PACKAGE_FILES = ("__init__.py", "i18n.py", "uno_panel.py")
+PACKAGE_FILES = (
+    "__init__.py",
+    "i18n.py",
+    "keys.py",
+    "sheet_list.py",
+    "swatch.py",
+    "temporary_move.py",
+    "uno_calc.py",
+    "uno_keys.py",
+    "uno_list.py",
+    "uno_menu.py",
+    "uno_panel.py",
+)
 DESCRIPTION_NS = "{http://openoffice.org/extensions/description/2006}"
 
 

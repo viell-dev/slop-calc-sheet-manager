@@ -17,5 +17,9 @@ if [ "$ready" != true ]; then
     echo 'The private Xvfb window manager did not become ready' >&2
     exit 1
 fi
-/opt/lo/program/python /work/tests/integration/run.py \
+runner=/work/tests/integration/run.py
+if [[ " $* " == *" --ui "* ]]; then
+    runner=/work/tests/ui/run_ui.py
+fi
+/opt/lo/program/python "$runner" \
     --program /opt/lo/program --oxt /packages/extension.oxt --output /results "$@"

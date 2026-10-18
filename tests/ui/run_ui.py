@@ -1,0 +1,705 @@
+"""Real-input tests of the sheet list: XTEST mouse, wheel, and keys under Xvfb.
+
+Run inside the Linux test image with LibreOffice's bundled Python, normally through
+``tools/linux_integration.py <lane> --ui``. Each VCL plugin gets its own private office and
+profile. The tests drive only real X input and observe only public UNO: the panel's
+``XPanel.getDialog()`` window, its child tree control, the document, and its undo manager.
+"""
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+import time
+import traceback
+import xml.etree.ElementTree as ET
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parents[1]
+sys.path[:0] = [str(HERE), str(ROOT / "tests" / "integration"), str(ROOT / "src")]
+
+import unohelper  # noqa: E402
+from com.sun.star.awt import XMouseMotionListener  # noqa: E402
+from com.sun.star.frame import XStatusListener  # noqa: E402
+from run import DECK, office_session, property_value, wait_for  # noqa: E402
+from xinput import RIGHT, Pointer, XInput  # noqa: E402
+
+from sheet_manager.sheet_list import ACTIVE_MARK  # noqa: E402
+from sheet_manager.temporary_move import block_target  # noqa: E402
+
+NATO = (
+    "Alfa Bravo Charlie Delta Echo Foxtrot Golf Hotel India Juliett Kilo Lima Mike November "
+    "Oscar Papa Quebec Romeo Sierra Tango Uniform Victor Whiskey X-ray Yankee Zulu"
+).split()
+NAMES = NATO + [f"Sheet {number}" for number in range(27, 81)]
+MENU_FILE = Path("/opt/lo/share/config/soffice.cfg/modules/scalc/popupmenu/sheettab.xml")
+MENU_NS = "{http://openoffice.org/2001/menu}"
+
+
+class Tracker(unohelper.Base, XMouseMotionListener):
+    """Records where the tree last saw the pointer, in its own coordinates."""
+
+    def __init__(self):
+        self.last = None
+
+    def mouseMoved(self, event):
+        self.last = (event.X, event.Y)
+
+    def mouseDragged(self, event):
+        self.last = (event.X, event.Y)
+
+    def disposing(self, event):
+        pass
+
+
+class State(unohelper.Base, XStatusListener):
+    def __init__(self):
+        self.enabled = None
+
+    def statusChanged(self, event):
+        self.enabled = event.IsEnabled
+
+    def disposing(self, event):
+        pass
+
+
+class Workbook:
+    def __init__(self, lab, title, names):
+        self.lab = lab
+        self.path = lab.directory / f"{title}.ods"
+        document = lab.desktop.loadComponentFromURL("private:factory/scalc", "_blank", 0, ())
+        sheets = document.getSheets()
+        sheets.getByIndex(0).setName(names[0])
+        for index, name in enumerate(names[1:], start=1):
+            sheets.insertNewByName(name, index)
+        sheets.getByIndex(0).getCellRangeByName("A1").setString("keep")
+        document.storeAsURL(self.path.as_uri(), ())
+        document.getUndoManager().clear()
+        self.document = document
+        self.controller = document.getCurrentController()
+        self.frame = self.controller.getFrame()
+        self.window = self.frame.getContainerWindow()
+        self.window.IsMaximized = False
+        self.window.setPosSize(0, 0, 1500, 950, 15)
+        self.controller.setActiveSheet(sheets.getByIndex(0))
+        lab.dispatch(self.frame, ".uno:SidebarDeck." + DECK)
+        deck = self.controller.getSidebar().getDecks().getByName(DECK)
+        panel = wait_for(
+            lambda: deck.getPanels().getByName("SheetManagerPanel").getDialog(), "the panel"
+        )
+        try:
+            self.tree = wait_for(lambda: tree_of(panel), "the sheet list's tree control")
+        except AssertionError:
+            children = [[t.typeName for t in c.getTypes()] for c in panel.getWindows()]
+            raise AssertionError(
+                f"No tree among {children}; panel {[t.typeName for t in panel.getTypes()]}"
+            ) from None
+        wait_for(lambda: len(self.nodes()) == len(names), "every sheet in the list")
+        time.sleep(1)
+        self.pointer = Pointer(lab.input, lab.calibrate(self.tree, self.window))
+
+    # What the list shows
+
+    def root(self):
+        selection = self.tree.getSelection()
+        nodes = selection if isinstance(selection, tuple) else (selection,)
+        for node in nodes:
+            if node is not None:
+                return node.getParent()
+        for x in (20, 40, 60):
+            for y in (3, 9):
+                node = self.tree.getNodeForLocation(x, y)
+                if node is not None:
+                    return node.getParent()
+        return None
+
+    def nodes(self):
+        root = self.root()
+        return [] if root is None else [root.getChildAt(i) for i in range(root.getChildCount())]
+
+    def labels(self):
+        return [node.getDisplayValue() for node in self.nodes()]
+
+    def selection(self):
+        selection = self.tree.getSelection()
+        if selection is None:
+            return []
+        nodes = selection if isinstance(selection, tuple) else (selection,)
+        picked = {node.DataValue for node in nodes}
+        return [name for name in self.order() if name in picked]
+
+    def point(self, index, fraction=0.5):
+        node = self.nodes()[index]
+        self.tree.makeNodeVisible(node)
+        time.sleep(0.2)
+        rect = self.tree.getNodeRect(node)
+        return rect.X + 12, rect.Y + int(rect.Height * fraction)
+
+    def first_visible(self):
+        rect = self.tree.getNodeRect(self.nodes()[0])
+        return -rect.Y // rect.Height
+
+    # What the document says
+
+    def order(self):
+        return list(self.document.getSheets().getElementNames())
+
+    def active(self):
+        return self.controller.getActiveSheet().getName()
+
+    def calc_tabs(self):
+        order = self.order()
+        return [order[index] for index in self.lab.selected_tabs(self.controller)]
+
+    def undo_titles(self):
+        return list(self.document.getUndoManager().getAllUndoActionTitles())
+
+    def click(self, index, modifiers=()):
+        self.pointer.click(*self.point(index), modifiers=modifiers)
+
+    def focus_list(self):
+        """Click the active sheet's row: the list gets the focus, nothing else changes."""
+        self.click(self.order().index(self.active()))
+
+    def menu_items(self):
+        """The sheet tab menu's entries that are enabled now, in order, as the menu shows them."""
+        entries = [
+            item.attrib[f"{MENU_NS}id"]
+            for item in ET.parse(MENU_FILE).getroot().iter()
+            if item.tag == f"{MENU_NS}menuitem"
+        ]
+        enabled = []
+        for command in entries:
+            url = self.lab.url(command)
+            dispatcher = self.frame.queryDispatch(url, "", 0)
+            if dispatcher is None:
+                continue
+            state = State()
+            dispatcher.addStatusListener(state, url)
+            dispatcher.removeStatusListener(state, url)
+            if state.enabled:
+                enabled.append(command)
+        return enabled
+
+    def choose(self, command):
+        """Choose a menu entry with the keyboard; generated mnemonics differ between plugins."""
+        items = wait_for(lambda: self.menu_items() or None, "the menu's command states")
+        self.lab.input.tap("Home")
+        for _ in range(items.index(command)):
+            self.lab.input.tap("Down")
+        self.lab.screenshot(f"menu-{command[5:].lower()}")
+        self.lab.input.tap("Return", pause=0.5)
+        return items
+
+    def close(self):
+        self.document.close(True)
+
+
+def tree_of(panel):
+    for child in panel.getWindows():
+        if "com.sun.star.awt.tree.XTreeControl" in [t.typeName for t in child.getTypes()]:
+            return child
+    return None
+
+
+class Lab:
+    def __init__(self, context, desktop, directory, output):
+        self.context = context
+        self.desktop = desktop
+        self.directory = directory
+        self.output = output
+        self.input = XInput()
+        manager = context.ServiceManager
+        self._dispatcher = manager.createInstanceWithContext(
+            "com.sun.star.frame.DispatchHelper", context
+        )
+        self._reflection = manager.createInstanceWithContext(
+            "com.sun.star.reflection.CoreReflection", context
+        )
+        self._transformer = manager.createInstanceWithContext(
+            "com.sun.star.util.URLTransformer", context
+        )
+
+    def dispatch(self, frame, command, arguments=()):
+        self._dispatcher.executeDispatch(frame, command, "", 0, arguments)
+
+    def url(self, command):
+        from com.sun.star.util import URL
+
+        url = URL()
+        url.Complete = command
+        return self._transformer.parseStrict(url)[1]
+
+    def selected_tabs(self, controller):
+        interface = self._reflection.forName("com.sun.star.sheet.XSelectedSheetsSupplier")
+        return sorted(interface.getMethod("getSelectedSheets").invoke(controller, ())[0])
+
+    def screenshot(self, name):
+        environment = {
+            key: value
+            for key, value in os.environ.items()
+            if key not in ("PYTHONHOME", "PYTHONPATH", "LD_LIBRARY_PATH", "URE_BOOTSTRAP")
+        }
+        subprocess.run(
+            [
+                "/usr/bin/python3",
+                "-I",
+                "-c",
+                "from PIL import ImageGrab; import sys; ImageGrab.grab().save(sys.argv[1])",
+                str(self.output / f"{name}.png"),
+            ],
+            check=True,
+            env=environment,
+        )
+
+    def calibrate(self, tree, window):
+        """Find the tree's screen offset: move the pointer and ask the tree where it is."""
+        tracker = Tracker()
+        tree.addMouseMotionListener(tracker)
+        try:
+            candidates = []
+            try:
+                accessible = tree.getProperty("XAccessible").getAccessibleContext()
+                location = accessible.getLocationOnScreen()
+                candidates.append((location.X + 30, location.Y + 12))
+            except Exception:
+                pass
+            frame = window.getPosSize()
+            for y in range(frame.Y + 60, frame.Y + frame.Height - 40, 40):
+                for x in range(frame.X + frame.Width - 40, frame.X + frame.Width // 2, -40):
+                    candidates.append((x, y))
+            for x, y in candidates:
+                tracker.last = None
+                self.input.move(x, y)
+                deadline = time.monotonic() + 0.3
+                while tracker.last is None and time.monotonic() < deadline:
+                    time.sleep(0.02)
+                if tracker.last is not None:
+                    self.input.move(x + 2, y + 2)
+                    time.sleep(0.2)
+                    local = tracker.last
+                    return (x + 2 - local[0], y + 2 - local[1])
+            raise AssertionError("The pointer never reached the sheet list")
+        finally:
+            tree.removeMouseMotionListener(tracker)
+
+
+def wait_until(function, what, timeout=10.0):
+    return wait_for(function, what, timeout=timeout)
+
+
+# Checks. Each returns evidence and raises AssertionError on failure.
+
+
+def check_click_activates(book):
+    book.click(4)
+    wait_until(lambda: book.active() == NAMES[4], "the clicked sheet to become active")
+    assert book.selection() == [NAMES[4]], book.selection()
+    assert book.labels()[4].startswith(ACTIVE_MARK), book.labels()[4]
+    return {"active": book.active(), "selection": book.selection(), "label": book.labels()[4]}
+
+
+def check_ctrl_shift_selection(book):
+    book.click(1)
+    wait_until(lambda: book.active() == NAMES[1], "a plain click to activate")
+    book.click(3, modifiers=("Control_L",))
+    wait_until(lambda: len(book.selection()) == 2, "Ctrl+click to add a row")
+    ctrl = book.selection()
+    book.click(5, modifiers=("Shift_L",))
+    wait_until(lambda: len(book.selection()) == 3, "Shift+click to select a range")
+    shift = book.selection()
+    evidence = {
+        "ctrl": ctrl,
+        "shift": shift,
+        "active": book.active(),
+        "calc_tabs": book.calc_tabs(),
+    }
+    assert ctrl == [NAMES[1], NAMES[3]], evidence
+    assert shift == NAMES[3:6], evidence
+    # The list's own selection: Calc's tabs are not grouped and the active sheet stays.
+    assert book.active() == NAMES[1] and book.calc_tabs() == [NAMES[1]], evidence
+    return evidence
+
+
+def drag(book, source, target, fraction, *, hold=0.0, cancel=False, shot=None):
+    start = book.point(source)
+    end = book.point(target, fraction)
+    book.pointer.press(*start)
+    book.pointer.glide(start, (start[0], start[1] + 12))
+    book.pointer.glide((start[0], start[1] + 12), end)
+    time.sleep(0.4 + hold)
+    if shot:
+        book.lab.screenshot(shot)
+    if cancel:
+        book.lab.input.tap("Escape", pause=0.3)
+    book.pointer.release()
+    time.sleep(1.0)
+
+
+def check_drag_two_sheets(book, fraction, gap):
+    book.click(2)
+    book.click(5, modifiers=("Control_L",))
+    wait_until(lambda: book.selection() == [NAMES[2], NAMES[5]], "two separate rows selected")
+    before, undo_before = book.order(), book.undo_titles()
+    active, tabs = book.active(), book.calc_tabs()
+    expected = block_target(before, [NAMES[2], NAMES[5]], gap)
+    drag(book, 5, 12, fraction, shot=f"drag-gap-{gap}")
+    wait_until(lambda: book.order() != before, "the drop to move the sheets")
+    after, undo_after = book.order(), book.undo_titles()
+    evidence = {
+        "gap": gap,
+        "fraction_of_row": fraction,
+        "before": before[:16],
+        "after": after[:16],
+        "expected": expected[:16],
+        "undo_added": undo_after[: len(undo_after) - len(undo_before)],
+        "selection": book.selection(),
+        "active": [active, book.active()],
+        "calc_tabs": [tabs, book.calc_tabs()],
+    }
+    assert after == expected, evidence
+    assert len(undo_after) == len(undo_before) + 1 and undo_after[0] == "Move Sheets", evidence
+    assert book.active() == active and book.calc_tabs() == tabs, evidence
+    wait_until(lambda: book.selection() == [NAMES[2], NAMES[5]], "the moved rows to stay selected")
+    book.document.getUndoManager().undo()
+    wait_until(lambda: book.order() == before, "one undo to restore the order")
+    evidence["undo_restored"] = True
+    return evidence
+
+
+def check_drop_in_place_and_escape(book):
+    book.click(6)
+    before, undo_before = book.order(), book.undo_titles()
+    drag(book, 6, 6, 0.8)
+    in_place = book.order() == before and book.undo_titles() == undo_before
+    drag(book, 6, 15, 0.5, cancel=True, shot="drag-escape")
+    cancelled = book.order() == before and book.undo_titles() == undo_before
+    evidence = {"dropped_in_place_unchanged": in_place, "escape_unchanged": cancelled}
+    assert in_place and cancelled, evidence
+    return evidence
+
+
+def check_autoscroll(book):
+    book.click(0)
+    book.tree.makeNodeVisible(book.nodes()[0])
+    time.sleep(0.3)
+    first = book.first_visible()
+    height = book.tree.getOutputSize().Height
+    start = book.point(0)
+    book.pointer.press(*start)
+    book.pointer.glide(start, (start[0], start[1] + 12))
+    book.pointer.glide((start[0], start[1] + 12), (start[0], height - 3))
+    deadline = time.monotonic() + 6
+    while book.first_visible() <= first + 3 and time.monotonic() < deadline:
+        time.sleep(0.2)
+    scrolled = book.first_visible()
+    book.lab.screenshot("drag-autoscroll")
+    book.lab.input.tap("Escape", pause=0.3)
+    book.pointer.release()
+    time.sleep(0.8)
+    evidence = {"first_visible": [first, scrolled], "order_unchanged": book.order() == NAMES}
+    assert scrolled > first + 3 and book.order() == NAMES, evidence
+    return evidence
+
+
+def check_wheel(book):
+    book.tree.makeNodeVisible(book.nodes()[0])
+    time.sleep(0.3)
+    first = book.first_visible()
+    x, y = book.point(3)
+    book.pointer.wheel(x, y, down=True, ticks=5)
+    down = book.first_visible()
+    book.pointer.wheel(x, y, down=False, ticks=10)
+    up = book.first_visible()
+    evidence = {"first_visible": [first, down, up]}
+    assert down > first and up == first, evidence
+    return evidence
+
+
+def check_keys_stay_in_list(book):
+    book.click(0)
+    wait_until(lambda: book.active() == NAMES[0], "the first sheet to be active")
+    sheet = book.document.getSheets().getByIndex(0)
+    cell = sheet.getCellRangeByName("A1")
+    book.controller.select(cell)
+    book.document.setModified(False)
+    keys = book.lab.input
+    steps = {}
+    keys.tap("q", pause=0.4)
+    steps["q"] = book.selection()
+    time.sleep(1.2)  # Start a new type-ahead word.
+    keys.tap("k", pause=0.4)
+    steps["k"] = book.selection()
+    keys.tap("Down", pause=0.4)
+    steps["Down"] = book.selection()
+    for key, modifiers in (
+        ("space", ()),
+        ("space", ("Shift_L",)),
+        ("space", ("Control_L",)),
+        ("Delete", ()),
+        ("BackSpace", ()),
+        ("z", ()),
+        ("1", ()),
+        ("numbersign", ("Shift_L",)),
+    ):
+        keys.tap(key, modifiers, pause=0.25)
+    # Still on the first sheet: Ctrl+Space or Shift+Space would have selected a column or row.
+    selection = book.controller.getSelection().getRangeAddress()
+    time.sleep(1.2)
+    keys.tap("m", pause=0.4)
+    steps["m"] = book.selection()
+    keys.tap("Return", pause=0.8)
+    evidence = {
+        "selections": steps,
+        "active_after_enter": book.active(),
+        "A1": cell.getString(),
+        "cell_selection": [
+            selection.Sheet,
+            selection.StartColumn,
+            selection.StartRow,
+            selection.EndColumn,
+            selection.EndRow,
+        ],
+        "modified": book.document.isModified(),
+    }
+    assert steps["q"] == ["Quebec"] and steps["k"] == ["Kilo"], evidence
+    assert steps["Down"] == ["Lima"], evidence  # Arrow keys continue from the typed row.
+    assert steps["m"] == ["Mike"] and book.active() == "Mike", evidence
+    assert cell.getString() == "keep" and not book.document.isModified(), evidence
+    assert evidence["cell_selection"] == [0, 0, 0, 0, 0], evidence
+    return evidence
+
+
+def check_shortcuts(book):
+    keys = book.lab.input
+    focus = {}
+
+    def with_list_focus(name, keysym):
+        book.focus_list()
+        wait_until(lambda: book.tree.hasFocus(), "the list to have the focus")
+        keys.tap(keysym, ("Control_L",), pause=0.6)
+        focus[name] = bool(book.tree.hasFocus())
+
+    book.click(0)
+    wait_until(lambda: book.active() == NAMES[0], "the first sheet to be active")
+    with_list_focus("ctrl_page_down", "Next")
+    next_sheet = book.active()
+    with_list_focus("ctrl_page_up", "Prior")
+    previous_sheet = book.active()
+    cell = book.document.getSheets().getByIndex(0).getCellRangeByName("B2")
+    cell.setString("changed")
+    with_list_focus("ctrl_z", "z")
+    wait_until(lambda: cell.getString() == "", "Ctrl+Z to undo the cell change")
+    cell.setString("saved")
+    assert book.document.isModified()
+    stamp = book.path.stat().st_mtime_ns
+    with_list_focus("ctrl_s", "s")
+    wait_until(lambda: not book.document.isModified(), "Ctrl+S to save", timeout=20)
+    evidence = {
+        "ctrl_page_down": next_sheet,
+        "ctrl_page_up": previous_sheet,
+        "undo": True,
+        "saved": book.path.stat().st_mtime_ns != stamp,
+        "list_has_focus_after": focus,
+    }
+    assert next_sheet == NAMES[1] and previous_sheet == NAMES[0], evidence
+    assert evidence["saved"], evidence
+    return evidence
+
+
+def reset(book):
+    """Put the workbook back as it was created, whatever an earlier check left behind."""
+    for _ in range(2):
+        book.lab.input.tap("Escape", pause=0.2)
+    sheets = book.document.getSheets()
+    for index, name in enumerate(NAMES):
+        if sheets.getByIndex(index).getName() != name:
+            sheets.moveByName(name, index)
+        sheets.getByIndex(index).IsVisible = True
+    book.controller.setActiveSheet(sheets.getByIndex(0))
+    book.document.getUndoManager().clear()
+    wait_until(lambda: [label.split(" (")[0] for label in book.labels()] == [
+        (ACTIVE_MARK if index == 0 else "") + name for index, name in enumerate(NAMES)
+    ], "the list to show the original workbook")
+
+
+def hide_through_menu(book, picked, opener):
+    before = book.undo_titles()
+    opener()
+    time.sleep(0.8)
+    tabs = book.calc_tabs()
+    items = book.choose(".uno:Hide")
+    wait_until(
+        lambda: all(not book.document.getSheets().getByName(n).IsVisible for n in picked),
+        "Hide Sheet to hide the picked sheets",
+    )
+    hidden = [n for n in book.order() if not book.document.getSheets().getByName(n).IsVisible]
+    evidence = {"calc_tabs_while_open": tabs, "menu": items, "hidden": hidden}
+    assert tabs == picked and hidden == picked, evidence
+    undo = book.document.getUndoManager()
+    while len(book.undo_titles()) > len(before):
+        undo.undo()
+    wait_until(
+        lambda: all(book.document.getSheets().getByName(n).IsVisible for n in picked),
+        "undo to show the sheets again",
+    )
+    return evidence
+
+
+def check_menu_right_click(book):
+    book.click(2)
+    book.click(4, modifiers=("Control_L",))
+    picked = [NAMES[2], NAMES[4]]
+    wait_until(lambda: book.selection() == picked, "two rows selected")
+
+    def open_menu():
+        book.pointer.click(*book.point(4), button=RIGHT, pause=0.2)
+
+    return hide_through_menu(book, picked, open_menu)
+
+
+def check_menu_keyboard(book):
+    evidence = {}
+    for index, key in ((7, ("Menu", ())), (8, ("F10", ("Shift_L",)))):
+        book.click(index)
+        wait_until(lambda i=index: book.selection() == [NAMES[i]], "one row selected")
+        evidence[key[0]] = hide_through_menu(
+            book, [NAMES[index]], lambda k=key: book.lab.input.tap(k[0], k[1])
+        )
+    return evidence
+
+
+def check_menu_hidden_only(book):
+    name = NAMES[9]
+    sheet = book.document.getSheets().getByName(name)
+    sheet.IsVisible = False
+    book.document.getUndoManager().clear()
+    wait_until(lambda: "(hidden)" in book.labels()[9], "the hidden label")
+    active = book.active()
+    book.click(9)
+    wait_until(lambda: book.selection() == [name], "the hidden row selected")
+    assert book.active() == active, "A hidden row must not become the active sheet"
+    book.pointer.click(*book.point(9), button=RIGHT, pause=0.8)
+    book.lab.screenshot("menu-hidden-only")
+    tabs = book.calc_tabs()
+    book.lab.input.tap("Down")
+    book.lab.input.tap("Return", pause=0.6)
+    wait_until(lambda: sheet.IsVisible, "Show Sheet to show the hidden sheet")
+    titles = book.undo_titles()
+    book.document.getUndoManager().undo()
+    wait_until(lambda: not sheet.IsVisible, "one undo to hide it again")
+    sheet.IsVisible = True
+    evidence = {"calc_tabs_unchanged": tabs == [active], "undo_titles": titles}
+    assert tabs == [active] and len(titles) == 1, evidence
+    return evidence
+
+
+def check_other_document(lab, book):
+    book.focus_list()
+    other = Workbook(lab, "other", ["One", "Two", "Three"])
+    try:
+        other.controller.select(other.document.getSheets().getByIndex(0).getCellRangeByName("C3"))
+        other.window.setFocus()
+        time.sleep(0.5)
+        lab.input.tap("x")
+        lab.input.tap("Return", pause=0.6)
+        typed = other.document.getSheets().getByIndex(0).getCellRangeByName("C3").getString()
+        other_list_works = True
+        other.click(1)
+        wait_until(lambda: other.active() == "Two", "the second document's list to activate")
+    finally:
+        other.close()
+    book.frame.activate()
+    book.window.toFront()
+    time.sleep(1)
+    book.click(3)
+    wait_until(lambda: book.active() == NAMES[3], "the first document's list to still work")
+    lab.input.tap("q", pause=0.4)
+    evidence = {
+        "typed_in_other_document": typed,
+        "other_list_works": other_list_works,
+        "first_list_after_switch": book.selection(),
+    }
+    assert typed == "x" and book.selection() == ["Quebec"], evidence
+    return evidence
+
+
+def run_checks(lab, output):
+    book = Workbook(lab, "synthetic", NAMES)
+    lab.screenshot("panel")
+    checks = [
+        ("click_activates", lambda: check_click_activates(book)),
+        ("ctrl_shift_selection", lambda: check_ctrl_shift_selection(book)),
+        ("drag_two_sheets_above_midpoint", lambda: check_drag_two_sheets(book, 0.25, 12)),
+        ("drag_two_sheets_below_midpoint", lambda: check_drag_two_sheets(book, 0.75, 13)),
+        ("drop_in_place_and_escape", lambda: check_drop_in_place_and_escape(book)),
+        ("autoscroll", lambda: check_autoscroll(book)),
+        ("wheel", lambda: check_wheel(book)),
+        ("keys_stay_in_list", lambda: check_keys_stay_in_list(book)),
+        ("shortcuts_reach_calc", lambda: check_shortcuts(book)),
+        ("menu_right_click", lambda: check_menu_right_click(book)),
+        ("menu_keyboard", lambda: check_menu_keyboard(book)),
+        ("menu_hidden_only", lambda: check_menu_hidden_only(book)),
+        ("other_document", lambda: check_other_document(lab, book)),
+    ]
+    results = {}
+    for name, check in checks:
+        started = time.monotonic()
+        try:
+            reset(book)
+            results[name] = {"pass": True, "evidence": check()}
+        except Exception:
+            results[name] = {"pass": False, "error": traceback.format_exc()}
+            lab.screenshot(f"failed-{name}")
+            for _ in range(2):
+                lab.input.tap("Escape", pause=0.3)
+        results[name]["seconds"] = round(time.monotonic() - started, 2)
+        print(name, "pass" if results[name]["pass"] else "FAIL", flush=True)
+        (output / "checks.json").write_text(json.dumps(results, indent=2) + "\n", "utf-8")
+    book.close()
+    return results
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--program", type=Path, required=True)
+    parser.add_argument("--oxt", type=Path, required=True)
+    parser.add_argument("--output", type=Path, default=Path("test-results/ui"))
+    parser.add_argument("--vcl", action="append", choices=["gtk3", "gen"])
+    parser.add_argument("--ui", action="store_true", help="Accepted from the container session")
+    arguments = parser.parse_args()
+    summary = {}
+    failed = False
+    for vcl in arguments.vcl or ["gtk3", "gen"]:
+        output = (arguments.output / f"ui-{vcl}").resolve()
+        output.mkdir(parents=True, exist_ok=True)
+        result: dict[str, object] = {"vcl": vcl}
+        summary[vcl] = result
+        try:
+            with office_session(
+                arguments.program.resolve(),
+                arguments.oxt.resolve(),
+                output,
+                result,
+                headless=False,
+                vcl=vcl,
+            ) as (context, desktop, directory):
+                checks = run_checks(Lab(context, desktop, directory, output), output)
+                result["checks"] = {name: check["pass"] for name, check in checks.items()}
+                failed = failed or not all(result["checks"].values())
+        except Exception:
+            result["error"] = traceback.format_exc()
+            failed = True
+        logs = "".join(p.read_text("utf-8", "replace") for p in output.glob("soffice-*.log"))
+        result["extension_errors"] = logs.count("Sheet Manager: ")
+        failed = failed or bool(result["extension_errors"])
+    text = json.dumps(summary, indent=2) + "\n"
+    (arguments.output / "ui-results.json").write_text(text, encoding="utf-8")
+    print(text)
+    raise SystemExit(1 if failed else 0)
+
+
+if __name__ == "__main__":
+    main()

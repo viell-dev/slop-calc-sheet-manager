@@ -43,7 +43,7 @@ def wait_for(function, description, timeout=20):
 
 
 @contextmanager
-def office_session(program, package, output, result, *, headless):
+def office_session(program, package, output, result, *, headless, vcl="gtk3"):
     # Retry only startup, before opening documents or making test assertions. Windows
     # occasionally loses soffice.bin just after a successful UNO connection.
     for attempt in range(3):
@@ -56,7 +56,7 @@ def office_session(program, package, output, result, *, headless):
         runtime = directory / "runtime"
         runtime.mkdir(mode=0o700)
         environment["XDG_RUNTIME_DIR"] = str(runtime)
-        environment["SAL_USE_VCLPLUGIN"] = "svp" if headless else "gtk3"
+        environment["SAL_USE_VCLPLUGIN"] = "svp" if headless else vcl
         environment["GDK_BACKEND"] = "x11"
         if headless:
             environment.pop("DISPLAY", None)
