@@ -3,6 +3,7 @@
 import json
 import statistics
 import time
+from contextlib import contextmanager
 from typing import Any, cast
 
 import uno
@@ -21,6 +22,27 @@ def prop(name, value):
 
 def order(document):
     return tuple(document.Sheets.ElementNames)
+
+
+@contextmanager
+def undo_capacity(context, steps):
+    # The context belongs to this runner's private office/profile, never the user profile.
+    provider = context.ServiceManager.createInstanceWithContext(
+        "com.sun.star.configuration.ConfigurationProvider", context
+    )
+    access = provider.createInstanceWithArguments(
+        "com.sun.star.configuration.ConfigurationUpdateAccess",
+        (prop("nodepath", "/org.openoffice.Office.Common/Undo"),),
+    )
+    original = access.getPropertyValue("Steps")
+    try:
+        access.setPropertyValue("Steps", steps)
+        access.commitChanges()
+        yield
+    finally:
+        access.setPropertyValue("Steps", original)
+        access.commitChanges()
+        access.dispose()
 
 
 def workbook(desktop, count=7):
@@ -146,6 +168,18 @@ def assert_permissions(context, desktop, document, directory):
     document.UndoManager.lock()
     refused("undo")
     document.UndoManager.unlock()
+    with undo_capacity(context, 0):
+        refused("undo")
+    with undo_capacity(context, 1):
+        observed = snapshot(document)
+        many = plan_order(observed.sheets, tuple(reversed(order(document))))
+        permission = preflight(context, document, observed, many)
+        assert not permission.allowed and "two steps" in permission.reason, permission
+        # A single native move is still undoable with this setting.
+        original = order(document)
+        run_plan(context, document, "bottom", [original[0]])
+        document.UndoManager.undo()
+        assert order(document) == original
     other = workbook(desktop, 2)
     other.CurrentController.Frame.activate()
     refused("Activate")
@@ -299,9 +333,16 @@ def performance(context, desktop, directory):
                     assert order(document) == plan.target
                     assert_references(document, count)
                     started = time.perf_counter()
+                    assert document.CurrentController.Frame.isActive(), (count, case, "inactive")
                     document.UndoManager.undo()
                     undos.append((time.perf_counter() - started) * 1000)
-                    assert order(document) == original
+                    assert order(document) == original, (
+                        count,
+                        case,
+                        len(plan.moves),
+                        order(document)[:10],
+                        document.UndoManager.AllUndoActionTitles,
+                    )
                     assert_references(document, count)
                 results.append(
                     {
@@ -364,6 +405,10 @@ def exercise(context, desktop, directory, output):
             assert order(document) == plan.target
             document.UndoManager.undo()
         assert_failures(context, document)
+        with undo_capacity(context, 2):
+            # Six moves require nested groups. Failure on either side of every
+            # subgroup boundary must undo the complete partial operation once.
+            assert_failures(context, document)
         assert_permissions(context, desktop, document, directory)
     finally:
         document.close(True)

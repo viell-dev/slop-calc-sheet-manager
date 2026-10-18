@@ -7,7 +7,7 @@ import uno
 from com.sun.star.beans import PropertyValue
 
 from sheet_manager.i18n import tr
-from sheet_manager.reorder import Plan, Sheet, plan_order
+from sheet_manager.reorder import Move, Plan, Sheet, plan_order
 
 
 @dataclass(frozen=True)
@@ -86,12 +86,13 @@ def preflight(context: Any, document: Any, observed: Snapshot, plan: Plan) -> Av
         if document.getPropertyValue("RecordChanges"):
             return Availability(False, tr("Sheets cannot move while changes are being recorded."))
         undo = document.getUndoManager()
-        if (
-            not document.getPropertyValue("IsUndoEnabled")
-            or undo.isLocked()
-            or _undo_steps(context) <= 0
-        ):
+        capacity = _undo_steps(context)
+        if not document.getPropertyValue("IsUndoEnabled") or undo.isLocked() or capacity <= 0:
             return Availability(False, tr("Enable undo before moving sheets."))
+        if capacity == 1 and len(plan.moves) > 1:
+            return Availability(
+                False, tr("Increase undo history to at least two steps before moving these sheets.")
+            )
         controller = document.getCurrentController()
         if controller is None or not controller.getFrame().isActive():
             return Availability(False, tr("Activate this document's window before moving sheets."))
@@ -161,28 +162,55 @@ def apply_order(context: Any, document: Any, observed: Snapshot, plan: Plan) -> 
     entered = False
     left = False
     locked = False
+    depth = 0
     try:
         active = str(controller.getActiveSheet().getName())
         selected = _selected_names(context, controller, tuple(s.name for s in observed.sheets))
         previous_titles = tuple(undo.getAllUndoActionTitles())
+        capacity = _undo_steps(context)
+        if capacity <= 0 or (capacity == 1 and len(plan.moves) > 1):
+            return Result(
+                "refused", tr("Enable at least two undo steps before moving these sheets.")
+            )
     except Exception as error:
         return Result(
             "refused", tr("The current sheet selection could not be read."), detail=str(error)
         )
+
+    def execute(moves: tuple[Move, ...]) -> None:
+        nonlocal attempted, completed, depth
+        if len(moves) > capacity:
+            # ScDocShell::GetUndoManager resets the *current* undo array's limit
+            # to configured Steps. A flat group silently loses early actions.
+            # Balanced subgroups keep every level within that limit (>= 2).
+            middle = len(moves) // 2
+            for portion in (moves[:middle], moves[middle:]):
+                undo.enterUndoContext(title)
+                depth += 1
+                try:
+                    execute(portion)
+                finally:
+                    undo.leaveUndoContext()
+                    depth -= 1
+            return
+        for move in moves:
+            if not controller.getFrame().isActive():
+                raise RuntimeError("The document's window is no longer active")
+            attempted = True
+            document.getSheets().moveByName(move.name, move.index)
+            completed += 1
+
     try:
         document.lockControllers()
         locked = True
         undo.enterUndoContext(title)
         entered = True
+        depth += 1
         try:
-            for move in plan.moves:
-                if not controller.getFrame().isActive():
-                    raise RuntimeError("The document's window is no longer active")
-                attempted = True
-                document.getSheets().moveByName(move.name, move.index)
-                completed += 1
+            execute(plan.moves)
         finally:
             undo.leaveUndoContext()
+            depth -= 1
             left = True
         _verify(document, plan.target, observed)
         if not undo.isUndoPossible() or undo.getCurrentUndoActionTitle() != title:
@@ -192,7 +220,7 @@ def apply_order(context: Any, document: Any, observed: Snapshot, plan: Plan) -> 
     except Exception as error:
         detail = str(error)
         try:
-            if entered and not left:
+            if depth or (entered and not left):
                 # Context closure failed: undo could consume unrelated history.
                 raise RuntimeError("The move undo context could not be closed")
             current_titles = tuple(undo.getAllUndoActionTitles())

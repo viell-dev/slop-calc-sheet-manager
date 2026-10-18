@@ -61,6 +61,12 @@ After verified rollback, the adapter removes the failed group's redo entry so Re
 a partial operation. A native mutation has already discarded older redo history; unrelated undo
 history is retained.
 
+Calc reapplies the configured undo-step limit to the current context, so a flat context with more
+calls than that limit silently loses earlier actions. The adapter uses balanced nested contexts
+when needed, keeping every level within the limit while presenting one top-level undo step.
+With a one-step undo setting, multi-call plans are refused until the setting is at least two;
+single-call plans remain available. The adapter never changes the user's undo setting.
+
 ## Limits and native semantics
 
 An undo context groups operations; it is not a transaction. Moving a scenario block requires
