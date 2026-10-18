@@ -21,3 +21,9 @@ updates:
     cooldown:
       default-days: 7
     labels: ["Type: Maintenance"]
+    ignore:
+      # The checks image runs the oldest supported Python, the one LibreOffice 26.2 bundles.
+      - dependency-name: python
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      # Node must match the version that the workflow installs; change both by hand together.
+      - dependency-name: node

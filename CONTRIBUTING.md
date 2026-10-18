@@ -152,8 +152,11 @@ published SHA-256, update the version, URL and digest together, and run that lan
 `https://downloadarchive.documentfoundation.org/libreoffice/old/<full version>/` and the full
 four-part version in filenames: `stable/` downloads disappear when the offered releases change.
 These pins do not discover newer releases automatically. Dependabot checks development tools,
-GitHub-owned actions and Docker base images weekly after a seven-day cooldown. Action references remain
-full commit SHAs, with their versions in comments.
+GitHub-owned actions and Docker base images weekly after a seven-day cooldown. Action references
+remain full commit SHAs, with their versions in comments. Two base images are pinned on purpose:
+the checks image keeps Python 3.12, the oldest supported version, so Dependabot proposes only its
+patch releases; and its Node image matches the `node-version` in the workflow, so Dependabot
+leaves it alone and both are changed together by hand.
 
 ## Pull requests
 
