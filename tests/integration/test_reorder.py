@@ -170,6 +170,16 @@ def assert_permissions(context, desktop, document, directory):
     document.UndoManager.lock()
     refused("undo")
     document.UndoManager.unlock()
+    observed = snapshot(document)
+    plan = plan_move(observed.sheets, [order(document)[0]], "bottom")
+    before = order(document)
+    document.UndoManager.enterUndoContext("External action")
+    try:
+        result = apply_order(context, document, observed, plan)
+        assert result.status == "refused" and "current undo action" in result.message, result
+        assert order(document) == before
+    finally:
+        document.UndoManager.leaveUndoContext()
     with undo_capacity(context, 0):
         refused("undo")
     with undo_capacity(context, 1):

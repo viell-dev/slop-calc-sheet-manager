@@ -66,6 +66,8 @@ calls than that limit silently loses earlier actions. The adapter uses balanced 
 when needed, keeping every level within the limit while presenting one top-level undo step.
 With a one-step undo setting, multi-call plans are refused until the setting is at least two;
 single-call plans remain available. The adapter never changes the user's undo setting.
+Preflight also refuses a move inside someone else's open undo context, because it could not be
+undone independently. That check reads undo state without opening or closing any contexts.
 
 ## Limits and native semantics
 

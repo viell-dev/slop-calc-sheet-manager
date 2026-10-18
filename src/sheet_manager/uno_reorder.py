@@ -93,6 +93,10 @@ def preflight(context: Any, document: Any, observed: Snapshot, plan: Plan) -> Av
             return Availability(
                 False, tr("Increase undo history to at least two steps before moving these sheets.")
             )
+        # An open context is listed in the stack, but cannot be undone until
+        # closed. An empty top-level stack instead has no titles at all.
+        if undo.getAllUndoActionTitles() and not undo.isUndoPossible():
+            return Availability(False, tr("Finish the current undo action before moving sheets."))
         controller = document.getCurrentController()
         if controller is None or not controller.getFrame().isActive():
             return Availability(False, tr("Activate this document's window before moving sheets."))
