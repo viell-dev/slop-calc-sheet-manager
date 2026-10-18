@@ -188,10 +188,16 @@ def exercise(context, desktop, directory, output, *, screenshot):
     )
     panel = assert_panel(context, document, factory)
     window = document.getCurrentController().getFrame().getContainerWindow()
+    window.IsMaximized = False
+    window.setPosSize(0, 0, 1000, 500, 15)
+    wait_for(lambda: window.getPosSize().Height == 500, "the first requested frame height")
+    time.sleep(0.25)
     before = panel.Window.getPosSize()
-    bounds = window.getPosSize()
-    window.setPosSize(bounds.X, bounds.Y, 1100, 700, 12)
-    wait_for(lambda: panel.Window.getPosSize().Height != before.Height, "panel resize")
+    window.setPosSize(0, 0, 1000, 650, 15)
+    wait_for(lambda: window.getPosSize().Height == 650, "the second requested frame height")
+    wait_for(
+        lambda: panel.Window.getPosSize().Height == before.Height + 150, "panel resize by 150px"
+    )
     resized = panel.Window.getPosSize()
     assert resized.Height > 100 and resized.Width >= 150
 
@@ -243,6 +249,8 @@ def exercise(context, desktop, directory, output, *, screenshot):
         "factory": FACTORY,
         "panel": "VCLXTabControl",
         "resize": True,
+        "frame_heights": [500, 650],
+        "panel_heights": [before.Height, resized.Height],
         "read_only": True,
         "writer_excluded": True,
         "svg_decoded": True,
@@ -285,6 +293,8 @@ def main():
     arguments = parser.parse_args()
     output = arguments.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
+    for artifact in ("results.json", "deck.png"):
+        (output / artifact).unlink(missing_ok=True)
     package = arguments.oxt.resolve()
     program = arguments.program.resolve()
     if arguments.expect_refusal:

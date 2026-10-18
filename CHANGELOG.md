@@ -5,4 +5,4 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
-Nothing has been released yet.
+- Added an empty Sheet Manager deck to Calc's sidebar as the foundation for the sheet list.

@@ -84,7 +84,7 @@ Unit tests need no LibreOffice and run as part of the checks. To run them alone:
 ```
 
 The integration runner installs the built OXT into a fresh temporary profile, connects over a
-unique local UNO pipe, and checks the factory, tab-control peer, panel resizing and disposal,
+unique local UNO pipe, and checks the factory, tab-control peer, exact panel resizing and disposal,
 read-only Calc documents, Writer exclusion, and SVG decoding. Every workbook is synthetic and
 loaded visibly, even when the office process itself is headless. It retries only startup, up to
 three times, to tolerate a Windows crash just after connecting. It never attaches to an existing
@@ -120,7 +120,7 @@ The helper builds `ci/Dockerfile`, verifies the repository-pinned TDF archive ch
 extension, and runs the container unprivileged with networking disabled. Source and the OXT are
 mounted read-only; only `test-results/<lane>/` is writable on the host. On Linux, run as a non-root
 user: the helper maps that user's UID/GID into the container so artifacts remain writable. The
-container has a temporary home directory. It uses Xvfb inside the container and
+container has a temporary home directory. It uses Xvfb and Openbox inside the container and
 never mounts a host display socket. `--skip-build` reuses the corresponding `sheet-manager-ci`
 image. `--screenshot` also starts a separate painted gtk3 session and saves `deck.png`; the default
 session always checks the headless mode used by automation. The `unsupported` lane asserts that
