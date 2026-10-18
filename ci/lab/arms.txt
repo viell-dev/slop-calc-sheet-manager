@@ -1,8 +1,9 @@
 # Investigation of #8. One arm per line: NAME=ext|noext:STEP,STEP,...
-# Experiment 1: which part of the integration sequence is needed for the Writer-close crash.
+# Experiment 2: is termination involved, and does a user-like sequence crash?
 test=ext:factory,calc,deck=SheetManagerDeck,resize,svg,shot,save,close,ro,deck=SheetManagerDeck,close,writer,wquery,close
+testsleep=ext:factory,calc,deck=SheetManagerDeck,resize,svg,shot,save,close,ro,deck=SheetManagerDeck,close,writer,wquery,close,sleep=3
 control=noext:calc,resize,save,close,ro,close,writer,close
-extnodeck=ext:calc,resize,save,close,ro,close,writer,close
+controlwq=noext:calc,resize,save,close,ro,close,writer,wquery,close
 extpy=ext:factory,calc,resize,save,close,ro,close,writer,close
-noextnav=noext:calc,deck=NavigatorDeck,resize,save,close,ro,deck=NavigatorDeck,close,writer,wquery,close
-extwriter=ext:writer,close
+user=ext:calc,deck=SheetManagerDeck,writer,close,sleep=2,cell,sleep=1,close
+usernoext=noext:calc,deck=NavigatorDeck,writer,close,sleep=2,cell,sleep=1,close

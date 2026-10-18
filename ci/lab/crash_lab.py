@@ -19,15 +19,30 @@ import time
 import traceback
 from pathlib import Path
 
-sys.path.insert(0, "/work/tests/integration")
+sys.path.insert(0, os.environ.get("LAB_INTEGRATION_DIR", "/work/tests/integration"))
 
 
 def child(arguments):
-    import uno  # noqa: F401
-    from run import DECK, DisposalListener, office_session, property_value, wait_for
+    import shutil
+    import tempfile
 
     output = arguments.output
     output.mkdir(parents=True, exist_ok=True)
+
+    class KeepCrashDumps(tempfile.TemporaryDirectory):
+        """Preserve LibreOffice's own crash dumps (Windows) before the profile is deleted."""
+
+        def cleanup(self):
+            for dump in Path(self.name).rglob("*.dmp"):
+                (output / "crash").mkdir(exist_ok=True)
+                shutil.copy2(dump, output / "crash" / dump.name)
+            super().cleanup()
+
+    tempfile.TemporaryDirectory = KeepCrashDumps
+
+    import uno  # noqa: F401
+    from run import DECK, DisposalListener, office_session, property_value, wait_for
+
     result = {"arm": arguments.arm, "steps": arguments.steps, "extension": arguments.extension}
     steps_log = (output / "steps.log").open("w", encoding="utf-8")
     start = time.monotonic()
@@ -50,23 +65,43 @@ def child(arguments):
             helper = smgr.createInstanceWithContext("com.sun.star.frame.DispatchHelper", context)
             toolkit = smgr.createInstanceWithContext("com.sun.star.awt.Toolkit", context)
             workbook = directory / "synthetic.ods"
-            state = {"document": None, "listeners": []}
+            # Open documents form a stack: steps act on the newest; close pops it.
+            state = {"docs": [], "frame": None}
             observations = {}
             for step in arguments.steps.split(","):
                 name, _, value = step.partition("=")
                 note(f"begin {step}")
-                document = state["document"]
+                entry = state["docs"][-1] if state["docs"] else None
+                document = entry["doc"] if entry else None
                 if name == "calc":
-                    state["document"] = desktop.loadComponentFromURL(
-                        "private:factory/scalc", "_blank", 0, ()
+                    state["docs"].append(
+                        {
+                            "doc": desktop.loadComponentFromURL(
+                                "private:factory/scalc", "_blank", 0, ()
+                            ),
+                            "listeners": [],
+                        }
                     )
                 elif name == "writer":
-                    state["document"] = desktop.loadComponentFromURL(
-                        "private:factory/swriter", "_blank", 0, ()
+                    state["docs"].append(
+                        {
+                            "doc": desktop.loadComponentFromURL(
+                                "private:factory/swriter", "_blank", 0, ()
+                            ),
+                            "listeners": [],
+                        }
                     )
                 elif name == "ro":
-                    state["document"] = desktop.loadComponentFromURL(
-                        workbook.as_uri(), "_blank", 0, (property_value("ReadOnly", True),)
+                    state["docs"].append(
+                        {
+                            "doc": desktop.loadComponentFromURL(
+                                workbook.as_uri(),
+                                "_blank",
+                                0,
+                                (property_value("ReadOnly", True),),
+                            ),
+                            "listeners": [],
+                        }
                     )
                 elif name == "deck":
                     frame = document.getCurrentController().getFrame()
@@ -93,7 +128,7 @@ def child(arguments):
                         )
                         listener = DisposalListener()
                         window.addEventListener(listener)
-                        state["listeners"].append(listener)
+                        entry["listeners"].append(listener)
                 elif name == "resize":
                     window = document.getCurrentController().getFrame().getContainerWindow()
                     window.IsMaximized = False
@@ -128,11 +163,10 @@ def child(arguments):
                 elif name == "save":
                     document.storeAsURL(workbook.as_uri(), ())
                 elif name == "close":
+                    state["docs"].pop()
                     document.close(True)
-                    state["document"] = None
-                    for listener in state["listeners"]:
+                    for listener in entry["listeners"]:
                         wait_for(lambda: listener.disposed, "panel disposal")
-                    state["listeners"] = []
                 elif name == "wquery":
                     decks = document.getCurrentController().getSidebar().getDecks()
                     observations.setdefault("wquery", []).append(decks.hasByName(DECK))
@@ -166,8 +200,13 @@ def child(arguments):
                     sheet = document.getSheets().getByIndex(0)
                     sheet.getCellByPosition(0, 0).setString("synthetic")
                 elif name == "quit":
-                    with_frame = document.getCurrentController().getFrame() if document else desktop
-                    helper.executeDispatch(with_frame, ".uno:Quit", "", 0, ())
+                    # File > Exit: the office quits from its own main loop, not via terminate().
+                    target = document.getCurrentController().getFrame() if document else desktop
+                    try:
+                        helper.executeDispatch(target, ".uno:Quit", "", 0, ())
+                    except Exception as error:  # noqa: BLE001 - the bridge may close first
+                        note(f"quit dispatch ended with {type(error).__name__}")
+                    state["docs"] = []
                 else:
                     raise SystemExit(f"Unknown step {step}")
                 note(f"end {step}")
@@ -189,10 +228,11 @@ def summarize_trace(path):
         return {}
     trace = path.read_text(encoding="utf-8", errors="replace")
     summary = {}
-    signal_match = re.search(r'received signal (\w+)', trace)
+    signal_match = re.search(r"received signal (\w+)", trace)
     if signal_match:
         summary["signal"] = signal_match.group(1)
-        frame = re.search(r"^#0 .*? in (.+?) \(", trace, re.MULTILINE)
+        crash = trace[signal_match.end() :]
+        frame = re.search(r"^#0 .*? in (.+?) \(", crash, re.MULTILINE)
         summary["top_frame"] = frame.group(1) if frame else None
         address = re.search(r"^\$1 = \(void \*\) (0x[0-9a-f]+)", trace, re.MULTILINE)
         summary["fault_address"] = address.group(1) if address else None
@@ -214,8 +254,12 @@ def parent(arguments):
         for name, extension, steps in arms:
             directory = output / name / f"{number:03d}"
             directory.mkdir(parents=True, exist_ok=True)
+            # Windows' bundled Python reports its core directory as sys.executable.
+            python = (
+                str(arguments.program / "python.exe") if os.name == "nt" else sys.executable
+            )
             command = [
-                sys.executable,
+                python,
                 __file__,
                 "--child",
                 "--program",
@@ -236,16 +280,36 @@ def parent(arguments):
             began = time.monotonic()
             with (directory / "runner.log").open("w", encoding="utf-8") as log:
                 process = subprocess.Popen(
-                    command, stdout=log, stderr=subprocess.STDOUT, start_new_session=True
+                    command,
+                    stdout=log,
+                    stderr=subprocess.STDOUT,
+                    start_new_session=os.name == "posix",
                 )
                 try:
                     status = process.wait(timeout=180)
                 except subprocess.TimeoutExpired:
-                    os.killpg(process.pid, signal.SIGKILL)
+                    if os.name == "posix":
+                        os.killpg(process.pid, signal.SIGKILL)
+                    else:
+                        process.kill()
                     process.wait()
                     status = 124
+            if os.name == "nt":
+                # The Windows launcher can exit while soffice.bin survives; stop only lab offices.
+                subprocess.run(
+                    [
+                        "pwsh",
+                        "-NoProfile",
+                        "-Command",
+                        "Get-CimInstance Win32_Process -Filter \"Name like 'soffice%'\" | "
+                        "Where-Object CommandLine -match 'sheet-manager-integration-' | "
+                        "ForEach-Object { Stop-Process -Id $_.ProcessId -Force }",
+                    ],
+                    check=False,
+                )
             result_path = directory / "results.json"
             result = json.loads(result_path.read_text()) if result_path.exists() else {}
+            dumps = sorted(str(path.name) for path in (directory / "crash").glob("*.dmp"))
             row = {
                 "arm": name,
                 "round": number,
@@ -260,6 +324,7 @@ def parent(arguments):
                 "wquery": result.get("wquery"),
                 "decks": result.get("decks"),
                 "framecheck": result.get("framecheck"),
+                "dumps": dumps,
                 **summarize_trace(directory / "gdbtrace-False-0.log"),
             }
             rows.append(row)

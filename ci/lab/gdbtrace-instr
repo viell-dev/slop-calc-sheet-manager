@@ -6,61 +6,74 @@ set logging redirect on
 set logging file gdbtrace.log
 set logging enabled on
 set logging overwrite on
+python import sys; sys.path.insert(0, "/opt/lab"); import ouscan
 break SwView::SwView(SfxViewFrame&, SfxViewShell*)
 commands
 silent
-printf "BP SwView::SwView view=%p\n", $rdi
+printf "BP t%d SwView::SwView view=%p viewframe=%p\n", $_thread, $rdi, $rsi
 continue
 end
 break SwView::~SwView()
 commands
 silent
-printf "BP SwView::~SwView view=%p\n", $rdi
-bt 14
+printf "BP t%d SwView::~SwView view=%p\n", $_thread, $rdi
 continue
 end
 break SwWrtShell::SwWrtShell(SwDoc&, vcl::Window*, SwView&, SwViewOption const*)
 commands
 silent
-printf "BP SwWrtShell::SwWrtShell shell=%p view=%p\n", $rdi, $rcx
+printf "BP t%d SwWrtShell::SwWrtShell shell=%p view=%p\n", $_thread, $rdi, $rcx
 continue
 end
 break SwWrtShell::~SwWrtShell()
 commands
 silent
-printf "BP SwWrtShell::~SwWrtShell shell=%p\n", $rdi
+printf "BP t%d SwWrtShell::~SwWrtShell shell=%p\n", $_thread, $rdi
+continue
+end
+break SwBaseShell::~SwBaseShell()
+commands
+silent
+printf "BP t%d SwBaseShell::~SwBaseShell baseshell=%p\n", $_thread, $rdi
+continue
+end
+break SfxDispatcher::SfxDispatcher(SfxViewFrame*)
+commands
+silent
+printf "BP t%d SfxDispatcher::SfxDispatcher dispatcher=%p viewframe=%p\n", $_thread, $rdi, $rsi
+continue
+end
+break SfxDispatcher::~SfxDispatcher()
+commands
+silent
+printf "BP t%d SfxDispatcher::~SfxDispatcher dispatcher=%p\n", $_thread, $rdi
 continue
 end
 break SfxBaseController::dispose()
 commands
 silent
-printf "BP SfxBaseController::dispose controller=%p\n", $rdi
+printf "BP t%d SfxBaseController::dispose controller=%p\n", $_thread, $rdi
 continue
 end
 break SfxFrame::DoClose()
 commands
 silent
-printf "BP SfxFrame::DoClose frame=%p\n", $rdi
+printf "BP t%d SfxFrame::DoClose frame=%p\n", $_thread, $rdi
 continue
 end
 break framework::Desktop::terminate()
 commands
 silent
-printf "BP Desktop::terminate\n"
-continue
-end
-break SwBaseShell::StateClpbrd(SfxItemSet&)
-commands
-silent
-printf "BP SwBaseShell::StateClpbrd baseshell=%p\n", $rdi
+printf "BP t%d Desktop::terminate\n", $_thread
 continue
 end
 run
-bt
+bt 30
 echo \n=== fault ===\n
 p $_siginfo._sifields._sigfault.si_addr
 info registers rip rdi rsi rax rbx rcx rdx rbp rsp r12 r13 r14 r15
-x/16i $pc-40
+echo \n=== objects ===\n
+python ouscan.frames([3, 4, 5, 6, 7, 8, 9])
 echo \n=== libraries ===\n
 info sharedlibrary
 echo \n=== threads ===\n
