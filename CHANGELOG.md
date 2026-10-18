@@ -16,6 +16,16 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   focus: VCL's mnemonic handling cannot cope with the panel's tab control having no page.
 - Added real-input UI tests with gtk3 and gen, headless sheet list checks, and a manual checklist
   with a synthetic workbook for what automation cannot reach.
+- Added the reorder operation layer for drag/drop and Top, Up, Down, and Bottom: minimum-call
+  planning, scenario blocks, permission checks, one undo step, and verified failure recovery.
+  The sidebar controls will use this interface when the list panel is integrated.
+  Planning stays responsive in large workbooks; recovery preserves the user's previous action at a full
+  undo stack, and view-restoration failures warn without undoing a verified move. Both success and
+  rollback restore the view before unlocking controllers to avoid an intermediate repaint. Balanced groups
+  work around Calc's undo-capacity defect
+  ([#16](https://github.com/viell-dev/slop-calc-sheet-manager/issues/16)); embedded chart names
+  retain Calc's native rename-on-move limitation
+  ([#17](https://github.com/viell-dev/slop-calc-sheet-manager/issues/17)).
 - Added an empty Sheet Manager deck to Calc's sidebar as the foundation for the sheet list.
 - Added Windows development checks, durable LibreOffice download pins, and integration checks that
   reject crashes or fatal-error logs during shutdown. The intermittent gtk3 shutdown abort,
@@ -35,3 +45,5 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 - Keep diagnostic files separate for each integration session, clear stale runner artifacts, and
   continue soak measurements after missing or unreadable session results. Manual soaks use their
   own workflow, avoiding skipped checks with required job names.
+- Asked contributors to say when an AI agent wrote or submitted an issue, pull request, or comment,
+  and whether a person reviewed it.

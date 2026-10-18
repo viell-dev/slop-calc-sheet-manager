@@ -6,6 +6,10 @@ request descriptions rather than code, so write them for a reader who has not se
 Agents maintaining the repository also follow [AGENTS.md](AGENTS.md). Everyone follows the
 [code of conduct](CODE_OF_CONDUCT.md).
 
+If an AI agent wrote or submitted your issue, pull request, or comment, say so at the start: which
+agent, for whom, and whether a person reviewed it. The maintainers' own posts open with such a
+note.
+
 ## Report a defect
 
 Search the open and closed [issues](https://github.com/viell-dev/slop-calc-sheet-manager/issues)
@@ -96,6 +100,41 @@ Unit tests need no LibreOffice and run as part of the checks. To run them alone:
 .venv/bin/python -m pytest
 ```
 
+The reorder suite exhausts all permutations through seven sheets and all scenario partitions and
+block orders through seven. It checks the minimum call count against an independent
+longest-common-subsequence oracle. The panel-facing contract is in
+[docs/reordering.md](docs/reordering.md).
+
+The runner also discovers `tests/integration/test_*.py` modules with an
+`exercise(context, desktop, directory, output)` entry point. These suites import the built OXT's
+modules through zipimport, so allowlist omissions fail integration. Keep feature suites additive
+and keep failure injection in test-only forwarding adapters. Reorder checks cover active-sheet
+and native selection preservation, one undo and redo, permission refusals, stale handles, hidden
+sheets, scenario ownership, failures after each real mutation, and a silently ineffective undo.
+The failure suite also runs with two configured undo steps, forcing nested groups, and checks zero
+and one-step settings. Full-stack tests put both native and extension moves above 99 inputs and
+fail before mutation, checking that recovery never undoes either preceding move. View-restoration
+failures preserve verified move/rollback outcomes and report a separate warning. All configuration
+changes belong to the runner's private profile. Pure planning has a five-second regression budget
+at 10,000 sheets for both one-call and reverse-order plans.
+
+The reorder suite generates 200- and 1,000-sheet workbooks with a cross-sheet formula and named
+range per sheet plus charts referencing distant sheets. It measures first-sheet, half-selection,
+all-but-last, and alternating-selection moves to the bottom, three times each, and verifies direct
+references before and after undo. `reorder-performance-<session>.json` records median milliseconds. Move
+timing includes snapshot, planning, preflight, application, and final verification; undo timing
+covers Calc's undo call, followed by separate integrity assertions. Workbooks use only synthetic
+data and stay in memory; the benchmark does not save workbook files.
+
+To retain copies for inspection, run the generator with the tested office's bundled Python:
+
+```powershell
+& "$lo\python.exe" tests/integration/generate_workbooks.py --program $lo `
+  --oxt dist/sheet-manager-0.0.1.oxt --output test-results/workbooks --sheets 200 1000
+```
+
+The generator uses a separate private profile and saves only its newly created synthetic workbooks.
+
 The integration runner installs the built OXT into a fresh temporary profile, connects over a
 unique local UNO pipe, and checks the factory, tab-control peer, exact panel resizing and disposal,
 read-only Calc documents, Writer exclusion, and SVG decoding. Headless sessions also check the
@@ -184,7 +223,9 @@ Run the **Painted gtk3 soak** workflow manually with `sessions` between 1 and 10
 Each lane runs that many fresh gtk3 profiles with the extension and that many without it, retaining
 per-session runner logs, office logs, results and debugger traces, plus a job summary. A failed
 session, including unreadable or missing results, fails the job after all measurements finish.
-The soak disables startup retries too, so
+The soak passes `--suites none` to skip feature suites and their performance workbooks within its
+180-second per-session limit; ordinary integration runs keep all feature suites enabled. Feature
+suites never run in the absent-extension control. The soak disables startup retries too, so
 every attempted session contributes to the measurement. The absent-extension control repeats the
 Calc/save/reopen-read-only/Writer lifecycle and frame requests, but cannot exercise the panel or
 its disposal. It is a control, not equivalent extension coverage.

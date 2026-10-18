@@ -5,6 +5,7 @@ Choose headless, gtk3, or both with --sessions; gtk3 saves a screenshot.
 """
 
 import argparse
+import importlib.util
 import json
 import os
 import subprocess
@@ -426,6 +427,7 @@ def main():
     parser.add_argument("--screenshot", action="store_true")
     parser.add_argument("--sessions", choices=["headless", "gtk3", "both"])
     parser.add_argument("--without-extension", action="store_true")
+    parser.add_argument("--suites", choices=["all", "none"], default="all")
     parser.add_argument("--startup-attempts", type=int, choices=[1, 3], default=3)
     parser.add_argument(
         "--backtrace", action="store_true", help="Linux only: use LibreOffice's gdb wrapper"
@@ -445,11 +447,14 @@ def main():
         "gdbtrace-*.log",
         "startup-*.json",
         "startup-restart-*.log",
+        "reorder-performance*.json",
     ):
         for artifact in output.glob(pattern):
             artifact.unlink()
     package = arguments.oxt.resolve()
     program = arguments.program.resolve()
+    # Add once for all sessions; feature suites exercise packaged modules, not src/.
+    sys.path.insert(0, str(package) + "/pythonpath")
     results: list[dict[str, object]] = []
     try:
         if arguments.expect_refusal:
@@ -480,6 +485,22 @@ def main():
                         )
                         if headless:  # The painted session's UI tests use real input.
                             result["sheet_list"] = check_sheet_list(context, desktop, program)
+                        if arguments.suites == "all":
+                            for suite_path in sorted(Path(__file__).parent.glob("test_*.py")):
+                                spec = importlib.util.spec_from_file_location(
+                                    suite_path.stem, suite_path
+                                )
+                                assert spec is not None and spec.loader is not None
+                                suite = importlib.util.module_from_spec(spec)
+                                spec.loader.exec_module(suite)
+                                suite_result = suite.exercise(context, desktop, directory, output)
+                                result[suite_path.stem] = suite_result
+                                if "performance" in suite_result:
+                                    mode = "headless" if headless else "gtk3"
+                                    (output / f"reorder-performance-{mode}.json").write_text(
+                                        json.dumps(suite_result["performance"], indent=2) + "\n",
+                                        encoding="utf-8",
+                                    )
                     result["assertions_passed"] = True
     finally:
         (output / "results.json").write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8")

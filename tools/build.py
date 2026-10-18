@@ -29,14 +29,15 @@ PACKAGE_FILES = (
     "__init__.py",
     "i18n.py",
     "keys.py",
+    "reorder.py",
     "sheet_list.py",
     "swatch.py",
-    "temporary_move.py",
     "uno_calc.py",
     "uno_keys.py",
     "uno_list.py",
     "uno_menu.py",
     "uno_panel.py",
+    "uno_reorder.py",
 )
 DESCRIPTION_NS = "{http://openoffice.org/extensions/description/2006}"
 

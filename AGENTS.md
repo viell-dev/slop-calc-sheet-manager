@@ -1,40 +1,24 @@
 # Agent maintenance
 
-Sheet Manager is built, tested, documented, released, and maintained by AI agents. This file holds
-the rules they follow. [CONTRIBUTING.md](CONTRIBUTING.md) holds the setup, checks, and pull request
-rules that apply to everyone; follow it and do not repeat it here.
+Sheet Manager is built, tested, documented, released, and maintained by AI agents. They follow the
+owner's general rules for agent-maintained projects, which cover who decides what, how issues and
+pull requests are written, verification, parallel work, attribution, and reports to other
+projects. This file adds only what is specific to Sheet Manager. [CONTRIBUTING.md](CONTRIBUTING.md)
+holds the setup, checks, and pull request rules that apply to everyone; follow it and do not repeat
+it here.
 
-## Authority
+## Testing with the owner
 
-The owner uses the extension and sets its direction. They do not read the code or the diffs; they
-follow the project through the README, issue and pull request descriptions, release notes, and the
-extension itself.
+The owner uses the extension; their observations on a real desktop are evidence that automated
+tests cannot produce, so the extension's look and feel in use is theirs to judge.
 
-- Agents have full authority over the repository, its settings, and its releases. Architecture,
-  design, implementation, tooling, supported versions, and release timing are theirs to decide.
-  The agent assigned to a task makes every decision the task needs and records the choice, its
-  reasoning, and the alternatives rejected in the issue or pull request.
-- Ask the owner only for steps that need their sign-in or second factor (such as the listing on
-  extensions.libreoffice.org), for actions outside this repository that speak for them (reports to
-  other projects, blocking accounts), and for their opinion on how the extension feels in use,
-  which only they can observe. Their feedback from real use is a requirement; how to meet it is
-  the agents' decision.
-- Deciding how the project is built is not deciding what to work on. Do not extend an assignment
-  to unrelated issues or design changes, and state the interpretation used when an assignment is
-  ambiguous.
-
-## Talking to the owner
-
-- Write issues and pull requests for a reader who has not seen the code: the observed problem, the
-  resulting behaviour, the scope decision, and the design decisions made, without the diff.
-- A request to the owner says exactly what to do, why, and what result to expect. A test request
-  names the build to install and gives numbered steps, each with its expected outcome, and lists
-  what to report: the operating system, the LibreOffice version and user interface from
-  Help ▸ About, and a screenshot where looks matter.
-- Owner testing is batched into one checklist per release candidate. Each checklist ships with a
-  synthetic test workbook, and screenshots for public issues are taken with it, so that no real
-  sheet names appear in public. Performance on the owner's own workbooks is reported as timings
-  only.
+- Owner testing is batched into one checklist per release candidate, built from the repository's
+  manual tests. Each test request names the build to install, gives numbered steps with the
+  expected outcome of each, and asks for the operating system, the LibreOffice version, the user
+  interface shown in Help ▸ About, and a screenshot where looks matter.
+- Each checklist ships with a synthetic test workbook, and screenshots for public issues are taken
+  with it, so that no real sheet names appear in public. Performance on the owner's own workbooks
+  is reported as timings only.
 
 ## Safety invariants
 
@@ -68,58 +52,46 @@ where they can:
 - Only wording and typo fixes in documentation, and comments, may skip independent review.
   Dependency updates, workflows, release steps, compatibility metadata such as the minimum
   LibreOffice version, and any change that loosens these rules are always reviewed.
-- The author's own pass is still required: every pull request has a "Verification" section
-  listing the commands run, the inputs tried beyond the tests, and what was checked on which
-  platform and LibreOffice version.
-
-## Keeping the repository consistent
-
-A change is complete only when everything that describes or depends on it agrees with it, in the
-same pull request: documentation, the changelog, tests, configuration, and metadata. Before
-committing, search for other statements of what the change touches, such as behaviour, commands,
-file locations, version numbers, and requirements. Drift found along the way is a defect: fix it
-in the same pull request when it lies in what the pull request changes, and otherwise file an
-issue.
+- Every pull request has a "Verification" section listing the commands run, the inputs tried
+  beyond the tests, and what was checked on which platform and LibreOffice version.
 
 ## Issues and labels
 
 Labels follow [`.github/labels.json`](.github/labels.json); keep GitHub in sync with it. Every
-item has one `Type:` label and at most one `Status:` label for its current disposition.
+item has one `Type:` label and at most one `Status:` label for its current disposition. Retitle an
+issue so that it names the confirmed problem or the accepted request, close a declined or duplicate
+one as not planned, and close an accepted one through the pull request that fixes it.
 
-Take each assigned issue through these steps, and leave it accurate after each; the issue, not the
-session, is the record:
-
-1. **Validate.** Reproduce a defect, or measure a claim, on the current `main`, and post the
-   commands, inputs, and results.
-2. **Decide.** Accept, narrow, or decline; settle the open design questions; post the decision,
-   its reasoning, and the alternatives rejected.
-3. **Split** a different problem into its own issue, linked, even when one pull request fixes both.
-4. **Label and retitle** so the title names the confirmed problem or the accepted request.
-5. **Close or keep open.** Close a declined or duplicate issue as not planned. Keep an accepted
-   issue open until its fix merges; the fixing pull request names it with a closing keyword.
-
-`Status: Needs Owner Testing` marks work that waits for a check on a real desktop. File an issue
-for every defect or limit found during assigned work instead of only mentioning it. Reports from
-agents get the same scrutiny as reports from people.
+- `Status: Needs Owner Testing` marks work that waits for a check on a real desktop.
+- `Status: Blocked` marks a tracking issue for a defect in LibreOffice or another dependency. It
+  holds the versions, the reproduction, the result, and what unblocks it, so that the defect can be
+  reported upstream and verified later without testing again. Once a report has been submitted
+  upstream, it links the tracking issue and the tracking issue links the report.
 
 ## Git and merging
 
-- Every change to `main` goes through a pull request with passing checks, including
-  documentation, dependency updates, and these instructions. Branch names are short kebab-case
-  descriptions.
-- Merge with a merge commit after checking the exact head
-  (`gh pr merge --merge --match-head-commit SHA --body "Assisted-by: <model> via <harness>"`);
-  squash and rebase merges are disabled so that history and attribution survive. Never bypass
-  the branch rules.
+- Pull requests merge with a merge commit after checking the exact head
+  (`gh pr merge --merge --match-head-commit SHA --body "Assisted-by: <model> via <harness>"`).
+  Squash and rebase merges are disabled so that each commit keeps its own attribution trailer and
+  the history of reviewed rounds survives.
 - Pull requests need not be up to date with `main` before merging, so that they do not wait for one
   another; CI runs again on `main` after every merge, and a failure there is fixed forward first.
-- Use focused commits, push early so that an interrupted session loses little, and never rewrite
-  shared history. Delete a branch once its pull request is merged or closed, unless active work
-  depends on it.
-- Agents working in parallel use one branch and one worktree each.
+  GitHub offers no merge queue for this repository's owner account.
 
 ## Technical map
 
+- `reorder.py` is the UNO-free target/minimum-call planner; `uno_reorder.py` captures snapshots,
+  checks permissions and stale handles, applies one undo group, and verifies recovery. The panel
+  contract is [docs/reordering.md](docs/reordering.md). Keep the panel busy and defer refresh during
+  application: consecutive individual scenario moves have intermediate block splits. Never pass
+  an interior scenario gap through as a raw move destination or use native multi-sheet Move.
+  Retain balanced nested undo groups: Calc limits the current context to configured undo Steps,
+  so a flat group silently loses early moves above that capacity
+  ([#16](https://github.com/viell-dev/slop-calc-sheet-manager/issues/16)). Tests cover capacity two.
+- `tests/integration/test_reorder.py` uses test-only forwarding adapters to fail after actual UNO
+  mutations; no injection seam ships. Its populated synthetic workbooks exercise formulas,
+  named ranges, and charts at 200/1,000 sheets and emit median complete-move/undo timings.
+  `generate_workbooks.py` retains copies for inspection using the same synthetic generator.
 - `src/sheet_manager/` ships under `pythonpath/sheet_manager/`. Keep pure logic importable without
   `uno` (`keys.py`, `sheet_list.py`, `swatch.py`, `temporary_move.py`); the `uno_*.py` modules
   adapt it: `uno_panel.py` owns the UNO factory and panel, `uno_list.py` the tree control, its
@@ -186,6 +158,9 @@ agents get the same scrutiny as reports from people.
 
 ## Releases
 
+- The owner has given standing approval for agents to publish releases, prereleases and stable
+  versions alike, with their release notes, whenever the agents judge a build ready. Only the
+  listing on extensions.libreoffice.org needs the owner's sign-in.
 - Version numbers are plain dotted numbers without a `v` prefix, strictly increasing across every
   published build. There are no `-rc` suffixes, because LibreOffice's update check ranks
   `0.1.0-rc.1` above `0.1.0`. Whether a build is a prerelease or stable is a property of its GitHub
@@ -193,27 +168,8 @@ agents get the same scrutiny as reports from people.
 - Published files and tags are never replaced, and update feeds never move backwards: a bad release
   is fixed by a newer version.
 
-## Reports to other projects
-
-A defect in LibreOffice or another dependency gets a `Status: Blocked` tracking issue here with
-everything needed to report and verify it without testing again: the versions, the reproduction,
-the result, and what unblocks it. Posting a report to another project needs the owner's decision
-for that report. A report follows that project's own guidelines, opens with a `> [!NOTE]` callout
-saying that an AI agent wrote and submitted it, for whom, and that we stop if asked, and links the
-tracking issue, which links back.
-
 ## Repository boundary
 
 Everything the project needs lives in this repository. Never stage, copy, quote, or publish
 content from outside it. Tests, issues, and pull requests use synthetic workbooks only, and logs
 and screenshots must not contain private documents or credentials.
-
-## Attribution
-
-Identify the agent as `<model> via <harness>`, using the most specific model name and version the
-session exposes, without an email address. Commit messages end with
-`Assisted-by: <model> via <harness>` after a blank line; this is the only permitted agent
-attribution trailer, so never add a `Co-Authored-By:` or `Signed-off-by:` trailer for an agent, in
-any capitalization, and replace any that tooling supplies. Issues, pull requests, reviews,
-comments, and release notes end with `🤖 Generated with <model> via <harness>`. Do not add
-attribution footers to repository documents; the README's status section covers them.

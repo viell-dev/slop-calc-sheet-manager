@@ -38,14 +38,15 @@ def test_two_builds_are_identical_and_allowlisted(tmp_path: Path) -> None:
                     "__init__",
                     "i18n",
                     "keys",
+                    "reorder",
                     "sheet_list",
                     "swatch",
-                    "temporary_move",
                     "uno_calc",
                     "uno_keys",
                     "uno_list",
                     "uno_menu",
                     "uno_panel",
+                    "uno_reorder",
                 )
             ),
         }
@@ -113,6 +114,7 @@ def test_pure_package_does_not_import_uno() -> None:
     code = (
         "import sys; sys.path.insert(0, 'src'); "
         "from sheet_manager.i18n import tr; assert tr('Sheet Manager') == 'Sheet Manager'; "
+        "from sheet_manager import reorder; assert reorder.Sheet('A').name == 'A'; "
         "assert 'uno' not in sys.modules; assert 'unohelper' not in sys.modules"
     )
     subprocess.run([sys.executable, "-I", "-c", code], cwd=ROOT, check=True)
