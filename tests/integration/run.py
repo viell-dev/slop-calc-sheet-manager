@@ -20,7 +20,7 @@ import uno
 import unohelper
 from com.sun.star.beans import PropertyValue
 from com.sun.star.lang import XEventListener
-from office_process import assert_clean_shutdown, finish_process, stop_process
+from office_process import assert_clean_shutdown, finish_process
 
 FACTORY = "dev.viell.sheetmanager.PanelFactory"
 DECK = "SheetManagerDeck"
@@ -119,9 +119,8 @@ def office_session(program, package, output, result, *, headless):
             )
             desktop.getComponents().hasElements()  # Detect the post-connect startup crash.
         except Exception:
-            stop_process(process)
+            startup = finish_process(process, log_path, timeout=0)
             log.close()
-            startup = finish_process(process, log_path)
             (output / f"startup-{headless}-{attempt}.json").write_text(
                 json.dumps(startup, indent=2) + "\n", encoding="utf-8"
             )
@@ -192,11 +191,20 @@ def exercise(context, desktop, directory, output, *, screenshot):
     window = document.getCurrentController().getFrame().getContainerWindow()
     window.IsMaximized = False
     window.setPosSize(0, 0, 1000, 500, 15)
-    wait_for(lambda: window.getPosSize().Height == 500, "the first requested frame height")
+    # gtk3 can report a 475px frame height for a 500px native request (#9).
+    # Establish the actual baseline, then require both frame and panel to grow by 150px.
+    wait_for(
+        lambda: window.getPosSize().Width == 1000 and 100 < window.getPosSize().Height <= 500,
+        "the initial frame geometry",
+    )
     time.sleep(0.25)
+    frame_before = window.getPosSize()
     before = panel.getPosSize()
     window.setPosSize(0, 0, 1000, 650, 15)
-    wait_for(lambda: window.getPosSize().Height == 650, "the second requested frame height")
+    wait_for(
+        lambda: window.getPosSize().Height == frame_before.Height + 150, "frame resize by 150px"
+    )
+    frame_after = window.getPosSize()
     wait_for(lambda: panel.getPosSize().Height == before.Height + 150, "panel resize by 150px")
     resized = panel.getPosSize()
     assert resized.Height > 100 and resized.Width >= 150
@@ -248,7 +256,8 @@ def exercise(context, desktop, directory, output, *, screenshot):
         "factory": FACTORY,
         "panel_types": peer_types,
         "resize": True,
-        "frame_heights": [500, 650],
+        "requested_frame_heights": [500, 650],
+        "frame_heights": [frame_before.Height, frame_after.Height],
         "panel_heights": [before.Height, resized.Height],
         "read_only": True,
         "writer_excluded": True,
