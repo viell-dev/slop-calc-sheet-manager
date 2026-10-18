@@ -2,4 +2,3 @@
 **
 !requirements-dev.txt
 !ci/
-!ci/checks.Dockerfile

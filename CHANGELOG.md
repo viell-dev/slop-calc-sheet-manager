@@ -21,3 +21,6 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   excludes unrelated build context ([#10](https://github.com/viell-dev/slop-calc-sheet-manager/issues/10)).
 - Wait for two stable frame/panel measurements before the resize baseline, retaining exact
   150-pixel growth checks ([#9](https://github.com/viell-dev/slop-calc-sheet-manager/issues/9)).
+- Keep diagnostic files separate for each integration session, clear stale runner artifacts, and
+  continue soak measurements after missing or unreadable session results. Manual soaks use their
+  own workflow, avoiding skipped checks with required job names.

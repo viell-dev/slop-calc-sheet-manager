@@ -123,9 +123,9 @@ Run the complete Linux matrix in Docker with these commands (PowerShell 7 and PO
 accept them; substitute the path to a working Python if `python` is unavailable):
 
 ```text
-python tools/linux_integration.py minimum --screenshot
-python tools/linux_integration.py current-26.2 --screenshot
-python tools/linux_integration.py current-26.8 --screenshot
+python tools/linux_integration.py minimum --sessions both
+python tools/linux_integration.py current-26.2 --sessions both
+python tools/linux_integration.py current-26.8 --sessions both
 python tools/linux_integration.py unsupported
 ```
 
@@ -140,6 +140,9 @@ default), `--sessions gtk3`, and `--sessions both` select independent office ses
 gtk3 sessions save `deck.png`; `--screenshot` remains an alias for running both sessions when
 `--sessions` is omitted. The `unsupported` lane asserts that
 26.2.0 refuses installation for a dependency error and leaves the extension uninstalled.
+Image changes retain older `sheet-manager-ci:<version>-<fingerprint>` tags locally; list them with
+`docker image ls sheet-manager-ci` and remove obsolete tags explicitly with `docker image rm <tag>`
+(including old unfingerprinted `sheet-manager-ci:<version>` tags, which are no longer reused).
 
 Logs, actual office/Python versions, package inventory, and results are in `test-results/` and in
 CI artifacts. The runner records the exit status of each office session and rejects nonzero exits,
@@ -159,7 +162,8 @@ before merging. No error message is treated as an allowed crash.
 Run the **Painted gtk3 soak** workflow manually with `sessions` between 1 and 100 (default 20).
 Each lane runs that many fresh gtk3 profiles with the extension and that many without it, retaining
 per-session runner logs, office logs, results and debugger traces, plus a job summary. A failed
-session fails the job after all measurements finish. The soak disables startup retries too, so
+session, including unreadable or missing results, fails the job after all measurements finish.
+The soak disables startup retries too, so
 every attempted session contributes to the measurement. The absent-extension control repeats the
 Calc/save/reopen-read-only/Writer lifecycle and frame requests, but cannot exercise the panel or
 its disposal. It is a control, not equivalent extension coverage.
