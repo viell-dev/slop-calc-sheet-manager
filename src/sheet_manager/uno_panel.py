@@ -1,12 +1,11 @@
 """UNO sidebar adapter. No document content or selection is changed here."""
 
-import weakref
 from typing import cast
 
 import uno
 import unohelper
 from com.sun.star.awt import Rectangle, WindowDescriptor, XWindowListener
-from com.sun.star.container import NoSuchElementException, XNameAccess
+from com.sun.star.container import NoSuchElementException
 from com.sun.star.lang import EventObject, XComponent, XServiceInfo
 from com.sun.star.ui import LayoutSize, XSidebarPanel, XToolPanel, XUIElement, XUIElementFactory
 
@@ -15,7 +14,6 @@ RESOURCE_URL = "private:resource/toolpanel/SheetManager/Panel"
 TOOLPANEL = cast(int, uno.getConstantByName("com.sun.star.ui.UIElementType.TOOLPANEL"))
 SHOW = cast(int, uno.getConstantByName("com.sun.star.awt.WindowAttribute.SHOW"))
 POSSIZE = cast(int, uno.getConstantByName("com.sun.star.awt.PosSize.POSSIZE"))
-_panels = weakref.WeakSet()
 
 
 class EmptyPanel(
@@ -41,7 +39,6 @@ class EmptyPanel(
         descriptor.WindowAttributes = SHOW
         self.Window = self._parent.getToolkit().createWindow(descriptor)
         self._parent.addWindowListener(self)
-        _panels.add(self)
 
     def getRealInterface(self):
         return self
@@ -61,7 +58,6 @@ class EmptyPanel(
         if self._disposed:
             return
         self._disposed = True
-        _panels.discard(self)
         self._parent.removeWindowListener(self)
         self.Window.dispose()
         listeners, self._listeners = self._listeners, []
@@ -95,12 +91,8 @@ class EmptyPanel(
         self.dispose()
 
 
-class PanelFactory(unohelper.Base, XUIElementFactory, XServiceInfo, XNameAccess):
-    """Lazy factory with read-only access to live panels for activation diagnostics.
-
-    The weak registry neither retains closed frames nor creates panels on request. It
-    exposes only existing UNO interfaces, with no test commands or document mutations.
-    """
+class PanelFactory(unohelper.Base, XUIElementFactory, XServiceInfo):
+    """Create a panel only when the sidebar requests one."""
 
     def __init__(self, context):
         self._context = context
@@ -119,21 +111,3 @@ class PanelFactory(unohelper.Base, XUIElementFactory, XServiceInfo, XNameAccess)
 
     def getSupportedServiceNames(self):
         return (FACTORY, "com.sun.star.ui.UIElementFactory")
-
-    def getElementType(self):
-        return uno.getTypeByName("com.sun.star.ui.XUIElement")
-
-    def hasElements(self):
-        return bool(_panels)
-
-    def getElementNames(self):
-        return tuple(panel.ResourceURL + "/" + str(id(panel)) for panel in _panels)
-
-    def hasByName(self, name):
-        return name in self.getElementNames()
-
-    def getByName(self, name):
-        for panel in _panels:
-            if name == panel.ResourceURL + "/" + str(id(panel)):
-                return panel
-        raise NoSuchElementException(name, self)

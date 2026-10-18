@@ -17,7 +17,10 @@ from pathlib import Path
 from typing import Any, cast
 
 import uno
+import unohelper
 from com.sun.star.beans import PropertyValue
+from com.sun.star.lang import XEventListener
+from office_process import assert_clean_shutdown, finish_process, stop_process
 
 FACTORY = "dev.viell.sheetmanager.PanelFactory"
 DECK = "SheetManagerDeck"
@@ -39,18 +42,8 @@ def wait_for(function, description, timeout=20):
     raise AssertionError(f"Timed out waiting for {description}")
 
 
-def stop_process(process):
-    if process.poll() is None:
-        process.terminate()
-        try:
-            process.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait(timeout=10)
-
-
 @contextmanager
-def office_session(program, package, output, *, headless):
+def office_session(program, package, output, result, *, headless):
     # Retry only startup, before opening documents or making test assertions. Windows
     # occasionally loses soffice.bin just after a successful UNO connection.
     for attempt in range(3):
@@ -95,8 +88,11 @@ def office_session(program, package, output, *, headless):
         ]
         if headless:
             command.append("--headless")
-        log = (output / f"soffice-{headless}-{attempt}.log").open("w", encoding="utf-8")
-        process = subprocess.Popen(command, env=environment, stdout=log, stderr=subprocess.STDOUT)
+        log_path = output / f"soffice-{headless}-{attempt}.log"
+        log = log_path.open("w", encoding="utf-8")
+        process = subprocess.Popen(
+            command, env=environment, stdout=log, stderr=subprocess.STDOUT, text=True
+        )
         try:
             # The stub calls this UNO "Any"; the actual value is a dynamic XComponentContext.
             local = cast(Any, uno.getComponentContext())
@@ -125,6 +121,10 @@ def office_session(program, package, output, *, headless):
         except Exception:
             stop_process(process)
             log.close()
+            startup = finish_process(process, log_path)
+            (output / f"startup-{headless}-{attempt}.json").write_text(
+                json.dumps(startup, indent=2) + "\n", encoding="utf-8"
+            )
             temporary.cleanup()
             if attempt == 2:
                 raise
@@ -136,15 +136,24 @@ def office_session(program, package, output, *, headless):
             with suppress(Exception):
                 desktop.terminate()
             try:
-                process.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                stop_process(process)
-            log.close()
-            temporary.cleanup()
+                result.update(finish_process(process, log_path))
+            finally:
+                log.close()
+                temporary.cleanup()
+            # #8 tracks the intermittent gtk3 abort previously hidden at termination.
+            assert_clean_shutdown(result)
         return
 
 
-def assert_panel(context, document, factory):
+class DisposalListener(unohelper.Base, XEventListener):
+    def __init__(self):
+        self.disposed = False
+
+    def disposing(self, Source):
+        self.disposed = True
+
+
+def assert_panel(context, document):
     frame = document.getCurrentController().getFrame()
     frame.activate()
     dispatch = context.ServiceManager.createInstanceWithContext(
@@ -152,53 +161,44 @@ def assert_panel(context, document, factory):
     )
     dispatch.executeDispatch(frame, ".uno:SidebarDeck." + DECK, "", 0, ())
 
-    def matching_panel():
-        for name in factory.getElementNames():
-            panel = factory.getByName(name)
-            if panel.Frame == frame:
-                return panel
-        return None
-
-    panel = wait_for(matching_panel, "the installed factory's panel in this Calc frame")
-    assert panel.ResourceURL == "private:resource/toolpanel/SheetManager/Panel"
-    assert panel.Type == uno.getConstantByName("com.sun.star.ui.UIElementType.TOOLPANEL")
-    assert panel.createAccessible(None) is None
-    peer_types = [item.typeName for item in panel.Window.getTypes()]
-    assert "com.sun.star.awt.XSimpleTabController" in peer_types, peer_types
-    wait_for(lambda: panel.Window.getPosSize().Height > 100, "a full-height panel")
-    assert panel.Window.getPosSize().Width >= 150
     sidebar = document.getCurrentController().getSidebar()
     deck = sidebar.getDecks().getByName(DECK)
     assert deck.getTitle() == "Sheet Manager"
     assert deck.isActive()
     panels = deck.getPanels()
     assert panels.getElementNames() == ("SheetManagerPanel",)
-    return panel
+    window = wait_for(
+        lambda: panels.getByName("SheetManagerPanel").getDialog(), "the public panel dialog"
+    )
+    peer_types = [item.typeName for item in window.getTypes()]
+    assert "com.sun.star.awt.XSimpleTabController" in peer_types, peer_types
+    wait_for(lambda: window.getPosSize().Height > 100, "a full-height panel")
+    assert window.getPosSize().Width >= 150
+    listener = DisposalListener()
+    window.addEventListener(listener)
+    return window, listener, peer_types
 
 
 def exercise(context, desktop, directory, output, *, screenshot):
     factory = context.ServiceManager.createInstanceWithContext(FACTORY, context)
     assert factory is not None, "Passive registration did not activate the Python factory"
     assert factory.getImplementationName() == FACTORY
-    assert not factory.hasElements(), "Factory activation must not eagerly create a panel"
     document = desktop.loadComponentFromURL("private:factory/scalc", "_blank", 0, ())
     assert document is not None
     assert not document.getArgs() or not any(
         item.Name == "Hidden" and item.Value for item in document.getArgs()
     )
-    panel = assert_panel(context, document, factory)
+    panel, disposal, peer_types = assert_panel(context, document)
     window = document.getCurrentController().getFrame().getContainerWindow()
     window.IsMaximized = False
     window.setPosSize(0, 0, 1000, 500, 15)
     wait_for(lambda: window.getPosSize().Height == 500, "the first requested frame height")
     time.sleep(0.25)
-    before = panel.Window.getPosSize()
+    before = panel.getPosSize()
     window.setPosSize(0, 0, 1000, 650, 15)
     wait_for(lambda: window.getPosSize().Height == 650, "the second requested frame height")
-    wait_for(
-        lambda: panel.Window.getPosSize().Height == before.Height + 150, "panel resize by 150px"
-    )
-    resized = panel.Window.getPosSize()
+    wait_for(lambda: panel.getPosSize().Height == before.Height + 150, "panel resize by 150px")
+    resized = panel.getPosSize()
     assert resized.Height > 100 and resized.Width >= 150
 
     # Decode the packaged SVG using this minimum-version GraphicProvider, not a browser.
@@ -231,23 +231,22 @@ def exercise(context, desktop, directory, output, *, screenshot):
     workbook = directory / "synthetic.ods"
     document.storeAsURL(workbook.as_uri(), ())
     document.close(True)
-    wait_for(lambda: not factory.hasElements(), "panel disposal after document close")
+    wait_for(lambda: disposal.disposed, "panel dialog disposal after document close")
     document = desktop.loadComponentFromURL(
         workbook.as_uri(), "_blank", 0, (property_value("ReadOnly", True),)
     )
     assert document.isReadonly()
-    assert_panel(context, document, factory)
+    _, readonly_disposal, _ = assert_panel(context, document)
     document.close(True)
-    wait_for(lambda: not factory.hasElements(), "read-only panel disposal")
+    wait_for(lambda: readonly_disposal.disposed, "read-only panel dialog disposal")
     writer = desktop.loadComponentFromURL("private:factory/swriter", "_blank", 0, ())
     assert writer is not None
     decks = writer.getCurrentController().getSidebar().getDecks()
     assert not decks.hasByName(DECK), "Sheet Manager must be Calc-only"
-    assert not factory.hasElements()
     writer.close(True)
     return {
         "factory": FACTORY,
-        "panel": "VCLXTabControl",
+        "panel_types": peer_types,
         "resize": True,
         "frame_heights": [500, 650],
         "panel_heights": [before.Height, resized.Height],
@@ -259,11 +258,12 @@ def exercise(context, desktop, directory, output, *, screenshot):
     }
 
 
-def check_refusal(program, package, output):
+def check_refusal(program, package, output) -> dict[str, object]:
+    installer = program / ("unopkg.exe" if os.name == "nt" else "unopkg")
     with tempfile.TemporaryDirectory(prefix="sheet-manager-refusal-") as directory:
         profile = "-env:UserInstallation=" + Path(directory).as_uri()
         result = subprocess.run(
-            [str(program / "unopkg"), profile, "add", str(package)],
+            [str(installer), profile, "add", str(package)],
             capture_output=True,
             text=True,
             timeout=90,
@@ -273,7 +273,7 @@ def check_refusal(program, package, output):
         assert result.returncode != 0, "Unsupported LibreOffice accepted the package"
         assert "dependenc" in combined.lower(), combined
         listing = subprocess.run(
-            [str(program / "unopkg"), profile, "list"],
+            [str(installer), profile, "list"],
             capture_output=True,
             text=True,
             timeout=60,
@@ -297,17 +297,21 @@ def main():
         (output / artifact).unlink(missing_ok=True)
     package = arguments.oxt.resolve()
     program = arguments.program.resolve()
-    if arguments.expect_refusal:
-        results = [check_refusal(program, package, output)]
-    else:
-        results = []
-        for headless in [True, False] if arguments.screenshot else [True]:
-            with office_session(program, package, output, headless=headless) as session:
-                context, desktop, directory = session
-                results.append(
-                    exercise(context, desktop, directory, output, screenshot=not headless)
-                )
-    (output / "results.json").write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8")
+    results: list[dict[str, object]] = []
+    try:
+        if arguments.expect_refusal:
+            results.append(check_refusal(program, package, output))
+        else:
+            for headless in [True, False] if arguments.screenshot else [True]:
+                result: dict[str, object] = {"headless": headless}
+                results.append(result)
+                with office_session(program, package, output, result, headless=headless) as session:
+                    context, desktop, directory = session
+                    result.update(
+                        exercise(context, desktop, directory, output, screenshot=not headless)
+                    )
+    finally:
+        (output / "results.json").write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(results, indent=2))
 
 
