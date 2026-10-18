@@ -1,0 +1,70 @@
+set pagination off
+echo log will be saved as gdbtrace.log, this will take some time, patience...\n
+handle SIGPIPE SIGXCPU SIG33 SIG35 SIGPWR nostop noprint
+set breakpoint pending on
+set logging redirect on
+set logging file gdbtrace.log
+set logging enabled on
+set logging overwrite on
+break SwView::SwView(SfxViewFrame&, SfxViewShell*)
+commands
+silent
+printf "BP SwView::SwView view=%p\n", $rdi
+continue
+end
+break SwView::~SwView()
+commands
+silent
+printf "BP SwView::~SwView view=%p\n", $rdi
+bt 14
+continue
+end
+break SwWrtShell::SwWrtShell(SwDoc&, vcl::Window*, SwView&, SwViewOption const*)
+commands
+silent
+printf "BP SwWrtShell::SwWrtShell shell=%p view=%p\n", $rdi, $rcx
+continue
+end
+break SwWrtShell::~SwWrtShell()
+commands
+silent
+printf "BP SwWrtShell::~SwWrtShell shell=%p\n", $rdi
+continue
+end
+break SfxBaseController::dispose()
+commands
+silent
+printf "BP SfxBaseController::dispose controller=%p\n", $rdi
+continue
+end
+break SfxFrame::DoClose()
+commands
+silent
+printf "BP SfxFrame::DoClose frame=%p\n", $rdi
+continue
+end
+break framework::Desktop::terminate()
+commands
+silent
+printf "BP Desktop::terminate\n"
+continue
+end
+break SwBaseShell::StateClpbrd(SfxItemSet&)
+commands
+silent
+printf "BP SwBaseShell::StateClpbrd baseshell=%p\n", $rdi
+continue
+end
+run
+bt
+echo \n=== fault ===\n
+p $_siginfo._sifields._sigfault.si_addr
+info registers rip rdi rsi rax rbx rcx rdx rbp rsp r12 r13 r14 r15
+x/16i $pc-40
+echo \n=== libraries ===\n
+info sharedlibrary
+echo \n=== threads ===\n
+thread apply all bt
+quit
+set logging enabled off
+echo log is saved as gdbtrace.log\n

@@ -1,0 +1,2 @@
+# Instrumented runs: log SwView/SwWrtShell lifetimes and clipboard state queries.
+test=ext:factory,calc,deck=SheetManagerDeck,resize,svg,shot,save,close,ro,deck=SheetManagerDeck,close,writer,wquery,close

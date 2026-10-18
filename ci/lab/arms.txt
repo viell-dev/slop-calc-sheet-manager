@@ -1,0 +1,8 @@
+# Investigation of #8. One arm per line: NAME=ext|noext:STEP,STEP,...
+# Experiment 1: which part of the integration sequence is needed for the Writer-close crash.
+test=ext:factory,calc,deck=SheetManagerDeck,resize,svg,shot,save,close,ro,deck=SheetManagerDeck,close,writer,wquery,close
+control=noext:calc,resize,save,close,ro,close,writer,close
+extnodeck=ext:calc,resize,save,close,ro,close,writer,close
+extpy=ext:factory,calc,resize,save,close,ro,close,writer,close
+noextnav=noext:calc,deck=NavigatorDeck,resize,save,close,ro,deck=NavigatorDeck,close,writer,wquery,close
+extwriter=ext:writer,close

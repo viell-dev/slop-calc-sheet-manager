@@ -1,0 +1,20 @@
+set pagination off
+echo log will be saved as gdbtrace.log, this will take some time, patience...\n
+handle SIGPIPE SIGXCPU SIG33 SIG35 SIGPWR nostop noprint
+set logging redirect on
+set logging file gdbtrace.log
+set logging enabled on
+set logging overwrite on
+run
+bt
+echo \n=== fault ===\n
+p $_siginfo._sifields._sigfault.si_addr
+info registers rip rdi rsi rax rbx rcx rdx rbp rsp r12 r13 r14 r15
+x/16i $pc-40
+echo \n=== libraries ===\n
+info sharedlibrary
+echo \n=== threads ===\n
+thread apply all bt
+quit
+set logging enabled off
+echo log is saved as gdbtrace.log\n
