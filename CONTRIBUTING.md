@@ -120,7 +120,7 @@ all-but-last, and alternating-selection moves to the bottom, three times each, a
 references before and after undo. `reorder-performance-<session>.json` records median milliseconds. Move
 timing includes snapshot, planning, preflight, application, and final verification; undo timing
 covers Calc's undo call, followed by separate integrity assertions. Workbooks use only synthetic
-data and remain in the private test session's temporary directory.
+data and stay in memory; the benchmark does not save workbook files.
 
 To retain copies for inspection, run the generator with the tested office's bundled Python:
 
