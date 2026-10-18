@@ -18,8 +18,6 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   showing hidden sheets needs undo and is undone on failure
   ([#27](https://github.com/viell-dev/slop-calc-sheet-manager/issues/27)); refreshing keeps the
   keyboard position ([#29](https://github.com/viell-dev/slop-calc-sheet-manager/issues/29)).
-- Fixed LibreOffice aborting on gtk3 when Ctrl, Shift, or Alt was pressed while the panel had the
-  focus: VCL's mnemonic handling cannot cope with the panel's tab control having no page.
 - Added real-input UI tests with gtk3 and gen, headless sheet list checks, and a manual checklist
   with a synthetic workbook for what automation cannot reach.
 - Added the reorder operation layer for drag/drop and Top, Up, Down, and Bottom: minimum-call
@@ -33,10 +31,13 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   retain Calc's native rename-on-move limitation
   ([#17](https://github.com/viell-dev/slop-calc-sheet-manager/issues/17)).
 - Added an empty Sheet Manager deck to Calc's sidebar as the foundation for the sheet list.
+- Fixed a crash when Shift, Ctrl, or Alt was pressed in Calc while the Sheet Manager deck was
+  shown ([#18](https://github.com/viell-dev/slop-calc-sheet-manager/issues/18)).
 - Added Windows development checks, durable LibreOffice download pins, and integration checks that
-  reject crashes or fatal-error logs during shutdown. The intermittent gtk3 shutdown abort,
-  observed on both 26.2.1.2 and 26.8.1.1, is tracked in
-  [#8](https://github.com/viell-dev/slop-calc-sheet-manager/issues/8).
+  reject crashes or fatal-error logs during shutdown.
+- Avoided an intermittent LibreOffice crash in painted integration sessions by waiting a second
+  before the tests close Writer ([#8](https://github.com/viell-dev/slop-calc-sheet-manager/issues/8),
+  [#30](https://github.com/viell-dev/slop-calc-sheet-manager/issues/30)).
 - Kept automatic dependency updates for the checks container on Python 3.12, the oldest supported
   version, and on the Node major version that CI uses.
 - Made the integration resize test use observed frame dimensions across gtk3 window layouts,

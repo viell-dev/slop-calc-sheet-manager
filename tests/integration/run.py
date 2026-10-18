@@ -8,6 +8,7 @@ import argparse
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -25,12 +26,22 @@ from office_process import assert_clean_shutdown, finish_process, normal_startup
 
 FACTORY = "dev.viell.sheetmanager.PanelFactory"
 DECK = "SheetManagerDeck"
+# LibreOffice defect #30: on gtk3, a new Writer window reads the clipboard within milliseconds
+# and releases LibreOffice's lock while it waits; closing the document from this process during
+# that wait crashes the office (#8). Closing 100 ms or more after loading never crashed.
+WRITER_SETTLE_SECONDS = 1.0
 
 
 def property_value(name, value):
     item = PropertyValue()
     item.Name, item.Value = name, value
     return item
+
+
+def close_writer(writer):
+    """Close a Writer document after its start-up toolbar update has had time to finish."""
+    time.sleep(WRITER_SETTLE_SECONDS)
+    writer.close(True)
 
 
 def wait_for(function, description, timeout=20):
@@ -254,6 +265,26 @@ def assert_panel(context, document):
     return window, listener, peer_types
 
 
+def press_modifiers(document):
+    """Press and release real Shift, Ctrl, and Alt keys in the document's window (painted only).
+
+    Each modifier change makes VCL walk the window tree to show or hide access keys (#18).
+    """
+    title = document.getCurrentController().getFrame().getTitle()
+    windows = subprocess.run(
+        ["xdotool", "search", "--sync", "--onlyvisible", "--name", re.escape(title)],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    ).stdout.split()
+    assert windows, f"No visible window titled {title!r}"
+    subprocess.run(["xdotool", "windowactivate", "--sync", windows[-1]], check=True, timeout=30)
+    for key in ("shift", "ctrl", "alt"):
+        subprocess.run(["xdotool", "key", "--clearmodifiers", key], check=True, timeout=30)
+        time.sleep(0.3)
+
+
 def exercise(context, desktop, directory, output, *, screenshot):
     factory = context.ServiceManager.createInstanceWithContext(FACTORY, context)
     assert factory is not None, "Passive registration did not activate the Python factory"
@@ -334,6 +365,9 @@ def exercise(context, desktop, directory, output, *, screenshot):
             check=True,
         )
         assert (output / "deck.png").stat().st_size > 1000
+        press_modifiers(document)
+        # Any remote call fails if the office crashed handling the keys.
+        assert panel.getPosSize().Height == resized.Height, "The panel must survive modifier keys"
 
     # Read-only documents still have a panel, and closing a frame releases it.
     workbook = directory / "synthetic.ods"
@@ -351,7 +385,7 @@ def exercise(context, desktop, directory, output, *, screenshot):
     assert writer is not None
     decks = writer.getCurrentController().getSidebar().getDecks()
     assert not decks.hasByName(DECK), "Sheet Manager must be Calc-only"
-    writer.close(True)
+    close_writer(writer)
     return {
         "factory": FACTORY,
         "panel_types": peer_types,
@@ -364,6 +398,7 @@ def exercise(context, desktop, directory, output, *, screenshot):
         "svg_decoded": True,
         "python": sys.version,
         "screenshot": screenshot,
+        "modifier_keys": screenshot,
     }
 
 
@@ -388,7 +423,7 @@ def exercise_without_extension(context, desktop, directory):
     document.close(True)
     writer = desktop.loadComponentFromURL("private:factory/swriter", "_blank", 0, ())
     assert writer is not None
-    writer.close(True)
+    close_writer(writer)
     return {"extension_absent": True, "document_lifecycle": True, "python": sys.version}
 
 

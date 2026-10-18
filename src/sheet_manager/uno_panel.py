@@ -19,23 +19,23 @@ SHOW = cast(int, uno.getConstantByName("com.sun.star.awt.WindowAttribute.SHOW"))
 POSSIZE = cast(int, uno.getConstantByName("com.sun.star.awt.PosSize.POSSIZE"))
 
 
-def _add_hidden_page(tab_control):
-    """Keep the page-less tab control from crashing LibreOffice (#18).
-
-    When a modifier key changes, VCL's mnemonic handling (gtk3, Windows) recurses into the
-    current page of every tab control in the window and crashes on a control without pages.
-    One hidden, empty page prevents that; a shown page would cover the list. The tab control
-    shows a page again only when switching pages.
-    """
-    tab_control.insertTab()
-    for page in tab_control.getWindows():
-        page.setVisible(False)
+def _create_window(toolkit, service, parent, bounds):
+    """Create a shown child peer filling its parent's current size."""
+    descriptor = WindowDescriptor()
+    descriptor.Type = uno.Enum("com.sun.star.awt.WindowClass", "CONTAINER")
+    descriptor.WindowServiceName = service
+    descriptor.ParentIndex = -1
+    descriptor.Parent = parent
+    descriptor.Bounds = Rectangle(0, 0, bounds.Width, bounds.Height)
+    descriptor.WindowAttributes = SHOW
+    return toolkit.createWindow(descriptor)
 
 
 class SheetPanel(
     unohelper.Base, XUIElement, XToolPanel, XSidebarPanel, XComponent, XWindowListener
 ):
-    """A tab-control peer, sized by the sidebar's panel container, holding the sheet list."""
+    """A tab-control peer in a plain window, sized by the sidebar's panel container, holding the
+    sheet list."""
 
     def __init__(self, context, resource_url, arguments):
         self.ResourceURL = resource_url
@@ -45,16 +45,14 @@ class SheetPanel(
         self._listeners = []
         self._disposed = False
         bounds = self._parent.getPosSize()
-        descriptor = WindowDescriptor()
-        descriptor.Type = uno.Enum("com.sun.star.awt.WindowClass", "CONTAINER")
+        toolkit = self._parent.getToolkit()
+        # On every Shift, Ctrl, or Alt change, VCL's access-key walk enters each tab control's
+        # current page and crashes on a tab control without pages (#18). It does not descend into
+        # a plain window.
+        self._container = _create_window(toolkit, "window", self._parent, bounds)
         # A plain "window" leaves clicks unhandled: VCL starts undocking the sidebar.
-        descriptor.WindowServiceName = "tabcontrol"
-        descriptor.ParentIndex = -1
-        descriptor.Parent = self._parent
-        descriptor.Bounds = Rectangle(0, 0, bounds.Width, bounds.Height)
-        descriptor.WindowAttributes = SHOW
-        self.Window = self._parent.getToolkit().createWindow(descriptor)
-        _add_hidden_page(self.Window)
+        self.Window = _create_window(toolkit, "tabcontrol", self._container, bounds)
+        # The list sits inside the tab control, so a click never reaches the plain window.
         self.list = None
         try:
             self.list = SheetList(context, self.Frame, self.Window)
@@ -89,6 +87,7 @@ class SheetPanel(
             except Exception:
                 report("disposing the sheet list")
         self.Window.dispose()
+        self._container.dispose()
         listeners, self._listeners = self._listeners, []
         for listener in listeners:
             listener.disposing(EventObject(self))
@@ -105,6 +104,7 @@ class SheetPanel(
 
     def windowResized(self, event):
         if not self._disposed:
+            self._container.setPosSize(0, 0, event.Width, event.Height, POSSIZE)
             self.Window.setPosSize(0, 0, event.Width, event.Height, POSSIZE)
             if self.list is not None:
                 self.list.set_bounds(event.Width, event.Height)

@@ -137,8 +137,9 @@ The generator uses a separate private profile and saves only its newly created s
 
 The integration runner installs the built OXT into a fresh temporary profile, connects over a
 unique local UNO pipe, and checks the factory, tab-control peer, exact panel resizing and disposal,
-read-only Calc documents, Writer exclusion, and SVG decoding. The sheet list's feature suite
-checks its rows and their states, refreshing after sheet changes, following the active sheet,
+read-only Calc documents, Writer exclusion, and SVG decoding. Painted gtk3 sessions also press
+real Shift, Ctrl, and Alt keys with `xdotool` while the panel is shown. The sheet list's feature
+suite checks its rows and their states, refreshing after sheet changes, following the active sheet,
 dropping replaced or renamed sheets from the selection, clicks and the sheet tab menu through
 LibreOffice's synthetic input, and Show's undo and recovery rules. Every workbook is synthetic and
 loaded visibly, even when the office process itself is headless. It retries only startup, up to
@@ -208,8 +209,11 @@ workbook from `python tools/manual_workbook.py`.
 Logs, actual office/Python versions, package inventory, and results are in `test-results/` and in
 CI artifacts. The runner records the exit status of each office session and rejects nonzero exits,
 forced shutdowns after a 30-second grace period, and fatal-error messages, including during
-termination. The intermittent gtk3 shutdown abort, observed on both 26.2.1.2 and 26.8.1.1, is tracked
-in [issue #8](https://github.com/viell-dev/slop-calc-sheet-manager/issues/8).
+termination. The intermittent gtk3 abort of
+[issue #8](https://github.com/viell-dev/slop-calc-sheet-manager/issues/8) was a LibreOffice crash
+when a test closed Writer within milliseconds of opening it
+([#30](https://github.com/viell-dev/slop-calc-sheet-manager/issues/30)); the runner now waits a
+second before closing Writer.
 Windows CI verifies a pinned MSI before silently installing it; this installation script is for
 disposable CI runners, not a contributor's existing installation.
 
@@ -219,7 +223,7 @@ and are not required yet.
 They still fail on every test or shutdown failure and upload artifacts; inspect a red gtk3 job
 before merging. No error message is treated as an allowed crash.
 
-### Investigate the painted shutdown abort
+### Soak painted sessions
 
 Run the **Painted gtk3 soak** workflow manually with `sessions` between 1 and 100 (default 20).
 Each lane runs that many fresh gtk3 profiles with the extension and that many without it, retaining

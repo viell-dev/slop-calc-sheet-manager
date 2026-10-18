@@ -120,8 +120,10 @@ one as not planned, and close an accepted one through the pull request that fixe
 - The panel uses a `"tabcontrol"` peer. A plain `"window"` does not consume mouse-down events,
   which lets VCL interpret clicks as the start of sidebar undocking. Retain the tab-control
   interface assertion when adding controls, and keep the panel filling its container on resize.
-  Keep its one hidden, empty tab page: at every modifier key change, VCL's mnemonic handling
-  (gtk3, Windows) recurses into each tab control's current page and crashes when there is none.
+  The tab control sits inside a plain `"window"` of the same size: on every Shift, Ctrl, or Alt
+  change, VCL's access-key walk enters each tab control's current page and crashes on a tab
+  control without pages (#18), but it does not descend into plain windows. Keep any page-less tab
+  control out of that walk, and keep the painted modifier-key test.
 - The list is a borderless `TreeControl` (so that it is a direct child of the panel window) with
   a hidden root. With a hidden root, the tree peer mishandles every data-model change event and
   re-parents all rows under the root, so never change nodes in place: build a new data model and
@@ -152,8 +154,10 @@ one as not planned, and close an accepted one through the pull request that fixe
   Never mount host display sockets or use an existing office profile. The Windows MSI installer
   helper is only for disposable CI runners; use the existing installation on developer machines.
   Required Linux jobs keep their existing names and run headless only; `Linux gtk3 (LibreOffice
-  …)` jobs are non-required while the intermittent gtk3 shutdown abort (#8), observed on both
-  26.2.1.2 and 26.8.1.1, is investigated. Inspect every red gtk3 artifact before merging; any
+  …)` jobs stay non-required until a soak on `main` shows painted sessions are reliable. Their
+  intermittent abort (#8) was LibreOffice crashing when the test closed Writer within
+  milliseconds of opening it (#30); close test documents in painted sessions only after they have
+  settled, as `close_writer()` does. Inspect every red gtk3 artifact before merging; any
   exception needs evidence that all assertions passed and failure occurred during shutdown,
   recorded in the PR. The generic fatal message alone is not proof of #8 and is never allowed
   in the runner. `gtk3-soak.yml` and `tests/integration/soak.py` repeat fresh painted sessions in
