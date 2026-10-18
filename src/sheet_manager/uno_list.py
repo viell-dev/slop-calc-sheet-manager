@@ -656,14 +656,14 @@ class SheetList:
             if not self.frame.isActive():
                 self.frame.activate()  # Calc's undo of sheet moves needs the active view.
             active = self.controller.getActiveSheet().getName()
-            names = self.names()
-            tabs = [names[index] for index in selected_tabs(self.context, self.controller)]
+            order = list(self.document.getSheets().getElementNames())
+            tabs = [order[index] for index in selected_tabs(self.context, self.controller)]
             result = move_block(self.document, drag.order, drag.names, gap)
             if result.status == "moved":
                 self._restore_view(active, tabs)
         finally:
             self._busy = False
-        self.refresh()
+            self.refresh()
         if set(drag.names) <= set(self.names()):
             self._select(drag.names)
         if result.message:

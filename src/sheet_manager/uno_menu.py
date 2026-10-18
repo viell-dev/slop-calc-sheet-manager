@@ -41,8 +41,17 @@ class SheetMenu:
         if not picked or not set(picked) <= set(order):
             return False
         indices = sorted(order.index(name) for name in picked)
+        active = self._controller.getActiveSheet().getName()
+        before = selected_tabs(self._context, self._controller)
         select_tabs(self._context, self._frame, indices)
-        return selected_tabs(self._context, self._controller) == indices
+        if selected_tabs(self._context, self._controller) == indices:
+            return True
+        # Calc did not take exactly these sheets: leave its selection as the user had it.
+        if self._controller.getActiveSheet().getName() != active:
+            self._controller.setActiveSheet(self._document.getSheets().getByName(active))
+        if selected_tabs(self._context, self._controller) != before:
+            select_tabs(self._context, self._frame, before)
+        return False
 
     def show(self, peer, x: int, y: int, picked: list[str], hidden: set[str]) -> int | None:
         """Show the menu for the picked sheets; returns the chosen safe action, if any."""
@@ -53,7 +62,7 @@ class SheetMenu:
             if set(picked) - hidden and self.group_calc_tabs(picked):
                 self._native(peer, x, y)
                 return None
-            return self._safe(peer, x, y, picked)
+            return self._safe(peer, x, y, picked, bool(set(picked) & hidden))
         finally:
             self.is_open = False
             self._closed_at = time.monotonic()
@@ -76,10 +85,13 @@ class SheetMenu:
         finally:
             controller.dispose()
 
-    def _safe(self, peer, x, y, picked):
+    def _safe(self, peer, x, y, picked, any_hidden):
         popup = self._popup()
         popup.insertItem(SHOW, tr("Show Sheet") if len(picked) == 1 else tr("Show Sheets"), 0, 0)
         reason = show_refusal(self._document)
+        if not any_hidden:
+            # Calc did not select exactly these sheets, and none of them is hidden.
+            reason = tr("Calc could not select exactly these sheets.")
         if reason:
             popup.enableItem(SHOW, False)
             popup.setTipHelpText(SHOW, reason)
