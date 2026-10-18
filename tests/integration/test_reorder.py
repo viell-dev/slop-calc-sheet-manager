@@ -126,7 +126,9 @@ def assert_failures(context, document):
         assert document.UndoManager.AllUndoActionTitles == ()
         assert document.UndoManager.AllRedoActionTitles == ()
     # Never consume a pre-existing user edit, even if its title is also Move Sheets.
+    document.UndoManager.enterUndoContext("Move Sheets")
     document.Sheets.getByIndex(0).getCellRangeByName("D1").Value = 71
+    document.UndoManager.leaveUndoContext()
     history = document.UndoManager.AllUndoActionTitles
     for options in ({"before": True}, {"silent": True}):
         wrapped = FaultyDocument(document, FaultySheets(document.Sheets, 1, **options))
@@ -409,10 +411,23 @@ def exercise(context, desktop, directory, output):
             # Six moves require nested groups. Failure on either side of every
             # subgroup boundary must undo the complete partial operation once.
             assert_failures(context, document)
+            observed = snapshot(document)
+            target = tuple(reversed(order(document)))
+            plan = plan_order(observed.sheets, target)
+            assert apply_order(context, document, observed, plan).status == "done"
+            assert order(document) == target
+            document.UndoManager.undo()
+            assert order(document) == original
+            document.UndoManager.redo()
+            assert order(document) == target
+            document.UndoManager.undo()
+            assert order(document) == original
         assert_permissions(context, desktop, document, directory)
     finally:
         document.close(True)
     assert_scenarios(context, desktop)
+    with undo_capacity(context, 2):
+        assert_scenarios(context, desktop)
     timings = performance(context, desktop, directory)
     (output / "reorder-performance.json").write_text(
         json.dumps(timings, indent=2) + "\n", encoding="utf-8"
