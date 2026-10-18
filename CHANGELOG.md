@@ -24,3 +24,5 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 - Keep diagnostic files separate for each integration session, clear stale runner artifacts, and
   continue soak measurements after missing or unreadable session results. Manual soaks use their
   own workflow, avoiding skipped checks with required job names.
+- Asked contributors to say when an AI agent wrote or submitted an issue, pull request, or comment,
+  and whether a person reviewed it.

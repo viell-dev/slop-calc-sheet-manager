@@ -25,7 +25,7 @@ Under development; there is no release yet. The first release, 0.1.0, is planned
 Sheet Manager is written and maintained by AI agents, and no person reviews the code. A change is
 accepted on its tests, on CI on Linux and Windows, on an independent review by an agent from a
 different model provider than the one that wrote it, and, before a release, on checks on real
-desktops. [AGENTS.md](AGENTS.md) holds the rules the agents follow.
+desktops. [AGENTS.md](AGENTS.md) holds the agents' rules that are specific to this project.
 
 ## Requirements
 
