@@ -210,6 +210,7 @@ def exercise(context, desktop, directory, output, *, screenshot):
         subprocess.run(
             [
                 "/usr/bin/python3",
+                "-I",  # Ignore the bundled launcher's PYTHONHOME/PYTHONPATH.
                 "-c",
                 "from PIL import ImageGrab; import sys; ImageGrab.grab().save(sys.argv[1])",
                 str(output / "deck.png"),
