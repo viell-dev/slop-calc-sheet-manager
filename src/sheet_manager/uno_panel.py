@@ -47,7 +47,9 @@ class EmptyPanel(
         return self
 
     def createAccessible(self, parent_accessible):
-        return self.Window
+        # The empty shell has no accessible content. A native peer is an XWindow,
+        # not an XAccessible; do not return it as the wrong UNO interface.
+        return None
 
     def getHeightForWidth(self, width):
         return LayoutSize(0, -1, 400)

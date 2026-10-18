@@ -161,6 +161,8 @@ def assert_panel(context, document, factory):
 
     panel = wait_for(matching_panel, "the installed factory's panel in this Calc frame")
     assert panel.ResourceURL == "private:resource/toolpanel/SheetManager/Panel"
+    assert panel.Type == uno.getConstantByName("com.sun.star.ui.UIElementType.TOOLPANEL")
+    assert panel.createAccessible(None) is None
     peer_types = [item.typeName for item in panel.Window.getTypes()]
     assert "com.sun.star.awt.XSimpleTabController" in peer_types, peer_types
     wait_for(lambda: panel.Window.getPosSize().Height > 100, "a full-height panel")

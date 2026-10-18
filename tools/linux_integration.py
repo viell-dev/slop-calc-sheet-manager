@@ -15,6 +15,9 @@ def main() -> None:
     parser.add_argument("--skip-build", action="store_true", help="Use an already built CI image")
     parser.add_argument("--screenshot", action="store_true")
     arguments = parser.parse_args()
+    uid, gid = (os.getuid(), os.getgid()) if os.name == "posix" else (1000, 1000)
+    if uid == 0:
+        raise SystemExit("Run the integration helper as an unprivileged host user")
     pins = cast(dict[str, dict[str, str]], json.loads((ROOT / "ci/libreoffice.json").read_text()))
     pin = pins[arguments.lane]
     image = "sheet-manager-ci:" + pin["version"]
@@ -22,6 +25,7 @@ def main() -> None:
         command = ["docker", "build", "--file", str(ROOT / "ci/Dockerfile"), "--tag", image]
         for key in ("version", "series", "url", "sha256"):
             command.extend(["--build-arg", f"LO_{key.upper()}={pin[key]}"])
+        command.extend(["--build-arg", f"TEST_UID={uid}", "--build-arg", f"TEST_GID={gid}"])
         subprocess.run([*command, str(ROOT / "ci")], check=True)
     package = build(ROOT / "dist")
     output = ROOT / "test-results" / arguments.lane
@@ -30,9 +34,7 @@ def main() -> None:
     # xvfb-run waits for a readiness signal; keep its shell away from PID 1's signal semantics.
     command = ["docker", "run", "--rm", "--init", "--network", "none", "--shm-size", "512m"]
     if os.name == "posix":
-        if os.getuid() == 0:
-            raise SystemExit("Run the integration helper as an unprivileged host user")
-        command.extend(["--user", f"{os.getuid()}:{os.getgid()}"])
+        command.extend(["--user", f"{uid}:{gid}"])
     command.extend(["--env", "HOME=/tmp/sheet-manager-home"])
     for source, destination, readonly in (
         (ROOT, "/work", True),

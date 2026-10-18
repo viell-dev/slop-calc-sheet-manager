@@ -20,8 +20,12 @@ RUN test -n "$LO_VERSION" && test -n "$LO_SERIES" && test -n "$LO_URL" && test -
     && ln -s "/opt/libreoffice$LO_SERIES" /opt/lo \
     && printf '%s\n%s\n%s\n' "$LO_VERSION" "$LO_URL" "$LO_SHA256" > /opt/ci-metadata/download.txt \
     && dpkg-query -W > /opt/ci-metadata/packages.tsv \
-    && rm -rf /tmp/libreoffice /tmp/libreoffice.tar.gz /var/lib/apt/lists/* \
-    && useradd --create-home --uid 1000 tester
+    && rm -rf /tmp/libreoffice /tmp/libreoffice.tar.gz /var/lib/apt/lists/*
+
+ARG TEST_UID=1000
+ARG TEST_GID=1000
+RUN if ! getent group "$TEST_GID"; then groupadd --gid "$TEST_GID" tester; fi \
+    && useradd --create-home --uid "$TEST_UID" --gid "$TEST_GID" tester
 
 ENV LANG=C.UTF-8 GDK_BACKEND=x11 SAL_USE_VCLPLUGIN=gtk3
 USER tester
