@@ -14,8 +14,8 @@ tests cannot produce, so the extension's look and feel in use is theirs to judge
 
 - Owner testing is batched into one checklist per release candidate, built from the repository's
   manual tests. Each test request names the build to install, gives numbered steps with the
-  expected outcome of each, and asks for the operating system, the LibreOffice version, and the
-  user interface shown in Help ▸ About.
+  expected outcome of each, and asks for the operating system, the LibreOffice version, the user
+  interface shown in Help ▸ About, and a screenshot where looks matter.
 - Each checklist ships with a synthetic test workbook, and screenshots for public issues are taken
   with it, so that no real sheet names appear in public. Performance on the owner's own workbooks
   is reported as timings only.
@@ -65,7 +65,8 @@ one as not planned, and close an accepted one through the pull request that fixe
 - `Status: Needs Owner Testing` marks work that waits for a check on a real desktop.
 - `Status: Blocked` marks a tracking issue for a defect in LibreOffice or another dependency. It
   holds the versions, the reproduction, the result, and what unblocks it, so that the defect can be
-  reported upstream and verified later without testing again.
+  reported upstream and verified later without testing again. Once a report has been submitted
+  upstream, it links the tracking issue and the tracking issue links the report.
 
 ## Git and merging
 
