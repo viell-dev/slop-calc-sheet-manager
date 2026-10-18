@@ -52,6 +52,8 @@ def main():
                     "gtk3",
                     "--startup-attempts",
                     "1",
+                    "--suites",
+                    "none",
                 ]
                 if mode == "absent":
                     command.append("--without-extension")

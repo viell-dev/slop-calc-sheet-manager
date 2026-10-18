@@ -18,6 +18,7 @@ def test_soak_continues_after_unreadable_results(tmp_path: Path, failure: str) -
     shutil.copyfile(ROOT / "tests/integration/soak.py", tmp_path / "soak.py")
     (tmp_path / "run.py").write_text(
         "import json, pathlib, sys\n"
+        "assert sys.argv[sys.argv.index('--suites') + 1] == 'none'\n"
         "output = pathlib.Path(sys.argv[sys.argv.index('--output') + 1])\n"
         "result = output / 'results.json'\n"
         "if output.name == '001' and '--without-extension' not in sys.argv:\n"

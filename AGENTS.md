@@ -80,6 +80,18 @@ one as not planned, and close an accepted one through the pull request that fixe
 
 ## Technical map
 
+- `reorder.py` is the UNO-free target/minimum-call planner; `uno_reorder.py` captures snapshots,
+  checks permissions and stale handles, applies one undo group, and verifies recovery. The panel
+  contract is [docs/reordering.md](docs/reordering.md). Keep the panel busy and defer refresh during
+  application: consecutive individual scenario moves have intermediate block splits. Never pass
+  an interior scenario gap through as a raw move destination or use native multi-sheet Move.
+  Retain balanced nested undo groups: Calc limits the current context to configured undo Steps,
+  so a flat group silently loses early moves above that capacity
+  ([#16](https://github.com/viell-dev/slop-calc-sheet-manager/issues/16)). Tests cover capacity two.
+- `tests/integration/test_reorder.py` uses test-only forwarding adapters to fail after actual UNO
+  mutations; no injection seam ships. Its populated synthetic workbooks exercise formulas,
+  named ranges, and charts at 200/1,000 sheets and emit median complete-move/undo timings.
+  `generate_workbooks.py` retains copies for inspection using the same synthetic generator.
 - `src/sheet_manager/` ships under `pythonpath/sheet_manager/`. Keep pure logic importable without
   `uno`; `uno_panel.py` owns the UNO factory and panel. Integration tests use the public
   `XPanel.getDialog()` window and observe disposal with its `XEventListener`; keep test hooks out
