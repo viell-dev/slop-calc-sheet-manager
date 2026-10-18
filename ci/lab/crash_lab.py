@@ -39,6 +39,11 @@ def child(arguments):
             super().cleanup()
 
     tempfile.TemporaryDirectory = KeepCrashDumps
+    if os.environ.get("LAB_CLEAN_PYTHON_ENV"):
+        # The bundled interpreter's PYTHONHOME/PYTHONPATH would break gdb's embedded Python.
+        # A desktop launch has neither, so the office itself is unaffected.
+        os.environ.pop("PYTHONHOME", None)
+        os.environ.pop("PYTHONPATH", None)
 
     import uno  # noqa: F401
     from run import DECK, DisposalListener, office_session, property_value, wait_for

@@ -66,6 +66,8 @@ def main() -> None:
     if os.name == "posix":
         command.extend(["--user", f"{uid}:{gid}"])
     command.extend(["--env", "HOME=/tmp/sheet-manager-home"])
+    if arguments.instrumented:
+        command.extend(["--env", "LAB_CLEAN_PYTHON_ENV=1"])
     for source, destination, readonly in (
         (ROOT, "/work", True),
         (ROOT / "ci/lab", "/lab", True),
