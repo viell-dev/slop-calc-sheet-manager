@@ -152,8 +152,16 @@ published SHA-256, update the version, URL and digest together, and run that lan
 `https://downloadarchive.documentfoundation.org/libreoffice/old/<full version>/` and the full
 four-part version in filenames: `stable/` downloads disappear when the offered releases change.
 These pins do not discover newer releases automatically. Dependabot checks development tools,
-GitHub-owned actions and Docker base images weekly after a seven-day cooldown. Action references remain
-full commit SHAs, with their versions in comments.
+GitHub-owned actions and Docker base images weekly after a seven-day cooldown. Action references
+remain full commit SHAs, with their versions in comments. The checks image's two base images are
+held on purpose. Python stays on 3.12, the oldest supported version, so Dependabot proposes only
+3.12 patch releases and digest refreshes for it. Node stays on its current major version, so
+Dependabot proposes newer Node 24 releases and digest refreshes but not Node 26. The workflow
+installs Node separately with its own `node-version`, which Dependabot cannot change: a pull
+request that moves the Node image to a new version must also change both `node-version` entries
+in `.github/workflows/ci.yml` and the Node version named in this file, so that local and CI checks
+use the same Node. Moving to a new major version of Python or Node is a deliberate change made by
+hand.
 
 ## Pull requests
 
