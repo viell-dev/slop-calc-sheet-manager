@@ -8,6 +8,7 @@ import argparse
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -263,6 +264,26 @@ def assert_panel(context, document):
     return window, listener, peer_types
 
 
+def press_modifiers(document):
+    """Press and release real Shift, Ctrl, and Alt keys in the document's window (painted only).
+
+    Each modifier change makes VCL walk the window tree to show or hide access keys (#18).
+    """
+    title = document.getCurrentController().getFrame().getTitle()
+    windows = subprocess.run(
+        ["xdotool", "search", "--sync", "--onlyvisible", "--name", re.escape(title)],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    ).stdout.split()
+    assert windows, f"No visible window titled {title!r}"
+    subprocess.run(["xdotool", "windowactivate", "--sync", windows[-1]], check=True, timeout=30)
+    for key in ("shift", "ctrl", "alt"):
+        subprocess.run(["xdotool", "key", "--clearmodifiers", key], check=True, timeout=30)
+        time.sleep(0.3)
+
+
 def exercise(context, desktop, directory, output, *, screenshot):
     factory = context.ServiceManager.createInstanceWithContext(FACTORY, context)
     assert factory is not None, "Passive registration did not activate the Python factory"
@@ -343,6 +364,9 @@ def exercise(context, desktop, directory, output, *, screenshot):
             check=True,
         )
         assert (output / "deck.png").stat().st_size > 1000
+        press_modifiers(document)
+        # Any remote call fails if the office crashed handling the keys.
+        assert panel.getPosSize().Height == resized.Height, "The panel must survive modifier keys"
 
     # Read-only documents still have a panel, and closing a frame releases it.
     workbook = directory / "synthetic.ods"
@@ -373,6 +397,7 @@ def exercise(context, desktop, directory, output, *, screenshot):
         "svg_decoded": True,
         "python": sys.version,
         "screenshot": screenshot,
+        "modifier_keys": screenshot,
     }
 
 

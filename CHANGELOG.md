@@ -16,6 +16,8 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   retain Calc's native rename-on-move limitation
   ([#17](https://github.com/viell-dev/slop-calc-sheet-manager/issues/17)).
 - Added an empty Sheet Manager deck to Calc's sidebar as the foundation for the sheet list.
+- Fixed a crash when Shift, Ctrl, or Alt was pressed in Calc while the Sheet Manager deck was
+  shown ([#18](https://github.com/viell-dev/slop-calc-sheet-manager/issues/18)).
 - Added Windows development checks, durable LibreOffice download pins, and integration checks that
   reject crashes or fatal-error logs during shutdown.
 - Avoided an intermittent LibreOffice crash in painted integration sessions by waiting a second
