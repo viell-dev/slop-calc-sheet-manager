@@ -26,6 +26,8 @@ def assert_plan(sheets: tuple[Sheet, ...], target: tuple[str, ...]) -> None:
         source = work.index(move.name)
         assert source != move.index
         work.insert(move.index, work.pop(source))
+        # Rollback ownership relies on every nonempty plan prefix changing order.
+        assert tuple(work) != before
     assert tuple(work) == target
     assert len(plan.moves) == len(before) - lcs_length(before, target)
 

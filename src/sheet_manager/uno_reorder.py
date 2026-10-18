@@ -79,7 +79,7 @@ def preflight(context: Any, document: Any, observed: Snapshot, plan: Plan) -> Av
             for handle, sheet in zip(observed.handles, observed.sheets, strict=True)
         ):
             return Availability(False, tr("The sheet list has changed. Refresh it and try again."))
-        # Recompute: callers cannot smuggle stale indices or a split scenario block in a Plan.
+        # Validate against the canonical (cached) plan, including indices and scenario blocks.
         if plan_order(observed.sheets, plan.target) != plan:
             return Availability(False, tr("The move plan is invalid. Refresh it and try again."))
         if document.isReadonly():

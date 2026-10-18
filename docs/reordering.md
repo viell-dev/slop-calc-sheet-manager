@@ -14,7 +14,7 @@ plan = plan_move(observed.sheets, selected_names, "drop", gap=original_gap)
 permission = preflight(context, document, observed, plan)
 # Disable the control when not permission.allowed; expose permission.reason.
 result = apply_order(context, document, observed, plan)
-# Refresh the list and present result.message on refusal or failure.
+# Refresh the list and present result.message, including warnings on done.
 ```
 
 `snapshot` retains sheet handles and the document identity. Use the snapshot that produced the
