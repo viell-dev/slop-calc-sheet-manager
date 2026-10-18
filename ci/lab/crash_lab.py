@@ -115,6 +115,21 @@ def child(arguments):
                             "listeners": [],
                         }
                     )
+                elif name == "emptytabs":
+                    # Upstream reproduction for #18: a page-less tab control in a document window.
+                    from com.sun.star.awt import Rectangle, WindowDescriptor
+
+                    container = document.getCurrentController().getFrame().getContainerWindow()
+                    descriptor = WindowDescriptor()
+                    descriptor.Type = uno.Enum("com.sun.star.awt.WindowClass", "CONTAINER")
+                    descriptor.WindowServiceName = "tabcontrol"
+                    descriptor.ParentIndex = -1
+                    descriptor.Parent = container
+                    descriptor.Bounds = Rectangle(10, 10, 200, 100)
+                    descriptor.WindowAttributes = uno.getConstantByName(
+                        "com.sun.star.awt.WindowAttribute.SHOW"
+                    )
+                    state["emptytabs"] = container.getToolkit().createWindow(descriptor)
                 elif name == "kbactivate":
                     activate("LibreOffice " + value)
                 elif name == "key":
