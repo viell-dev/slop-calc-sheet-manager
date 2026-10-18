@@ -392,6 +392,7 @@ def check_show(context, desktop):
     targets = ["Bravo", "Delta", "Echo"]
     results: dict[str, Any] = {}
 
+    say("one undo step")
     document = hidden_workbook(desktop, targets)
     undo = document.getUndoManager()
     result = show_sheets(context, document, snapshot(document), targets)
@@ -401,6 +402,7 @@ def check_show(context, desktop):
     assert visible(document, targets) == [], "One undo must hide all three again"
     results["one_undo_step"] = True
 
+    say("refused with locked, disabled, zero, or too small undo")
     undo.clear()
     undo.lock()
     try:
@@ -422,6 +424,7 @@ def check_show(context, desktop):
     assert result.status == "refused" and "3" in result.message, result
     results["refused_without_undo"] = True
 
+    say("refused when a target was replaced")
     observed = snapshot(document)
     replace(document, "Delta")
     document.getSheets().getByName("Delta").IsVisible = False
@@ -430,24 +433,34 @@ def check_show(context, desktop):
     assert result.status == "refused" and visible(document, targets) == [], result
     results["refused_when_stale"] = True
 
-    # The second case fills a two-step history, so that the group evicts the oldest action.
-    for capacity, history, picked in ((100, 0, targets), (2, 2, targets[:2])):
-        with undo_capacity(context, capacity):
-            undo.clear()
-            cell = document.getSheets().getByName("Alfa").getCellRangeByName("A1")
-            for value in range(history):
-                cell.setValue(value + 1)  # A full stack: the user's own last actions.
-            before = list(undo.getAllUndoActionTitles())
-            failing = _FailingDocument(document, allowed=1)
-            result = show_sheets(context, failing, snapshot(failing), picked)
-            assert result.status == "failed-restored", result
-            assert visible(document, targets) == [], "A partial show must be undone"
-            assert list(undo.getAllRedoActionTitles()) == []
-            if history:
-                assert cell.getValue() == history, "Recovery must keep the user's last edit"
-                assert list(undo.getAllUndoActionTitles())[: history - 1] == before[: history - 1]
-    results["partial_failure_restored"] = True
+    say("recovery after a partial failure")
     document.close(True)
+
+    def partial_failure(picked, history):
+        document = hidden_workbook(desktop, targets)
+        undo = document.getUndoManager()
+        cell = document.getSheets().getByName("Alfa").getCellRangeByName("A1")
+        for value in range(history):
+            cell.setValue(value + 1)  # The user's own last actions.
+        before = list(undo.getAllUndoActionTitles())
+        failing = _FailingDocument(document, allowed=1)
+        result = show_sheets(context, failing, snapshot(failing), picked)
+        assert result.status == "failed-restored", result
+        assert visible(document, targets) == [], "A partial show must be undone"
+        assert list(undo.getAllRedoActionTitles()) == []
+        if history:
+            assert cell.getValue() == history, "Recovery must keep the user's last edit"
+            assert list(undo.getAllUndoActionTitles())[: history - 1] == before[: history - 1]
+        document.close(True)
+
+    say("  with room in the undo history")
+    partial_failure(targets, 0)
+    # A full two-step history: the group evicts the oldest action. Set the limit before the
+    # document exists; lowering it for an open document makes Calc abort on undo (#37).
+    say("  with a full undo history")
+    with undo_capacity(context, 2):
+        partial_failure(targets[:2], 2)
+    results["partial_failure_restored"] = True
     return results
 
 
