@@ -1,0 +1,4 @@
+# The checks image copies only the pinned development requirements.
+**
+!requirements-dev.txt
+!ci/

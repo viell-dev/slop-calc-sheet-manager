@@ -318,14 +318,13 @@ def assert_references(document, count):
     assert referenced == {f"Tab{count // 2:04}", f"Tab{count - 1:04}"}
 
 
-def performance(context, desktop, directory):
+def performance(context, desktop):
     results = []
     for count in (200, 1000):
         print(f"Generating populated {count}-sheet synthetic workbook", flush=True)
         document = populated_workbook(desktop, count)
         try:
             original = order(document)
-            document.storeAsURL((directory / f"synthetic-{count}.ods").as_uri(), ())
             for case, selected in (
                 ("first-to-bottom", original[:1]),
                 ("first-half-to-bottom", original[: count // 2]),
@@ -438,10 +437,7 @@ def exercise(context, desktop, directory, output):
     assert_scenarios(context, desktop)
     with undo_capacity(context, 2):
         assert_scenarios(context, desktop)
-    timings = performance(context, desktop, directory)
-    (output / "reorder-performance.json").write_text(
-        json.dumps(timings, indent=2) + "\n", encoding="utf-8"
-    )
+    timings = performance(context, desktop)
     return {
         "moves_undo_redo": True,
         "permissions": True,

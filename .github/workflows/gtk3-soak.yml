@@ -1,0 +1,52 @@
+name: Painted gtk3 soak
+
+on:
+  workflow_dispatch:
+    inputs:
+      sessions:
+        description: "Sessions per lane and extension mode (1–100)"
+        type: number
+        default: 20
+  workflow_call:
+    inputs:
+      sessions:
+        type: number
+        default: 20
+
+permissions:
+  contents: read
+
+jobs:
+  soak:
+    name: Soak gtk3 (${{ matrix.lane }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        lane: [minimum, current-26.2, current-26.8]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Repeat isolated painted sessions in both extension modes
+        env:
+          LANE: ${{ matrix.lane }}
+          SESSIONS: ${{ inputs.sessions }}
+        run: python3 tools/linux_integration.py "$LANE" --sessions gtk3 --soak "$SESSIONS" --backtrace
+      - name: Publish every session's exit and fatal markers
+        if: always()
+        env:
+          LANE: ${{ matrix.lane }}
+        run: |
+          if [ -f "test-results/$LANE/soak-summary.md" ]; then
+            cat "test-results/$LANE/soak-summary.md" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Soak did not produce a summary; inspect the build/runner log.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: gtk3-soak-${{ matrix.lane }}
+          path: test-results/
+          if-no-files-found: warn
