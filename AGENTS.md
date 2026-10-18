@@ -139,10 +139,24 @@ agents get the same scrutiny as reports from people.
   temporary profile, starts only its own process with a unique pipe, and disposes it afterwards.
   Open documents visibly even in headless runs: hidden documents do not reliably execute Calc
   commands or undo. Startup retries end before document creation and never retry failed tests.
+  `--sessions headless|gtk3|both` selects sessions; default headless. Add real-input UI tests to
+  the painted path in `exercise()` (`screenshot=True`), so they join the separate `linux-gtk3`
+  jobs without requiring a display in headless jobs. Keep shared lifecycle changes additive.
 - `ci/libreoffice.json`, `ci/Dockerfile`, and `tools/linux_integration.py` define the same Linux
   lab for CI and local tests. Headless checks use svp; screenshot checks use gtk3 under Xvfb.
   Never mount host display sockets or use an existing office profile. The Windows MSI installer
   helper is only for disposable CI runners; use the existing installation on developer machines.
+  Required Linux jobs keep their existing names and run headless only; `Linux gtk3 (LibreOffice
+  …)` jobs are non-required while the intermittent gtk3 shutdown abort (#8), observed on both
+  26.2.1.2 and 26.8.1.1, is investigated. Inspect every red gtk3 artifact before merging; any
+  exception needs evidence that all assertions passed and failure occurred during shutdown,
+  recorded in the PR. The generic fatal message alone is not proof of #8 and is never allowed
+  in the runner. `gtk3-soak.yml` and `tests/integration/soak.py` repeat fresh painted sessions in
+  installed/absent modes; dispatch that workflow on the branch to measure once it exists on `main`.
+  `--backtrace` uses LibreOffice's gdb wrapper; validate its trace as well as the wrapper status.
+  That wrapper bypasses the normal launcher's exit-81 bootstrap restart. The runner handles it
+  once, only before connecting UNO, and preserves the initialization trace; never extend this
+  startup handling into retrying test assertions or shutdown failures.
 - `.github/rulesets/main.json` records the main ruleset with the CI job names to require after
   this workflow is merged. `release-tags.json` records immutable version tags. These are API
   request bodies captured from rulesets 25349507 and 25349508; recording them does not apply them.
