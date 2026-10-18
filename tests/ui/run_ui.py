@@ -669,6 +669,9 @@ def main():
     parser.add_argument("--output", type=Path, default=Path("test-results/ui"))
     parser.add_argument("--vcl", action="append", choices=["gtk3", "gen"])
     parser.add_argument("--ui", action="store_true", help="Accepted from the container session")
+    parser.add_argument(
+        "--backtrace", action="store_true", help="Linux only: use LibreOffice's gdb wrapper"
+    )
     arguments = parser.parse_args()
     summary = {}
     failed = False
@@ -684,6 +687,7 @@ def main():
                 output,
                 result,
                 headless=False,
+                backtrace=arguments.backtrace,
                 vcl=vcl,
             ) as (context, desktop, directory):
                 checks = run_checks(Lab(context, desktop, directory, output), output)
