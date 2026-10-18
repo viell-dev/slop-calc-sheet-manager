@@ -19,10 +19,11 @@ result = apply_order(context, document, observed, plan)
 
 `snapshot` retains sheet handles and the document identity. Use the snapshot that produced the
 displayed list, rather than taking a new one to apply an old UI selection. A rename, insertion,
-deletion, reorder, or scenario change invalidates it. Retained handles detect same-name recreation
-except at index zero: Calc can make a deleted handle alias that index. Same-name recreation there
-cannot be distinguished by this check; the fresh order, flags and document identity still apply.
-Follow-up identity validation is tracked in
+deletion, reorder, or scenario change invalidates it. Retained handle names detect same-name
+recreation at every tested position, including index zero. Deleted handles can fall back to another
+sheet and follow later insertions; they are not stable sheet identities. The combined stale-state
+check is empirical, not proven complete for arbitrary edit sequences. Stronger identity validation
+before future destructive actions is tracked in
 [#19](https://github.com/viell-dev/slop-calc-sheet-manager/issues/19).
 `preflight` is useful for enablement; `apply_order` always repeats it immediately before mutation.
 Catch `ValueError` from planning and expose its reason when the selection or target is invalid.

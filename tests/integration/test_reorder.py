@@ -179,6 +179,10 @@ def assert_full_history_failures(context, document):
 
 
 def assert_view_warnings(context, document):
+    def fail_restore(*_args):
+        assert document.hasControllersLocked()
+        raise RuntimeError("Injected view restoration failure")
+
     for failing_move in (False, True):
         document.UndoManager.clear()
         original = snapshot(document)
@@ -188,12 +192,13 @@ def assert_view_warnings(context, document):
         )
         with patch(
             "sheet_manager.uno_reorder._restore_view",
-            side_effect=RuntimeError("Injected view restoration failure"),
+            side_effect=fail_restore,
         ):
             result = apply_order(context, target, original, plan)
         assert result.status == ("failed-restored" if failing_move else "done"), result
         assert "tab selection could not be restored" in result.message
         assert "Injected view restoration failure" in result.detail
+        assert not document.hasControllersLocked()
         assert order(document) == (
             tuple(sheet.name for sheet in original.sheets) if failing_move else plan.target
         )
@@ -278,9 +283,17 @@ def assert_permissions(context, desktop, document, directory):
     assert apply_order(context, document, observed, plan).status == "refused"
     document.Sheets.removeByName("External")
     # Same name is insufficient: a retained deleted handle must fail validation.
-    document.Sheets.removeByName("Tab0006")
-    document.Sheets.insertNewByName("Tab0006", 6)
-    assert apply_order(context, document, observed, plan).status == "refused"
+    for index in (0, 1, 6):
+        observed = snapshot(document)
+        plan = plan_move(observed.sheets, [order(document)[0]], "bottom")
+        name = observed.sheets[index].name
+        document.Sheets.removeByName(name)
+        document.Sheets.insertNewByName(name, index)
+        assert order(document) == tuple(sheet.name for sheet in observed.sheets)
+        assert observed.handles[index].getName() != name
+        permission = preflight(context, document, observed, plan)
+        assert not permission.allowed and "sheet list has changed" in permission.reason, permission
+        assert apply_order(context, document, observed, plan).status == "refused"
     path = directory / "readonly-moves.ods"
     document.storeToURL(path.as_uri(), (prop("FilterName", "calc8"),))
     readonly = desktop.loadComponentFromURL(path.as_uri(), "_blank", 0, (prop("ReadOnly", True),))

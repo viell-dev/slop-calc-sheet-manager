@@ -9,7 +9,8 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   planning, scenario blocks, permission checks, one undo step, and verified failure recovery.
   The sidebar controls will use this interface when the list panel is integrated.
   Planning stays responsive in large workbooks; recovery preserves the user's previous action at a full
-  undo stack, and view-restoration failures warn without undoing a verified move. Balanced groups
+  undo stack, and view-restoration failures warn without undoing a verified move. Both success and
+  rollback restore the view before unlocking controllers to avoid an intermediate repaint. Balanced groups
   work around Calc's undo-capacity defect
   ([#16](https://github.com/viell-dev/slop-calc-sheet-manager/issues/16)); embedded chart names
   retain Calc's native rename-on-move limitation

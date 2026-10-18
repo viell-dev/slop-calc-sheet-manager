@@ -14,7 +14,7 @@ from sheet_manager.reorder import Move, Plan, Sheet, ordered_blocks, plan_order
 class Snapshot:
     sheets: tuple[Sheet, ...]
     document_id: str
-    # Deleted handles can alias index zero; same-name recreation there is undetectable.
+    # Retained handle names detect tested replacements, but are not stable sheet identities.
     handles: tuple[Any, ...]
 
 
@@ -220,6 +220,10 @@ def apply_order(context: Any, document: Any, observed: Snapshot, plan: Plan) -> 
         _verify(document, plan.target, observed)
         if not undo.isUndoPossible() or undo.getCurrentUndoActionTitle() != title:
             raise RuntimeError("The move was not recorded as one undo action")
+        # Restore both success and rollback views under lock to avoid an intermediate repaint.
+        return _finish_view(
+            context, controller, active, selected, Result("done", tr("Sheets moved."), completed)
+        )
     except Exception as error:
         detail = str(error)
         try:
@@ -269,9 +273,6 @@ def apply_order(context: Any, document: Any, observed: Snapshot, plan: Plan) -> 
     finally:
         if locked:
             document.unlockControllers()
-    return _finish_view(
-        context, controller, active, selected, Result("done", tr("Sheets moved."), completed)
-    )
 
 
 def _finish_view(
