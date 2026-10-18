@@ -22,6 +22,8 @@ displayed list, rather than taking a new one to apply an old UI selection. A ren
 deletion, reorder, or scenario change invalidates it. Retained handles detect same-name recreation
 except at index zero: Calc can make a deleted handle alias that index. Same-name recreation there
 cannot be distinguished by this check; the fresh order, flags and document identity still apply.
+Follow-up identity validation is tracked in
+[#19](https://github.com/viell-dev/slop-calc-sheet-manager/issues/19).
 `preflight` is useful for enablement; `apply_order` always repeats it immediately before mutation.
 Catch `ValueError` from planning and expose its reason when the selection or target is invalid.
 
@@ -67,8 +69,9 @@ rollback counter. A failure before mutation must not consume an existing user un
 View-restoration errors add a translated warning and diagnostic detail without undoing a verified
 move or misreporting a verified order recovery.
 After verified rollback, the adapter removes the failed group's redo entry so Redo cannot replay
-a partial operation. A native mutation has already discarded older redo history; unrelated undo
-history is retained.
+a partial operation. A native mutation has already discarded older redo history. Recovery never
+undoes the user's preceding action. At a full stack, Calc can still evict its oldest entry when
+opening even an empty context; that native eviction does not prove that a move was recorded.
 
 Calc reapplies the configured undo-step limit to the current context
 ([#16](https://github.com/viell-dev/slop-calc-sheet-manager/issues/16)), so a flat context with more
