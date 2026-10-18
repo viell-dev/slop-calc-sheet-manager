@@ -39,3 +39,5 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   own workflow, avoiding skipped checks with required job names.
 - Asked contributors to say when an AI agent wrote or submitted an issue, pull request, or comment,
   and whether a person reviewed it.
+- Required the painted gtk3 checks for merging again, after 180 painted sessions on `main` ran
+  without a failure ([#32](https://github.com/viell-dev/slop-calc-sheet-manager/issues/32)).

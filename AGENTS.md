@@ -122,15 +122,15 @@ one as not planned, and close an accepted one through the pull request that fixe
   lab for CI and local tests. Headless checks use svp; screenshot checks use gtk3 under Xvfb.
   Never mount host display sockets or use an existing office profile. The Windows MSI installer
   helper is only for disposable CI runners; use the existing installation on developer machines.
-  Required Linux jobs keep their existing names and run headless only; `Linux gtk3 (LibreOffice
-  …)` jobs stay non-required until a soak on `main` shows painted sessions are reliable. Their
-  intermittent abort (#8) was LibreOffice crashing when the test closed Writer within
-  milliseconds of opening it (#30); close test documents in painted sessions only after they have
-  settled, as `close_writer()` does. Inspect every red gtk3 artifact before merging; any
-  exception needs evidence that all assertions passed and failure occurred during shutdown,
-  recorded in the PR. The generic fatal message alone is not proof of #8 and is never allowed
-  in the runner. `gtk3-soak.yml` and `tests/integration/soak.py` repeat fresh painted sessions in
-  installed/absent modes; dispatch that workflow on the branch to measure once it exists on `main`.
+  `Linux (LibreOffice …)` jobs run the headless checks and `Linux gtk3 (LibreOffice …)` jobs the
+  painted ones; both are required. The painted jobs were not required from #10 until #32, while
+  their intermittent abort (#8) was investigated: LibreOffice crashed when a test closed Writer
+  within milliseconds of opening it (#30). Close test documents in painted sessions only after
+  they have settled, as `close_writer()` does. A red painted job blocks merging like any other;
+  never rerun it until it is green without classifying the failure from its artifacts. The
+  generic fatal message alone is not proof of #8 and is never allowed in the runner.
+  `gtk3-soak.yml` and `tests/integration/soak.py` repeat fresh painted sessions in installed and
+  absent modes; dispatch the workflow on a branch to measure the reliability of painted sessions.
   `--backtrace` uses LibreOffice's gdb wrapper; validate its trace as well as the wrapper status.
   That wrapper bypasses the normal launcher's exit-81 bootstrap restart. The runner handles it
   once, only before connecting UNO, and preserves the initialization trace; never extend this
