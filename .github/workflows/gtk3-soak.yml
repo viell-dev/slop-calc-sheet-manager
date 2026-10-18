@@ -27,20 +27,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - lane: minimum
-            tag: minimum
-            arms: ci/lab/arms.txt
-            flags: ""
-          - lane: current-26.2
-            tag: current-26.2
-            arms: ci/lab/arms.txt
-            flags: ""
-          - lane: current-26.8
-            tag: current-26.8
-            arms: ci/lab/arms.txt
-            flags: ""
+          # Experiment 4: instrumented lanes only (clipboard wait versus close ordering).
           - lane: current-26.8
             tag: current-26.8-instrumented
+            arms: ci/lab/arms-instr.txt
+            flags: "--instrumented"
+          - lane: minimum
+            tag: minimum-instrumented
             arms: ci/lab/arms-instr.txt
             flags: "--instrumented"
     steps:

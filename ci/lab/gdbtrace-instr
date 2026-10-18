@@ -31,17 +31,22 @@ silent
 printf "BP t%d SwWrtShell::~SwWrtShell shell=%p\n", $_thread, $rdi
 continue
 end
-break ToolBox::ToolBox(vcl::Window*, long)
+break TransferableDataHelper::CreateFromSystemClipboard(vcl::Window*)
 commands
 silent
-printf "BP t%d ToolBox::ToolBox toolbox=%p parent=%p\n", $_thread, $rdi, $rsi
-bt 18
+printf "BP t%d CreateFromSystemClipboard begins\n", $_thread
 continue
 end
-break ToolBox::dispose()
+break gtk_clipboard_wait_for_targets
 commands
 silent
-printf "BP t%d ToolBox::dispose toolbox=%p\n", $_thread, $rdi
+printf "BP t%d gtk_clipboard_wait_for_targets begins (nested main loop)\n", $_thread
+continue
+end
+break SwTransferable::FillClipFormatItem(SwWrtShell const&, TransferableDataHelper const&, SvxClipboardFormatItem&)
+commands
+silent
+printf "BP t%d FillClipFormatItem shell=%p\n", $_thread, $rdi
 continue
 end
 break SfxDispatcher::SfxDispatcher(SfxViewFrame*)
