@@ -2,6 +2,7 @@
 
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Literal
 
 from sheet_manager.i18n import tr
@@ -97,14 +98,8 @@ def target_order(
     return tuple(name for group in work for name in group)
 
 
-def plan_order(sheets: Sequence[Sheet], target: Sequence[str]) -> Plan:
-    """Plan the fewest single-sheet calls, possibly moving unselected sheets.
-
-    A maximum-weight increasing subsequence keeps complete scenario blocks still.
-    Weight is sheet count, so this also minimizes individual UNO calls. Any common
-    subsequence can be extended to include the whole of each block it intersects.
-    The O(B² + N²) local work avoids costly UNO calls; B <= N <= 10,000 in Calc.
-    """
+def ordered_blocks(sheets: Sequence[Sheet], target: Sequence[str]) -> tuple[tuple[str, ...], ...]:
+    """Validate a target permutation and scenario ownership in O(N)."""
     groups = blocks(sheets)
     before = tuple(sheet.name for sheet in sheets)
     destination = tuple(target)
@@ -119,19 +114,48 @@ def plan_order(sheets: Sequence[Sheet], target: Sequence[str]) -> Plan:
             raise ValueError(tr("A scenario block cannot be split or reversed."))
         ordered.append(group)
         index += len(group)
+    return tuple(ordered)
+
+
+def plan_order(sheets: Sequence[Sheet], target: Sequence[str]) -> Plan:
+    """Plan minimum single-sheet calls, possibly moving unselected sheets.
+
+    Cache only the latest immutable input/result, so preflight can validate an
+    externally supplied Plan without repeating planning for the usual caller.
+    """
+    return _plan_order(tuple(sheets), tuple(target))
+
+
+@lru_cache(maxsize=1)
+def _plan_order(sheets: tuple[Sheet, ...], destination: tuple[str, ...]) -> Plan:
+    # A maximum-weight increasing subsequence keeps complete scenario blocks still.
+    # Any common subsequence extends to the whole of each block it intersects.
+    # A Fenwick prefix-maximum tree finds that subsequence in O(B log B).
+    # Simulating the K actual moves with Python lists costs O(KN).
+    groups = blocks(sheets)
+    before = tuple(sheet.name for sheet in sheets)
+    ordered = ordered_blocks(sheets, destination)
     positions = {group[0]: i for i, group in enumerate(groups)}
-    weights: list[int] = []
+    tree = [(0, 0)] * (len(groups) + 1)
     previous: list[int] = []
+    best_overall = (0, 0)
     for i, group in enumerate(ordered):
-        best = max(
-            (j for j in range(i) if positions[ordered[j][0]] < positions[group[0]]),
-            key=lambda j: weights[j],
-            default=-1,
-        )
-        weights.append(len(group) + (weights[best] if best >= 0 else 0))
-        previous.append(best)
+        position = positions[group[0]]
+        best = (0, 0)
+        prefix = position
+        while prefix:
+            best = max(best, tree[prefix])
+            prefix -= prefix & -prefix
+        # Negative indices preserve the earliest predecessor on equal weights.
+        previous.append(-best[1] - 1)
+        candidate = (best[0] + len(group), -i - 1)
+        best_overall = max(best_overall, candidate)
+        cursor = position + 1
+        while cursor < len(tree):
+            tree[cursor] = max(tree[cursor], candidate)
+            cursor += cursor & -cursor
     keep: set[str] = set()
-    cursor = max(range(len(ordered)), key=lambda i: weights[i])
+    cursor = -best_overall[1] - 1
     while cursor >= 0:
         keep.update(ordered[cursor])
         cursor = previous[cursor]

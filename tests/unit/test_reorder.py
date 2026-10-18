@@ -1,6 +1,7 @@
 """Exhaustive orders and block layouts, with independent optimality/target oracles."""
 
 from itertools import permutations
+from time import perf_counter
 
 import pytest
 
@@ -131,6 +132,19 @@ def test_large_selection_uses_one_call() -> None:
     sheets = tuple(Sheet(str(i)) for i in range(1000))
     plan = plan_move(sheets, [str(i) for i in range(999)], "bottom")
     assert [(move.name, move.index) for move in plan.moves] == [("999", 0)]
+
+
+def test_ten_thousand_sheet_planning_budget() -> None:
+    sheets = tuple(Sheet(str(i)) for i in range(10_000))
+    names = tuple(sheet.name for sheet in sheets)
+    # Both few-call and many-call plans must stay responsive. The old quadratic
+    # block scan took tens of seconds even for the one-call case.
+    for target, calls in ((names[1:] + names[:1], 1), (tuple(reversed(names)), 9999)):
+        started = perf_counter()
+        plan = plan_order(sheets, target)
+        elapsed = perf_counter() - started
+        assert len(plan.moves) == calls
+        assert elapsed < 5.0, f"10,000 sheets took {elapsed:.3f}s for {calls} moves"
 
 
 def test_invalid_inputs_and_noops() -> None:
