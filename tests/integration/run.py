@@ -253,10 +253,10 @@ def assert_panel(context, document):
     return window, listener, peer_types
 
 
-def press_alt(document):
-    """Press and release a real Alt key in the document's window (painted sessions only).
+def press_modifiers(document):
+    """Press and release real Shift, Ctrl, and Alt keys in the document's window (painted only).
 
-    Alt makes VCL walk the window tree to show or hide access keys (#18).
+    Each modifier change makes VCL walk the window tree to show or hide access keys (#18).
     """
     title = document.getCurrentController().getFrame().getTitle()
     windows = subprocess.run(
@@ -268,8 +268,9 @@ def press_alt(document):
     ).stdout.split()
     assert windows, f"No visible window titled {title!r}"
     subprocess.run(["xdotool", "windowactivate", "--sync", windows[-1]], check=True, timeout=30)
-    subprocess.run(["xdotool", "key", "--clearmodifiers", "alt"], check=True, timeout=30)
-    time.sleep(0.5)
+    for key in ("shift", "ctrl", "alt"):
+        subprocess.run(["xdotool", "key", "--clearmodifiers", key], check=True, timeout=30)
+        time.sleep(0.3)
 
 
 def exercise(context, desktop, directory, output, *, screenshot):
@@ -352,9 +353,9 @@ def exercise(context, desktop, directory, output, *, screenshot):
             check=True,
         )
         assert (output / "deck.png").stat().st_size > 1000
-        press_alt(document)
-        # Any remote call fails if the office crashed handling the key.
-        assert panel.getPosSize().Height == resized.Height, "The panel must survive Alt"
+        press_modifiers(document)
+        # Any remote call fails if the office crashed handling the keys.
+        assert panel.getPosSize().Height == resized.Height, "The panel must survive modifier keys"
 
     # Read-only documents still have a panel, and closing a frame releases it.
     workbook = directory / "synthetic.ods"
@@ -385,7 +386,7 @@ def exercise(context, desktop, directory, output, *, screenshot):
         "svg_decoded": True,
         "python": sys.version,
         "screenshot": screenshot,
-        "alt_key": screenshot,
+        "modifier_keys": screenshot,
     }
 
 

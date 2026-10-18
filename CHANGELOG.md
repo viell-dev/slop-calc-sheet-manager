@@ -6,8 +6,8 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 ## Unreleased
 
 - Added an empty Sheet Manager deck to Calc's sidebar as the foundation for the sheet list.
-- Fixed a crash when Alt was pressed in Calc while the Sheet Manager deck was shown
-  ([#18](https://github.com/viell-dev/slop-calc-sheet-manager/issues/18)).
+- Fixed a crash when Shift, Ctrl, or Alt was pressed in Calc while the Sheet Manager deck was
+  shown ([#18](https://github.com/viell-dev/slop-calc-sheet-manager/issues/18)).
 - Added Windows development checks, durable LibreOffice download pins, and integration checks that
   reject crashes or fatal-error logs during shutdown. The intermittent gtk3 shutdown abort,
   observed on both 26.2.1.2 and 26.8.1.1, is tracked in

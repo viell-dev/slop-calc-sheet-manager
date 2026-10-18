@@ -42,8 +42,9 @@ class EmptyPanel(
         self._disposed = False
         bounds = self._parent.getPosSize()
         toolkit = self._parent.getToolkit()
-        # On Alt, VCL's access-key walk enters every tab control's current page and crashes on a
-        # tab control without pages (#18). It does not descend into a plain window.
+        # On every Shift, Ctrl, or Alt change, VCL's access-key walk enters each tab control's
+        # current page and crashes on a tab control without pages (#18). It does not descend into
+        # a plain window.
         self._container = _create_window(toolkit, "window", self._parent, bounds)
         # A plain "window" leaves clicks unhandled: VCL starts undocking the sidebar.
         self.Window = _create_window(toolkit, "tabcontrol", self._container, bounds)
