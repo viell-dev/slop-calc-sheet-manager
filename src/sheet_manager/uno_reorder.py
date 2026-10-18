@@ -7,20 +7,23 @@ import uno
 from com.sun.star.beans import PropertyValue
 
 from sheet_manager.i18n import tr
-from sheet_manager.reorder import Move, Plan, Sheet, plan_order
+from sheet_manager.reorder import Move, Plan, Sheet, ordered_blocks, plan_order
 
 
 @dataclass(frozen=True)
 class Snapshot:
     sheets: tuple[Sheet, ...]
     document_id: str
-    handles: tuple[Any, ...]  # Retain handles to detect delete/recreate under the same name.
+    # Deleted handles can alias index zero; same-name recreation there is undetectable.
+    handles: tuple[Any, ...]
 
 
 @dataclass(frozen=True)
 class Availability:
     allowed: bool
     reason: str = ""
+    detail: str = ""
+    undo_steps: int = 0
 
 
 @dataclass(frozen=True)
@@ -102,9 +105,11 @@ def preflight(context: Any, document: Any, observed: Snapshot, plan: Plan) -> Av
             return Availability(False, tr("Activate this document's window before moving sheets."))
         if not plan.moves:
             return Availability(False, tr("The sheets are already in that position."))
-        return Availability(True)
-    except Exception:
-        return Availability(False, tr("Sheet Manager could not verify that this move is safe."))
+        return Availability(True, undo_steps=capacity)
+    except Exception as error:
+        return Availability(
+            False, tr("Sheet Manager could not verify that this move is safe."), str(error)
+        )
 
 
 def _selected_names(context: Any, controller: Any, names: tuple[str, ...]) -> tuple[str, ...]:
@@ -144,7 +149,7 @@ def _verify(document: Any, target: tuple[str, ...], original: Snapshot) -> None:
     if any(sheet.scenario != expected_flags[sheet.name] for sheet in fresh.sheets):
         raise RuntimeError("Scenario sheet identities changed")
     # Also checks scenario adjacency/ownership against the original blocks.
-    plan_order(original.sheets, target)
+    ordered_blocks(original.sheets, target)
 
 
 def apply_order(context: Any, document: Any, observed: Snapshot, plan: Plan) -> Result:
@@ -157,7 +162,7 @@ def apply_order(context: Any, document: Any, observed: Snapshot, plan: Plan) -> 
     """
     permission = preflight(context, document, observed, plan)
     if not permission.allowed:
-        return Result("refused", permission.reason)
+        return Result("refused", permission.reason, detail=permission.detail)
     controller = document.getCurrentController()
     undo = document.getUndoManager()
     title = tr("Move Sheets")
@@ -170,12 +175,7 @@ def apply_order(context: Any, document: Any, observed: Snapshot, plan: Plan) -> 
     try:
         active = str(controller.getActiveSheet().getName())
         selected = _selected_names(context, controller, tuple(s.name for s in observed.sheets))
-        previous_titles = tuple(undo.getAllUndoActionTitles())
-        capacity = _undo_steps(context)
-        if capacity <= 0 or (capacity == 1 and len(plan.moves) > 1):
-            return Result(
-                "refused", tr("Enable at least two undo steps before moving these sheets.")
-            )
+        capacity = permission.undo_steps
     except Exception as error:
         return Result(
             "refused", tr("The current sheet selection could not be read."), detail=str(error)
@@ -185,7 +185,8 @@ def apply_order(context: Any, document: Any, observed: Snapshot, plan: Plan) -> 
         nonlocal attempted, completed, depth
         if len(moves) > capacity:
             # Calc limits the current undo array to configured Steps during
-            # native moves. A flat group silently loses early actions.
+            # native moves. A flat group silently loses early actions (#16):
+            # https://github.com/viell-dev/slop-calc-sheet-manager/issues/16
             # Balanced subgroups keep every level within that limit (>= 2).
             middle = len(moves) // 2
             for portion in (moves[:middle], moves[middle:]):
@@ -219,23 +220,21 @@ def apply_order(context: Any, document: Any, observed: Snapshot, plan: Plan) -> 
         _verify(document, plan.target, observed)
         if not undo.isUndoPossible() or undo.getCurrentUndoActionTitle() != title:
             raise RuntimeError("The move was not recorded as one undo action")
-        _restore_view(context, controller, active, selected)
-        return Result("done", tr("Sheets moved."), completed)
     except Exception as error:
         detail = str(error)
         try:
             if depth or (entered and not left):
                 # Context closure failed: undo could consume unrelated history.
                 raise RuntimeError("The move undo context could not be closed")
-            current_titles = tuple(undo.getAllUndoActionTitles())
             changed = tuple(document.getSheets().getElementNames()) != tuple(
                 sheet.name for sheet in observed.sheets
             )
             # A throwing API call may already have mutated the document. Conversely,
             # failure before the first mutation must never undo the user's last edit.
-            recorded = attempted and (
-                current_titles != previous_titles or (changed and current_titles[:1] == (title,))
-            )
+            # Entering an empty group can evict the oldest full-stack entry;
+            # title changes alone therefore do not prove a mutation. A minimal
+            # plan never returns to the original order after any of its moves.
+            recorded = attempted and changed
             if recorded:
                 if not controller.getFrame().isActive():
                     raise RuntimeError("Rollback needs the document's window active")
@@ -243,7 +242,6 @@ def apply_order(context: Any, document: Any, observed: Snapshot, plan: Plan) -> 
                     raise RuntimeError("The move undo action is unavailable")
                 undo.undo()
             _verify(document, tuple(sheet.name for sheet in observed.sheets), observed)
-            _restore_view(context, controller, active, selected)
             if recorded:
                 # The mutation discarded prior redo history. The only redo entry
                 # must now be our failed group; do not let Redo replay a partial
@@ -251,7 +249,7 @@ def apply_order(context: Any, document: Any, observed: Snapshot, plan: Plan) -> 
                 if tuple(undo.getAllRedoActionTitles()) != (title,):
                     raise RuntimeError("Unexpected redo history after move recovery")
                 undo.clearRedo()
-            return Result(
+            restored = Result(
                 "failed-restored",
                 tr("The move failed. The original order was restored."),
                 completed,
@@ -267,6 +265,27 @@ def apply_order(context: Any, document: Any, observed: Snapshot, plan: Plan) -> 
                 completed,
                 detail + "; " + str(rollback_error),
             )
+        return _finish_view(context, controller, active, selected, restored)
     finally:
         if locked:
             document.unlockControllers()
+    return _finish_view(
+        context, controller, active, selected, Result("done", tr("Sheets moved."), completed)
+    )
+
+
+def _finish_view(
+    context: Any, controller: Any, active: str, selected: tuple[str, ...], result: Result
+) -> Result:
+    # The order has been verified. A view warning must never undo a correct move
+    # or misreport a verified rollback as a document-order recovery failure.
+    try:
+        _restore_view(context, controller, active, selected)
+        return result
+    except Exception as error:
+        return Result(
+            result.status,
+            result.message + " " + tr("The active sheet or tab selection could not be restored."),
+            result.moves,
+            "; ".join(part for part in (result.detail, str(error)) if part),
+        )

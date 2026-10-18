@@ -126,7 +126,8 @@ agents get the same scrutiny as reports from people.
   application: consecutive individual scenario moves have intermediate block splits. Never pass
   an interior scenario gap through as a raw move destination or use native multi-sheet Move.
   Retain balanced nested undo groups: Calc limits the current context to configured undo Steps,
-  so a flat group silently loses early moves above that capacity. Tests cover capacity two.
+  so a flat group silently loses early moves above that capacity
+  ([#16](https://github.com/viell-dev/slop-calc-sheet-manager/issues/16)). Tests cover capacity two.
 - `tests/integration/test_reorder.py` uses test-only forwarding adapters to fail after actual UNO
   mutations; no injection seam ships. Its populated synthetic workbooks exercise formulas,
   named ranges, and charts at 200/1,000 sheets and emit median complete-move/undo timings.

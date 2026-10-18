@@ -5,6 +5,7 @@ import statistics
 import time
 from contextlib import contextmanager
 from typing import Any, cast
+from unittest.mock import patch
 
 import uno
 from com.sun.star.awt import Rectangle
@@ -145,6 +146,66 @@ def assert_failures(context, document):
     document.UndoManager.undo()  # Clean up the deliberately broken test adapter.
 
 
+def assert_full_history_failures(context, document):
+    # Empty contexts can evict the oldest action at capacity. Neither a native
+    # move nor our preceding identically titled action may be mistaken for ours.
+    with undo_capacity(context, 100):
+        for managed in (False, True):
+            for options in ({"before": True}, {"silent": True}):
+                document.UndoManager.clear()
+                before = order(document)
+                cell = document.Sheets.getByName(before[0]).getCellRangeByName("D1")
+                for value in range(1, 100):
+                    cell.Value = value
+                if managed:
+                    run_plan(context, document, "bottom", [before[0]])
+                else:
+                    document.Sheets.moveByName(before[0], len(before) - 1)
+                history = tuple(document.UndoManager.AllUndoActionTitles)
+                assert len(history) == 100 and history[0] == "Move Sheets", history
+                original = snapshot(document)
+                plan = plan_order(original.sheets, tuple(reversed(order(document))))
+                wrapped = FaultyDocument(document, FaultySheets(document.Sheets, 1, **options))
+                result = apply_order(context, wrapped, original, plan)
+                assert result.status == "failed-restored", result
+                assert order(document) == tuple(sheet.name for sheet in original.sheets)
+                # Calc itself evicts one oldest entry on empty-context insertion.
+                assert tuple(document.UndoManager.AllUndoActionTitles) == history[:-1]
+                assert document.UndoManager.AllRedoActionTitles == ()
+                assert cell.Value == 99
+                document.UndoManager.undo()
+                assert order(document) == before
+                assert cell.Value == 99
+
+
+def assert_view_warnings(context, document):
+    for failing_move in (False, True):
+        document.UndoManager.clear()
+        original = snapshot(document)
+        plan = plan_move(original.sheets, [order(document)[0]], "bottom")
+        target = (
+            FaultyDocument(document, FaultySheets(document.Sheets, 1)) if failing_move else document
+        )
+        with patch(
+            "sheet_manager.uno_reorder._restore_view",
+            side_effect=RuntimeError("Injected view restoration failure"),
+        ):
+            result = apply_order(context, target, original, plan)
+        assert result.status == ("failed-restored" if failing_move else "done"), result
+        assert "tab selection could not be restored" in result.message
+        assert "Injected view restoration failure" in result.detail
+        assert order(document) == (
+            tuple(sheet.name for sheet in original.sheets) if failing_move else plan.target
+        )
+        if not failing_move:
+            assert document.UndoManager.AllUndoActionTitles == ("Move Sheets",)
+            document.UndoManager.undo()
+            assert order(document) == tuple(sheet.name for sheet in original.sheets)
+        else:
+            assert document.UndoManager.AllUndoActionTitles == ()
+            assert document.UndoManager.AllRedoActionTitles == ()
+
+
 def assert_permissions(context, desktop, document, directory):
     def refused(reason):
         observed = snapshot(document)
@@ -157,6 +218,20 @@ def assert_permissions(context, desktop, document, directory):
         assert result.status == "refused", result
         assert order(document) == before
         assert document.UndoManager.AllUndoActionTitles == history
+
+    class UnreadableDocument:
+        def __getattr__(self, name):
+            return getattr(document, name)
+
+        def isReadonly(self):
+            raise RuntimeError("Injected safety check failure")
+
+    observed = snapshot(document)
+    plan = plan_move(observed.sheets, [order(document)[0]], "bottom")
+    permission = preflight(context, UnreadableDocument(), observed, plan)
+    assert not permission.allowed and permission.detail == "Injected safety check failure"
+    result = apply_order(context, UnreadableDocument(), observed, plan)
+    assert result.status == "refused" and result.detail == permission.detail
 
     document.protect("test")
     refused("protected")
@@ -309,7 +384,9 @@ def assert_references(document, count):
         assert document.NamedRanges.getByName(f"Value{index:04}").ReferredCells.Value == index + 1
     first = document.Sheets.getByName("Tab0000")
     assert first.Charts.Count == 2
-    # Calc recreates chart object names when their host sheet moves. References,
+    # Calc recreates chart object names when their host sheet moves (#17):
+    # https://github.com/viell-dev/slop-calc-sheet-manager/issues/17
+    # References,
     # rather than these unstable object identifiers, are the integrity contract.
     referenced = {
         document.Sheets.getByIndex(first.Charts.getByName(name).Ranges[0].Sheet).Name
@@ -416,6 +493,8 @@ def exercise(context, desktop, directory, output):
             assert order(document) == plan.target
             document.UndoManager.undo()
         assert_failures(context, document)
+        assert_full_history_failures(context, document)
+        assert_view_warnings(context, document)
         with undo_capacity(context, 2):
             # Six moves require nested groups. Failure on either side of every
             # subgroup boundary must undo the complete partial operation once.

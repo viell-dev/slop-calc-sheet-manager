@@ -108,7 +108,11 @@ and keep failure injection in test-only forwarding adapters. Reorder checks cove
 and native selection preservation, one undo and redo, permission refusals, stale handles, hidden
 sheets, scenario ownership, failures after each real mutation, and a silently ineffective undo.
 The failure suite also runs with two configured undo steps, forcing nested groups, and checks zero
-and one-step settings. All configuration changes belong to the runner's private profile.
+and one-step settings. Full-stack tests put both native and extension moves above 99 inputs and
+fail before mutation, checking that recovery never undoes either preceding move. View-restoration
+failures preserve verified move/rollback outcomes and report a separate warning. All configuration
+changes belong to the runner's private profile. Pure planning has a five-second regression budget
+at 10,000 sheets for both one-call and reverse-order plans.
 
 The reorder suite generates 200- and 1,000-sheet workbooks with a cross-sheet formula and named
 range per sheet plus charts referencing distant sheets. It measures first-sheet, half-selection,
