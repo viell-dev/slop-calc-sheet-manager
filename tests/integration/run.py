@@ -1,7 +1,7 @@
 """Install into a fresh profile and assert the live sidebar through bundled PyUNO.
 
 Run with LibreOffice's program/python[.exe], never the development venv interpreter.
-The default run is headless; --screenshot adds a separate painted gtk3/Xvfb run.
+Choose headless, gtk3, or both with --sessions; gtk3 saves a screenshot.
 """
 
 import argparse
@@ -43,7 +43,7 @@ def wait_for(function, description, timeout=20):
 
 
 @contextmanager
-def office_session(program, package, output, result, *, headless):
+def office_session(program, package, output, result, *, headless, backtrace=False):
     # Retry only startup, before opening documents or making test assertions. Windows
     # occasionally loses soffice.bin just after a successful UNO connection.
     for attempt in range(3):
@@ -63,17 +63,22 @@ def office_session(program, package, output, result, *, headless):
         suffix = ".exe" if os.name == "nt" else ""
         installer = program / ("unopkg" + suffix)
         # Do not suppress the license here: installation must be noninteractive by metadata.
-        install = subprocess.run(
-            [str(installer), profile, "add", str(package)],
-            env=environment,
-            capture_output=True,
-            text=True,
-            timeout=90,
+        install = (
+            subprocess.run(
+                [str(installer), profile, "add", str(package)],
+                env=environment,
+                capture_output=True,
+                text=True,
+                timeout=90,
+            )
+            if package is not None
+            else None
         )
         (output / f"install-{headless}-{attempt}.log").write_text(
-            install.stdout + install.stderr, encoding="utf-8"
+            install.stdout + install.stderr if install is not None else "Extension not installed\n",
+            encoding="utf-8",
         )
-        if install.returncode:
+        if install is not None and install.returncode:
             temporary.cleanup()
             raise AssertionError(f"Installation failed: {install.stdout}\n{install.stderr}")
         command = [
@@ -88,10 +93,18 @@ def office_session(program, package, output, result, *, headless):
         ]
         if headless:
             command.append("--headless")
+        if backtrace:
+            command.append("--backtrace")
+        trace_path = output / f"gdbtrace-{headless}-{attempt}.log" if backtrace else None
         log_path = output / f"soffice-{headless}-{attempt}.log"
         log = log_path.open("w", encoding="utf-8")
         process = subprocess.Popen(
-            command, env=environment, stdout=log, stderr=subprocess.STDOUT, text=True
+            command,
+            env=environment,
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            text=True,
+            cwd=directory,
         )
         try:
             # The stub calls this UNO "Any"; the actual value is a dynamic XComponentContext.
@@ -119,7 +132,16 @@ def office_session(program, package, output, result, *, headless):
             )
             desktop.getComponents().hasElements()  # Detect the post-connect startup crash.
         except Exception:
-            startup = finish_process(process, log_path, timeout=0)
+            generated_trace = directory / "gdbtrace.log"
+            startup = finish_process(
+                process,
+                log_path,
+                timeout=0,
+                backtrace_path=generated_trace if backtrace else None,
+            )
+            if trace_path is not None and generated_trace.exists():
+                trace_path.write_bytes(generated_trace.read_bytes())
+                startup["office_backtrace"] = trace_path.name
             log.close()
             (output / f"startup-{headless}-{attempt}.json").write_text(
                 json.dumps(startup, indent=2) + "\n", encoding="utf-8"
@@ -135,7 +157,19 @@ def office_session(program, package, output, result, *, headless):
             with suppress(Exception):
                 desktop.terminate()
             try:
-                result.update(finish_process(process, log_path))
+                generated_trace = directory / "gdbtrace.log"
+                # finish_process must wait before copying the debugger's final output.
+                result.update(
+                    finish_process(
+                        process,
+                        log_path,
+                        backtrace_path=generated_trace if backtrace else None,
+                    )
+                )
+                if trace_path is not None:
+                    if generated_trace.exists():
+                        trace_path.write_bytes(generated_trace.read_bytes())
+                    result["office_backtrace"] = trace_path.name
             finally:
                 log.close()
                 temporary.cleanup()
@@ -193,13 +227,29 @@ def exercise(context, desktop, directory, output, *, screenshot):
     window.setPosSize(0, 0, 1000, 500, 15)
     # gtk3 can report a 475px frame height for a 500px native request (#9).
     # Establish the actual baseline, then require both frame and panel to grow by 150px.
-    wait_for(
-        lambda: window.getPosSize().Width == 1000 and 100 < window.getPosSize().Height <= 500,
-        "the initial frame geometry",
+    previous: tuple[int, ...] | None = None
+
+    def stable_geometry():
+        nonlocal previous
+        frame, panel_size = window.getPosSize(), panel.getPosSize()
+        measured = (
+            frame.X,
+            frame.Y,
+            frame.Width,
+            frame.Height,
+            panel_size.Width,
+            panel_size.Height,
+        )
+        stable = measured == previous and frame.Width == 1000 and 100 < frame.Height <= 500
+        previous = measured
+        if stable:
+            return frame, panel_size
+        time.sleep(0.25)
+        return None
+
+    frame_before, before = wait_for(
+        stable_geometry, "two matching initial frame/panel measurements"
     )
-    time.sleep(0.25)
-    frame_before = window.getPosSize()
-    before = panel.getPosSize()
     window.setPosSize(0, 0, 1000, 650, 15)
     wait_for(
         lambda: window.getPosSize().Height == frame_before.Height + 150, "frame resize by 150px"
@@ -267,6 +317,31 @@ def exercise(context, desktop, directory, output, *, screenshot):
     }
 
 
+def exercise_without_extension(context, desktop, directory):
+    """Match the document lifecycle, omitting only extension-specific operations."""
+    assert context.ServiceManager.createInstanceWithContext(FACTORY, context) is None
+    document = desktop.loadComponentFromURL("private:factory/scalc", "_blank", 0, ())
+    sidebar = document.getCurrentController().getSidebar()
+    assert not sidebar.getDecks().hasByName(DECK)
+    window = document.getCurrentController().getFrame().getContainerWindow()
+    window.IsMaximized = False
+    for height in (500, 650):
+        window.setPosSize(0, 0, 1000, height, 15)
+        time.sleep(0.5)
+    workbook = directory / "synthetic.ods"
+    document.storeAsURL(workbook.as_uri(), ())
+    document.close(True)
+    document = desktop.loadComponentFromURL(
+        workbook.as_uri(), "_blank", 0, (property_value("ReadOnly", True),)
+    )
+    assert document.isReadonly()
+    document.close(True)
+    writer = desktop.loadComponentFromURL("private:factory/swriter", "_blank", 0, ())
+    assert writer is not None
+    writer.close(True)
+    return {"extension_absent": True, "document_lifecycle": True, "python": sys.version}
+
+
 def check_refusal(program, package, output) -> dict[str, object]:
     installer = program / ("unopkg.exe" if os.name == "nt" else "unopkg")
     with tempfile.TemporaryDirectory(prefix="sheet-manager-refusal-") as directory:
@@ -299,7 +374,14 @@ def main():
     parser.add_argument("--output", type=Path, default=Path("test-results/integration"))
     parser.add_argument("--expect-refusal", action="store_true")
     parser.add_argument("--screenshot", action="store_true")
+    parser.add_argument("--sessions", choices=["headless", "gtk3", "both"])
+    parser.add_argument("--without-extension", action="store_true")
+    parser.add_argument(
+        "--backtrace", action="store_true", help="Linux only: use LibreOffice's gdb wrapper"
+    )
     arguments = parser.parse_args()
+    if arguments.backtrace and os.name == "nt":
+        parser.error("--backtrace requires the Linux test image with gdb")
     output = arguments.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     for artifact in ("results.json", "deck.png"):
@@ -311,14 +393,29 @@ def main():
         if arguments.expect_refusal:
             results.append(check_refusal(program, package, output))
         else:
-            for headless in [True, False] if arguments.screenshot else [True]:
-                result: dict[str, object] = {"headless": headless}
+            sessions = arguments.sessions or ("both" if arguments.screenshot else "headless")
+            for headless in {"headless": [True], "gtk3": [False], "both": [True, False]}[sessions]:
+                result: dict[str, object] = {
+                    "headless": headless,
+                    "extension_installed": not arguments.without_extension,
+                }
                 results.append(result)
-                with office_session(program, package, output, result, headless=headless) as session:
+                with office_session(
+                    program,
+                    None if arguments.without_extension else package,
+                    output,
+                    result,
+                    headless=headless,
+                    backtrace=arguments.backtrace,
+                ) as session:
                     context, desktop, directory = session
-                    result.update(
-                        exercise(context, desktop, directory, output, screenshot=not headless)
-                    )
+                    if arguments.without_extension:
+                        result.update(exercise_without_extension(context, desktop, directory))
+                    else:
+                        result.update(
+                            exercise(context, desktop, directory, output, screenshot=not headless)
+                        )
+                    result["assertions_passed"] = True
     finally:
         (output / "results.json").write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(results, indent=2))

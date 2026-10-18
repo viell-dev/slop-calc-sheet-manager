@@ -17,7 +17,11 @@ def stop_process(process: subprocess.Popen[str]) -> None:
 
 
 def finish_process(
-    process: subprocess.Popen[str], log_path: Path, *, timeout: float = 10
+    process: subprocess.Popen[str],
+    log_path: Path,
+    *,
+    timeout: float = 30,
+    backtrace_path: Path | None = None,
 ) -> dict[str, object]:
     forced = False
     try:
@@ -26,11 +30,26 @@ def finish_process(
         forced = True
         stop_process(process)
     log = log_path.read_text(encoding="utf-8", errors="replace")
+    markers = [marker for marker in FATAL_MARKERS if marker in log]
+    if backtrace_path is not None and backtrace_path.exists():
+        trace = backtrace_path.read_text(encoding="utf-8", errors="replace")
+        # LibreOffice's gdb wrapper can exit zero after the inferior crashes.
+        markers.extend(
+            marker for marker in ("received signal", "exited with code") if marker in trace
+        )
+        markers.extend(
+            marker for marker in FATAL_MARKERS if marker in trace and marker not in markers
+        )
+        if "exited normally" not in trace and not markers:
+            markers.append("Debugger did not record normal office exit")
+    elif backtrace_path is not None:
+        markers.append("Debugger backtrace missing")
     return {
         "office_exit_code": process.returncode,
         "office_forced_shutdown": forced,
-        "office_fatal_markers": [marker for marker in FATAL_MARKERS if marker in log],
+        "office_fatal_markers": markers,
         "office_log": log_path.name,
+        "office_backtrace": backtrace_path.name if backtrace_path is not None else None,
     }
 
 
