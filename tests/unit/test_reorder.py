@@ -98,6 +98,35 @@ def test_scenarios_selection_and_drop_edges() -> None:
         plan_order(sheets, ("A", "B", "S1", "S2", "C"))
 
 
+def test_every_scenario_partition_selection_gap_and_button_through_seven() -> None:
+    for size in range(1, 8):
+        for mask in range(1 << (size - 1)):
+            sheets = tuple(
+                Sheet(str(i), i > 0 and bool(mask & (1 << (i - 1)))) for i in range(size)
+            )
+            groups = blocks(sheets)
+            bases = tuple(Sheet(group[0]) for group in groups)
+            boundaries = [0]
+            for group in groups:
+                boundaries.append(boundaries[-1] + len(group))
+            by_base = {group[0]: group for group in groups}
+            for selection in range(1 << len(groups)):
+                selected = {group[0] for i, group in enumerate(groups) if selection & (1 << i)}
+                for gap in range(size + 1):
+                    edge = min(boundaries, key=lambda edge: (abs(edge - gap), -edge))
+                    base_target = target_order(bases, selected, "drop", boundaries.index(edge))
+                    expected = tuple(name for base in base_target for name in by_base[base])
+                    target = target_order(sheets, selected, "drop", gap)
+                    assert target == expected
+                    assert_plan(sheets, target)
+                for action in ("up", "down", "top", "bottom"):
+                    base_target = target_order(bases, selected, action)
+                    expected = tuple(name for base in base_target for name in by_base[base])
+                    target = target_order(sheets, selected, action)
+                    assert target == expected
+                    assert_plan(sheets, target)
+
+
 def test_large_selection_uses_one_call() -> None:
     sheets = tuple(Sheet(str(i)) for i in range(1000))
     plan = plan_move(sheets, [str(i) for i in range(999)], "bottom")

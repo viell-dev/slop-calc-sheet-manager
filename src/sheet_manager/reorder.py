@@ -4,6 +4,8 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
+from sheet_manager.i18n import tr
+
 Action = Literal["drop", "top", "up", "down", "bottom"]
 
 
@@ -32,16 +34,16 @@ def blocks(sheets: Sequence[Sheet]) -> tuple[tuple[str, ...], ...]:
     names: set[str] = set()
     for sheet in sheets:
         if not sheet.name or sheet.name in names:
-            raise ValueError("Sheet names must be nonempty and unique.")
+            raise ValueError(tr("Sheet names must be nonempty and unique."))
         names.add(sheet.name)
         if sheet.scenario:
             if not result:
-                raise ValueError("A scenario must follow its base sheet.")
+                raise ValueError(tr("A scenario must follow its base sheet."))
             result[-1].append(sheet.name)
         else:
             result.append([sheet.name])
     if not result:
-        raise ValueError("A workbook must contain a base sheet.")
+        raise ValueError(tr("A workbook must contain a base sheet."))
     return tuple(tuple(group) for group in result)
 
 
@@ -60,9 +62,9 @@ def target_order(
     chosen = set(selected)
     names = {sheet.name for sheet in sheets}
     if not chosen <= names:
-        raise ValueError("The selected sheets no longer exist.")
+        raise ValueError(tr("The selected sheets no longer exist."))
     if any(chosen.intersection(group[1:]) and group[0] not in chosen for group in groups):
-        raise ValueError("Scenario sheets move only with their base sheet.")
+        raise ValueError(tr("Scenario sheets move only with their base sheet."))
     selected_bases = {group[0] for group in groups if group[0] in chosen}
     work = list(groups)
     if action in ("up", "down"):
@@ -78,7 +80,7 @@ def target_order(
         elif action == "bottom":
             gap = len(sheets)
         if gap is None or not 0 <= gap <= len(sheets):
-            raise ValueError("The drop gap is outside the sheet list.")
+            raise ValueError(tr("The drop gap is outside the sheet list."))
         boundary = 0
         block_gap = 0
         for group in groups:
@@ -91,7 +93,7 @@ def target_order(
         insertion = sum(group[0] not in selected_bases for group in groups[:block_gap])
         work = remaining[:insertion] + moving + remaining[insertion:]
     else:
-        raise ValueError("Unknown move action.")
+        raise ValueError(tr("Unknown move action."))
     return tuple(name for group in work for name in group)
 
 
@@ -107,14 +109,14 @@ def plan_order(sheets: Sequence[Sheet], target: Sequence[str]) -> Plan:
     before = tuple(sheet.name for sheet in sheets)
     destination = tuple(target)
     if len(destination) != len(before) or set(destination) != set(before):
-        raise ValueError("The target must contain every sheet exactly once.")
+        raise ValueError(tr("The target must contain every sheet exactly once."))
     by_name = {name: group for group in groups for name in group}
     ordered: list[tuple[str, ...]] = []
     index = 0
     while index < len(destination):
         group = by_name[destination[index]]
         if destination[index : index + len(group)] != group:
-            raise ValueError("A scenario block cannot be split or reversed.")
+            raise ValueError(tr("A scenario block cannot be split or reversed."))
         ordered.append(group)
         index += len(group)
     positions = {group[0]: i for i, group in enumerate(groups)}

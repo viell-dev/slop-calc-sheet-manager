@@ -107,6 +107,8 @@ modules through zipimport, so allowlist omissions fail integration. Keep feature
 and keep failure injection in test-only forwarding adapters. Reorder checks cover active-sheet
 and native selection preservation, one undo and redo, permission refusals, stale handles, hidden
 sheets, scenario ownership, failures after each real mutation, and a silently ineffective undo.
+The failure suite also runs with two configured undo steps, forcing nested groups, and checks zero
+and one-step settings. All configuration changes belong to the runner's private profile.
 
 The reorder suite generates 200- and 1,000-sheet workbooks with a cross-sheet formula and named
 range per sheet plus charts referencing distant sheets. It measures first-sheet, half-selection,
@@ -115,6 +117,15 @@ references before and after undo. `reorder-performance.json` records median mill
 timing includes snapshot, planning, preflight, application, and final verification; undo timing
 covers Calc's undo call, followed by separate integrity assertions. Workbooks use only synthetic
 data and remain in the private test session's temporary directory.
+
+To retain copies for inspection, run the generator with the tested office's bundled Python:
+
+```powershell
+& "$lo\python.exe" tests/integration/generate_workbooks.py --program $lo `
+  --oxt dist/sheet-manager-0.0.1.oxt --output test-results/workbooks --sheets 200 1000
+```
+
+The generator uses a separate private profile and saves only its newly created synthetic workbooks.
 
 The integration runner installs the built OXT into a fresh temporary profile, connects over a
 unique local UNO pipe, and checks the factory, tab-control peer, exact panel resizing and disposal,
