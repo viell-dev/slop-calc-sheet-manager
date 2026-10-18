@@ -21,6 +21,7 @@ import unohelper
 from com.sun.star.beans import PropertyValue
 from com.sun.star.lang import XEventListener
 from office_process import assert_clean_shutdown, finish_process, normal_startup_restart
+from sheet_list_checks import check_sheet_list
 
 FACTORY = "dev.viell.sheetmanager.PanelFactory"
 DECK = "SheetManagerDeck"
@@ -477,6 +478,8 @@ def main():
                         result.update(
                             exercise(context, desktop, directory, output, screenshot=not headless)
                         )
+                        if headless:  # The painted session's UI tests use real input.
+                            result["sheet_list"] = check_sheet_list(context, desktop, program)
                     result["assertions_passed"] = True
     finally:
         (output / "results.json").write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8")

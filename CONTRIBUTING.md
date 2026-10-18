@@ -98,8 +98,11 @@ Unit tests need no LibreOffice and run as part of the checks. To run them alone:
 
 The integration runner installs the built OXT into a fresh temporary profile, connects over a
 unique local UNO pipe, and checks the factory, tab-control peer, exact panel resizing and disposal,
-read-only Calc documents, Writer exclusion, and SVG decoding. Every workbook is synthetic and
-loaded visibly, even when the office process itself is headless. It retries only startup, up to
+read-only Calc documents, Writer exclusion, and SVG decoding. Headless sessions also check the
+sheet list: its rows and their states, refreshing after sheet changes, following the active
+sheet, clicks and the sheet tab menu through LibreOffice's synthetic input, and the drop mover's
+single undo step. Every workbook is synthetic and loaded visibly, even when the office process
+itself is headless. It retries only startup, up to
 three times, to tolerate a Windows crash just after connecting. It never attaches to an existing
 office or uses the normal LibreOffice profile.
 
@@ -144,6 +147,23 @@ Image changes retain older `sheet-manager-ci:<version>-<fingerprint>` tags local
 `docker image ls sheet-manager-ci` and remove obsolete tags explicitly with `docker image rm <tag>`
 (including old unfingerprinted `sheet-manager-ci:<version>` tags, which are no longer reused).
 
+Real mouse, wheel, and keyboard input needs a display, so the UI tests run only in Docker, with
+separate gtk3 and gen sessions under Xvfb, driving XTEST:
+
+```text
+python tools/linux_integration.py minimum --ui
+python tools/linux_integration.py current-26.8 --ui
+```
+
+They click, Ctrl+click, and Shift+click rows, drag two separate sheets above and below a row's
+midpoint and check the order and the single undo step, cancel a drag with Esc, auto-scroll and
+wheel-scroll the list, type into the focused list and check that no cell changes, use Ctrl+Page
+Down, Ctrl+Z, and Ctrl+S from the list, open the sheet tab menu by right click, Menu key, and
+Shift+F10, and switch documents. Results and screenshots are in `test-results/<lane>/ui-gtk3/`
+and `ui-gen/`. LibreOffice's synthetic input on Windows bypasses key handlers and cannot start a
+native drag; those checks are on the [manual checklist](docs/manual-tests.md), with a synthetic
+workbook from `python tools/manual_workbook.py`.
+
 Logs, actual office/Python versions, package inventory, and results are in `test-results/` and in
 CI artifacts. The runner records the exit status of each office session and rejects nonzero exits,
 forced shutdowns after a 30-second grace period, and fatal-error messages, including during
@@ -153,7 +173,8 @@ Windows CI verifies a pinned MSI before silently installing it; this installatio
 disposable CI runners, not a contributor's existing installation.
 
 Required Linux jobs keep the names `Linux (LibreOffice …)` and run only headless checks.
-`Linux gtk3 (LibreOffice …)` jobs run the painted checks separately and are not required yet.
+`Linux gtk3 (LibreOffice …)` jobs run the painted checks and the real-input UI tests separately
+and are not required yet.
 They still fail on every test or shutdown failure and upload artifacts; inspect a red gtk3 job
 before merging. No error message is treated as an allowed crash.
 

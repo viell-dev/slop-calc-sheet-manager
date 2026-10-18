@@ -13,17 +13,16 @@ import subprocess
 import sys
 import time
 import traceback
-import xml.etree.ElementTree as ET
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 sys.path[:0] = [str(HERE), str(ROOT / "tests" / "integration"), str(ROOT / "src")]
 
+import sheet_list_view as view  # noqa: E402
 import unohelper  # noqa: E402
 from com.sun.star.awt import XMouseMotionListener  # noqa: E402
-from com.sun.star.frame import XStatusListener  # noqa: E402
-from run import DECK, office_session, wait_for  # noqa: E402
+from run import office_session, wait_for  # noqa: E402
 from xinput import RIGHT, Pointer, XInput  # noqa: E402
 
 from sheet_manager.sheet_list import ACTIVE_MARK  # noqa: E402
@@ -58,8 +57,7 @@ NATO = [
     "Zulu",
 ]
 NAMES = NATO + [f"Sheet {number}" for number in range(27, 81)]
-MENU_FILE = Path("/opt/lo/share/config/soffice.cfg/modules/scalc/popupmenu/sheettab.xml")
-MENU_NS = "{http://openoffice.org/2001/menu}"
+PROGRAM = Path("/opt/lo/program")
 
 
 class Tracker(unohelper.Base, XMouseMotionListener):
@@ -68,24 +66,13 @@ class Tracker(unohelper.Base, XMouseMotionListener):
     def __init__(self):
         self.last = None
 
-    def mouseMoved(self, event):
-        self.last = (event.X, event.Y)
+    def mouseMoved(self, e):
+        self.last = (e.X, e.Y)
 
-    def mouseDragged(self, event):
-        self.last = (event.X, event.Y)
+    def mouseDragged(self, e):
+        self.last = (e.X, e.Y)
 
-    def disposing(self, event):
-        pass
-
-
-class State(unohelper.Base, XStatusListener):
-    def __init__(self):
-        self.enabled = None
-
-    def statusChanged(self, event):
-        self.enabled = event.IsEnabled
-
-    def disposing(self, event):
+    def disposing(self, Source):
         pass
 
 
@@ -108,58 +95,24 @@ class Workbook:
         self.window.IsMaximized = False
         self.window.setPosSize(0, 0, 1500, 950, 15)
         self.controller.setActiveSheet(sheets.getByIndex(0))
-        lab.dispatch(self.frame, ".uno:SidebarDeck." + DECK)
-        deck = self.controller.getSidebar().getDecks().getByName(DECK)
-        panel = wait_for(
-            lambda: deck.getPanels().getByName("SheetManagerPanel").getDialog(), "the panel"
-        )
-        try:
-            self.tree = wait_for(lambda: tree_of(panel), "the sheet list's tree control")
-        except AssertionError:
-            children = [[t.typeName for t in c.getTypes()] for c in panel.getWindows()]
-            raise AssertionError(
-                f"No tree among {children}; panel {[t.typeName for t in panel.getTypes()]}"
-            ) from None
+        _, self.tree = view.open_list(lab.context, document)
         wait_for(lambda: len(self.nodes()) == len(names), "every sheet in the list")
         time.sleep(1)
         self.pointer = Pointer(lab.input, lab.calibrate(self.tree, self.window))
 
     # What the list shows
 
-    def root(self):
-        selection = self.tree.getSelection()
-        nodes = selection if isinstance(selection, tuple) else (selection,)
-        for node in nodes:
-            if node is not None:
-                return node.getParent()
-        for x in (20, 40, 60):
-            for y in (3, 9):
-                node = self.tree.getNodeForLocation(x, y)
-                if node is not None:
-                    return node.getParent()
-        return None
-
     def nodes(self):
-        root = self.root()
-        return [] if root is None else [root.getChildAt(i) for i in range(root.getChildCount())]
+        return view.nodes(self.tree)
 
     def labels(self):
-        return [node.getDisplayValue() for node in self.nodes()]
+        return view.labels(self.tree)
 
     def selection(self):
-        selection = self.tree.getSelection()
-        if selection is None:
-            return []
-        nodes = selection if isinstance(selection, tuple) else (selection,)
-        picked = {node.DataValue for node in nodes}
-        return [name for name in self.order() if name in picked]
+        return view.selection(self.tree, self.order())
 
     def point(self, index, fraction=0.5):
-        node = self.nodes()[index]
-        self.tree.makeNodeVisible(node)
-        time.sleep(0.2)
-        rect = self.tree.getNodeRect(node)
-        return rect.X + 12, rect.Y + int(rect.Height * fraction)
+        return view.row_point(self.tree, index, fraction)
 
     def first_visible(self):
         rect = self.tree.getNodeRect(self.nodes()[0])
@@ -175,7 +128,7 @@ class Workbook:
 
     def calc_tabs(self):
         order = self.order()
-        return [order[index] for index in self.lab.selected_tabs(self.controller)]
+        return [order[index] for index in view.selected_tabs(self.lab.context, self.controller)]
 
     def undo_titles(self):
         return list(self.document.getUndoManager().getAllUndoActionTitles())
@@ -187,29 +140,12 @@ class Workbook:
         """Click the active sheet's row: the list gets the focus, nothing else changes."""
         self.click(self.order().index(self.active()))
 
-    def menu_items(self):
-        """The sheet tab menu's entries that are enabled now, in order, as the menu shows them."""
-        entries = [
-            item.attrib[f"{MENU_NS}id"]
-            for item in ET.parse(MENU_FILE).getroot().iter()
-            if item.tag == f"{MENU_NS}menuitem"
-        ]
-        enabled = []
-        for command in entries:
-            url = self.lab.url(command)
-            dispatcher = self.frame.queryDispatch(url, "", 0)
-            if dispatcher is None:
-                continue
-            state = State()
-            dispatcher.addStatusListener(state, url)
-            dispatcher.removeStatusListener(state, url)
-            if state.enabled:
-                enabled.append(command)
-        return enabled
-
     def choose(self, command):
         """Choose a menu entry with the keyboard; generated mnemonics differ between plugins."""
-        items = wait_for(lambda: self.menu_items() or None, "the menu's command states")
+        items = wait_for(
+            lambda: view.enabled_menu_items(self.lab.context, self.frame, PROGRAM) or None,
+            "the menu's command states",
+        )
         self.lab.input.tap("Home")
         for _ in range(items.index(command)):
             self.lab.input.tap("Down")
@@ -221,13 +157,6 @@ class Workbook:
         self.document.close(True)
 
 
-def tree_of(panel):
-    for child in panel.getWindows():
-        if "com.sun.star.awt.tree.XTreeControl" in [t.typeName for t in child.getTypes()]:
-            return child
-    return None
-
-
 class Lab:
     def __init__(self, context, desktop, directory, output):
         self.context = context
@@ -235,30 +164,6 @@ class Lab:
         self.directory = directory
         self.output = output
         self.input = XInput()
-        manager = context.ServiceManager
-        self._dispatcher = manager.createInstanceWithContext(
-            "com.sun.star.frame.DispatchHelper", context
-        )
-        self._reflection = manager.createInstanceWithContext(
-            "com.sun.star.reflection.CoreReflection", context
-        )
-        self._transformer = manager.createInstanceWithContext(
-            "com.sun.star.util.URLTransformer", context
-        )
-
-    def dispatch(self, frame, command, arguments=()):
-        self._dispatcher.executeDispatch(frame, command, "", 0, arguments)
-
-    def url(self, command):
-        from com.sun.star.util import URL
-
-        url = URL()
-        url.Complete = command
-        return self._transformer.parseStrict(url)[1]
-
-    def selected_tabs(self, controller):
-        interface = self._reflection.forName("com.sun.star.sheet.XSelectedSheetsSupplier")
-        return sorted(interface.getMethod("getSelectedSheets").invoke(controller, ())[0])
 
     def screenshot(self, name):
         environment = {

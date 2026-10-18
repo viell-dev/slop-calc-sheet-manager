@@ -5,6 +5,17 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Added the sheet list to the panel: every sheet in document order with its tab colour and its
+  active, hidden, protected, and scenario state. A click goes to a sheet; Ctrl+click and
+  Shift+click select several without changing the active sheet. Selected sheets can be dragged,
+  with an insertion line and auto-scroll, to a new place in one undo step; Esc cancels. Keys typed
+  in the list stay out of the sheet while Calc's shortcuts keep working, and the sheet tab menu
+  opens by right click, Menu key, or Shift+F10 for exactly the selected sheets
+  ([#2](https://github.com/viell-dev/slop-calc-sheet-manager/issues/2)).
+- Fixed LibreOffice aborting on gtk3 when Ctrl, Shift, or Alt was pressed while the panel had the
+  focus: VCL's mnemonic handling cannot cope with the panel's tab control having no page.
+- Added real-input UI tests with gtk3 and gen, headless sheet list checks, and a manual checklist
+  with a synthetic workbook for what automation cannot reach.
 - Added an empty Sheet Manager deck to Calc's sidebar as the foundation for the sheet list.
 - Added Windows development checks, durable LibreOffice download pins, and integration checks that
   reject crashes or fatal-error logs during shutdown. The intermittent gtk3 shutdown abort,

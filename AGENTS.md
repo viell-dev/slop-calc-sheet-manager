@@ -121,9 +121,15 @@ agents get the same scrutiny as reports from people.
 ## Technical map
 
 - `src/sheet_manager/` ships under `pythonpath/sheet_manager/`. Keep pure logic importable without
-  `uno`; `uno_panel.py` owns the UNO factory and panel. Integration tests use the public
-  `XPanel.getDialog()` window and observe disposal with its `XEventListener`; keep test hooks out
-  of the production factory.
+  `uno` (`keys.py`, `sheet_list.py`, `swatch.py`, `temporary_move.py`); the `uno_*.py` modules
+  adapt it: `uno_panel.py` owns the UNO factory and panel, `uno_list.py` the tree control, its
+  drag and drop and refresh, `uno_keys.py` the key handler, `uno_menu.py` the sheet tab menu, and
+  `uno_calc.py` shared Calc helpers. Tests observe only public UNO: the `XPanel.getDialog()`
+  window, its child tree control (`tests/integration/sheet_list_view.py`), and its
+  `XEventListener`; keep test hooks out of the production factory.
+- `temporary_move.py` is a deliberately minimal drop handler until #4's reorder layer replaces it:
+  it moves the dragged sheets as one block with one `moveByName` per sheet in one undo context
+  and refuses workbooks with scenarios. Do not grow it into a planner.
 - `extension/description.xml` is the version source. `extension/sheet-manager.components` and
   `registration.py` provide passive Python registration. `Factories.xcu` maps tool-panel URLs to
   that factory; `Sidebar.xcu` registers the Calc-only deck and panel. `tools/build.py` explicitly
@@ -135,13 +141,29 @@ agents get the same scrutiny as reports from people.
 - The panel uses a `"tabcontrol"` peer. A plain `"window"` does not consume mouse-down events,
   which lets VCL interpret clicks as the start of sidebar undocking. Retain the tab-control
   interface assertion when adding controls, and keep the panel filling its container on resize.
+  Keep its one hidden, empty tab page: at every modifier key change, VCL's mnemonic handling
+  (gtk3, Windows) recurses into each tab control's current page and crashes when there is none.
+- The list is a borderless `TreeControl` (so that it is a direct child of the panel window) with
+  a hidden root. With a hidden root, the tree peer mishandles every data-model change event and
+  re-parents all rows under the root, so never change nodes in place: build a new data model and
+  restore selection, scroll position, and keyboard cursor. Listener callbacks can arrive on other
+  threads or during a change; they only record state or post work through `AsyncCallback`.
+- Keys: a toolkit `XKeyHandler` is registered only while the tree has focus and checks
+  `hasFocus()` again for every key. Navigation keys go to the tree (the sidebar swallows what the
+  tree ignores); Enter, typed characters, and the menu keys are handled by the list; other
+  shortcuts are resolved through the document, Calc, and global shortcut configurations and
+  dispatched to the panel's frame; Tab, F6, F10, and Esc pass; everything else is consumed so it
+  cannot reach a cell (`keys.py` documents the routing).
 - `tests/integration/run.py` runs with the tested office's bundled Python, installs into a new
   temporary profile, starts only its own process with a unique pipe, and disposes it afterwards.
   Open documents visibly even in headless runs: hidden documents do not reliably execute Calc
   commands or undo. Startup retries end before document creation and never retry failed tests.
-  `--sessions headless|gtk3|both` selects sessions; default headless. Add real-input UI tests to
-  the painted path in `exercise()` (`screenshot=True`), so they join the separate `linux-gtk3`
-  jobs without requiring a display in headless jobs. Keep shared lifecycle changes additive.
+  `--sessions headless|gtk3|both` selects sessions; default headless. Headless sessions also run
+  `sheet_list_checks.py` (list contents, refresh, robot clicks and menu, the temporary mover).
+  Real-input UI tests live in `tests/ui/run_ui.py`, use XTEST under Xvfb with separate gtk3 and
+  gen sessions, and run in the `linux-gtk3` jobs through `tools/linux_integration.py <lane> --ui`.
+  What neither can reach is on the manual checklist, `docs/manual-tests.md`; keep it current.
+  Keep shared lifecycle changes additive.
 - `ci/libreoffice.json`, `ci/Dockerfile`, and `tools/linux_integration.py` define the same Linux
   lab for CI and local tests. Headless checks use svp; screenshot checks use gtk3 under Xvfb.
   Never mount host display sockets or use an existing office profile. The Windows MSI installer
