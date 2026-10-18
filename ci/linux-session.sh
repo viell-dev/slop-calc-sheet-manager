@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 unset WAYLAND_DISPLAY
-mkdir -p /results
+mkdir -p /results "$HOME"
 cp /opt/ci-metadata/* /results/
 /opt/lo/program/soffice --version | tee /results/office-version.txt
 /opt/lo/program/python -c 'import sys, uno; print(sys.version)' | tee /results/python-version.txt

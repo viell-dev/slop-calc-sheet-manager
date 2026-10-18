@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import os
 import subprocess
 from typing import cast
 
@@ -28,6 +29,11 @@ def main() -> None:
     # Docker Desktop and Linux both accept these argument-array mounts; no shell quoting.
     # xvfb-run waits for a readiness signal; keep its shell away from PID 1's signal semantics.
     command = ["docker", "run", "--rm", "--init", "--network", "none", "--shm-size", "512m"]
+    if os.name == "posix":
+        if os.getuid() == 0:
+            raise SystemExit("Run the integration helper as an unprivileged host user")
+        command.extend(["--user", f"{os.getuid()}:{os.getgid()}"])
+    command.extend(["--env", "HOME=/tmp/sheet-manager-home"])
     for source, destination, readonly in (
         (ROOT, "/work", True),
         (package, "/packages/extension.oxt", True),

@@ -118,7 +118,9 @@ python tools/linux_integration.py unsupported
 
 The helper builds `ci/Dockerfile`, verifies the repository-pinned TDF archive checksum, builds the
 extension, and runs the container unprivileged with networking disabled. Source and the OXT are
-mounted read-only; only `test-results/<lane>/` is writable. It uses Xvfb inside the container and
+mounted read-only; only `test-results/<lane>/` is writable on the host. On Linux, run as a non-root
+user: the helper maps that user's UID/GID into the container so artifacts remain writable. The
+container has a temporary home directory. It uses Xvfb inside the container and
 never mounts a host display socket. `--skip-build` reuses the corresponding `sheet-manager-ci`
 image. `--screenshot` also starts a separate painted gtk3 session and saves `deck.png`; the default
 session always checks the headless mode used by automation. The `unsupported` lane asserts that
