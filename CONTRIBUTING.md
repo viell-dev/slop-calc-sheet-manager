@@ -23,9 +23,11 @@ Report vulnerabilities privately, as [SECURITY.md](SECURITY.md) describes.
 
 ## Set up
 
-Use Python 3.12–3.14, Git, and Node.js (for Pyright). The extension has no third-party runtime
-dependencies. Development tools and UNO type stubs stay in a project virtual environment; never
-install them into LibreOffice's Python. Docker Desktop on Windows, or Docker Engine on Linux,
+Use Python 3.12–3.14, Git, and Node.js (24.21.0 in CI, for Pyright). Install Node before running
+checks; the check command fails without it rather than allowing Pyright to download a runtime.
+The extension has no third-party runtime dependencies. Development tools and UNO type stubs stay
+in a project virtual environment; never install them into LibreOffice's Python. Docker Desktop
+on Windows, or Docker Engine on Linux,
 runs the official Linux LibreOffice builds in an isolated test environment.
 
 Windows, in PowerShell 7 with a development Python installed:
@@ -42,8 +44,19 @@ python3.12 -m venv .venv
 .venv/bin/python -m pip install --require-hashes -r requirements-dev.txt
 ```
 
-LibreOffice's bundled Python is for integration tests. Some bundled builds cannot create a venv;
-use a separate development Python or run the checks in a Python container in that case.
+LibreOffice's bundled Python is for integration tests. Some bundled builds cannot create a venv
+(including Windows 26.8.1.1, which lacks `venvlauncher.exe`). On Windows with Docker Desktop and
+no development Python or Node, run these commands from the repository root in PowerShell 7:
+
+```powershell
+docker build --file ci/checks.Dockerfile --tag sheet-manager-checks .
+docker run --rm --network none --mount "type=bind,source=${PWD},target=/work" sheet-manager-checks
+```
+
+This uses digest-pinned Python 3.12.15 and Node 24.21.0 images and hash-pinned development tools.
+It writes caches, test output and `dist/` into the checkout; the container is removed on exit.
+Rebuild the image after changing `requirements-dev.txt`. This checks Linux semantics; CI also runs
+the complete check command on Windows in the Windows integration job.
 
 ## Checks
 
@@ -127,14 +140,19 @@ session always checks the headless mode used by automation. The `unsupported` la
 26.2.0 refuses installation for a dependency error and leaves the extension uninstalled.
 
 Logs, actual office/Python versions, package inventory, and results are in `test-results/` and in
-CI artifacts. Windows CI verifies a pinned MSI before silently installing it; this installation
-script is for disposable CI runners, not a contributor's existing installation.
+CI artifacts. The runner records the exit status of each office session and rejects nonzero exits,
+forced shutdowns, and fatal-error messages, including during termination. The intermittent minimum
+version gtk3 abort is tracked in [issue #8](https://github.com/viell-dev/slop-calc-sheet-manager/issues/8).
+Windows CI verifies a pinned MSI before silently installing it; this installation script is for
+disposable CI runners, not a contributor's existing installation.
 
 `ci/libreoffice.json` pins the minimum 26.2.1 build, the newest tested 26.2 and 26.8 builds, the
 unsupported 26.2.0 build, and Windows. When updating a lane, verify the current TDF catalogue and
-published SHA-256, update the version, URL and digest together, and run that lane. These pins do
-not discover newer releases automatically. Dependabot checks development tools, GitHub-owned
-actions and the Docker base image weekly after a seven-day cooldown. Action references remain
+published SHA-256, update the version, URL and digest together, and run that lane. Always use
+`https://downloadarchive.documentfoundation.org/libreoffice/old/<full version>/` and the full
+four-part version in filenames: `stable/` downloads disappear when the offered releases change.
+These pins do not discover newer releases automatically. Dependabot checks development tools,
+GitHub-owned actions and Docker base images weekly after a seven-day cooldown. Action references remain
 full commit SHAs, with their versions in comments.
 
 ## Pull requests

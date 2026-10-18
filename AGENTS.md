@@ -121,15 +121,17 @@ agents get the same scrutiny as reports from people.
 ## Technical map
 
 - `src/sheet_manager/` ships under `pythonpath/sheet_manager/`. Keep pure logic importable without
-  `uno`; `uno_panel.py` owns the UNO factory and panel. The factory's `XNameAccess` exposes only
-  already created panels through weak references, for read-only activation diagnostics.
+  `uno`; `uno_panel.py` owns the UNO factory and panel. Integration tests use the public
+  `XPanel.getDialog()` window and observe disposal with its `XEventListener`; keep test hooks out
+  of the production factory.
 - `extension/description.xml` is the version source. `extension/sheet-manager.components` and
   `registration.py` provide passive Python registration. `Factories.xcu` maps tool-panel URLs to
   that factory; `Sidebar.xcu` registers the Calc-only deck and panel. `tools/build.py` explicitly
   allowlists every packaged file and includes the root licence as `LICENSE.txt`.
 - Python UI strings go through `sheet_manager.i18n.tr`. Metadata templates use `{{message}}`,
-  rendered through that helper at build time; sidebar titles retain their XCU locale attributes.
-  Keep English as the fallback when adding translation catalogues.
+  rendered as English through that helper at build time. This renderer supports only English;
+  adding the first translation catalogue must also replace it with locale-aware XML/XCU element
+  generation and per-locale description files. Keep English as the fallback.
 - The panel uses a `"tabcontrol"` peer. A plain `"window"` does not consume mouse-down events,
   which lets VCL interpret clicks as the start of sidebar undocking. Retain the tab-control
   interface assertion when adding controls, and keep the panel filling its container on resize.
