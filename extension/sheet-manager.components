@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<components xmlns="http://openoffice.org/2010/uno-components">
+  <component loader="com.sun.star.loader.Python" uri="registration.py">
+    <implementation name="dev.viell.sheetmanager.PanelFactory">
+      <service name="dev.viell.sheetmanager.PanelFactory"/>
+      <service name="com.sun.star.ui.UIElementFactory"/>
+    </implementation>
+  </component>
+</components>

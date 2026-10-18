@@ -1,0 +1,23 @@
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    labels: ["Type: Maintenance"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    labels: ["Type: Maintenance"]
+  - package-ecosystem: docker
+    directory: /ci
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    labels: ["Type: Maintenance"]

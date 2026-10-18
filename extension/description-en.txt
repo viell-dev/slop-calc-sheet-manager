@@ -1,0 +1,4 @@
+{{Sheet Manager adds a sidebar deck to LibreOffice Calc. This development build contains an empty panel; sheet management controls are still under development.}}
+
+{{Requires LibreOffice 26.2.1 or later with Python support.}}
+{{Licence: MPL-2.0 (Mozilla Public License 2.0). The complete licence is included as LICENSE.txt.}}
