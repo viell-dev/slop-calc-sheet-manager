@@ -254,7 +254,7 @@ class _Document(unohelper.Base, XModifyListener, XActivationEventListener):
         _guarded("noticing a change", self._owner.document_modified)
 
     def activeSpreadsheetChanged(self, event):
-        self._owner.post(self._owner.active_sheet_changed, "following the active sheet")
+        _guarded("noticing a sheet switch", self._owner.active_sheet_event)
 
     def disposing(self, event):
         pass
@@ -292,10 +292,13 @@ class SheetList:
         self._stale_since: float | None = None  # The first change not yet shown.
         self._refresh_cost = 0.0  # How long the last refresh took.
         self._refreshed_at = 0.0  # When it ended.
-        # Counts the user's own selection input in the list. A request to follow Calc's
-        # selection remembers the count; newer input in the list wins over it.
+        # Counts the user's own input in the list, as the list's mouse and key handlers see
+        # it. A request to follow Calc's selection remembers the count when Calc reported the
+        # switch; newer input in the list wins over it.
         self._input = 0
         self._follow_input: int | None = None
+        self._activating: str | None = None  # The sheet the list itself is making active.
+        self._event_active: str | None = None  # The active sheet at the last switch handled.
         self._press: _Press | None = None
         self._drag: _Drag | None = None
         self._gap: int | None = None
@@ -573,9 +576,11 @@ class SheetList:
         controller = self.controller
         previous = controller.getActiveSheet()
         previous_tabs = selected_tabs(self.context, controller)
+        self._activating = name
         controller.setActiveSheet(handle)
         if controller.getActiveSheet().getName() != name:
             # Calc went to another sheet after all: put the view back as it was.
+            self._activating = None
             controller.setActiveSheet(previous)
             if selected_tabs(self.context, controller) != previous_tabs:
                 select_tabs(self.context, self.frame, previous_tabs)
@@ -650,12 +655,35 @@ class SheetList:
         self._mark_stale(now)
         self._schedule(self._refresh_delay())
 
-    def active_sheet_changed(self) -> None:
-        """Show the new active sheet, at once unless refreshes are being rate-limited."""
+    def active_sheet_event(self) -> None:
+        """Calc reports a sheet switch; the list handles it after the events already queued.
+
+        The list's mouse handlers also run after the tree has handled the input, so a click's
+        switch can be reported after a later click has reached the tree. Counting the input
+        now keeps that later click newer than the switch (#44).
+        """
+        seen = self._input
+        self.post(lambda: self.active_sheet_changed(seen), "following the active sheet")
+
+    def active_sheet_changed(self, seen: int) -> None:
+        """Show the new active sheet, at once unless refreshes are being rate-limited.
+
+        A switch the list made itself needs no following: the list already shows the sheet
+        the user clicked or chose. Other switches make the list follow Calc's selection,
+        unless the user has used the list since (`seen`).
+        """
         if self._disposed:
             return
+        try:
+            active = self.controller.getActiveSheet().getName()
+        except Exception:
+            active = None
+        if active != self._event_active:
+            self._event_active = active
+            if active is None or active != self._activating:
+                self._follow_input = seen
+            self._activating = None
         now = time.monotonic()
-        self._follow_input = self._input
         self._mark_stale(now)
         if self._refresh_timer is None and not self._busy and self._rate_wait(now) <= 0:
             self._run_refresh()
