@@ -369,6 +369,8 @@ DELIVERIES = (
     "colour",
     "save",
     "properties",
+    "held_controllers",
+    "held_action",
 )
 
 
@@ -419,6 +421,16 @@ def edit(book: Book, rng: random.Random, delivery: str) -> None:
             change()
         end_lock(book)
         return
+    if delivery.startswith("held"):
+        # Unrecorded edits under a lock that stays held after recording comes back on: nothing
+        # is reported until a later step releases it (`random_session`), and the list acts
+        # meanwhile.
+        book.begin_lock(kind)
+        book.recording = False
+        for change in changes:
+            change()
+        book.recording = True
+        return
     after = delivery.endswith("after")  # Undo recording comes back on after the unlock.
     book.begin_lock(kind)
     book.recording = False
@@ -448,7 +460,9 @@ def random_session(
     violations: list[str] = []
     for _ in range(80):
         step = rng.random()
-        if step < 0.35:
+        if step < 0.35 and book.lock is not None:
+            end_lock(book)  # A held batch's lock is released at last.
+        elif step < 0.35:
             edit(book, rng, rng.choice(deliveries))
         elif step < 0.4:
             count = len(book.sheets)
@@ -569,6 +583,28 @@ def batch(book: Book, kind: str, recording: str = "on", mixed: bool = False) -> 
         book.recording = True
     end_lock(book)
     book.recording = True
+
+
+def test_actions_while_a_batch_is_open_find_nothing():
+    """A lock still held may be holding back a whole batch's report: the list acts on nothing.
+
+    The batch ran with undo recording off inside an inner lock, recording came back on, and only
+    the inner lock was released, so LibreOffice has reported nothing yet (round 8's review).
+    """
+    for kind in ("controllers", "action"):
+        book = Book(["Alfa", "Bravo", "Charlie"])
+        sheet_list = picked_bravo(book)
+        book.begin_lock(kind)
+        book.recording = False
+        cover(book)
+        book.recording = True
+        assert sheet_list.selection.picked[0].token.name() == "Bravo"  # The handle is fooled.
+        assert sheet_list.check() != sheet_list.proven, kind  # Enter, a click, the menu refuse.
+        sheet_list.refresh()
+        assert sheet_list.selection.picked == [], kind
+        end_lock(book)  # The report arrives at last.
+        sheet_list.refresh()
+        assert sheet_list.selection.picked == [], kind
 
 
 def test_a_locked_batch_drops_the_pick():
@@ -715,6 +751,12 @@ def test_structure_events():
     assert events.generation == 8  # Recorded inside a lock.
     events.modified(3, None)
     assert events.generation == 9  # The state could not be read.
+    events.check(3, (3, "Input"), Quiet.NONE)
+    assert events.check(3, (3, "Input"), Quiet.CONTROLLERS_LOCKED) == 10  # A lock held now.
+    assert events.check(3, (3, "Input"), Quiet.ACTION_LOCKED) == 11
+    events.own_move_started(Quiet.NONE)
+    assert events.check(3, (3, "Input"), Quiet.CONTROLLERS_LOCKED) == 11  # The list's own.
+    events.own_move_finished()
 
 
 def test_structure_events_save_windows():

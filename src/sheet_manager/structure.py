@@ -31,9 +31,10 @@ So the generation moves:
 - at a modify notification that no undo action explains: none was added, nor an undo context
   that received one left, since the previous modify notification or check. Saves are the one
   measured exception, inside their save window;
-- at a check, when the undo history changed without any undo notification, or when undo
-  recording is locked or off or modify notifications are off (except, for the last, inside a
-  save window).
+- at a check, when the undo history changed without any undo notification, or when any of those
+  states holds right then: a held lock may still be holding back the report of a whole batch,
+  so the list acts on nothing until the lock is released and the report arrives. The exceptions
+  are the extension's own move and, for modify notifications being off, a save window.
 
 Out of scope, as decided by the maintainer: a structural edit that LibreOffice does not report
 at all, because undo recording and modify notifications were both off, or whose only report a
@@ -61,9 +62,6 @@ class Quiet(Flag):
     ACTION_LOCKED = auto()  # XActionLockable.isActionLocked().
     MODIFY_OFF = auto()  # XModifiable2.isSetModifiedEnabled() is false.
 
-
-# The states that make a check bump the generation.
-CHECKED = Quiet.UNDO_OFF | Quiet.UNDO_LOCKED | Quiet.MODIFY_OFF
 
 # Document events that open a save window, and the events that close each one.
 SAVE_WINDOWS = {
@@ -167,22 +165,21 @@ class StructureEvents:
     def check(self, count: int | None, history: History | None, quiet: Quiet | None) -> int:
         """Before acting on held handles; returns the generation to compare with.
 
-        `quiet` is the document's state now. Inside a save window, LibreOffice itself turns
-        modify notifications off while it may run posted work, such as a refresh.
+        `quiet` is the document's state now. Any of its states moves the generation, as at a
+        notification: a lock held now may be holding back the report of a batch made under it,
+        which comes only when the lock is released. Inside a save window, LibreOffice itself
+        turns modify notifications off while it may run posted work, such as a refresh; during
+        the extension's own move, the controller lock is its own.
         """
         if count is None or count != self.count:
             self._bump()
         self.count = count
         if quiet is not None and self.saving:
             quiet &= ~Quiet.MODIFY_OFF
+        if quiet is not None and self.own:
+            quiet &= ~Quiet.CONTROLLERS_LOCKED
         unexplained = self.history is not None and history != self.history
-        if (
-            quiet is None
-            or quiet & CHECKED
-            or history is None
-            or unexplained
-            and not self.undo_notes
-        ):
+        if quiet is None or quiet or history is None or unexplained and not self.undo_notes:
             self._bump()
         self.history = history
         self.undo_notes = 0
