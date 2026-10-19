@@ -124,11 +124,15 @@ labelled `Status: Won't Do`.
   Windows from seconds to over a minute. So rows can be out of date when the user acts on them:
   every action checks its sheets when it runs, never against the cached rows. A left press keeps
   the pressed sheet's handle, and its release activates only that sheet, still in that row
-  (#28). Activation reads the handle's current name and visibility first, because Calc sends the
-  activation of a hidden sheet to another sheet (#43). The list's mouse handlers and its notice
-  of a sheet switch both run after input already queued, so a switch is matched to the list's
-  input count when Calc reports it: newer clicks or keys in the list win over following Calc's
-  selection, and a switch the list made itself is not followed (#44).
+  (#28). If a refresh during the press moved the sheet or showed another under its name, the
+  release has no effect at all: the selection the refresh set comes back, whatever the tree
+  selected on release. Activation reads the handle's current name and visibility first, because
+  Calc sends the activation of a hidden sheet to another sheet (#43); if Calc goes elsewhere
+  anyway, the list restores the previous sheet and tabs and reads both back before saying the
+  view is unchanged (#46). The list's mouse handlers and its notice of a sheet switch both run
+  after input already queued, so a switch is matched to the list's input count when Calc reports
+  it: newer clicks or keys in the list win over following Calc's selection, and a switch the list
+  made itself is not followed (#44).
 - `extension/description.xml` is the version source. `extension/sheet-manager.components` and
   `registration.py` provide passive Python registration. `Factories.xcu` maps tool-panel URLs to
   that factory; `Sidebar.xcu` registers the Calc-only deck and panel. `tools/build.py` explicitly

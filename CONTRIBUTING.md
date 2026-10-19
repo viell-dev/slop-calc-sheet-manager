@@ -149,9 +149,10 @@ read-only Calc documents, Writer exclusion, and SVG decoding. Painted gtk3 sessi
 real Shift, Ctrl, and Alt keys with `xdotool` while the panel is shown. The sheet list's feature
 suite checks its rows and their states, refreshing after sheet changes, following the active sheet,
 dropping replaced or renamed sheets from the selection, clicks and the sheet tab menu through
-LibreOffice's synthetic input, clicks that meet rows not yet refreshed, and Show's undo and
-recovery rules. Synthetic input cannot reach gtk3's native menus, so painted sessions skip the
-menu steps, which the real-input UI tests cover.
+LibreOffice's synthetic input, clicks that meet rows not yet refreshed, restoring the view when
+Calc sends an activation elsewhere, and Show's undo and recovery rules. Synthetic input cannot
+reach gtk3's native menus, so painted sessions skip the menu steps, which the real-input UI tests
+cover.
 Every workbook is synthetic and loaded visibly, even when the office process itself is headless.
 It retries only startup, up to three times, to tolerate a Windows crash just after connecting. It
 never attaches to an existing office or uses the normal LibreOffice profile.
@@ -211,9 +212,11 @@ wheel-scroll the list, type into the focused list and check that no cell changes
 Down, Ctrl+Z, and Ctrl+S from the list, open the sheet tab menu by right click, Menu key, and
 Shift+F10, check that a plain click after the menu leaves one selected tab so that typing edits
 one sheet, keep the keyboard position across a refresh, refuse a drop after a sheet was replaced
-during the drag, and switch documents. While a far sheet's colour keeps changing, so that the list
-waits to refresh, they release a press after its sheet was replaced or moved, click a sheet hidden
-just before, and Ctrl+click after a plain click, and check that nothing acts on the old rows.
+during the drag, and switch documents. They release a press after its sheet was replaced or moved
+and check that neither an activation nor a selection follows, and that the Menu key then does
+nothing. While a far sheet's colour keeps changing, so that the list waits to refresh, they click
+a sheet hidden just before, and Ctrl+click after a plain click, and check that nothing acts on the
+old rows.
 Results and screenshots are in `test-results/<lane>/ui-gtk3/` and `ui-gen/`. LibreOffice's
 synthetic input on Windows bypasses key handlers and cannot start a native drag; those checks are
 on the [manual checklist](docs/manual-tests.md), with a synthetic workbook from
