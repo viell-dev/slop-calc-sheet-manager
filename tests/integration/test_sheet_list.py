@@ -23,15 +23,18 @@ from com.sun.star.table import CellRangeAddress
 from main_thread import close_document
 from sheet_list_view import (
     BATCHES,
+    LOCKS,
     UNRECORDED,
     cover_batch,
     enabled_menu_items,
+    held_batch,
     labels,
     names,
     nodes,
     on_main_thread,
     open_list,
     poll,
+    release,
     row_point,
     selected_tabs,
     selection,
@@ -510,6 +513,25 @@ def check_stale_clicks(context, desktop):
         replaced = sheets.getByName("Bravo").getCellRangeByName("A1").getString()
         assert replaced == "replacement", (way, replaced)
         results[way] = {"selection": [], "notice": bool(controller.hasInfobar(uno_list.NOTICE))}
+        controller.setActiveSheet(sheets.getByName("Alfa"))
+
+    say("a click while a batch's lock is still held activates nothing (#28)")
+    for lock in LOCKS:
+        document.getUndoManager().clear()
+        settled()
+        pick_bravo_and_delta()
+        on_main_thread(context, lambda lk=lock: held_batch(document, lk))
+        try:
+            # LibreOffice has reported nothing yet; Bravo's row now holds the replacement.
+            robot.click(tree, row_point(tree, 1))
+            time.sleep(1)
+            clicked = active()
+        finally:
+            on_main_thread(context, lambda lk=lock: release(document, lk))
+        poll(lambda: selection(tree, list(sheets.getElementNames())) == [], "the picks to go")
+        held = {"active_after_click": clicked, "selection": []}
+        assert clicked == "Delta", (lock, held)
+        results[f"held {lock}"] = held
         controller.setActiveSheet(sheets.getByName("Alfa"))
 
     say("out of scope: undo off and modify notifications off report nothing (documented)")

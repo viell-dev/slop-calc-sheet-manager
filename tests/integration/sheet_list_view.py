@@ -119,6 +119,22 @@ def unrecorded_batch(document, way):
         document.IsUndoEnabled = True
 
 
+LOCKS = ("lockControllers", "addActionLock")
+
+
+def held_batch(document, lock):
+    """Take `lock`, then run `unrecorded_batch` inside it with recording back on before its own
+    unlock. The outer lock stays held, so LibreOffice reports nothing until `release`.
+    """
+    begin, _ = _wrapper(document, lock)
+    begin()
+    unrecorded_batch(document, f"{lock} before")
+
+
+def release(document, lock):
+    _wrapper(document, lock)[1]()
+
+
 def poll(function, description, timeout=20):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:

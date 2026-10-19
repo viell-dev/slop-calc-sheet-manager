@@ -42,7 +42,9 @@ with both versions:
 - With undo recording off (`IsUndoEnabled`), a change is reported only by its modify
   notification, and the undo manager then also reads as locked. Inside a lock, the one modify
   notification at the end shows recording as off if it is still off then; if recording was
-  turned back on before the unlock, only the missing undo action shows the batch.
+  turned back on before the unlock, only the missing undo action shows the batch. While an outer
+  lock is still held, nothing is reported at all, so the monitor treats a lock held at a check
+  as a report that may still be coming, and the list acts on nothing until it arrives.
 - A save reports several modify notifications and no undo action, all between `OnSave` and
   `OnSaveDone` (`OnSaveAs` and `OnSaveAsDone` for Save As), also for Ctrl+S and for autosave that
   saves the original document. LibreOffice can run posted work during a save, with modify

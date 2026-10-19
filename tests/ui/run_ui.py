@@ -969,6 +969,64 @@ def check_save_keeps_picks(book):
     return evidence
 
 
+def check_actions_refused_while_lock_held(book):
+    """Enter and Menu → Hide act on nothing while a batch's outer lock is still held (#28).
+
+    Bravo is picked with Delta active and an empty undo history. On LibreOffice's main thread,
+    the insert-delete-rename batch runs with undo recording off inside an inner lock, recording
+    comes back on, and only the inner lock is released (`view.held_batch`): LibreOffice reports
+    nothing until the outer lock goes. Enter must not activate the replacement, and Menu must
+    not open a menu whose Hide hides it; after the release, the picks are dropped.
+    """
+    sheets = book.document.getSheets()
+    undo = book.document.getUndoManager()
+    evidence = {}
+    for lock in view.LOCKS:
+        for action in ("enter", "menu"):
+            reset(book)
+            sheets.getByName(NAMES[1]).getCellRangeByName("A1").setString("original")
+            undo.clear()
+            time.sleep(1.5)
+            book.click(3)  # Delta becomes active.
+            book.lab.input.tap("b", pause=0.5)  # Bravo is picked; Delta stays active.
+            wait_until(lambda: book.selection() == [NAMES[1]], "typing to pick Bravo")
+            time.sleep(1.5)
+            view.on_main_thread(
+                book.lab.context, lambda lk=lock: view.held_batch(book.document, lk)
+            )
+            try:
+                time.sleep(1)
+                tabs = book.calc_tabs()
+                if action == "enter":
+                    book.lab.input.tap("Return", pause=0.8)
+                else:
+                    book.lab.input.tap("Menu", pause=0.8)
+                    if book.calc_tabs() != tabs:
+                        book.choose(".uno:Hide")
+                        time.sleep(1)
+                    else:
+                        book.lab.input.tap("Escape", pause=0.3)
+                state = {
+                    "active": book.active(),
+                    "active_marker": sheets.getByName(book.active())
+                    .getCellRangeByName("A1")
+                    .getString(),
+                    "hidden": [n for n in book.order() if not sheets.getByName(n).IsVisible],
+                    "undo": book.undo_titles(),
+                }
+            finally:
+                view.on_main_thread(
+                    book.lab.context, lambda lk=lock: view.release(book.document, lk)
+                )
+            wait_until(lambda: book.selection() == [], "the picks to go once the lock is released")
+            evidence[f"{lock} {action}"] = state
+            while undo.getAllUndoActionTitles():
+                undo.undo()
+            assert state["active"] == NAMES[3] and state["active_marker"] != "replacement", evidence
+            assert state["hidden"] == [] and state["undo"] == [], evidence
+    return evidence
+
+
 def check_click_hidden_before_refresh(book):
     """A sheet hidden just before its row is clicked is not activated, nor any other (#43)."""
     target = NAMES[3]
@@ -1070,6 +1128,7 @@ def run_checks(lab, output):
             lambda: check_drop_refused_after_unrecorded_batch(book),
         ),
         ("save_keeps_picks", lambda: check_save_keeps_picks(book)),
+        ("actions_refused_while_lock_held", lambda: check_actions_refused_while_lock_held(book)),
         ("click_hidden_before_refresh", lambda: check_click_hidden_before_refresh(book)),
         ("newer_selection_kept", lambda: check_newer_selection_kept(book)),
         ("other_document", lambda: check_other_document(lab, book)),

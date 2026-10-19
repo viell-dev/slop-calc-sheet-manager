@@ -123,10 +123,11 @@ labelled `Status: Won't Do`.
   undo and redo; at a modify notification that no recorded undo action explains, except inside
   a save window (`OnSave`, `OnSaveAs`, or `OnCopyTo` up to its `Done` or `Failed` event, or the
   next undo notification); and at a check, when the undo history changed without a notification
-  or undo recording or modify notifications are off (LibreOffice turns modify notifications off
-  while it saves, so not inside a save window). Undo notifications come for every recorded
-  action, also inside `lockControllers`, `addActionLock`, `disableSetModified`, and undo
-  contexts, where modify notifications are batched or missing. Every action checks the
+  or any of those states holds then, since a lock still held may be holding back the report of a
+  whole batch (except the list's own move's lock, and modify notifications being off inside a
+  save window, where LibreOffice turns them off itself). Undo notifications come for every
+  recorded action, also inside `lockControllers`, `addActionLock`, `disableSetModified`, and
+  undo contexts, where modify notifications are batched or missing. Every action checks the
   generation again when it runs (`check()`). Picks, presses, drags, and an open menu carry the
   generation they were proved at; when it moves, the list drops every ref and any held press and
   tells the user in an infobar, which only the user closes, since removing one moves the focus
