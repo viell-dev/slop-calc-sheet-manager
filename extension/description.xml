@@ -12,5 +12,8 @@
   <dependencies>
     <lo:LibreOffice-minimal-version value="26.2.1"/>
   </dependencies>
+  <update-information>
+    <src xlink:href="https://viell-dev.github.io/slop-calc-sheet-manager/updates/stable.xml"/>
+  </update-information>
   <extension-description><src lang="en" xlink:href="description-en.txt"/></extension-description>
 </description>

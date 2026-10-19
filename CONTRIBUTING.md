@@ -100,6 +100,13 @@ Unit tests need no LibreOffice and run as part of the checks. To run them alone:
 .venv/bin/python -m pytest
 ```
 
+Release tests cover version ordering, candidate policy, changelog extraction, and update feeds.
+The integration runner also sends generated loopback HTTP feeds through LibreOffice's update
+parser and checks candidate compatibility through its deployment API. The update dialog itself
+has no public headless offered-update API; see [RELEASING.md](RELEASING.md#verification-boundary)
+for the tested boundary and the remaining desktop check. Release dry runs and publication follow
+[RELEASING.md](RELEASING.md).
+
 The reorder suite exhausts all permutations through seven sheets and all scenario partitions and
 block orders through seven. It checks the minimum call count against an independent
 longest-common-subsequence oracle. The panel-facing contract is in
@@ -219,11 +226,10 @@ second before closing Writer.
 Windows CI verifies a pinned MSI before silently installing it; this installation script is for
 disposable CI runners, not a contributor's existing installation.
 
-Required Linux jobs keep the names `Linux (LibreOffice …)` and run only headless checks.
-`Linux gtk3 (LibreOffice …)` jobs run the painted checks and the real-input UI tests separately
-and are not required yet.
-They still fail on every test or shutdown failure and upload artifacts; inspect a red gtk3 job
-before merging. No error message is treated as an allowed crash.
+`Linux (LibreOffice …)` jobs run the headless checks and `Linux gtk3 (LibreOffice …)` jobs the
+painted checks and the real-input UI tests under Xvfb; both are required for merging. Every job
+fails on any test or shutdown failure and uploads its artifacts; no error message is treated as an
+allowed crash.
 
 ### Soak painted sessions
 

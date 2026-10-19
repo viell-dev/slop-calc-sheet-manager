@@ -9,6 +9,11 @@ import zipfile
 from pathlib import Path
 from xml.sax.saxutils import escape
 
+try:
+    from .release_data import version_parts
+except ImportError:  # Direct invocation: python tools/build.py.
+    from release_data import version_parts
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
@@ -45,8 +50,9 @@ DESCRIPTION_NS = "{http://openoffice.org/extensions/description/2006}"
 
 def version(root: Path = ROOT) -> str:
     node = ET.parse(root / "extension/description.xml").find(f"{DESCRIPTION_NS}version")
-    if node is None or not re.fullmatch(r"\d+\.\d+\.\d+", node.attrib["value"]):
+    if node is None:
         raise ValueError("description.xml must contain a three-part version")
+    version_parts(node.attrib["value"])
     return node.attrib["value"]
 
 

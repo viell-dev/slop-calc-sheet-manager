@@ -63,10 +63,18 @@ issue so that it names the confirmed problem or the accepted request, close a de
 one as not planned, and close an accepted one through the pull request that fixes it.
 
 - `Status: Needs Owner Testing` marks work that waits for a check on a real desktop.
-- `Status: Blocked` marks a tracking issue for a defect in LibreOffice or another dependency. It
-  holds the versions, the reproduction, the result, and what unblocks it, so that the defect can be
-  reported upstream and verified later without testing again. Once a report has been submitted
-  upstream, it links the tracking issue and the tracking issue links the report.
+- `Status: Blocked` marks accepted work that waits on an identified external dependency.
+
+## Defects in LibreOffice
+
+LibreOffice is the extension's only upstream, and the owner has decided that no reports go to it.
+A defect in LibreOffice that affects Sheet Manager gets an issue here holding the versions, the
+reproduction, the result, and how Sheet Manager works around the defect or documents the limit.
+Once the workaround or the documented limit is in place, the issue is closed as not planned with
+`Status: Won't Do`; it remains the record for later agents. Reopen it when a LibreOffice release
+fixes the defect, so that the workaround can be narrowed or dropped for fixed versions, or when
+the workaround falls short. There is no pinned overview of these defects; search the closed issues
+labelled `Status: Won't Do`.
 
 ## Git and merging
 
@@ -118,6 +126,13 @@ one as not planned, and close an accepted one through the pull request that fixe
   `registration.py` provide passive Python registration. `Factories.xcu` maps tool-panel URLs to
   that factory; `Sidebar.xcu` registers the Calc-only deck and panel. `tools/build.py` explicitly
   allowlists every packaged file and includes the root licence as `LICENSE.txt`.
+- `tools/release_data.py` owns version policy, changelog extraction, and feed XML.
+  `tools/github_release.py` validates GitHub history and exact-commit CI, builds/publishes releases,
+  and generates Pages from published OXT metadata. `release.yml` validates PR workflow changes
+  without writes and publishes only by dispatch on `main`; `pages.yml` is also callable by it.
+  `tests/integration/test_updates.py` checks loopback feeds with LibreOffice's real parser and
+  candidate dependencies through its temporary deployment repository. The modal update dialog
+  has no public UNO offered-update API; keep parser and dependency assertions distinct.
 - Python UI strings go through `sheet_manager.i18n.tr`. Metadata templates use `{{message}}`,
   rendered as English through that helper at build time. This renderer supports only English;
   adding the first translation catalogue must also replace it with locale-aware XML/XCU element
@@ -160,15 +175,15 @@ one as not planned, and close an accepted one through the pull request that fixe
   lab for CI and local tests. Headless checks use svp; screenshot checks use gtk3 under Xvfb.
   Never mount host display sockets or use an existing office profile. The Windows MSI installer
   helper is only for disposable CI runners; use the existing installation on developer machines.
-  Required Linux jobs keep their existing names and run headless only; `Linux gtk3 (LibreOffice
-  …)` jobs stay non-required until a soak on `main` shows painted sessions are reliable. Their
-  intermittent abort (#8) was LibreOffice crashing when the test closed Writer within
-  milliseconds of opening it (#30); close test documents in painted sessions only after they have
-  settled, as `close_writer()` does. Inspect every red gtk3 artifact before merging; any
-  exception needs evidence that all assertions passed and failure occurred during shutdown,
-  recorded in the PR. The generic fatal message alone is not proof of #8 and is never allowed
-  in the runner. `gtk3-soak.yml` and `tests/integration/soak.py` repeat fresh painted sessions in
-  installed/absent modes; dispatch that workflow on the branch to measure once it exists on `main`.
+  `Linux (LibreOffice …)` jobs run the headless checks and `Linux gtk3 (LibreOffice …)` jobs the
+  painted ones; both are required. The painted jobs were not required from #10 until #32, while
+  their intermittent abort (#8) was investigated: LibreOffice crashed when a test closed Writer
+  within milliseconds of opening it (#30). Close test documents in painted sessions only after
+  they have settled, as `close_writer()` does. A red painted job blocks merging like any other;
+  never rerun it until it is green without classifying the failure from its artifacts. The
+  generic fatal message alone is not proof of #8 and is never allowed in the runner.
+  `gtk3-soak.yml` and `tests/integration/soak.py` repeat fresh painted sessions in installed and
+  absent modes; dispatch the workflow on a branch to measure the reliability of painted sessions.
   `--backtrace` uses LibreOffice's gdb wrapper; validate its trace as well as the wrapper status.
   That wrapper bypasses the normal launcher's exit-81 bootstrap restart. The runner handles it
   once, only before connecting UNO, and preserves the initialization trace; never extend this
@@ -183,12 +198,18 @@ one as not planned, and close an accepted one through the pull request that fixe
 - The owner has given standing approval for agents to publish releases, prereleases and stable
   versions alike, with their release notes, whenever the agents judge a build ready. Only the
   listing on extensions.libreoffice.org needs the owner's sign-in.
-- Version numbers are plain dotted numbers without a `v` prefix, strictly increasing across every
-  published build. There are no `-rc` suffixes, because LibreOffice's update check ranks
-  `0.1.0-rc.1` above `0.1.0`. Whether a build is a prerelease or stable is a property of its GitHub
-  release and of the update feed it appears in.
+- Version numbers are plain dotted numbers without a `v` prefix. New versions exceed every
+  published build and reserved tag; an already-reserved draft can be recovered later without
+  changing the feeds' version order. There are no `-rc` suffixes, because LibreOffice's update
+  check ranks `0.1.0-rc.1` above `0.1.0`. Whether a build is a prerelease or stable is a property of
+  its GitHub release and of the update feed it appears in.
 - Published files and tags are never replaced, and update feeds never move backwards: a bad release
   is fixed by a newer version.
+- Follow [RELEASING.md](RELEASING.md) for candidate numbering below the final version, patch numbers
+  below `.90`, changelog sections, dry runs, publication and recovery. Publication requires a
+  successful CI push run on the exact `main` commit. Upload assets to the draft before publishing
+  because releases are immutable. The stable feed excludes candidates; the prerelease feed
+  retains every build. Never reclassify a published candidate or delete deployed feed history.
 
 ## Repository boundary
 
