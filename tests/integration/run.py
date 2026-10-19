@@ -23,6 +23,7 @@ import uno
 import unohelper
 from com.sun.star.beans import PropertyValue
 from com.sun.star.lang import XEventListener
+from main_thread import close_document
 from office_process import assert_clean_shutdown, finish_process, normal_startup_restart
 
 FACTORY = "dev.viell.sheetmanager.PanelFactory"
@@ -373,14 +374,14 @@ def exercise(context, desktop, directory, output, *, screenshot):
     # Read-only documents still have a panel, and closing a frame releases it.
     workbook = directory / "synthetic.ods"
     document.storeAsURL(workbook.as_uri(), ())
-    document.close(True)
+    close_document(context, document)
     wait_for(lambda: disposal.disposed, "panel dialog disposal after document close")
     document = desktop.loadComponentFromURL(
         workbook.as_uri(), "_blank", 0, (property_value("ReadOnly", True),)
     )
     assert document.isReadonly()
     _, readonly_disposal, _ = assert_panel(context, document)
-    document.close(True)
+    close_document(context, document)
     wait_for(lambda: readonly_disposal.disposed, "read-only panel dialog disposal")
     writer = desktop.loadComponentFromURL("private:factory/swriter", "_blank", 0, ())
     assert writer is not None
@@ -416,12 +417,12 @@ def exercise_without_extension(context, desktop, directory):
         time.sleep(0.5)
     workbook = directory / "synthetic.ods"
     document.storeAsURL(workbook.as_uri(), ())
-    document.close(True)
+    close_document(context, document)
     document = desktop.loadComponentFromURL(
         workbook.as_uri(), "_blank", 0, (property_value("ReadOnly", True),)
     )
     assert document.isReadonly()
-    document.close(True)
+    close_document(context, document)
     writer = desktop.loadComponentFromURL("private:factory/swriter", "_blank", 0, ())
     assert writer is not None
     close_writer(writer)

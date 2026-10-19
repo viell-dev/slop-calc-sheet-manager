@@ -20,6 +20,7 @@ import uno
 from com.sun.star.awt import KeyEvent, MouseEvent
 from com.sun.star.beans import PropertyValue
 from com.sun.star.table import CellRangeAddress
+from main_thread import close_document
 from sheet_list_view import (
     enabled_menu_items,
     labels,
@@ -230,7 +231,7 @@ def check_states_and_refresh(context, desktop):
     poll(lambda: selection(tree, order) == ["East"], "the list to follow the active sheet")
     poll(lambda: labels(tree) == expected_labels(document), "the active marker to move")
     seen = labels(tree)
-    document.close(True)
+    close_document(context, document)
     return {"labels": seen, "graphics_differ": True}
 
 
@@ -267,7 +268,7 @@ def check_selection_and_menu(context, desktop, menus):
     assert controller.getActiveSheet().getName() == "Three", "A hidden row must not activate"
     if not menus:
         say(NATIVE_MENU)
-        document.close(True)
+        close_document(context, document)
         return {"shift_selection": shift, "menu": "skipped"}
 
     say("menu: Calc's tabs are exactly the picked sheets, and Hide acts on them")
@@ -301,7 +302,7 @@ def check_selection_and_menu(context, desktop, menus):
     robot.click(tree, row_point(tree, 1))
     poll(lambda: tabs() == ["Two"], "a plain click to leave one selected tab")
     after_click = tabs()
-    document.close(True)
+    close_document(context, document)
     return {
         "shift_selection": shift,
         "calc_tabs_while_menu_open": grouped,
@@ -348,7 +349,7 @@ def check_identity(context, desktop, menus):
     poll(lambda: selection(tree, renamed) == [], "the renamed sheets to leave the selection")
     if not menus:
         say(NATIVE_MENU)
-        document.close(True)
+        close_document(context, document)
         return {"menu": "skipped"}
 
     say("replace a picked sheet while the built-in menu is open")
@@ -367,7 +368,7 @@ def check_identity(context, desktop, menus):
     shown = all(sheets.getByName(name).IsVisible for name in ("Echo", "Foxtrot"))
     assert shown and list(undo.getAllUndoActionTitles()) == titles, "A stale command ran"
     poll(lambda: "Foxtrot" not in selection(tree, renamed), "the replacement to stay unpicked")
-    document.close(True)
+    close_document(context, document)
     return {"menu_tabs_after_replacement": menu_tabs, "stale_menu_command_refused": True}
 
 
@@ -458,7 +459,7 @@ def check_stale_clicks(context, desktop):
     kept = selection(tree, SIX)
     assert kept == ["Bravo", "Delta"], kept
     results["selection_after_delayed_refresh"] = kept
-    document.close(True)
+    close_document(context, document)
     return results
 
 
@@ -519,7 +520,7 @@ def redirected_activation(context, desktop, hidden):
         "tabs": tabs_of(context, document),
         "messages": messages,
     }
-    document.close(True)
+    close_document(context, document)
     return state
 
 
@@ -637,7 +638,7 @@ def check_show(context, desktop):
     results["refused_when_stale"] = True
 
     say("recovery after a partial failure")
-    document.close(True)
+    close_document(context, document)
 
     def partial_failure(picked, history):
         document = hidden_workbook(desktop, targets)
@@ -654,7 +655,7 @@ def check_show(context, desktop):
         if history:
             assert cell.getValue() == history, "Recovery must keep the user's last edit"
             assert list(undo.getAllUndoActionTitles())[: history - 1] == before[: history - 1]
-        document.close(True)
+        close_document(context, document)
 
     say("  with room in the undo history")
     partial_failure(targets, 0)
@@ -681,7 +682,7 @@ def measure_large_workbook(context, desktop, count):
     order = list(document.getSheets().getElementNames())
     poll(lambda: selection(tree, order) == [target.getName()], "a large list to follow", 120)
     followed = time.monotonic() - started
-    document.close(True)
+    close_document(context, document)
     return {"sheets": count, "open_seconds": round(opened, 2), "follow_seconds": round(followed, 2)}
 
 
@@ -703,6 +704,6 @@ def exercise(context, desktop, directory, output, *, headless):
     finally:
         for document in _CREATED:
             with suppress(Exception):  # Most are closed already.
-                document.close(True)
+                close_document(context, document)
         _CREATED.clear()
     return results

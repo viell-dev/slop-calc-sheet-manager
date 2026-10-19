@@ -10,6 +10,7 @@ from unittest.mock import patch
 import uno
 from com.sun.star.awt import Rectangle
 from com.sun.star.beans import PropertyValue
+from main_thread import close_document
 
 from sheet_manager.reorder import Action, plan_move, plan_order
 from sheet_manager.uno_reorder import apply_order, preflight, snapshot
@@ -275,7 +276,7 @@ def assert_permissions(context, desktop, document, directory):
     other = workbook(desktop, 2)
     other.CurrentController.Frame.activate()
     refused("Activate")
-    other.close(True)
+    close_document(context, other)
     document.CurrentController.Frame.activate()
     observed = snapshot(document)
     plan = plan_move(observed.sheets, [order(document)[0]], "bottom")
@@ -303,7 +304,7 @@ def assert_permissions(context, desktop, document, directory):
         assert readonly.isReadonly()
         assert apply_order(context, readonly, observed, plan).status == "refused"
     finally:
-        readonly.close(True)
+        close_document(context, readonly)
     document.CurrentController.Frame.activate()
 
 
@@ -355,7 +356,7 @@ def assert_scenarios(context, desktop):
             document.UndoManager.undo()
         assert not document.Sheets.getByName("CaseOne").IsVisible
     finally:
-        document.close(True)
+        close_document(context, document)
 
 
 def populated_workbook(desktop, count):
@@ -456,7 +457,7 @@ def performance(context, desktop):
                 )
                 print(json.dumps(results[-1]), flush=True)
         finally:
-            document.close(True)
+            close_document(context, document)
     return results
 
 
@@ -525,7 +526,7 @@ def exercise(context, desktop, directory, output):
             assert order(document) == original
         assert_permissions(context, desktop, document, directory)
     finally:
-        document.close(True)
+        close_document(context, document)
     assert_scenarios(context, desktop)
     with undo_capacity(context, 2):
         assert_scenarios(context, desktop)
