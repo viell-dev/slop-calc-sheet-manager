@@ -121,7 +121,12 @@ labelled `Status: Won't Do`.
   it: an activation refreshes at once only after the list has been idle for several times the last
   refresh's cost, and other changes wait for a pause, with a bounded wait. Bulk API changes, such
   as a 500-call move, send an event for each call; refreshing on each one slowed such a move on
-  Windows from seconds to over a minute.
+  Windows from seconds to over a minute. So rows can be out of date when the user acts on them:
+  every action checks its sheets when it runs, never against the cached rows. A left press keeps
+  the pressed sheet's handle, and its release activates only that sheet, still in that row
+  (#28). Activation reads the handle's current name and visibility first, because Calc sends the
+  activation of a hidden sheet to another sheet (#43). A request to follow Calc's selection
+  records the list's input count, and newer clicks or keys in the list win over it (#44).
 - `extension/description.xml` is the version source. `extension/sheet-manager.components` and
   `registration.py` provide passive Python registration. `Factories.xcu` maps tool-panel URLs to
   that factory; `Sidebar.xcu` registers the Calc-only deck and panel. `tools/build.py` explicitly
@@ -163,10 +168,12 @@ labelled `Status: Won't Do`.
   Open documents visibly even in headless runs: hidden documents do not reliably execute Calc
   commands or undo. Startup retries end before document creation and never retry failed tests.
   `--sessions headless|gtk3|both` selects sessions; default headless. The feature suite
-  `test_sheet_list.py` checks the list's contents, refresh, identity, robot clicks and menu, and
-  Show with LibreOffice's synthetic input. Robot input cannot reach gtk3's native menus, so it
-  skips the menu steps in painted sessions, and it closes leftover workbooks after a failure: a
-  painted office asks to save them when the runner terminates it, which blocks the run (#40).
+  `test_sheet_list.py` checks the list's contents, refresh, identity, robot clicks and menu,
+  clicks on rows not yet refreshed, and Show with LibreOffice's synthetic input; the robot only
+  posts events, so they reach the list ahead of its delayed refresh. Robot input cannot reach
+  gtk3's native menus, so it skips the menu steps in painted sessions, and it closes leftover
+  workbooks after a failure: a painted office asks to save them when the runner terminates it,
+  which blocks the run (#40).
   Real-input UI tests live in `tests/ui/run_ui.py`, use XTEST under Xvfb with separate gtk3 and
   gen sessions, and run in the `linux-gtk3` jobs through `tools/linux_integration.py <lane> --ui`.
   What neither can reach is on the manual checklist, `docs/manual-tests.md`; keep it current.
