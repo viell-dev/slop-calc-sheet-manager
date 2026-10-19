@@ -195,6 +195,17 @@ labelled `Status: Won't Do`.
   ([#41](https://github.com/viell-dev/slop-calc-sheet-manager/issues/41)). Keep UNO calls whose
   exceptions a caller catches out of generator-based context managers; in a failed run, read the
   first traceback.
+- On Windows, a Calc document closed from the test's own thread, which is a UNO bridge thread in
+  the office, crashes LibreOffice when one of its toolbars has an update pending: the close
+  releases LibreOffice's lock while it destroys native windows, and the main thread then updates
+  a toolbar control being disposed
+  ([#47](https://github.com/viell-dev/slop-calc-sheet-manager/issues/47)). The user interface
+  closes on the main thread, where this cannot happen. Close every Calc document in the tests
+  through `main_thread.close_document`, which on Windows closes inside an `AsyncCallback`
+  notification, on the main thread. A crashed office exits with status 0 on Windows
+  ([#48](https://github.com/viell-dev/slop-calc-sheet-manager/issues/48)), so the runner copies
+  LibreOffice's own crash dumps from the profile into the results as `crash-*.dmp` and fails a
+  session that left one; analyse them with CDB and TDF's symbol server.
 - `ci/libreoffice.json`, `ci/Dockerfile`, and `tools/linux_integration.py` define the same Linux
   lab for CI and local tests. Headless checks use svp; screenshot checks use gtk3 under Xvfb.
   Never mount host display sockets or use an existing office profile. The Windows MSI installer
