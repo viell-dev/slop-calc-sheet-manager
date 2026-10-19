@@ -549,11 +549,17 @@ def check_plain_click_ends_group(book):
     book.lab.input.tap("Escape", pause=0.5)
     book.click(1)
     wait_until(lambda: book.calc_tabs() == [NAMES[1]], "a plain click to leave one selected tab")
+
+    def cursor():
+        address = book.controller.getSelection().getRangeAddress()
+        return (address.Sheet, address.StartColumn, address.StartRow)
+
     # Click a cell of the sheet, as a user does, and type there.
+    before = cursor()
     book.lab.input.move(260, 420)
     book.lab.input.button(1, True)
     book.lab.input.button(1, False)
-    time.sleep(0.6)
+    wait_until(lambda: cursor() != before, "the click to move the cell cursor")
     address = book.controller.getSelection().getRangeAddress()
     book.lab.input.tap("x")
     book.lab.input.tap("Return", pause=0.6)
