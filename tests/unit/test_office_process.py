@@ -10,6 +10,7 @@ from tests.integration.office_process import (
     assert_clean_shutdown,
     finish_process,
     normal_startup_restart,
+    retain_crash_dumps,
 )
 
 
@@ -94,3 +95,26 @@ def test_debugger_cannot_hide_inferior_failure(
 )
 def test_only_normal_bootstrap_restart_is_recognized(trace: str, restart: bool) -> None:
     assert normal_startup_restart(trace) is restart
+
+
+def test_crash_dump_is_retained_and_rejected(tmp_path: Path) -> None:
+    # On Windows a crashed office exits with status 0; its own dump must still fail the run.
+    crash, output = tmp_path / "profile" / "crash", tmp_path / "output"
+    crash.mkdir(parents=True)
+    output.mkdir()
+    (crash / "dump.ini").write_text("ProductName=LibreOffice\n", encoding="utf-8")
+    assert retain_crash_dumps(crash, output, "crash-True-0") == []
+    assert not list(output.iterdir()), "A profile without a dump retains nothing"
+    (crash / "0f1e.dmp").write_bytes(b"MDMP")
+    names = retain_crash_dumps(crash, output, "crash-True-0")
+    assert names == ["crash-True-0-0f1e.dmp"]
+    assert (output / "crash-True-0-0f1e.dmp").read_bytes() == b"MDMP"
+    assert (output / "crash-True-0-dump.ini").exists()
+    log_path = tmp_path / "soffice.log"
+    with log_path.open("w", encoding="utf-8") as log:
+        process = subprocess.Popen([sys.executable, "-c", "pass"], stdout=log, text=True)
+        result = finish_process(process, log_path)
+    assert_clean_shutdown({**result, "office_crash_dumps": []})
+    with pytest.raises(AssertionError):
+        assert_clean_shutdown({**result, "office_crash_dumps": names})
+    assert retain_crash_dumps(tmp_path / "missing", output, "crash-True-1") == []
