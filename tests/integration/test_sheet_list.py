@@ -69,18 +69,19 @@ class Robot:
         """Click; the pause keeps the next click on the same row from becoming a double click.
 
         The robot only posts the events, so without a pause they are still queued when this
-        returns, ahead of anything the list schedules later.
+        returns, ahead of anything the list schedules later. The pointer moves with no button
+        down, as a hand moves it between clicks: a move that reports a held button right after
+        a press can start a drag.
         """
         event = self._event(window, point, buttons, modifiers)
-        self.toolkit.mouseMove(event)
+        self.toolkit.mouseMove(self._event(window, point, 0, modifiers))
         self.toolkit.mousePress(event)
         self.toolkit.mouseRelease(event)
         time.sleep(pause)
 
     def press(self, window, point):
-        event = self._event(window, point, VCL_LEFT, 0)
-        self.toolkit.mouseMove(event)
-        self.toolkit.mousePress(event)
+        self.toolkit.mouseMove(self._event(window, point, 0, 0))
+        self.toolkit.mousePress(self._event(window, point, VCL_LEFT, 0))
 
     def release(self, window, point):
         self.toolkit.mouseRelease(self._event(window, point, VCL_LEFT, 0))
