@@ -8,9 +8,9 @@ on:
         type: number
         default: 10
       experiment:
-        description: Original reorder session or targeted workbook closes
+        description: Original reorder session, targeted workbook closes, or closing-thread comparison
         type: choice
-        options: [baseline, close]
+        options: [baseline, close, thread]
         default: baseline
       iterations:
         description: Eight close variants per iteration in each targeted session

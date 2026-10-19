@@ -21,7 +21,7 @@ for ($index = 1; $index -le $sessions; $index++) {
     New-Item -ItemType Directory -Path $out -Force | Out-Null
     $arguments = @('-u', 'ci/windows_probe.py', '--program', $program, '--oxt', $package,
         '--mode', $env:MODE, '--experiment', $env:EXPERIMENT, '--iterations', "$iterations",
-        '--settle', $env:SETTLE, '--output', $out)
+        '--settle', $env:SETTLE, '--session', "$index", '--output', $out)
     if ($env:PAINTED -eq 'true') { $arguments += '--painted' }
     $info = [Diagnostics.ProcessStartInfo]::new($python)
     $info.UseShellExecute = $false
