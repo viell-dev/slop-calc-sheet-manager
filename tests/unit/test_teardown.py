@@ -84,12 +84,16 @@ def test_no_close_is_tried_after_a_stall_inside_a_check() -> None:
 
 
 def test_a_stall_that_a_check_swallowed_still_fails_the_suite() -> None:
+    ran: list[str] = []
+
     def swallows() -> object:
         record_stalled_callback("a close timed out")  # Recorded by close_document, then caught.
         return True
 
+    checks = [("swallows", swallows), ("later", lambda: ran.append("later"))]
     with pytest.raises(TimeoutError, match="a close timed out"):
-        run_checks([("swallows", swallows)], [], Office().close)
+        run_checks(checks, [], Office().close)
+    assert ran == [], "No check may run against a stuck office"
 
 
 def test_a_failed_leftover_close_is_raised_after_the_other_closes() -> None:

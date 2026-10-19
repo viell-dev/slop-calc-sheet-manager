@@ -542,6 +542,8 @@ def main():
                         )
                         if arguments.suites == "all":
                             for suite_path in sorted(Path(__file__).parent.glob("test_*.py")):
+                                if stalled_callbacks():  # No suite runs on a stuck office (#50).
+                                    raise TimeoutError(stalled_callbacks()[0])
                                 spec = importlib.util.spec_from_file_location(
                                     suite_path.stem, suite_path
                                 )

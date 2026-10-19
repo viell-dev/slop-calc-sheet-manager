@@ -87,6 +87,8 @@ def run_checks(
     results: dict[str, object] = {}
     try:
         for name, check in checks:
+            if _stalled:
+                break  # No check runs against a stuck office; the clean-up below raises.
             print("sheet list check:", name, flush=True)
             results[name] = check() or True
     except BaseException as failure:
