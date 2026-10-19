@@ -166,11 +166,16 @@ labelled `Status: Won't Do`.
   `test_sheet_list.py` checks the list's contents, refresh, identity, robot clicks and menu, and
   Show with LibreOffice's synthetic input. Robot input cannot reach gtk3's native menus, so it
   skips the menu steps in painted sessions, and it closes leftover workbooks after a failure: a
-  painted office asks to save them when the runner terminates it, which blocks the run.
+  painted office asks to save them when the runner terminates it, which blocks the run (#40).
   Real-input UI tests live in `tests/ui/run_ui.py`, use XTEST under Xvfb with separate gtk3 and
   gen sessions, and run in the `linux-gtk3` jobs through `tools/linux_integration.py <lane> --ui`.
   What neither can reach is on the manual checklist, `docs/manual-tests.md`; keep it current.
   Keep shared lifecycle changes additive.
+- PyUNO exceptions reject a new `__traceback__`, so a UNO exception leaving a `@contextmanager`
+  block, such as `office_session`, arrives as a RuntimeException about a traceback object
+  ([#41](https://github.com/viell-dev/slop-calc-sheet-manager/issues/41)). Keep UNO calls whose
+  exceptions a caller catches out of generator-based context managers; in a failed run, read the
+  first traceback.
 - `ci/libreoffice.json`, `ci/Dockerfile`, and `tools/linux_integration.py` define the same Linux
   lab for CI and local tests. Headless checks use svp; screenshot checks use gtk3 under Xvfb.
   Never mount host display sockets or use an existing office profile. The Windows MSI installer
