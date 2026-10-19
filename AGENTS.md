@@ -114,26 +114,37 @@ labelled `Status: Won't Do`.
   everything the list writes to the tree, restores, or acts on comes from refs. Retained handles
   are not identities: when a sheet is deleted, its handle turns to the previous sheet and can
   report the deleted sheet's name again after a rename (measured; `docs/reordering.md`). So each
-  list has a `uno_structure.StructureMonitor`: it listens to the document's modify and undo
-  notifications, reads the sheet count at each one, and moves a generation
-  (`structure.StructureEvents`) whenever a sheet may have been inserted or deleted, on every
-  undo and redo, and when undo recording or modify notifications are off at a check. Undo
-  notifications come for every recorded action, also inside `lockControllers`,
-  `addActionLock`, `disableSetModified`, and undo contexts, where modify notifications are
-  batched or missing. Picks, presses, drags, and an open menu carry the generation they were
-  proved at; when it moves, the list drops every ref and any held press and tells the user in an
-  infobar, which only the user closes, since removing one moves the focus to the sheet. As a
-  second line, every refresh checks that its handles map one to one onto the sheets with at most
-  one rename (`structure_kept`). Otherwise refs stay while their handles report their names, so
-  a renamed pick goes and a moved one stays (#28). Over-clearing is the accepted cost. Threat
-  model, decided by the maintainer: everything LibreOffice reports through some channel must be
-  caught; a program that turns off or locks undo recording and also batches or suppresses modify
-  notifications around structural edits reports nothing, cannot be detected, and could hide or
-  delete any sheet itself, so it is out of scope. The monitor's listeners read the sheet count
-  while LibreOffice notifies: a narrow exception to the rule that listeners only note and post,
-  for a getter that takes the main lock and does no UI work; call nothing else from them. Drops
-  plan against the snapshot of the drag's start through `apply_order`, which refuses stale
-  state, and the list refuses a drop when the generation moved during the drag. The menu opens
+  list has a `uno_structure.StructureMonitor`: it listens to the document's modify, undo, and
+  document events, reads the sheet count and the document's undo and lock state at every modify
+  and undo notification, and moves a generation (`structure.StructureEvents`) whenever a sheet
+  may have been inserted or deleted. It moves when the count changes; when undo recording is
+  off or locked, the controllers or actions are locked, or modify notifications are off at a
+  notification, except for the controller lock of the list's own move (`own_move`); on every
+  undo and redo; at a modify notification that no recorded undo action explains, except inside
+  a save window (`OnSave`, `OnSaveAs`, or `OnCopyTo` up to its `Done` or `Failed` event, or the
+  next undo notification); and at a check, when the undo history changed without a notification
+  or undo recording or modify notifications are off (LibreOffice turns modify notifications off
+  while it saves, so not inside a save window). Undo notifications come for every recorded
+  action, also inside `lockControllers`, `addActionLock`, `disableSetModified`, and undo
+  contexts, where modify notifications are batched or missing. Every action checks the
+  generation again when it runs (`check()`). Picks, presses, drags, and an open menu carry the
+  generation they were proved at; when it moves, the list drops every ref and any held press and
+  tells the user in an infobar, which only the user closes, since removing one moves the focus
+  to the sheet. As a second line, every refresh checks that its handles map one to one onto the
+  sheets with at most one rename (`structure_kept`). Otherwise refs stay while their handles
+  report their names, so a renamed pick goes and a moved one stays (#28). Over-clearing is the
+  accepted cost: undo and redo, document property changes, and other changes LibreOffice does
+  not record for undo clear the picks too. Threat model, decided by the maintainer: everything
+  LibreOffice reports must be caught; only a structural edit that LibreOffice does not report at
+  all (undo recording and modify notifications both off), or whose only report falls inside a
+  save window, is out of scope. The one other known way past the rules is a sequence built to
+  report like typed input, documented in `structure.py`; such a program could hide or delete any
+  sheet itself. The monitor's listeners read the sheet count and the five state getters while
+  LibreOffice notifies: a narrow exception to the rule that listeners only note and post, for
+  getters that take the main lock and return a count or a flag without UI work (checked in the
+  pinned sources); call nothing else from them. Drops plan against the snapshot of the drag's
+  start through `apply_order`, which refuses stale state, and the list refuses a drop when the
+  generation moved during the drag. The menu opens
   only for refs checked just before, with a fresh snapshot; while it is open, a dispatch
   interceptor on the frame checks at dispatch time that the generation did not move, that the
   picked sheets are unchanged, and that they are exactly Calc's selected tabs.

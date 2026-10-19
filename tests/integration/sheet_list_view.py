@@ -56,6 +56,29 @@ def on_main_thread(context, work, timeout=60):
 
 
 BATCHES = ("lockControllers", "addActionLock", "disableSetModified")
+# Unrecorded batches: the lock, and when undo recording comes back on, "after" the unlock or
+# "before" it; "mixed" turns it back on before one recorded cell edit under the same lock.
+UNRECORDED = tuple(
+    f"{lock} {when}"
+    for lock in ("lockControllers", "addActionLock")
+    for when in ("after", "before", "mixed")
+)
+
+
+def _wrapper(document, wrapper):
+    return {
+        "lockControllers": (document.lockControllers, document.unlockControllers),
+        "addActionLock": (document.addActionLock, document.removeActionLock),
+        "disableSetModified": (document.disableSetModified, document.enableSetModified),
+    }[wrapper]
+
+
+def _cover(sheets):
+    index = list(sheets.getElementNames()).index("Bravo")
+    sheets.insertNewByName("Newcomer", index)
+    sheets.getByName("Newcomer").getCellRangeByName("A1").setString("replacement")
+    sheets.removeByName("Bravo")
+    sheets.getByName("Newcomer").setName("Bravo")
 
 
 def cover_batch(document, wrapper):
@@ -65,21 +88,35 @@ def cover_batch(document, wrapper):
     notification at the end (`lockControllers`, `addActionLock`) or none
     (`disableSetModified`). The undo notifications still come for each step.
     """
-    begin, end = {
-        "lockControllers": (document.lockControllers, document.unlockControllers),
-        "addActionLock": (document.addActionLock, document.removeActionLock),
-        "disableSetModified": (document.disableSetModified, document.enableSetModified),
-    }[wrapper]
-    sheets = document.getSheets()
-    index = list(sheets.getElementNames()).index("Bravo")
+    begin, end = _wrapper(document, wrapper)
     begin()
     try:
-        sheets.insertNewByName("Newcomer", index)
-        sheets.getByName("Newcomer").getCellRangeByName("A1").setString("replacement")
-        sheets.removeByName("Bravo")
-        sheets.getByName("Newcomer").setName("Bravo")
+        _cover(document.getSheets())
     finally:
         end()
+
+
+def unrecorded_batch(document, way):
+    """`cover_batch` inside a lock with undo recording off: one of `UNRECORDED`.
+
+    LibreOffice then records nothing and sends one modify notification when the lock ends, with
+    recording still off ("after"), back on ("before"), or after one recorded edit ("mixed").
+    """
+    wrapper, when = way.split()
+    begin, end = _wrapper(document, wrapper)
+    begin()
+    try:
+        document.IsUndoEnabled = False
+        try:
+            _cover(document.getSheets())
+        finally:
+            if when != "after":
+                document.IsUndoEnabled = True
+        if when == "mixed":
+            document.getSheets().getByIndex(0).getCellRangeByName("B1").setString("recorded")
+    finally:
+        end()
+        document.IsUndoEnabled = True
 
 
 def poll(function, description, timeout=20):

@@ -23,6 +23,7 @@ from com.sun.star.table import CellRangeAddress
 from main_thread import close_document
 from sheet_list_view import (
     BATCHES,
+    UNRECORDED,
     cover_batch,
     enabled_menu_items,
     labels,
@@ -34,6 +35,7 @@ from sheet_list_view import (
     row_point,
     selected_tabs,
     selection,
+    unrecorded_batch,
 )
 from teardown import Configured, run_checks
 
@@ -498,6 +500,18 @@ def check_stale_clicks(context, desktop):
         poll(lambda: list(sheets.getElementNames()) == SIX, "undo to restore the sheets")
         controller.setActiveSheet(sheets.getByName("Alfa"))
 
+    say("edits with undo recording off inside a lock do not keep the pick (#28)")
+    for way in UNRECORDED:
+        document.getUndoManager().clear()  # An empty history shows no difference either.
+        settled()
+        pick_bravo_and_delta()
+        on_main_thread(context, lambda w=way: unrecorded_batch(document, w))
+        poll(lambda: selection(tree, list(sheets.getElementNames())) == [], "the picks to go")
+        replaced = sheets.getByName("Bravo").getCellRangeByName("A1").getString()
+        assert replaced == "replacement", (way, replaced)
+        results[way] = {"selection": [], "notice": bool(controller.hasInfobar(uno_list.NOTICE))}
+        controller.setActiveSheet(sheets.getByName("Alfa"))
+
     say("out of scope: undo off and modify notifications off report nothing (documented)")
     document.getUndoManager().clear()
     settled()
@@ -568,7 +582,7 @@ class _ActivationOwner:
         self.peer = None
         self._activating = False
         self._handles: dict[str, Any] = {}
-        self._monitor = SimpleNamespace(generation=0)
+        self._monitor = SimpleNamespace(generation=0, check=lambda: 0)
         self._proven = 0
 
     def post(self, function, where):

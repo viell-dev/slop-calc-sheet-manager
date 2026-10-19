@@ -109,13 +109,18 @@ for the tested boundary and the remaining desktop check. Release dry runs and pu
 
 The sheet list's selection model has a property test: random sequences of picks, refreshes,
 insertions, deletions, renames, moves, same-name replacements, a deleted sheet's name passed to
-another sheet, and undo, checking that nothing the list holds ever resolves to a sheet it was not
-picked as. Its workbook reproduces how LibreOffice's retained handles behave (a deleted sheet's
-handle turns to the previous sheet) and how LibreOffice reports changes: undo notifications for
-every recorded action, and modify notifications per change, once per `lockControllers` batch,
-or none under `disableSetModified`. Companion tests show that per-handle name checks alone fail
-there, and document the out-of-scope case: with undo recording off and modify notifications
-off, nothing is reported.
+another sheet, undo, the list's own moves, and ordinary edits and saves, checking that nothing
+the list holds ever resolves to a sheet it was not picked as. Its workbook reproduces how
+LibreOffice's retained handles behave (a deleted sheet's handle turns to the previous sheet) and
+how LibreOffice reports changes, each with the document's state at that moment: undo
+notifications for every recorded action, modify notifications per change, once when a lock
+ends, or none under `disableSetModified`, only modify notifications while undo recording is off,
+undo contexts grouped into one undo step, and saves between their save events, with a refresh
+inside some of them. Companion tests show that per-handle name checks alone, and the sheet
+count without the state, fail there, that ordinary edits, saves, and the list's own moves keep
+the picks, and document the two out-of-scope cases (`sheet_manager.structure`): with undo
+recording and modify notifications both off nothing is reported, and a sequence built to report
+like typed input passes.
 
 The reorder suite exhausts all permutations through seven sheets and all scenario partitions and
 block orders through seven. It checks the minimum call count against an independent
@@ -160,8 +165,8 @@ real Shift, Ctrl, and Alt keys with `xdotool` while the panel is shown. The shee
 suite checks its rows and their states, refreshing after sheet changes, following the active sheet,
 dropping replaced or renamed sheets from the selection, clicks and the sheet tab menu through
 LibreOffice's synthetic input, clicks that meet rows not yet refreshed, picks dropped after
-structural edits (also batched on the main thread, and the out-of-scope silenced case recorded as
-such), restoring the view when Calc sends an activation elsewhere, and Show's undo and recovery
+structural edits (also batched on the main thread, with undo recording off inside a lock, and
+the out-of-scope silenced case recorded as such), restoring the view when Calc sends an activation elsewhere, and Show's undo and recovery
 rules. Synthetic input cannot reach gtk3's native menus, so painted sessions skip the menu steps,
 which the real-input UI tests cover.
 Every workbook is synthetic and loaded visibly, even when the office process itself is headless.
@@ -230,8 +235,11 @@ by following Calc to another sheet or by typing its first letter, move the press
 release, and check that the Menu key's Hide hides the newer pick. They pick Bravo, then delete it
 and give its name to another sheet, directly or after inserting one so that the count is kept,
 replace it while it is held, or run the insert-delete-rename batch on LibreOffice's main thread
-inside `lockControllers`, `addActionLock`, or `disableSetModified`, and check that the picks are
-dropped, that the user is told, and that the Menu key then hides nothing. While a
+inside `lockControllers`, `addActionLock`, or `disableSetModified`, or with undo recording off
+inside either lock and an empty undo history, and check that the picks are dropped, that the user
+is told, and that the Menu key then hides nothing. They hold a drag of Bravo while that
+unrecorded batch runs and check that the drop moves nothing, and save with Ctrl+S from the list
+and from a cell and check that the picks stay. While a
 far sheet's colour keeps changing, so that the list waits to refresh, they click a sheet hidden
 just before, and Ctrl+click after a plain click, and check that nothing acts on the old rows.
 Results and screenshots are in `test-results/<lane>/ui-gtk3/` and `ui-gen/`. LibreOffice's

@@ -28,19 +28,38 @@ a sheet before Bravo, deleting Bravo, and renaming the new sheet to Bravo leaves
 position, and every handle's reported name as they were: `is_current` accepts such a snapshot
 although its Bravo handle now denotes the new sheet. Callers that keep a snapshot while the user
 works must also notice insertions and deletions as they happen. `sheet_manager.uno_structure`
-does that for the sheet list: it reads the sheet count at every modify and undo notification and
-moves a generation whenever a sheet may have been inserted or deleted. Measured with both
-versions: every recorded undo action is reported as it happens, also inside `lockControllers`,
-`addActionLock`, `disableSetModified`, and a caller's undo context, and the count read then
-shows each step; modify notifications come per change, once per `lockControllers` or
-`addActionLock` batch, and not at all under `disableSetModified`; undoing a whole context is
-reported as one action. Threat model: everything LibreOffice reports through some channel is
-caught. A program that turns off or locks undo recording and also batches or suppresses modify
-notifications around structural edits reports nothing at all (measured with undo disabled and
-`disableSetModified`); it cannot be detected, and it could hide or delete any sheet directly, so
-it is out of scope. This layer does not use the monitor yet: `snapshot`, `preflight`, and
-`apply_order` still rely on `is_current` alone, which the sequence above passes. Wiring the
-generation into them is tracked in
+does that for the sheet list: it reads the sheet count and the document's undo and lock state at
+every modify and undo notification, follows the save events, and moves a generation whenever a
+sheet may have been inserted or deleted (`sheet_manager.structure` lists the rules). Measured
+with both versions:
+
+- Every recorded undo action is reported as it happens, before its modify notification, also
+  inside `lockControllers`, `addActionLock`, `disableSetModified`, and a caller's undo context,
+  and the count read then shows each step. Undoing a whole context is reported as one action.
+- Modify notifications come per change, once when a `lockControllers` or `addActionLock` batch
+  ends, and not at all under `disableSetModified`. Typed input reports its undo action inside an
+  undo context, a modify notification, the context's end, and a second modify notification.
+- With undo recording off (`IsUndoEnabled`), a change is reported only by its modify
+  notification, and the undo manager then also reads as locked. Inside a lock, the one modify
+  notification at the end shows recording as off if it is still off then; if recording was
+  turned back on before the unlock, only the missing undo action shows the batch.
+- A save reports several modify notifications and no undo action, all between `OnSave` and
+  `OnSaveDone` (`OnSaveAs` and `OnSaveAsDone` for Save As), also for Ctrl+S and for autosave that
+  saves the original document. LibreOffice can run posted work during a save, with modify
+  notifications off meanwhile. Copies, PDF export, and autosave's recovery file report
+  `OnCopyTo` and `OnCopyToDone` and no modification. Recalculation reports nothing; a change of
+  document properties reports a modify notification without an undo action.
+
+Threat model, decided by the maintainer: everything LibreOffice reports is caught, and a reported
+change whose continuity cannot be established counts as structural. Out of scope is a structural
+edit that LibreOffice does not report at all, which needs undo recording and modify
+notifications both off (measured: nothing is reported then), or whose only report falls inside a
+save window. The one other known way past the rules is a sequence built to report like typed
+input: a recorded edit inside an undo context, then, in the same main-thread call, unrecorded
+structural edits inside a lock with recording turned back on before the unlock. A program doing
+either could hide or delete any sheet directly. This layer does not use the monitor yet:
+`snapshot`, `preflight`, and `apply_order` still rely on `is_current` alone, which the sequence
+above passes. Wiring the generation into them is tracked in
 [#19](https://github.com/viell-dev/slop-calc-sheet-manager/issues/19).
 `preflight` is useful for enablement; `apply_order` always repeats it immediately before mutation.
 Catch `ValueError` from planning and expose its reason when the selection or target is invalid.
