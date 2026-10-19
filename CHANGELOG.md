@@ -17,6 +17,8 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   rather than act on a sheet that was not selected
   ([#28](https://github.com/viell-dev/slop-calc-sheet-manager/issues/28)); a click ends any
   grouping of Calc's tabs ([#25](https://github.com/viell-dev/slop-calc-sheet-manager/issues/25));
+  Calc no longer hangs when the list schedules a refresh during a change
+  ([#55](https://github.com/viell-dev/slop-calc-sheet-manager/issues/55));
   showing hidden sheets needs undo and is undone on failure
   ([#27](https://github.com/viell-dev/slop-calc-sheet-manager/issues/27)); refreshing keeps the
   keyboard position ([#29](https://github.com/viell-dev/slop-calc-sheet-manager/issues/29)).
@@ -45,6 +47,8 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   [#30](https://github.com/viell-dev/slop-calc-sheet-manager/issues/30)).
 - Kept automatic dependency updates for the checks container on Python 3.12, the oldest supported
   version, and on the Node major version that CI uses.
+- Added `.nvmrc`, so that nvm and fnm select the Node version CI uses for Pyright. The workflows
+  install Node from it, and a unit test keeps it equal to the checks image's Node.
 - Made the integration resize test use observed frame dimensions across gtk3 window layouts,
   retaining the exact 150-pixel frame and panel growth checks
   ([#9](https://github.com/viell-dev/slop-calc-sheet-manager/issues/9)).

@@ -1,7 +1,8 @@
 """Calc and toolkit helpers shared by the panel's parts. Only the panel uses them."""
 
+import _thread
 import sys
-import threading
+import time
 import traceback
 from collections.abc import Callable
 
@@ -42,6 +43,35 @@ class _Callback(unohelper.Base, XCallback):
             report(self._where)
 
 
+def start_thread(function: Callable[[], None], where: str) -> None:
+    """Run `function` on a new thread, without waiting for the thread to start.
+
+    `threading.Thread.start` waits until the new thread runs. That thread's first Python steps
+    can run the garbage collector, which can release UNO objects whose destructors wait for
+    LibreOffice's main lock. Listeners and the main thread hold that lock, so a thread they
+    started that way never started, and neither side went on: Calc hung. A thread started here
+    waits for the lock instead, until its holder is done.
+    """
+
+    def run() -> None:
+        try:
+            function()
+        except Exception:
+            report(where)
+
+    _thread.start_new_thread(run, ())
+
+
+class Later:
+    """Work posted after a delay, unless cancelled first."""
+
+    def __init__(self) -> None:
+        self.cancelled = False
+
+    def cancel(self) -> None:
+        self.cancelled = True
+
+
 class MainThread:
     """Run work later on LibreOffice's main thread, as a user event.
 
@@ -59,12 +89,17 @@ class MainThread:
         if not self.closed:
             self._async.addCallback(_Callback(function, where), None)
 
-    def later(self, seconds: float, function: Callable[[], None], where: str) -> threading.Timer:
-        # The timer thread only posts; it never calls into the toolkit itself.
-        timer = threading.Timer(seconds, lambda: self.post(function, where))
-        timer.daemon = True
-        timer.start()
-        return timer
+    def later(self, seconds: float, function: Callable[[], None], where: str) -> Later:
+        """Post `function` after `seconds`. The waiting thread only posts (`start_thread`)."""
+        handle = Later()
+
+        def wait_then_post() -> None:
+            time.sleep(seconds)
+            if not handle.cancelled:
+                self.post(function, where)
+
+        start_thread(wait_then_post, where)
+        return handle
 
 
 def read_rows(controller, observed) -> list[SheetRow]:
