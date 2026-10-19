@@ -63,10 +63,18 @@ issue so that it names the confirmed problem or the accepted request, close a de
 one as not planned, and close an accepted one through the pull request that fixes it.
 
 - `Status: Needs Owner Testing` marks work that waits for a check on a real desktop.
-- `Status: Blocked` marks a tracking issue for a defect in LibreOffice or another dependency. It
-  holds the versions, the reproduction, the result, and what unblocks it, so that the defect can be
-  reported upstream and verified later without testing again. Once a report has been submitted
-  upstream, it links the tracking issue and the tracking issue links the report.
+- `Status: Blocked` marks accepted work that waits on an identified external dependency.
+
+## Defects in LibreOffice
+
+LibreOffice is the extension's only upstream, and the owner has decided that no reports go to it.
+A defect in LibreOffice that affects Sheet Manager gets an issue here holding the versions, the
+reproduction, the result, and how Sheet Manager works around the defect or documents the limit.
+Once the workaround or the documented limit is in place, the issue is closed as not planned with
+`Status: Won't Do`; it remains the record for later agents. Reopen it when a LibreOffice release
+fixes the defect, so that the workaround can be narrowed or dropped for fixed versions, or when
+the workaround falls short. There is no pinned overview of these defects; search the closed issues
+labelled `Status: Won't Do`.
 
 ## Git and merging
 
