@@ -1,13 +1,17 @@
 """Keep the Node that contributors and CI install equal to the checks image's Node."""
 
 import re
+import textwrap
+from collections.abc import Iterator
 from pathlib import Path
+from typing import cast
 
 import pytest
+import yaml
 
 from tools.build import ROOT
 
-SETUP_NODE = "actions/setup-node"
+SETUP_NODE = "actions/setup-node@"
 
 
 def runtime_node_version(dockerfile: str) -> str:
@@ -28,66 +32,33 @@ def workflow_files(directory: Path) -> list[Path]:
     return sorted([*directory.glob("*.yml"), *directory.glob("*.yaml")])
 
 
-def _unquote(value: str) -> str:
-    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
-        return value[1:-1]
-    return value
+def _mappings(node: object) -> Iterator[dict[object, object]]:
+    if isinstance(node, dict):
+        mapping = cast(dict[object, object], node)
+        yield mapping
+        for value in mapping.values():
+            yield from _mappings(value)
+    elif isinstance(node, list):
+        for value in cast(list[object], node):
+            yield from _mappings(value)
 
 
-def setup_node_inputs(workflow: str) -> list[dict[str, str]]:
-    """Return the `with` inputs of each setup-node step, read from block-style YAML.
-
-    Comments are ignored. A setup-node reference that is not a step's `uses` value, such as a
-    flow-style step, raises rather than passing unchecked.
-    """
-    lines: list[tuple[int, bool, str]] = []
-    for raw in workflow.splitlines():
-        text = raw.split(" #", 1)[0].rstrip()
-        content = text.lstrip()
-        if not content or content.startswith("#"):
-            continue
-        column = len(text) - len(content)
-        item = content.startswith("- ")
-        if item:
-            rest = content[1:]
-            content = rest.lstrip()
-            column += 1 + len(rest) - len(content)
-        lines.append((column, item, content))
-
-    steps: list[dict[str, str]] = []
-    for start, (column, item, _) in enumerate(lines):
-        if not item:
-            continue
-        end = start + 1
-        while end < len(lines):
-            next_column, next_item, _ = lines[end]
-            if next_column < column or (next_column == column and next_item):
-                break
-            end += 1
-        keys = [index for index in range(start, end) if lines[index][0] == column]
-        positions = {lines[index][2].partition(":")[0]: index for index in keys}
-        if "uses" not in positions:
-            continue
-        uses = _unquote(lines[positions["uses"]][2].partition(":")[2].strip())
-        if not uses.startswith(f"{SETUP_NODE}@"):
-            continue
-        inputs: dict[str, str] = {}
-        if "with" in positions:
-            after = positions["with"] + 1
-            children = lines[after : next((key for key in keys if key >= after), end)]
-            for child_column, _, child in children:
-                if child_column == children[0][0]:
-                    key, _, value = child.partition(":")
-                    inputs[key] = _unquote(value.strip())
-        steps.append(inputs)
-
-    if sum(SETUP_NODE in content for _, _, content in lines) != len(steps):
-        raise ValueError("write each setup-node step in block style with a `uses:` key")
-    return steps
+def setup_node_steps(workflow: str) -> list[dict[object, object]]:
+    """Return every mapping in a parsed workflow whose `uses` names actions/setup-node."""
+    return [
+        mapping
+        for mapping in _mappings(yaml.safe_load(workflow))
+        if isinstance(uses := mapping.get("uses"), str)
+        and uses.strip().lower().startswith(SETUP_NODE)
+    ]
 
 
-def reads_nvmrc(inputs: dict[str, str]) -> bool:
-    return inputs.get("node-version-file") == ".nvmrc" and "node-version" not in inputs
+def reads_nvmrc(step: dict[object, object]) -> bool:
+    inputs = step.get("with")
+    if not isinstance(inputs, dict):
+        return False
+    given = cast(dict[object, object], inputs)
+    return given.get("node-version-file") == ".nvmrc" and "node-version" not in given
 
 
 def test_nvmrc_names_the_checks_image_node() -> None:
@@ -99,8 +70,8 @@ def test_nvmrc_names_the_checks_image_node() -> None:
 def test_workflows_install_node_from_nvmrc() -> None:
     steps = 0
     for workflow in workflow_files(ROOT / ".github/workflows"):
-        for inputs in setup_node_inputs(workflow.read_text(encoding="utf-8")):
-            assert reads_nvmrc(inputs), f"{workflow.name}: {inputs}"
+        for step in setup_node_steps(workflow.read_text(encoding="utf-8")):
+            assert reads_nvmrc(step), f"{workflow.name}: {step}"
             steps += 1
     assert steps > 0
 
@@ -133,65 +104,107 @@ def test_workflow_files_include_both_extensions(tmp_path: Path) -> None:
     assert [path.name for path in workflow_files(tmp_path)] == ["a.yml", "b.yaml"]
 
 
-STEPS = """\
-jobs:
-  checks:
-    steps:
-      - uses: actions/checkout@abc # v7
-      - name: Node
-        uses: {uses}
-        with:
-{inputs}
-      - run: echo done
-"""
+def workflow(step: str) -> str:
+    steps = textwrap.indent(textwrap.dedent(step).strip("\n"), " " * 6)
+    return f"jobs:\n  checks:\n    steps:\n      - uses: actions/checkout@abc\n{steps}\n"
 
 
-def test_setup_node_inputs_reads_only_the_steps_inputs() -> None:
-    inputs = "          node-version-file: .nvmrc\n          package-manager-cache: false"
-    workflow = STEPS.format(uses="actions/setup-node@abc # v7.1.0", inputs=inputs)
-    assert setup_node_inputs(workflow) == [
-        {"node-version-file": ".nvmrc", "package-manager-cache": "false"}
-    ]
+STEP_CASES = {
+    "unquoted": (
+        True,
+        """
+        - uses: actions/setup-node@abc # v7.1.0
+          with:
+            node-version-file: .nvmrc # the file CI shares
+            package-manager-cache: false
+        """,
+    ),
+    "quoted": (
+        True,
+        """
+        - uses: "actions/setup-node@abc"
+          with:
+            "node-version-file": '.nvmrc'
+        """,
+    ),
+    "flow style": (True, "- {uses: actions/setup-node@abc, with: {node-version-file: .nvmrc}}"),
+    "commented": (
+        False,
+        """
+        - uses: actions/setup-node@abc
+          with:
+            # node-version-file: .nvmrc
+            package-manager-cache: false
+        """,
+    ),
+    "missing": (False, "- uses: actions/setup-node@abc"),
+    "other file": (
+        False,
+        """
+        - uses: actions/setup-node@abc
+          with:
+            node-version-file: .nvmrc-old
+        """,
+    ),
+    "continued value": (
+        False,
+        """
+        - uses: actions/setup-node@abc
+          with:
+            node-version-file: .nvmrc
+              -old
+        """,
+    ),
+    "fixed version": (
+        False,
+        """
+        - uses: actions/setup-node@abc
+          with:
+            node-version: "24.21.0"
+        """,
+    ),
+    "quoted override": (
+        False,
+        """
+        - uses: actions/setup-node@abc
+          with:
+            node-version-file: .nvmrc
+            'node-version': 22
+        """,
+    ),
+    "escaped override": (
+        False,
+        """
+        - uses: actions/setup-node@abc
+          with:
+            node-version-file: .nvmrc
+            "node\\u002dversion": 22
+        """,
+    ),
+    "inputs as text": (
+        False,
+        """
+        - uses: actions/setup-node@abc
+          with: |
+            node-version-file: .nvmrc
+        """,
+    ),
+    "capitalised action": (
+        False,
+        """
+        - uses: Actions/Setup-Node@abc
+          with:
+            node-version: 22
+        """,
+    ),
+}
 
 
-@pytest.mark.parametrize(
-    ("uses", "inputs", "accepted"),
-    [
-        ("actions/setup-node@abc", "          node-version-file: .nvmrc", True),
-        ('"actions/setup-node@abc"', "          node-version-file: '.nvmrc'", True),
-        ("actions/setup-node@abc", '          node-version-file: ".nvmrc"', True),
-        ("actions/setup-node@abc", "          # node-version-file: .nvmrc\n          a: b", False),
-        ("actions/setup-node@abc", "", False),
-        ("actions/setup-node@abc", "          node-version-file: .nvmrc-old", False),
-        ("actions/setup-node@abc", '          node-version: "24.21.0"', False),
-        (
-            "actions/setup-node@abc",
-            "          node-version-file: .nvmrc\n          node-version: 24",
-            False,
-        ),
-    ],
-    ids=[
-        "unquoted",
-        "single quotes",
-        "double quotes",
-        "commented",
-        "missing",
-        "other file",
-        "fixed version",
-        "overridden",
-    ],
-)
-def test_setup_node_steps_must_read_nvmrc(uses: str, inputs: str, accepted: bool) -> None:
-    [step] = setup_node_inputs(STEPS.format(uses=uses, inputs=inputs))
-    assert reads_nvmrc(step) is accepted
+@pytest.mark.parametrize(("accepted", "step"), STEP_CASES.values(), ids=STEP_CASES.keys())
+def test_setup_node_steps_must_read_nvmrc(accepted: bool, step: str) -> None:
+    [found] = setup_node_steps(workflow(step))
+    assert reads_nvmrc(found) is accepted
 
 
-def test_setup_node_inputs_ignores_other_steps_and_comments() -> None:
-    workflow = "steps:\n  # - uses: actions/setup-node@abc\n  - uses: actions/checkout@abc\n"
-    assert setup_node_inputs(workflow) == []
-
-
-def test_setup_node_inputs_rejects_flow_style_steps() -> None:
-    workflow = "steps:\n  - {uses: actions/setup-node@abc, with: {node-version: 24}}\n"
-    with pytest.raises(ValueError):
-        setup_node_inputs(workflow)
+def test_setup_node_steps_ignore_other_steps_and_comments() -> None:
+    assert setup_node_steps(workflow("# - uses: actions/setup-node@abc\n- run: echo")) == []
