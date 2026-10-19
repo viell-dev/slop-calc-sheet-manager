@@ -11,7 +11,6 @@ UI tests cover the menu. Moving sheets is covered by ``test_reorder.py``.
 
 import sys
 import time
-from contextlib import contextmanager, suppress
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -21,6 +20,7 @@ import uno
 from com.sun.star.awt import KeyEvent, MouseEvent
 from com.sun.star.beans import PropertyValue
 from com.sun.star.table import CellRangeAddress
+from main_thread import close_document
 from sheet_list_view import (
     BATCHES,
     UNRECORDED,
@@ -37,6 +37,7 @@ from sheet_list_view import (
     selection,
     unrecorded_batch,
 )
+from teardown import Configured, run_checks
 
 from sheet_manager import keys, uno_list
 from sheet_manager.sheet_list import SheetRow, row_label, tab_color
@@ -49,8 +50,8 @@ VCL_LEFT, VCL_RIGHT, VCL_SHIFT, VCL_MOD1 = 1, 4, 0x1000, 0x2000
 PROGRAM = Path(sys.executable).resolve().parent
 SIX = ["Alfa", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot"]
 NATIVE_MENU = "menu steps skipped: robot input cannot reach a native gtk3 menu (see tests/ui)"
-# Workbooks a check created; a failed check leaves its own open, and a painted office would
-# then ask whether to save it when the runner terminates it.
+# Workbooks a check created and has not closed yet; a failed check leaves its own open, and a
+# painted office would then ask whether to save them when the runner terminates it (#40).
 _CREATED: list[Any] = []
 
 
@@ -115,8 +116,8 @@ class Robot:
         self.key(window, keys.RETURN)
 
 
-@contextmanager
 def undo_capacity(context, steps):
+    """Set the undo limit for a `with` block; restored after it unless a callback stalled (#51)."""
     # The context belongs to the runner's private office and profile, never the user profile.
     provider = context.ServiceManager.createInstanceWithContext(
         "com.sun.star.configuration.ConfigurationProvider", context
@@ -127,14 +128,16 @@ def undo_capacity(context, steps):
         "com.sun.star.configuration.ConfigurationUpdateAccess", (argument,)
     )
     original = access.getPropertyValue("Steps")
-    try:
-        access.setPropertyValue("Steps", steps)
+
+    def set_steps(value):
+        access.setPropertyValue("Steps", value)
         access.commitChanges()
-        yield
-    finally:
-        access.setPropertyValue("Steps", original)
-        access.commitChanges()
+
+    def restore():
+        set_steps(original)
         access.dispose()
+
+    return Configured(lambda: set_steps(steps), restore)
 
 
 def make_workbook(desktop, sheet_names):
@@ -148,6 +151,12 @@ def make_workbook(desktop, sheet_names):
     document.getCurrentController().setActiveSheet(sheets.getByIndex(0))
     document.getUndoManager().clear()
     return document
+
+
+def close_workbook(context, document):
+    """Close a workbook a check created; it then needs no clean-up."""
+    close_document(context, document)
+    _CREATED.remove(document)
 
 
 def replace(document, name):
@@ -236,7 +245,7 @@ def check_states_and_refresh(context, desktop):
     poll(lambda: selection(tree, order) == ["East"], "the list to follow the active sheet")
     poll(lambda: labels(tree) == expected_labels(document), "the active marker to move")
     seen = labels(tree)
-    document.close(True)
+    close_workbook(context, document)
     return {"labels": seen, "graphics_differ": True}
 
 
@@ -273,7 +282,7 @@ def check_selection_and_menu(context, desktop, menus):
     assert controller.getActiveSheet().getName() == "Three", "A hidden row must not activate"
     if not menus:
         say(NATIVE_MENU)
-        document.close(True)
+        close_workbook(context, document)
         return {"shift_selection": shift, "menu": "skipped"}
 
     say("menu: Calc's tabs are exactly the picked sheets, and Hide acts on them")
@@ -307,7 +316,7 @@ def check_selection_and_menu(context, desktop, menus):
     robot.click(tree, row_point(tree, 1))
     poll(lambda: tabs() == ["Two"], "a plain click to leave one selected tab")
     after_click = tabs()
-    document.close(True)
+    close_workbook(context, document)
     return {
         "shift_selection": shift,
         "calc_tabs_while_menu_open": grouped,
@@ -356,7 +365,7 @@ def check_identity(context, desktop, menus):
     poll(lambda: selection(tree, renamed) == [], "the renamed sheets to leave the selection")
     if not menus:
         say(NATIVE_MENU)
-        document.close(True)
+        close_workbook(context, document)
         return {"menu": "skipped"}
 
     say("replace a picked sheet while the built-in menu is open")
@@ -375,7 +384,7 @@ def check_identity(context, desktop, menus):
     shown = all(sheets.getByName(name).IsVisible for name in ("Echo", "Foxtrot"))
     assert shown and list(undo.getAllUndoActionTitles()) == titles, "A stale command ran"
     poll(lambda: "Foxtrot" not in selection(tree, renamed), "the replacement to stay unpicked")
-    document.close(True)
+    close_workbook(context, document)
     return {"menu_tabs_after_replacement": menu_tabs, "stale_menu_command_refused": True}
 
 
@@ -556,7 +565,7 @@ def check_stale_clicks(context, desktop):
     kept = selection(tree, SIX)
     assert kept == ["Bravo", "Delta"], kept
     results["selection_after_delayed_refresh"] = kept
-    document.close(True)
+    close_workbook(context, document)
     return results
 
 
@@ -619,7 +628,7 @@ def redirected_activation(context, desktop, hidden):
         "tabs": tabs_of(context, document),
         "messages": messages,
     }
-    document.close(True)
+    close_workbook(context, document)
     return state
 
 
@@ -737,7 +746,7 @@ def check_show(context, desktop):
     results["refused_when_stale"] = True
 
     say("recovery after a partial failure")
-    document.close(True)
+    close_workbook(context, document)
 
     def partial_failure(picked, history):
         document = hidden_workbook(desktop, targets)
@@ -754,7 +763,7 @@ def check_show(context, desktop):
         if history:
             assert cell.getValue() == history, "Recovery must keep the user's last edit"
             assert list(undo.getAllUndoActionTitles())[: history - 1] == before[: history - 1]
-        document.close(True)
+        close_workbook(context, document)
 
     say("  with room in the undo history")
     partial_failure(targets, 0)
@@ -781,14 +790,15 @@ def measure_large_workbook(context, desktop, count):
     order = list(document.getSheets().getElementNames())
     poll(lambda: selection(tree, order) == [target.getName()], "a large list to follow", 120)
     followed = time.monotonic() - started
-    document.close(True)
+    close_workbook(context, document)
     return {"sheets": count, "open_seconds": round(opened, 2), "follow_seconds": round(followed, 2)}
 
 
 def exercise(context, desktop, directory, output, *, headless):
-    results: dict[str, object] = {}
-    try:
-        for name, check in (
+    # Each check closes its own workbooks; the rest are closed after a failure, unless a
+    # main-thread close timed out, which fails the suite in any case (#50).
+    return run_checks(
+        (
             ("key_constants", check_key_constants),
             ("states_and_refresh", lambda: check_states_and_refresh(context, desktop)),
             ("selection_and_menu", lambda: check_selection_and_menu(context, desktop, headless)),
@@ -797,12 +807,7 @@ def exercise(context, desktop, directory, output, *, headless):
             ("activation_fallback", lambda: check_activation_fallback(context, desktop)),
             ("show", lambda: check_show(context, desktop)),
             ("large_workbook", lambda: measure_large_workbook(context, desktop, 1000)),
-        ):
-            print("sheet list check:", name, flush=True)
-            results[name] = check() or True
-    finally:
-        for document in _CREATED:
-            with suppress(Exception):  # Most are closed already.
-                document.close(True)
-        _CREATED.clear()
-    return results
+        ),
+        _CREATED,
+        lambda document: close_document(context, document),
+    )

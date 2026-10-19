@@ -26,6 +26,7 @@ import uno  # noqa: E402
 import unohelper  # noqa: E402
 from com.sun.star.awt import XMouseMotionListener  # noqa: E402
 from run import office_session, wait_for  # noqa: E402
+from teardown import stalled_callbacks  # noqa: E402
 from xinput import RIGHT, Pointer, XInput  # noqa: E402
 
 from sheet_manager.reorder import Sheet, target_order  # noqa: E402
@@ -1087,6 +1088,8 @@ def run_checks(lab, output):
         results[name]["seconds"] = round(time.monotonic() - started, 2)
         print(name, "pass" if results[name]["pass"] else "FAIL", flush=True)
         (output / "checks.json").write_text(json.dumps(results, indent=2) + "\n", "utf-8")
+        if stalled_callbacks():  # The main thread is stuck: no reset, check, or close (#52).
+            raise TimeoutError(stalled_callbacks()[0])
     book.close()
     return results
 

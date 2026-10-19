@@ -15,7 +15,7 @@ import sys
 import tempfile
 import time
 import uuid
-from contextlib import contextmanager, suppress
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, cast
 
@@ -23,7 +23,15 @@ import uno
 import unohelper
 from com.sun.star.beans import PropertyValue
 from com.sun.star.lang import XEventListener
-from office_process import assert_clean_shutdown, finish_process, normal_startup_restart
+from main_thread import close_document
+from office_process import (
+    assert_clean_shutdown,
+    end_office,
+    finish_process,
+    normal_startup_restart,
+    retain_crash_dumps,
+)
+from teardown import stalled_callbacks, start_session
 
 FACTORY = "dev.viell.sheetmanager.PanelFactory"
 DECK = "SheetManagerDeck"
@@ -68,7 +76,10 @@ def office_session(
     vcl="gtk3",
 ):
     # Retry only startup, before opening documents or making test assertions. Windows
-    # occasionally loses soffice.bin just after a successful UNO connection.
+    # occasionally loses soffice.bin just after a successful UNO connection. Such an attempt's
+    # crash dumps are kept and listed, but do not fail a session whose retry starts cleanly.
+    startup_dumps: list[str] = []
+    result["office_startup_crash_dumps"] = startup_dumps  # Filled in place, kept on failure.
     for attempt in range(startup_attempts):
         temporary = tempfile.TemporaryDirectory(prefix="sheet-manager-integration-")
         directory = Path(temporary.name)
@@ -194,6 +205,11 @@ def office_session(
             if trace_path is not None and generated_trace.exists():
                 trace_path.write_bytes(generated_trace.read_bytes())
                 startup["office_backtrace"] = trace_path.name
+            dumps = retain_crash_dumps(
+                directory / "profile" / "crash", output, f"crash-{headless}-{attempt}"
+            )
+            startup["office_crash_dumps"] = dumps
+            startup_dumps.extend(dumps)
             log.close()
             (output / f"startup-{headless}-{attempt}.json").write_text(
                 json.dumps(startup, indent=2) + "\n", encoding="utf-8"
@@ -204,19 +220,20 @@ def office_session(
                 result["failure_stage"] = "startup"
                 raise
             continue
+        start_session()
         try:
             yield context, desktop, directory
         finally:
-            # The bridge is normally disposed during successful termination.
-            with suppress(Exception):
-                desktop.terminate()
             try:
                 generated_trace = directory / "gdbtrace.log"
-                # finish_process must wait before copying the debugger's final output.
+                # Ends the office before the debugger's final output is copied. After a stalled
+                # main-thread callback it stops the office instead of asking it (#50).
                 result.update(
-                    finish_process(
+                    end_office(
+                        desktop,
                         process,
                         log_path,
+                        stalled=stalled_callbacks(),
                         backtrace_path=generated_trace if backtrace else None,
                     )
                 )
@@ -224,6 +241,9 @@ def office_session(
                     if generated_trace.exists():
                         trace_path.write_bytes(generated_trace.read_bytes())
                     result["office_backtrace"] = trace_path.name
+                result["office_crash_dumps"] = retain_crash_dumps(
+                    directory / "profile" / "crash", output, f"crash-{headless}-{attempt}"
+                )
             finally:
                 log.close()
                 temporary.cleanup()
@@ -373,14 +393,14 @@ def exercise(context, desktop, directory, output, *, screenshot):
     # Read-only documents still have a panel, and closing a frame releases it.
     workbook = directory / "synthetic.ods"
     document.storeAsURL(workbook.as_uri(), ())
-    document.close(True)
+    close_document(context, document)
     wait_for(lambda: disposal.disposed, "panel dialog disposal after document close")
     document = desktop.loadComponentFromURL(
         workbook.as_uri(), "_blank", 0, (property_value("ReadOnly", True),)
     )
     assert document.isReadonly()
     _, readonly_disposal, _ = assert_panel(context, document)
-    document.close(True)
+    close_document(context, document)
     wait_for(lambda: readonly_disposal.disposed, "read-only panel dialog disposal")
     writer = desktop.loadComponentFromURL("private:factory/swriter", "_blank", 0, ())
     assert writer is not None
@@ -416,12 +436,12 @@ def exercise_without_extension(context, desktop, directory):
         time.sleep(0.5)
     workbook = directory / "synthetic.ods"
     document.storeAsURL(workbook.as_uri(), ())
-    document.close(True)
+    close_document(context, document)
     document = desktop.loadComponentFromURL(
         workbook.as_uri(), "_blank", 0, (property_value("ReadOnly", True),)
     )
     assert document.isReadonly()
-    document.close(True)
+    close_document(context, document)
     writer = desktop.loadComponentFromURL("private:factory/swriter", "_blank", 0, ())
     assert writer is not None
     close_writer(writer)
@@ -482,6 +502,8 @@ def main():
         "gdbtrace-*.log",
         "startup-*.json",
         "startup-restart-*.log",
+        "crash-*.dmp",
+        "crash-*-dump.ini",
         "reorder-performance*.json",
     ):
         for artifact in output.glob(pattern):
@@ -520,6 +542,8 @@ def main():
                         )
                         if arguments.suites == "all":
                             for suite_path in sorted(Path(__file__).parent.glob("test_*.py")):
+                                if stalled_callbacks():  # No suite runs on a stuck office (#50).
+                                    raise TimeoutError(stalled_callbacks()[0])
                                 spec = importlib.util.spec_from_file_location(
                                     suite_path.stem, suite_path
                                 )

@@ -250,8 +250,20 @@ on the [manual checklist](docs/manual-tests.md), with a synthetic workbook from
 
 Logs, actual office/Python versions, package inventory, and results are in `test-results/` and in
 CI artifacts. The runner records the exit status of each office session and rejects nonzero exits,
-forced shutdowns after a 30-second grace period, and fatal-error messages, including during
-termination. The intermittent gtk3 abort of
+forced shutdowns after a 30-second grace period, fatal-error messages, and LibreOffice's own crash
+dumps, including during termination. It copies those dumps into the results as `crash-*.dmp`,
+with the `dump.ini` that names the version and the last commands; on Windows a crashed office
+exits with status 0, so the dump is the sign there
+([#48](https://github.com/viell-dev/slop-calc-sheet-manager/issues/48)). Dumps from a startup
+attempt that is retried are kept and listed as `office_startup_crash_dumps` without failing the
+session. On Windows the tests close Calc documents on LibreOffice's main thread, as its user
+interface does: closing one from the test's own thread crashed LibreOffice when a toolbar update
+was pending
+([#47](https://github.com/viell-dev/slop-calc-sheet-manager/issues/47)). If such a close, or other
+work run on the main thread, does not finish within 60 seconds, the session fails, no further close
+is tried, and the runner stops its own office instead of asking it to terminate
+([#50](https://github.com/viell-dev/slop-calc-sheet-manager/issues/50)). The intermittent gtk3
+abort of
 [issue #8](https://github.com/viell-dev/slop-calc-sheet-manager/issues/8) was a LibreOffice crash
 when a test closed Writer within milliseconds of opening it
 ([#30](https://github.com/viell-dev/slop-calc-sheet-manager/issues/30)); the runner now waits a
