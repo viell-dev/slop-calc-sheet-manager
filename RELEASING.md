@@ -114,9 +114,10 @@ or a later publication with a lower version. A missing site (HTTP 404) permits t
 bootstrap; other fetch failures stop deployment. Do not delete the Pages site or its history.
 Generation and deployment share one concurrency lock, so queued runs read fresh release data.
 
-GitHub Pages must use **GitHub Actions** as its source, with a `github-pages` environment allowing
-protected branches. Pages publication runs only from `main` or a release tag, using tooling from
-`main`. A push to `main`, a manual dispatch, and an hourly schedule can rebuild feeds. The release
+GitHub Pages must use **GitHub Actions** as its source. Set the `github-pages` environment's custom
+deployment policies to branch `main` and tags `[0-9]*`, so manual release events can deploy too.
+Other branches and PR refs cannot deploy. Pages uses tooling from `main`. A push to `main`, a
+manual dispatch, and an hourly schedule can rebuild feeds. The release
 workflow calls it directly because events created with `GITHUB_TOKEN` do not trigger another
 workflow's `release` event. The event trigger also handles a manually completed draft.
 
