@@ -22,6 +22,7 @@ ROOT = HERE.parents[1]
 sys.path[:0] = [str(HERE), str(ROOT / "tests" / "integration"), str(ROOT / "src")]
 
 import sheet_list_view as view  # noqa: E402
+import uno  # noqa: E402
 import unohelper  # noqa: E402
 from com.sun.star.awt import XMouseMotionListener  # noqa: E402
 from run import office_session, wait_for  # noqa: E402
@@ -60,6 +61,8 @@ NATO = [
 ]
 NAMES = NATO + [f"Sheet {number}" for number in range(27, 81)]
 PROGRAM = Path("/opt/lo/program")
+PUSH_BUTTON = uno.getConstantByName("com.sun.star.accessibility.AccessibleRole.PUSH_BUTTON")
+unrecorded = view.unrecorded_batch
 
 
 class Tracker(unohelper.Base, XMouseMotionListener):
@@ -351,12 +354,15 @@ def check_wheel(book):
 
 
 def check_keys_stay_in_list(book):
+    # A modification without an undo action makes the list drop its picks (#28): mark the
+    # document unmodified before the list's own input, and let the list refresh first.
+    book.document.setModified(False)
+    time.sleep(1.5)
     book.click(0)
     wait_until(lambda: book.active() == NAMES[0], "the first sheet to be active")
     sheet = book.document.getSheets().getByIndex(0)
     cell = sheet.getCellRangeByName("A1")
     book.controller.select(cell)
-    book.document.setModified(False)
     keys = book.lab.input
     steps = {}
     keys.tap("q", pause=0.4)
@@ -532,6 +538,42 @@ def check_menu_hidden_only(book):
     return evidence
 
 
+def close_message(book):
+    """Close the list's message box; True once it is gone.
+
+    Return closes it, as a user does. In local gen sessions, Return sometimes never reached a
+    box opened after a refused drop, with the code before and after #28's round 8 alike; the
+    box's OK button is then pressed through accessibility instead. Only the result of the drop
+    is under test here.
+    """
+    toolkit = book.lab.context.ServiceManager.createInstanceWithContext(
+        "com.sun.star.awt.Toolkit", book.lab.context
+    )
+
+    def boxes():
+        windows = [toolkit.getTopWindow(i) for i in range(toolkit.getTopWindowCount())]
+        kinds = "com.sun.star.awt.XMessageBox"
+        return [w for w in windows if kinds in [kind.typeName for kind in w.getTypes()]]
+
+    def press_button(context):
+        if context.getAccessibleRole() == PUSH_BUTTON:
+            context.doAccessibleAction(0)
+            return True
+        children = range(context.getAccessibleChildCount())
+        return any(
+            press_button(context.getAccessibleChild(i).getAccessibleContext()) for i in children
+        )
+
+    book.lab.input.tap("Return", pause=0.6)
+    for _ in range(3):
+        found = boxes()
+        if not found:
+            return True
+        press_button(found[0].getProperty("XAccessible").getAccessibleContext())
+        time.sleep(0.6)
+    return not boxes()
+
+
 def replace(document, name):
     """Delete a sheet and insert a different one with the same name at the same place."""
     sheets = document.getSheets()
@@ -640,9 +682,10 @@ def check_drop_after_replacement(book):
     book.pointer.release()
     time.sleep(1.2)
     book.lab.screenshot("drop-refused")
-    book.lab.input.tap("Return", pause=0.6)  # Close the refusal message.
+    closed = close_message(book)  # The refusal message.
     evidence = {"order_unchanged": book.order() == before, "undo": book.undo_titles()}
     assert evidence["order_unchanged"] and "Move Sheets" not in evidence["undo"], evidence
+    assert closed, "The refusal message did not close"
     return evidence
 
 
@@ -762,17 +805,22 @@ def check_picks_dropped_when_sheets_change(book):
     again once that sheet is renamed, so the list cannot tell which sheet its handles mean.
     The ways: Bravo deleted and Alfa renamed to Bravo; a new sheet inserted before Bravo,
     Bravo deleted, and the new sheet renamed to Bravo (the sheet count ends as it began); Bravo
-    replaced while it is held and the list follows Calc to Delta; and the insert-delete-rename
+    replaced while it is held and the list follows Calc to Delta; the insert-delete-rename
     batch run on LibreOffice's main thread inside lockControllers, addActionLock, or
-    disableSetModified, which LibreOffice reports with one modify notification or none.
+    disableSetModified, which LibreOffice reports with one modify notification or none; and the
+    same batch with undo recording off inside either lock, recording back on after or before
+    the unlock or before one recorded edit (`view.UNRECORDED`). The undo history is empty
+    before each change, so that it shows no difference either.
     """
     sheets = book.document.getSheets()
     undo = book.document.getUndoManager()
     evidence = {}
-    for way in ("delete_rename", "insert_delete_rename", "held_replace", *view.BATCHES):
+    ways = ("delete_rename", "insert_delete_rename", "held_replace", *view.BATCHES)
+    for way in (*ways, *view.UNRECORDED):
         reset(book)
         sheets.getByName(NAMES[0]).getCellRangeByName("A1").setString("victim")
         sheets.getByName(NAMES[1]).getCellRangeByName("A1").setString("original")
+        undo.clear()
         if way == "held_replace":
             point = book.point(1)
             book.pointer.press(*point)
@@ -791,6 +839,9 @@ def check_picks_dropped_when_sheets_change(book):
             assert book.selection() == [NAMES[1]], "The pick went before the change"
         if way in view.BATCHES:
             view.on_main_thread(book.lab.context, lambda w=way: view.cover_batch(book.document, w))
+            time.sleep(3)
+        elif way in view.UNRECORDED:
+            view.on_main_thread(book.lab.context, lambda w=way: unrecorded(book.document, w))
             time.sleep(3)
         elif way != "held_replace":
             if way == "insert_delete_rename":
@@ -832,6 +883,88 @@ def check_picks_dropped_when_sheets_change(book):
         assert state["undo_unchanged"] and state["hidden"] == [], evidence
         if way != "held_replace":
             assert state["notice"], evidence
+    return evidence
+
+
+def check_drop_refused_after_unrecorded_batch(book):
+    """A drag held while a batch with undo recording off replaces Bravo moves nothing (#28).
+
+    Bravo is dragged towards the gap after Foxtrot with an empty undo history; while the button
+    is held, `view.UNRECORDED`'s batch runs on LibreOffice's main thread. The release is
+    refused: the order stays and no move is recorded.
+    """
+    sheets = book.document.getSheets()
+    undo = book.document.getUndoManager()
+    evidence = {}
+    for way in view.UNRECORDED:
+        reset(book)
+        sheets.getByName(NAMES[1]).getCellRangeByName("A1").setString("original")
+        undo.clear()
+        time.sleep(1.5)
+        before = book.order()
+        start, end = book.point(1), book.point(5, 0.75)
+        book.pointer.press(*start)
+        book.pointer.glide(start, (start[0], start[1] + 12))
+        book.pointer.glide((start[0], start[1] + 12), end)
+        time.sleep(0.4)
+        view.on_main_thread(book.lab.context, lambda w=way: unrecorded(book.document, w))
+        time.sleep(1.5)
+        book.pointer.release()
+        time.sleep(1.2)
+        book.lab.screenshot(f"drop-refused-{way.replace(' ', '-')}")
+        titles = book.undo_titles()
+        state = {
+            "order_unchanged": book.order() == before,
+            "undo": titles,
+            "bravo": sheets.getByName(NAMES[1]).getCellRangeByName("A1").getString(),
+            "message_closed": close_message(book),  # The refusal message.
+        }
+        evidence[way] = state
+        while undo.getAllUndoActionTitles():
+            undo.undo()
+        assert state["order_unchanged"] and "Move Sheets" not in titles, evidence
+        assert state["bravo"] == "replacement", evidence  # The batch did replace Bravo.
+        assert state["message_closed"], evidence
+    return evidence
+
+
+def check_save_keeps_picks(book):
+    """Saving with Ctrl+S, from the list or from a cell, keeps the list's picks (#28).
+
+    LibreOffice reports a save as modify notifications without an undo action, between its
+    save events, and may run the list's refresh in the middle with modify notifications off.
+    """
+    notice = "dev.viell.sheetmanager.selection-cleared"
+    cell = book.document.getSheets().getByIndex(0).getCellRangeByName("B2")
+    evidence = {}
+    for where in ("list", "cell"):
+        reset(book)
+        if book.controller.hasInfobar(notice):
+            book.controller.removeInfobar(notice)
+        time.sleep(1.5)
+        book.click(1)
+        book.click(3, modifiers=("Control_L",))
+        wait_until(lambda: book.selection() == [NAMES[1], NAMES[3]], "Bravo and Delta picked")
+        cell.setString(f"saved from the {where}")
+        time.sleep(1.5)
+        if where == "list":  # The clicks that made the picks gave the list the focus.
+            wait_until(lambda: book.tree.hasFocus(), "the list to have the focus")
+        else:
+            Pointer(book.lab.input, (0, 0)).click(260, 420, pause=0.5)
+        stamp = book.path.stat().st_mtime_ns
+        book.lab.input.tap("s", ("Control_L",), pause=0.6)
+        wait_until(lambda: not book.document.isModified(), "Ctrl+S to save", timeout=30)
+        time.sleep(2)
+        state = {
+            "saved": book.path.stat().st_mtime_ns != stamp,
+            "selection": book.selection(),
+            "notice": bool(book.controller.hasInfobar(notice)),
+        }
+        evidence[where] = state
+        assert state == {"saved": True, "selection": [NAMES[1], NAMES[3]], "notice": False}, (
+            evidence
+        )
+    cell.setString("")
     return evidence
 
 
@@ -931,6 +1064,11 @@ def run_checks(lab, output):
         ("press_then_change", lambda: check_press_then_change(book)),
         ("newer_pick_survives_voided_press", lambda: check_newer_pick_survives_voided_press(book)),
         ("picks_dropped_when_sheets_change", lambda: check_picks_dropped_when_sheets_change(book)),
+        (
+            "drop_refused_after_unrecorded_batch",
+            lambda: check_drop_refused_after_unrecorded_batch(book),
+        ),
+        ("save_keeps_picks", lambda: check_save_keeps_picks(book)),
         ("click_hidden_before_refresh", lambda: check_click_hidden_before_refresh(book)),
         ("newer_selection_kept", lambda: check_newer_selection_kept(book)),
         ("other_document", lambda: check_other_document(lab, book)),
