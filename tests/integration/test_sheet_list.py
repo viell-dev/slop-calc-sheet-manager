@@ -4,12 +4,14 @@ This feature suite runs in every integration session, on Linux and Windows, agai
 packaged modules. LibreOffice's XToolkitRobot posts mouse and key events into VCL's own queue.
 Robot key events bypass key handlers and robot input cannot carry a native drag, so the key
 handler and drag and drop are covered by the real-input UI tests and the manual checklist.
-Moving sheets is covered by ``test_reorder.py``.
+Robot input reaches the sheet tab menu only where VCL draws it, in headless sessions; a painted
+gtk3 session opens a native GTK menu, so there the suite skips its menu steps and the real-input
+UI tests cover the menu. Moving sheets is covered by ``test_reorder.py``.
 """
 
 import sys
 import time
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import Any
 
@@ -39,6 +41,10 @@ VCL_LEFT, VCL_RIGHT, VCL_SHIFT, VCL_MOD1 = 1, 4, 0x1000, 0x2000
 # LibreOffice's Python runs from the program directory on every platform.
 PROGRAM = Path(sys.executable).resolve().parent
 SIX = ["Alfa", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot"]
+NATIVE_MENU = "menu steps skipped: robot input cannot reach a native gtk3 menu (see tests/ui)"
+# Workbooks a check created; a failed check leaves its own open, and a painted office would
+# then ask whether to save it when the runner terminates it.
+_CREATED: list[Any] = []
 
 
 def say(text):
@@ -108,6 +114,7 @@ def undo_capacity(context, steps):
 
 def make_workbook(desktop, sheet_names):
     document = desktop.loadComponentFromURL("private:factory/scalc", "_blank", 0, ())
+    _CREATED.append(document)
     document.getCurrentController().getFrame().activate()
     sheets = document.getSheets()
     sheets.getByIndex(0).setName(sheet_names[0])
@@ -213,7 +220,7 @@ def tabs_of(context, document):
     return [order[index] for index in selected_tabs(context, document.getCurrentController())]
 
 
-def check_selection_and_menu(context, desktop):
+def check_selection_and_menu(context, desktop, menus):
     sheet_names = ["One", "Two", "Three", "Four", "Five", "Six"]
     document = make_workbook(desktop, sheet_names)
     controller = document.getCurrentController()
@@ -239,6 +246,10 @@ def check_selection_and_menu(context, desktop):
     robot.click(tree, row_point(tree, 5))
     poll(lambda: selection(tree, sheet_names) == ["Six"], "a click on a hidden row")
     assert controller.getActiveSheet().getName() == "Three", "A hidden row must not activate"
+    if not menus:
+        say(NATIVE_MENU)
+        document.close(True)
+        return {"shift_selection": shift, "menu": "skipped"}
 
     say("menu: Calc's tabs are exactly the picked sheets, and Hide acts on them")
     robot.click(tree, row_point(tree, 1))
@@ -279,7 +290,7 @@ def check_selection_and_menu(context, desktop):
     }
 
 
-def check_identity(context, desktop):
+def check_identity(context, desktop, menus):
     """A replaced or renamed sheet drops out of the selection and the menu (#28)."""
     document = make_workbook(desktop, SIX)
     controller = document.getCurrentController()
@@ -296,13 +307,15 @@ def check_identity(context, desktop):
     poll(lambda: selection(tree, order) == ["Alfa", "Bravo"], "Alfa and Bravo selected")
     replace(document, "Bravo")
     poll(lambda: selection(tree, order) == ["Alfa"], "the replaced sheet to leave the selection")
-    robot.click(tree, row_point(tree, 0), buttons=VCL_RIGHT)
-    menu_tabs = poll(
-        lambda: tabs_of(context, document) if tabs_of(context, document) == ["Alfa"] else None,
-        "the menu to act only on Alfa",
-    )
-    robot.key(tree, keys.ESCAPE)
-    time.sleep(0.5)
+    menu_tabs = None
+    if menus:
+        robot.click(tree, row_point(tree, 0), buttons=VCL_RIGHT)
+        menu_tabs = poll(
+            lambda: tabs_of(context, document) if tabs_of(context, document) == ["Alfa"] else None,
+            "the menu to act only on Alfa",
+        )
+        robot.key(tree, keys.ESCAPE)
+        time.sleep(0.5)
 
     say("rename a selected sheet and give its name to another")
     robot.click(tree, row_point(tree, 2))
@@ -313,6 +326,10 @@ def check_identity(context, desktop):
     renamed = ["Alfa", "Bravo", "Spare", "Charlie", "Echo", "Foxtrot"]
     poll(lambda: names(tree) == renamed, "the renamed rows")
     poll(lambda: selection(tree, renamed) == [], "the renamed sheets to leave the selection")
+    if not menus:
+        say(NATIVE_MENU)
+        document.close(True)
+        return {"menu": "skipped"}
 
     say("replace a picked sheet while the built-in menu is open")
     robot.click(tree, row_point(tree, 4))
@@ -482,16 +499,22 @@ def measure_large_workbook(context, desktop, count):
     return {"sheets": count, "open_seconds": round(opened, 2), "follow_seconds": round(followed, 2)}
 
 
-def exercise(context, desktop, directory, output):
+def exercise(context, desktop, directory, output, *, headless):
     results: dict[str, object] = {}
-    for name, check in (
-        ("key_constants", check_key_constants),
-        ("states_and_refresh", lambda: check_states_and_refresh(context, desktop)),
-        ("selection_and_menu", lambda: check_selection_and_menu(context, desktop)),
-        ("identity", lambda: check_identity(context, desktop)),
-        ("show", lambda: check_show(context, desktop)),
-        ("large_workbook", lambda: measure_large_workbook(context, desktop, 1000)),
-    ):
-        print("sheet list check:", name, flush=True)
-        results[name] = check() or True
+    try:
+        for name, check in (
+            ("key_constants", check_key_constants),
+            ("states_and_refresh", lambda: check_states_and_refresh(context, desktop)),
+            ("selection_and_menu", lambda: check_selection_and_menu(context, desktop, headless)),
+            ("identity", lambda: check_identity(context, desktop, headless)),
+            ("show", lambda: check_show(context, desktop)),
+            ("large_workbook", lambda: measure_large_workbook(context, desktop, 1000)),
+        ):
+            print("sheet list check:", name, flush=True)
+            results[name] = check() or True
+    finally:
+        for document in _CREATED:
+            with suppress(Exception):  # Most are closed already.
+                document.close(True)
+        _CREATED.clear()
     return results

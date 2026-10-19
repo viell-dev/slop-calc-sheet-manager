@@ -6,6 +6,7 @@ Choose headless, gtk3, or both with --sessions; gtk3 saves a screenshot.
 
 import argparse
 import importlib.util
+import inspect
 import json
 import os
 import re
@@ -525,7 +526,15 @@ def main():
                                 assert spec is not None and spec.loader is not None
                                 suite = importlib.util.module_from_spec(spec)
                                 spec.loader.exec_module(suite)
-                                suite_result = suite.exercise(context, desktop, directory, output)
+                                # A suite may take the session kind, for steps that need it.
+                                options = (
+                                    {"headless": headless}
+                                    if "headless" in inspect.signature(suite.exercise).parameters
+                                    else {}
+                                )
+                                suite_result = suite.exercise(
+                                    context, desktop, directory, output, **options
+                                )
                                 result[suite_path.stem] = suite_result
                                 if "performance" in suite_result:
                                     mode = "headless" if headless else "gtk3"

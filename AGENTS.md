@@ -109,6 +109,11 @@ one as not planned, and close an accepted one through the pull request that fixe
   layer's undo rules: refuse without undo or beyond the undo limit, one group, undo only its own
   group on failure, verify. A plain click or Enter makes the sheet Calc's only selected tab and
   reads that back: `setActiveSheet` keeps an existing group when the sheet belongs to it.
+- Refreshing reads every sheet and rebuilds the tree on the main thread, so `uno_list.py` limits
+  it: an activation refreshes at once only after the list has been idle for several times the last
+  refresh's cost, and other changes wait for a pause, with a bounded wait. Bulk API changes, such
+  as a 500-call move, send an event for each call; refreshing on each one slowed such a move on
+  Windows from seconds to over a minute.
 - `extension/description.xml` is the version source. `extension/sheet-manager.components` and
   `registration.py` provide passive Python registration. `Factories.xcu` maps tool-panel URLs to
   that factory; `Sidebar.xcu` registers the Calc-only deck and panel. `tools/build.py` explicitly
@@ -144,7 +149,9 @@ one as not planned, and close an accepted one through the pull request that fixe
   commands or undo. Startup retries end before document creation and never retry failed tests.
   `--sessions headless|gtk3|both` selects sessions; default headless. The feature suite
   `test_sheet_list.py` checks the list's contents, refresh, identity, robot clicks and menu, and
-  Show with LibreOffice's synthetic input.
+  Show with LibreOffice's synthetic input. Robot input cannot reach gtk3's native menus, so it
+  skips the menu steps in painted sessions, and it closes leftover workbooks after a failure: a
+  painted office asks to save them when the runner terminates it, which blocks the run.
   Real-input UI tests live in `tests/ui/run_ui.py`, use XTEST under Xvfb with separate gtk3 and
   gen sessions, and run in the `linux-gtk3` jobs through `tools/linux_integration.py <lane> --ui`.
   What neither can reach is on the manual checklist, `docs/manual-tests.md`; keep it current.

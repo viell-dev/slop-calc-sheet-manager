@@ -106,11 +106,12 @@ longest-common-subsequence oracle. The panel-facing contract is in
 [docs/reordering.md](docs/reordering.md).
 
 The runner also discovers `tests/integration/test_*.py` modules with an
-`exercise(context, desktop, directory, output)` entry point. These suites import the built OXT's
-modules through zipimport, so allowlist omissions fail integration. Keep feature suites additive
-and keep failure injection in test-only forwarding adapters. Reorder checks cover active-sheet
-and native selection preservation, one undo and redo, permission refusals, stale handles, hidden
-sheets, scenario ownership, failures after each real mutation, and a silently ineffective undo.
+`exercise(context, desktop, directory, output)` entry point, and passes `headless=` too when the
+entry point takes that keyword. These suites import the built OXT's modules through zipimport, so
+allowlist omissions fail integration. Keep feature suites additive and keep failure injection in
+test-only forwarding adapters. Reorder checks cover active-sheet and native selection preservation,
+one undo and redo, permission refusals, stale handles, hidden sheets, scenario ownership, failures
+after each real mutation, and a silently ineffective undo.
 The failure suite also runs with two configured undo steps, forcing nested groups, and checks zero
 and one-step settings. Full-stack tests put both native and extension moves above 99 inputs and
 fail before mutation, checking that recovery never undoes either preceding move. View-restoration
@@ -141,10 +142,11 @@ read-only Calc documents, Writer exclusion, and SVG decoding. Painted gtk3 sessi
 real Shift, Ctrl, and Alt keys with `xdotool` while the panel is shown. The sheet list's feature
 suite checks its rows and their states, refreshing after sheet changes, following the active sheet,
 dropping replaced or renamed sheets from the selection, clicks and the sheet tab menu through
-LibreOffice's synthetic input, and Show's undo and recovery rules. Every workbook is synthetic and
-loaded visibly, even when the office process itself is headless. It retries only startup, up to
-three times, to tolerate a Windows crash just after connecting. It never attaches to an existing
-office or uses the normal LibreOffice profile.
+LibreOffice's synthetic input, and Show's undo and recovery rules. Synthetic input cannot reach
+gtk3's native menus, so painted sessions skip the menu steps, which the real-input UI tests cover.
+Every workbook is synthetic and loaded visibly, even when the office process itself is headless.
+It retries only startup, up to three times, to tolerate a Windows crash just after connecting. It
+never attaches to an existing office or uses the normal LibreOffice profile.
 
 On Windows, build and test the installed LibreOffice with its bundled Python:
 

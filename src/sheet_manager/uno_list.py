@@ -280,6 +280,8 @@ class SheetList:
         self._changed_at = 0.0  # The last document change.
         self._stale_since: float | None = None  # The first change not yet shown.
         self._refresh_cost = 0.0  # How long the last refresh took.
+        self._refreshed_at = 0.0  # When it ended.
+        self._follow_pending = False  # The active sheet may have changed since.
         self._press: tuple[int | None, int] | None = None
         self._drag: _Drag | None = None
         self._gap: int | None = None
@@ -380,7 +382,8 @@ class SheetList:
         try:
             self._refresh()
         finally:
-            self._refresh_cost = time.monotonic() - started
+            self._refreshed_at = time.monotonic()
+            self._refresh_cost = self._refreshed_at - started
             self._stale_since = None
 
     def _refresh(self) -> None:
@@ -573,11 +576,29 @@ class SheetList:
             self._focus_row(match)
 
     # Events from Calc
+    #
+    # Reading the sheets and rebuilding the tree costs time on the main thread, about a second
+    # for 1,000 sheets on Windows. Bulk changes, such as a macro or a 500-call move, send a
+    # change and often an activation event for every step, so refreshes are rate-limited: one
+    # runs at once when the list has been idle for several times its cost; otherwise the next
+    # waits until changes pause, or at most a bounded time.
 
     def _refresh_delay(self) -> float:
-        # Reading many sheets and rebuilding the tree takes time on the main thread; scaling the
-        # wait by that cost keeps the list from slowing bulk changes, such as macros or moves.
         return max(REFRESH_DELAY, REFRESH_COST_FACTOR * self._refresh_cost)
+
+    def _rate_wait(self, now: float) -> float:
+        """How long until another refresh may run without hogging the main thread."""
+        return self._refreshed_at + REFRESH_COST_FACTOR * self._refresh_cost - now
+
+    def _schedule(self, seconds: float) -> None:
+        if self._refresh_timer is None and not self._disposed:
+            self._refresh_timer = self._main.later(
+                max(seconds, 0.05), self._timed_refresh, "refreshing the sheet list"
+            )
+
+    def _mark_stale(self, now: float) -> None:
+        if self._stale_since is None:
+            self._stale_since = now
 
     def document_modified(self) -> None:
         """Refresh once changes pause, or at the latest after a bounded wait."""
@@ -585,12 +606,20 @@ class SheetList:
             return
         now = time.monotonic()
         self._changed_at = now
-        if self._stale_since is None:
-            self._stale_since = now
-        if self._refresh_timer is None:
-            self._refresh_timer = self._main.later(
-                self._refresh_delay(), self._timed_refresh, "refreshing the sheet list"
-            )
+        self._mark_stale(now)
+        self._schedule(self._refresh_delay())
+
+    def active_sheet_changed(self) -> None:
+        """Show the new active sheet, at once unless refreshes are being rate-limited."""
+        if self._disposed:
+            return
+        now = time.monotonic()
+        self._follow_pending = True
+        self._mark_stale(now)
+        if self._refresh_timer is None and not self._busy and self._rate_wait(now) <= 0:
+            self._run_refresh()
+        else:
+            self._schedule(self._rate_wait(now))
 
     def _timed_refresh(self) -> None:
         self._refresh_timer = None
@@ -600,26 +629,23 @@ class SheetList:
         delay = self._refresh_delay()
         quiet = now - self._changed_at
         waited = now - self._stale_since
-        if quiet < delay and waited < max(REFRESH_MAX_WAIT, delay * REFRESH_COST_FACTOR):
-            self._refresh_timer = self._main.later(
-                delay - quiet, self._timed_refresh, "refreshing the sheet list"
-            )
+        settling = quiet < delay and waited < max(REFRESH_MAX_WAIT, delay * REFRESH_COST_FACTOR)
+        if settling or self._rate_wait(now) > 0:
+            self._schedule(max(delay - quiet if settling else 0.0, self._rate_wait(now)))
             return
-        if self._busy:  # A move refreshes the list itself when it ends.
-            return
-        self.refresh()
+        if not self._busy:  # A move refreshes the list itself when it ends.
+            self._run_refresh()
 
-    def active_sheet_changed(self) -> None:
-        """Follow Calc's tab selection when the user went to another sheet.
+    def _run_refresh(self) -> None:
+        """Refresh, and follow Calc's tab selection if the user went to another sheet.
 
         Calc also reports activation when sheets move or the same sheet is selected again;
         then the list keeps its own selection.
         """
-        if self._disposed or self._busy:
-            return
+        follow, self._follow_pending = self._follow_pending, False
         before = next((row.name for row in self.rows if row.active), None)
         self.refresh()
-        if next((row.name for row in self.rows if row.active), None) != before:
+        if follow and next((row.name for row in self.rows if row.active), None) != before:
             self.follow_calc_selection()
 
     # Keyboard
