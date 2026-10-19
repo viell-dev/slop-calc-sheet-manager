@@ -1,0 +1,123 @@
+name: Release
+
+on:
+  pull_request:
+    paths: [".github/workflows/release.yml"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact plain dotted version in description.xml and CHANGELOG.md
+        required: true
+        type: string
+      prerelease:
+        description: Release candidate (patch number 90 or above)
+        default: false
+        type: boolean
+      target:
+        description: Optional candidate target for a major release (for example 1.0.0)
+        default: ""
+        type: string
+      dry_run:
+        description: Validate and upload a preview without creating a tag or release
+        default: true
+        type: boolean
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.event_name == 'pull_request' && github.event.pull_request.number || 'publication' }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Release dry run
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+      REQUESTED_VERSION: ${{ inputs.version }}
+      PRERELEASE: ${{ inputs.prerelease || false }}
+      TARGET: ${{ inputs.target }}
+    steps:
+      - name: Refuse a publication request outside main
+        if: github.event_name == 'workflow_dispatch' && !inputs.dry_run && github.ref != 'refs/heads/main'
+        run: |
+          echo "Publication requires a manual dispatch on main; use dry_run on branches." >&2
+          exit 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.RELEASE_COMMIT }}
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24.21.0"
+          package-manager-cache: false
+      - run: python -m venv .venv
+      - run: .venv/bin/python -m pip install --require-hashes -r requirements-dev.txt
+      - run: .venv/bin/python tools/check.py
+      - name: Validate exact commit, release history, notes, assets, and prospective feeds
+        shell: bash
+        run: |
+          version="$REQUESTED_VERSION"
+          if [[ -z "$version" ]]; then
+            version=$(python -c 'import sys; sys.path.insert(0, "tools"); from build import version; print(version())')
+            if (( ${version##*.} >= 90 )); then PRERELEASE=true; fi
+          fi
+          args=(release --version "$version")
+          if [[ "$PRERELEASE" == true ]]; then args+=(--prerelease); fi
+          if [[ -n "$TARGET" ]]; then args+=(--target "$TARGET"); fi
+          .venv/bin/python tools/github_release.py "${args[@]}"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-dry-run-${{ env.RELEASE_COMMIT }}
+          path: dist/release/
+          if-no-files-found: error
+
+  publish:
+    name: Publish immutable release
+    needs: validate
+    if: >-
+      github.event_name == 'workflow_dispatch' && !inputs.dry_run &&
+      github.ref == 'refs/heads/main' && github.repository == 'viell-dev/slop-calc-sheet-manager'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_COMMIT: ${{ github.sha }}
+      REQUESTED_VERSION: ${{ inputs.version }}
+      PRERELEASE: ${{ inputs.prerelease }}
+      TARGET: ${{ inputs.target }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.RELEASE_COMMIT }}
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Revalidate, tag exact commit, attach both assets to draft, then publish
+        shell: bash
+        run: |
+          args=(release --version "$REQUESTED_VERSION" --publish)
+          if [[ "$PRERELEASE" == true ]]; then args+=(--prerelease); fi
+          if [[ -n "$TARGET" ]]; then args+=(--target "$TARGET"); fi
+          python tools/github_release.py "${args[@]}"
+
+  feeds:
+    needs: publish
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/pages.yml

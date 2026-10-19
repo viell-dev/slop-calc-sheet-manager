@@ -1,0 +1,147 @@
+"""Test release orchestration without a token, network, or GitHub writes."""
+
+import hashlib
+import json
+import sys
+from dataclasses import asdict
+from pathlib import Path
+from typing import Any
+from unittest.mock import Mock
+
+import pytest
+
+from tools import github_release as cli
+from tools.build import build, version
+from tools.release_data import PublishedBuild, version_parts
+
+
+def test_ci_gate_requires_exact_commit_and_main_push_for_publication(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run: dict[str, object] = {
+        "event": "push",
+        "head_branch": "main",
+        "status": "completed",
+        "conclusion": "success",
+        "html_url": "https://example.invalid/ci/1",
+    }
+    calls: list[str] = []
+
+    def api(path: str) -> dict[str, object]:
+        calls.append(path)
+        return {"workflow_runs": [run]}
+
+    monkeypatch.setattr(cli, "api", api)
+    assert cli.require_ci("a" * 40, publishing=True, timeout=0) == run["html_url"]
+    assert f"head_sha={'a' * 40}" in calls[0]
+    run["event"] = "pull_request"
+    with pytest.raises(ValueError, match="No successful"):
+        cli.require_ci("a" * 40, publishing=True, timeout=0)
+    assert cli.require_ci("a" * 40, publishing=False, timeout=0) == run["html_url"]
+    run["conclusion"] = "failure"
+    with pytest.raises(ValueError, match="CI did not pass"):
+        cli.require_ci("a" * 40, publishing=False, timeout=0)
+    run.update(event="push", conclusion="success", head_branch="other-branch")
+    with pytest.raises(ValueError, match="No successful"):
+        cli.require_ci("a" * 40, publishing=True, timeout=0)
+
+
+def test_dry_run_builds_assets_and_prospective_feeds_without_api_writes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        sys, "argv", ["release", "release", "--version", version(), "--output", str(tmp_path)]
+    )
+    monkeypatch.setenv("RELEASE_COMMIT", "a" * 40)
+    if version_parts(version())[2] >= 90:
+        sys.argv.append("--prerelease")
+    monkeypatch.setattr(cli.subprocess, "check_output", Mock(return_value="a" * 40))
+    monkeypatch.setattr(cli, "paginated", Mock(return_value=[]))
+    monkeypatch.setattr(cli, "previous_builds", Mock(return_value=[]))
+    monkeypatch.setattr(cli, "require_ci", Mock(return_value="https://example.invalid/ci/1"))
+
+    def no_write(*args: object, **kwargs: object) -> None:
+        pytest.fail("Dry run attempted a GitHub API write")
+
+    monkeypatch.setattr(cli, "api", no_write)
+    cli.main()
+    assert (tmp_path / f"sheet-manager-{version()}.oxt").exists()
+    assert (tmp_path / f"sheet-manager-{version()}.oxt.sha256").exists()
+    plan = json.loads((tmp_path / "release-plan.json").read_text())
+    assert plan["release"]["target_commitish"] == "a" * 40
+    assert plan["release"]["draft"] is True
+    assert plan["release"]["body"] == (tmp_path / "release-notes.md").read_text()
+    assert (tmp_path / "site/updates/stable.xml").exists()
+    assert (tmp_path / "site/updates/prerelease.xml").exists()
+
+
+def test_existing_draft_and_mismatched_metadata_stop_preparation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        cli, "paginated", Mock(return_value=[{"tag_name": version(), "draft": True}])
+    )
+    with pytest.raises(ValueError, match="draft already exists"):
+        cli.prepare(version(), version_parts(version())[2] >= 90, "", tmp_path)
+    with pytest.raises(ValueError, match="description.xml contains"):
+        cli.prepare("999.0.0", False, "", tmp_path)
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_publishing_is_refused_from_a_pr_or_branch(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(sys, "argv", ["release", "release", "--version", version(), "--publish"])
+    for event, ref in (
+        ("pull_request", "refs/heads/main"),
+        ("workflow_dispatch", "refs/heads/task"),
+    ):
+        monkeypatch.setenv("GITHUB_REF", ref)
+        monkeypatch.setenv("GITHUB_EVENT_NAME", event)
+        with pytest.raises(ValueError, match="only by workflow_dispatch on main"):
+            cli.main()
+
+
+def test_published_metadata_comes_from_checksummed_oxt_and_drafts_are_ignored(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    package = build(tmp_path)
+    base = f"https://github.com/{cli.REPOSITORY}/releases/download/{version()}/"
+    assets: dict[str, bytes] = {
+        base + package.name: package.read_bytes(),
+        base + package.name + ".sha256": package.with_suffix(".oxt.sha256").read_bytes(),
+    }
+    monkeypatch.setattr(cli, "download", Mock(side_effect=assets.__getitem__))
+    release: dict[str, Any] = {
+        "tag_name": version(),
+        "prerelease": version_parts(version())[2] >= 90,
+        "draft": False,
+        "published_at": "2026-10-19T00:00:00Z",
+        "assets": [{"name": url.rsplit("/", 1)[1], "browser_download_url": url} for url in assets],
+    }
+    builds = cli.published_builds([release, {"draft": True}])
+    assert builds == [
+        PublishedBuild(version(), release["prerelease"], "26.2.1", release["published_at"])
+    ]
+    assets[base + package.name + ".sha256"] = b"bad checksum\n"
+    with pytest.raises(ValueError, match="checksum"):
+        cli.published_builds([release])
+    digest = hashlib.sha256(package.read_bytes()).hexdigest()
+    assets[base + package.name + ".sha256"] = f"{digest}  {package.name}\n".encode()
+    release["assets"] = release["assets"][:1]
+    with pytest.raises(ValueError, match="missing"):
+        cli.published_builds([release])
+
+
+def test_pages_refuses_to_remove_previously_deployed_builds(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    old = PublishedBuild("0.0.90", True, "26.2.1", "2026-10-18T00:00:00Z")
+    new = PublishedBuild("0.1.0", False, "26.2.1", "2026-10-19T00:00:00Z")
+    monkeypatch.setattr(cli, "previous_builds", lambda: [old])
+    with pytest.raises(ValueError, match="removed or changed"):
+        cli.write_site(tmp_path, [new])
+    cli.write_site(tmp_path, [old, new])
+    assert json.loads((tmp_path / "releases.json").read_text()) == [asdict(old), asdict(new)]

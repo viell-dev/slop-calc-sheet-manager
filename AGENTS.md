@@ -100,6 +100,13 @@ one as not planned, and close an accepted one through the pull request that fixe
   `registration.py` provide passive Python registration. `Factories.xcu` maps tool-panel URLs to
   that factory; `Sidebar.xcu` registers the Calc-only deck and panel. `tools/build.py` explicitly
   allowlists every packaged file and includes the root licence as `LICENSE.txt`.
+- `tools/release_data.py` owns version policy, changelog extraction, and feed XML.
+  `tools/github_release.py` validates GitHub history and exact-commit CI, builds/publishes releases,
+  and generates Pages from published OXT metadata. `release.yml` validates PR workflow changes
+  without writes and publishes only by dispatch on `main`; `pages.yml` is also callable by it.
+  `tests/integration/test_updates.py` checks loopback feeds with LibreOffice's real parser and
+  candidate dependencies through its temporary deployment repository. The modal update dialog
+  has no public UNO offered-update API; keep parser and dependency assertions distinct.
 - Python UI strings go through `sheet_manager.i18n.tr`. Metadata templates use `{{message}}`,
   rendered as English through that helper at build time. This renderer supports only English;
   adding the first translation catalogue must also replace it with locale-aware XML/XCU element
@@ -151,6 +158,11 @@ one as not planned, and close an accepted one through the pull request that fixe
   release and of the update feed it appears in.
 - Published files and tags are never replaced, and update feeds never move backwards: a bad release
   is fixed by a newer version.
+- Follow [RELEASING.md](RELEASING.md) for candidate numbering below the final version, patch numbers
+  below `.90`, changelog sections, dry runs, publication and recovery. Publication requires a
+  successful CI push run on the exact `main` commit. Upload assets to the draft before publishing
+  because releases are immutable. The stable feed excludes candidates; the prerelease feed
+  retains every build. Never reclassify a published candidate or delete deployed feed history.
 
 ## Repository boundary
 
