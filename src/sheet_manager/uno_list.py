@@ -53,6 +53,7 @@ from sheet_manager.uno_calc import (
     prop,
     read_rows,
     report,
+    select_tabs,
     selected_tabs,
     show_error,
     swatch_url,
@@ -87,6 +88,16 @@ def _guarded(where, function, *arguments):
     except Exception:
         report(where)
         return None
+
+
+@dataclass(frozen=True)
+class _Press:
+    """A left button press on the list, kept until its release."""
+
+    row: int | None
+    modifiers: int
+    name: str | None  # The sheet the pressed row showed,
+    handle: Any  # and its handle at that moment: a refresh may put another sheet there.
 
 
 @dataclass(frozen=True)
@@ -281,8 +292,11 @@ class SheetList:
         self._stale_since: float | None = None  # The first change not yet shown.
         self._refresh_cost = 0.0  # How long the last refresh took.
         self._refreshed_at = 0.0  # When it ended.
-        self._follow_pending = False  # The active sheet may have changed since.
-        self._press: tuple[int | None, int] | None = None
+        # Counts the user's own selection input in the list. A request to follow Calc's
+        # selection remembers the count; newer input in the list wins over it.
+        self._input = 0
+        self._follow_input: int | None = None
+        self._press: _Press | None = None
         self._drag: _Drag | None = None
         self._gap: int | None = None
         self._pointer_y = 0
@@ -500,6 +514,7 @@ class SheetList:
 
     def tree_key(self, code: int, modifiers: int) -> None:
         """Track the tree's cursor for a key that the tree is about to handle itself."""
+        self._input += 1
         names = self.names()
         cursor = names.index(self._cursor) if self._cursor in names else None
         anchor = names.index(self._anchor) if self._anchor in names else None
@@ -535,26 +550,50 @@ class SheetList:
         names = self.names()
         self._select([names[index] for index in indices if 0 <= index < len(names)], active)
 
-    def activate(self, name: str) -> None:
+    def activate(self, name: str, handle: Any = None) -> None:
         """Go to the sheet and make it Calc's only selected tab, as a click on its tab does.
 
-        Calc keeps an existing group when the sheet is already part of it, which would make a
-        cell edit change every grouped sheet, so the single selection is established and read
-        back. A hidden sheet cannot be shown, so it never becomes active.
+        `handle` is the sheet the user pointed at, by default the one the list shows as `name`.
+        The sheet must still be that one, under that name, and visible at this moment: the
+        list may not have been refreshed yet, and Calc would send the activation of a hidden
+        sheet to another sheet (#43). Otherwise nothing changes except the list, which shows
+        the sheets as they are. Calc keeps an existing group when the sheet is already part of
+        it, which would make a cell edit change every grouped sheet, so the single selection
+        is established and read back.
         """
-        row = next((row for row in self.rows if row.name == name), None)
-        if row is None or not row.visible or not self.still_shown(name):
+        if handle is None:
+            handle = self._handles.get(name)
+        try:
+            current = handle is not None and handle.getName() == name and bool(handle.IsVisible)
+        except Exception:
+            current = False
+        if not current:
+            self.post(self.refresh, "refreshing the sheet list")
             return
-        sheets = self.document.getSheets()
-        self.controller.setActiveSheet(sheets.getByName(name))
-        index = list(sheets.getElementNames()).index(name)
-        if selected_tabs(self.context, self.controller) != [index]:
+        controller = self.controller
+        previous = controller.getActiveSheet()
+        previous_tabs = selected_tabs(self.context, controller)
+        controller.setActiveSheet(handle)
+        if controller.getActiveSheet().getName() != name:
+            # Calc went to another sheet after all: put the view back as it was.
+            controller.setActiveSheet(previous)
+            if selected_tabs(self.context, controller) != previous_tabs:
+                select_tabs(self.context, self.frame, previous_tabs)
+            self.post(self.refresh, "refreshing the sheet list")
+            show_error(
+                self.peer,
+                tr("Sheet Manager"),
+                tr("Calc could not go to this sheet. The view was left as it was."),
+            )
+            return
+        index = list(self.document.getSheets().getElementNames()).index(name)
+        if selected_tabs(self.context, controller) != [index]:
             dispatch(
                 self.context, self.frame, ".uno:TableDeselectAll", (prop("SynchronMode", True),)
             )
         if (
-            selected_tabs(self.context, self.controller) != [index]
-            or self.controller.getActiveSheet().getName() != name
+            selected_tabs(self.context, controller) != [index]
+            or controller.getActiveSheet().getName() != name
         ):
             show_error(
                 self.peer,
@@ -568,6 +607,7 @@ class SheetList:
             self.activate(picked[0])
 
     def type_ahead(self, char: str) -> None:
+        self._input += 1
         prefix = self._type_ahead.feed(char, time.monotonic())
         names = self.names()
         current = names.index(self._cursor) if self._cursor in names else None
@@ -577,11 +617,12 @@ class SheetList:
 
     # Events from Calc
     #
-    # Reading the sheets and rebuilding the tree costs time on the main thread, about a second
-    # for 1,000 sheets on Windows. Bulk changes, such as a macro or a 500-call move, send a
-    # change and often an activation event for every step, so refreshes are rate-limited: one
-    # runs at once when the list has been idle for several times its cost; otherwise the next
-    # waits until changes pause, or at most a bounded time.
+    # Reading the sheets and rebuilding the tree costs main-thread time that grows with the
+    # number of sheets. Bulk changes, such as a macro or a 500-call move, send a change and
+    # often an activation event for every step, so refreshes are rate-limited: one runs at once
+    # when the list has been idle for several times its cost; otherwise the next waits until
+    # changes pause, or at most a bounded time. Until then the rows may be out of date, so
+    # every action checks the sheets it acts on when it runs.
 
     def _refresh_delay(self) -> float:
         return max(REFRESH_DELAY, REFRESH_COST_FACTOR * self._refresh_cost)
@@ -614,7 +655,7 @@ class SheetList:
         if self._disposed:
             return
         now = time.monotonic()
-        self._follow_pending = True
+        self._follow_input = self._input
         self._mark_stale(now)
         if self._refresh_timer is None and not self._busy and self._rate_wait(now) <= 0:
             self._run_refresh()
@@ -640,9 +681,11 @@ class SheetList:
         """Refresh, and follow Calc's tab selection if the user went to another sheet.
 
         Calc also reports activation when sheets move or the same sheet is selected again;
-        then the list keeps its own selection.
+        then the list keeps its own selection. So does it when the user has changed the list's
+        selection since the activation: a delayed refresh must not undo newer input (#44).
         """
-        follow, self._follow_pending = self._follow_pending, False
+        follow = self._follow_input is not None and self._follow_input == self._input
+        self._follow_input = None
         before = next((row.name for row in self.rows if row.active), None)
         self.refresh()
         if follow and next((row.name for row in self.rows if row.active), None) != before:
@@ -670,6 +713,7 @@ class SheetList:
     def mouse_pressed(self, event) -> None:
         if event.PopupTrigger:
             return
+        self._input += 1
         row = self.geometry().row_at(event.Y)
         if event.Buttons & RIGHT:
             self._press = None
@@ -677,7 +721,9 @@ class SheetList:
                 self._focus_row(row)
                 self._anchor = None
         elif event.Buttons & LEFT:
-            self._press = (row, event.Modifiers)
+            name = self.rows[row].name if row is not None else None
+            handle = self._handles.get(name) if name is not None else None
+            self._press = _Press(row, event.Modifiers, name, handle)
             if row is not None:
                 # The tree has already handled the press: its cursor is on this row. Shift
                 # keeps or starts the range at the old cursor; other clicks end it.
@@ -694,12 +740,18 @@ class SheetList:
             self.post(lambda: self._open_menu(x, y), "the sheet tab menu")
             return
         press, self._press = self._press, None
-        if not event.Buttons & LEFT or press is None:
+        if not event.Buttons & LEFT or press is None or press.name is None:
             return
-        row, modifiers = press
-        if row is None or modifiers & (SHIFT | MOD1) or self.geometry().row_at(event.Y) != row:
+        row = press.row
+        if row is None or press.modifiers & (SHIFT | MOD1):
             return
-        self.activate(self.rows[row].name)
+        if self.geometry().row_at(event.Y) != row:
+            return
+        # A refresh between press and release may have moved the pressed sheet away or shown
+        # a replacement under its name: act only on the sheet that was pressed (#28).
+        if row >= len(self.rows) or self.rows[row].name != press.name:
+            return
+        self.activate(press.name, press.handle)
 
     def open_menu_for_keyboard(self) -> None:
         picked = self.selected_names()
