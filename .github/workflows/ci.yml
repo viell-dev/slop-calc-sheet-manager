@@ -31,7 +31,7 @@ jobs:
           cache: pip
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: "24.21.0"
+          node-version-file: .nvmrc
           package-manager-cache: false
       - run: python -m venv .venv
       - run: .venv/bin/python -m pip install --require-hashes -r requirements-dev.txt
@@ -132,7 +132,7 @@ jobs:
           python-version: "3.12"
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: "24.21.0"
+          node-version-file: .nvmrc
           package-manager-cache: false
       - run: python -m venv .venv
       - run: ./.venv/Scripts/python.exe -m pip install --require-hashes -r requirements-dev.txt
