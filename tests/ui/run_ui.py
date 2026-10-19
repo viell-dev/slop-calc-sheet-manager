@@ -720,11 +720,11 @@ def check_press_then_change(book):
 
 
 def check_newer_pick_survives_voided_press(book):
-    """A voided press brings back the list's newer pick, never a replacement (#28).
+    """A voided press brings back the list's newer pick, never what now sits in its row (#28).
 
     Two ways to a newer pick while Bravo is held: Calc goes to Delta and the list follows, or
-    the user types "d". Then Bravo is replaced and the button released. Delta stays picked,
-    and the Menu key's Hide acts on Delta; the replacement Bravo stays visible.
+    Bravo is moved away and the user types "d". Then the button is released over the row Bravo
+    left. Delta stays picked, and the Menu key's Hide acts on Delta alone.
     """
     sheets = book.document.getSheets()
     evidence = {}
@@ -736,13 +736,14 @@ def check_newer_pick_survives_voided_press(book):
         if way == "calc_switch":
             book.controller.setActiveSheet(sheets.getByName(NAMES[3]))
             wait_until(lambda: book.selection() == [NAMES[3]], "the list to follow Delta")
+            sheets.moveByName(NAMES[1], 6)
+            wait_until(lambda: view.names(book.tree)[1] == NAMES[2], "the list to show the move")
         else:
             sheets.moveByName(NAMES[1], 6)
             wait_until(lambda: view.names(book.tree)[1] == NAMES[2], "the list to show the move")
             book.lab.input.tap("d", pause=0.5)
             wait_until(lambda: book.selection() == [NAMES[3]], "typing to pick Delta")
-        replace(book.document, NAMES[1])
-        time.sleep(3)
+        time.sleep(1)
         book.pointer.release()
         time.sleep(1)
         state = {"selection": book.selection(), "active": book.active()}
@@ -751,10 +752,77 @@ def check_newer_pick_survives_voided_press(book):
         state["menu"] = hide_through_menu(
             book, [NAMES[3]], lambda: book.lab.input.tap("Menu", pause=0.3)
         )
-        bravo = sheets.getByName(NAMES[1])
-        state["replacement_visible"] = bool(bravo.IsVisible)
-        state["replacement_marker"] = bravo.getCellRangeByName("A1").getString()
-        assert state["replacement_visible"] and state["replacement_marker"] == "replacement"
+    return evidence
+
+
+def check_picks_dropped_when_sheets_change(book):
+    """Once a sheet is inserted or deleted, no pick survives, and Menu then acts on nothing (#28).
+
+    A deleted sheet's handle turns to another sheet and can report the deleted sheet's name
+    again once that sheet is renamed, so the list cannot tell which sheet its handles mean.
+    Three ways: Bravo deleted and Alfa renamed to Bravo; a new sheet inserted before Bravo,
+    Bravo deleted, and the new sheet renamed to Bravo (the sheet count ends as it began); and
+    Bravo replaced while it is held and the list follows Calc to Delta.
+    """
+    sheets = book.document.getSheets()
+    undo = book.document.getUndoManager()
+    evidence = {}
+    for way in ("delete_rename", "insert_delete_rename", "held_replace"):
+        reset(book)
+        sheets.getByName(NAMES[0]).getCellRangeByName("A1").setString("victim")
+        sheets.getByName(NAMES[1]).getCellRangeByName("A1").setString("original")
+        if way == "held_replace":
+            point = book.point(1)
+            book.pointer.press(*point)
+            wait_until(lambda: book.selection() == [NAMES[1]], "the press to select Bravo")
+            book.controller.setActiveSheet(sheets.getByName(NAMES[3]))
+            wait_until(lambda: book.selection() == [NAMES[3]], "the list to follow Delta")
+            replace(book.document, NAMES[1])
+            time.sleep(3)
+            book.pointer.release()
+        else:
+            book.click(3)  # Delta becomes active.
+            book.lab.input.tap("b", pause=0.5)  # Bravo is picked; Delta stays active.
+            wait_until(lambda: book.selection() == [NAMES[1]], "typing to pick Bravo")
+            if way == "insert_delete_rename":
+                sheets.insertNewByName("Newcomer", 1)
+            sheets.removeByName(NAMES[1])
+            renamed = "Newcomer" if way == "insert_delete_rename" else NAMES[0]
+            sheets.getByName(renamed).setName(NAMES[1])
+            time.sleep(3)
+        time.sleep(1)
+        tabs = book.calc_tabs()
+        titles = book.undo_titles()
+        notice = "dev.viell.sheetmanager.selection-cleared"
+        state = {
+            "selection": book.selection(),
+            "active": book.active(),
+            "notice": bool(book.controller.hasInfobar(notice)),
+        }
+        # The Menu key opens the menu for the list's picks and groups Calc's tabs to them while
+        # it is open. If it opened, choose Hide, as a user would.
+        book.lab.input.tap("Menu", pause=0.8)
+        state["calc_tabs_after_menu_key"] = book.calc_tabs()
+        if state["calc_tabs_after_menu_key"] != tabs:
+            book.choose(".uno:Hide")
+            time.sleep(1)
+        else:
+            book.lab.input.tap("Escape", pause=0.3)
+        state["undo_unchanged"] = book.undo_titles() == titles
+        state["hidden"] = [n for n in book.order() if not sheets.getByName(n).IsVisible]
+        state["hidden_markers"] = [
+            sheets.getByName(n).getCellRangeByName("A1").getString() for n in state["hidden"]
+        ]
+        evidence[way] = state
+        if state["notice"]:
+            book.controller.removeInfobar(notice)
+        while undo.getAllUndoActionTitles():
+            undo.undo()
+        assert state["selection"] == [], evidence
+        assert state["calc_tabs_after_menu_key"] == tabs, evidence
+        assert state["undo_unchanged"] and state["hidden"] == [], evidence
+        if way != "held_replace":
+            assert state["notice"], evidence
     return evidence
 
 
@@ -853,6 +921,7 @@ def run_checks(lab, output):
         ("drop_after_replacement", lambda: check_drop_after_replacement(book)),
         ("press_then_change", lambda: check_press_then_change(book)),
         ("newer_pick_survives_voided_press", lambda: check_newer_pick_survives_voided_press(book)),
+        ("picks_dropped_when_sheets_change", lambda: check_picks_dropped_when_sheets_change(book)),
         ("click_hidden_before_refresh", lambda: check_click_hidden_before_refresh(book)),
         ("newer_selection_kept", lambda: check_newer_selection_kept(book)),
         ("other_document", lambda: check_other_document(lab, book)),

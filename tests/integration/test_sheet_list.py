@@ -33,6 +33,7 @@ from sheet_list_view import (
 )
 
 from sheet_manager import keys, uno_list
+from sheet_manager.selection import StructureWatch
 from sheet_manager.sheet_list import SheetRow, row_label, tab_color
 from sheet_manager.uno_reorder import snapshot
 from sheet_manager.uno_show import show_sheets
@@ -326,7 +327,9 @@ def check_identity(context, desktop, menus):
     robot.click(tree, row_point(tree, 1), modifiers=VCL_MOD1)
     poll(lambda: selection(tree, order) == ["Alfa", "Bravo"], "Alfa and Bravo selected")
     replace(document, "Bravo")
-    poll(lambda: selection(tree, order) == ["Alfa"], "the replaced sheet to leave the selection")
+    # A sheet was deleted and one inserted: no retained handle proves its sheet any more, so
+    # every pick goes, not only the replaced one (#28).
+    poll(lambda: selection(tree, order) == [], "the picks to be dropped")
     menu_tabs = None
     if menus:
         robot.click(tree, row_point(tree, 0), buttons=VCL_RIGHT)
@@ -420,21 +423,46 @@ def check_stale_clicks(context, desktop):
     results["press_then_move"] = unchanged("press, move, release", picked=["Bravo"])
     sheets.moveByName("Bravo", 1)
 
-    say("a voided press brings back the newer pick from following Calc, not the replacement")
+    say("a voided press brings back the newer pick from following Calc")
     settled()
     point = row_point(tree, 1)
     robot.press(tree, point)
     poll(lambda: selection(tree, SIX) == ["Bravo"], "the press to select Bravo")
     controller.setActiveSheet(sheets.getByName("Delta"))
     poll(lambda: selection(tree, SIX) == ["Delta"], "the list to follow Delta")
-    replace(document, "Bravo")
-    time.sleep(3)
+    sheets.moveByName("Bravo", len(SIX))  # The pressed row now shows another sheet.
+    time.sleep(2)
     robot.release(tree, point)
     time.sleep(1)
-    followed = {"active": active(), "selection": selection(tree, SIX)}
+    order = list(sheets.getElementNames())
+    followed = {"active": active(), "selection": selection(tree, order)}
     assert followed == {"active": "Delta", "selection": ["Delta"]}, followed
-    results["follow_then_replace"] = followed
+    results["follow_then_move"] = followed
+    sheets.moveByName("Bravo", 1)
     controller.setActiveSheet(sheets.getByName("Alfa"))
+
+    say("a deleted sheet's handle reporting its name again does not keep the pick (#28)")
+    for case in ("delete, rename", "insert, delete, rename"):
+        settled()
+        robot.click(tree, row_point(tree, 3))  # Delta becomes active.
+        robot.click(tree, row_point(tree, 1), modifiers=VCL_MOD1)
+        poll(lambda: selection(tree, SIX) == ["Bravo", "Delta"], "Bravo and Delta picked")
+        steps = len(document.getUndoManager().getAllUndoActionTitles())
+        if case == "insert, delete, rename":
+            sheets.insertNewByName("Newcomer", 1)
+        sheets.removeByName("Bravo")
+        renamed = "Newcomer" if case == "insert, delete, rename" else "Alfa"
+        sheets.getByName(renamed).setName("Bravo")
+        poll(lambda: selection(tree, list(sheets.getElementNames())) == [], "the picks to go")
+        results[case] = {
+            "selection": [],
+            "notice": bool(controller.hasInfobar(uno_list.NOTICE)),
+        }
+        undo = document.getUndoManager()
+        while len(undo.getAllUndoActionTitles()) > steps:
+            undo.undo()
+        poll(lambda: list(sheets.getElementNames()) == SIX, "undo to restore the sheets")
+        controller.setActiveSheet(sheets.getByName("Alfa"))
 
     say("a sheet hidden just before its row is clicked is not activated, nor another (#43)")
     settled()
@@ -475,6 +503,7 @@ class _ActivationOwner:
         self.peer = None
         self._activating = False
         self._handles: dict[str, Any] = {}
+        self._watch = StructureWatch()
 
     def post(self, function, where):
         pass
