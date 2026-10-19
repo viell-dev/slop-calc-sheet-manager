@@ -5,6 +5,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -22,6 +23,7 @@ from tools.build import build  # noqa: E402
 from tools.release_data import (  # noqa: E402
     REPOSITORY,
     SITE,
+    VERSION,
     PublishedBuild,
     changelog_section,
     check_new_version,
@@ -99,8 +101,12 @@ def published_builds(releases: list[dict[str, Any]]) -> list[PublishedBuild]:
 
 
 def previous_builds() -> list[PublishedBuild]:
-    content = download(f"{SITE}/releases.json", missing_ok=True)
+    # Bypass cached history when checking a deployment against its predecessor.
+    content = download(f"{SITE}/releases.json?verify={time.time_ns()}", missing_ok=True)
     if content is None:
+        tags = paginated(f"repos/{REPOSITORY}/tags?per_page=100")
+        if any(re.fullmatch(VERSION, item["name"]) for item in tags):
+            raise ValueError("Feed history is missing after a version tag was reserved; restore it")
         return []
     records = cast(list[dict[str, Any]], json.loads(content))
     return [PublishedBuild(**record) for record in records]

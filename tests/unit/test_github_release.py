@@ -147,6 +147,19 @@ def test_pages_refuses_to_remove_previously_deployed_builds(
     assert json.loads((tmp_path / "releases.json").read_text()) == [asdict(old), asdict(new)]
 
 
+def test_missing_history_only_bootstraps_before_any_version_was_reserved(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    download = Mock(return_value=None)
+    monkeypatch.setattr(cli, "download", download)
+    monkeypatch.setattr(cli, "paginated", Mock(return_value=[]))
+    assert cli.previous_builds() == []
+    assert "/releases.json?verify=" in download.call_args.args[0]
+    monkeypatch.setattr(cli, "paginated", Mock(return_value=[{"name": "0.0.90"}]))
+    with pytest.raises(ValueError, match="history is missing"):
+        cli.previous_builds()
+
+
 @pytest.mark.parametrize("missing_asset", [False, True])
 def test_publication_attaches_both_assets_to_draft_before_publishing(
     monkeypatch: pytest.MonkeyPatch,

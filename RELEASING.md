@@ -8,7 +8,8 @@ before asking them to sign in. Do not put that account's credentials in CI.
 
 There is no published build yet. The `0.0.1` changelog section is an unpublished development
 baseline for exercising the release dry run, not a decision to ship it. The first feature release
-remains 0.1.0.
+remains 0.1.0. Let the initial Pages deployment publish empty feeds before reserving the first
+version tag.
 
 ## Versions and titles
 
@@ -110,8 +111,10 @@ so publishing a candidate does not change it.
 
 The site also contains `releases.json`, the history used by the last deployment. Generation
 compares it with the current releases and refuses removal, reclassification, changed metadata,
-or a later publication with a lower version. A missing site (HTTP 404) permits the initial
-bootstrap; other fetch failures stop deployment. Do not delete the Pages site or its history.
+or a later publication with a lower version. History requests bypass cached URLs. A missing site
+(HTTP 404) permits bootstrap only before any numeric version tag exists; afterwards it stops
+deployment so missing history cannot hide a regression. Other fetch failures also stop deployment.
+Do not delete the Pages site or its history; restore the last deployed history if it goes missing.
 Generation and deployment share one concurrency lock, so queued runs read fresh release data.
 
 GitHub Pages must use **GitHub Actions** as its source. Set the `github-pages` environment's custom
