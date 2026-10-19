@@ -74,7 +74,9 @@ def office_session(
     vcl="gtk3",
 ):
     # Retry only startup, before opening documents or making test assertions. Windows
-    # occasionally loses soffice.bin just after a successful UNO connection.
+    # occasionally loses soffice.bin just after a successful UNO connection. Such an attempt's
+    # crash dumps are kept and listed, but do not fail a session whose retry starts cleanly.
+    startup_dumps: list[str] = []
     for attempt in range(startup_attempts):
         temporary = tempfile.TemporaryDirectory(prefix="sheet-manager-integration-")
         directory = Path(temporary.name)
@@ -200,9 +202,11 @@ def office_session(
             if trace_path is not None and generated_trace.exists():
                 trace_path.write_bytes(generated_trace.read_bytes())
                 startup["office_backtrace"] = trace_path.name
-            startup["office_crash_dumps"] = retain_crash_dumps(
+            dumps = retain_crash_dumps(
                 directory / "profile" / "crash", output, f"crash-{headless}-{attempt}"
             )
+            startup["office_crash_dumps"] = dumps
+            startup_dumps.extend(dumps)
             log.close()
             (output / f"startup-{headless}-{attempt}.json").write_text(
                 json.dumps(startup, indent=2) + "\n", encoding="utf-8"
@@ -213,6 +217,7 @@ def office_session(
                 result["failure_stage"] = "startup"
                 raise
             continue
+        result["office_startup_crash_dumps"] = startup_dumps
         try:
             yield context, desktop, directory
         finally:

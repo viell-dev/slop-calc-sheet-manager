@@ -200,9 +200,9 @@ labelled `Status: Won't Do`.
   releases LibreOffice's lock while it destroys native windows, and the main thread then updates
   a toolbar control being disposed
   ([#47](https://github.com/viell-dev/slop-calc-sheet-manager/issues/47)). The user interface
-  closes on the main thread, where this cannot happen. Close every Calc document in the tests
-  through `main_thread.close_document`, which on Windows closes inside an `AsyncCallback`
-  notification, on the main thread. A crashed office exits with status 0 on Windows
+  closes on the main thread, where this cannot happen. Close every Calc document in the tests and
+  the workbook generator through `main_thread.close_document`, which on Windows closes inside an
+  `AsyncCallback` notification, on the main thread. A crashed office exits with status 0 on Windows
   ([#48](https://github.com/viell-dev/slop-calc-sheet-manager/issues/48)), so the runner copies
   LibreOffice's own crash dumps from the profile into the results as `crash-*.dmp` and fails a
   session that left one; analyse them with CDB and TDF's symbol server.

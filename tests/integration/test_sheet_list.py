@@ -11,7 +11,7 @@ UI tests cover the menu. Moving sheets is covered by ``test_reorder.py``.
 
 import sys
 import time
-from contextlib import contextmanager, suppress
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -703,7 +703,11 @@ def exercise(context, desktop, directory, output, *, headless):
             results[name] = check() or True
     finally:
         for document in _CREATED:
-            with suppress(Exception):  # Most are closed already.
+            try:
                 close_document(context, document)
+            except TimeoutError:
+                break  # The office runs no more callbacks; the runner stops it.
+            except Exception:
+                pass  # Most are closed already.
         _CREATED.clear()
     return results

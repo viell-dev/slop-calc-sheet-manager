@@ -5,6 +5,7 @@ import json
 import sys
 from pathlib import Path
 
+from main_thread import close_document
 from run import office_session
 
 
@@ -26,7 +27,7 @@ def main():
         with office_session(
             args.program.resolve(), package, output, result, headless=True
         ) as session:
-            _, desktop, _ = session
+            context, desktop, _ = session
             for count in args.sheets:
                 document = populated_workbook(desktop, count)
                 try:
@@ -35,7 +36,7 @@ def main():
                     document.storeAsURL(destination.as_uri(), ())
                     print(destination, flush=True)
                 finally:
-                    document.close(True)
+                    close_document(context, document)
     finally:
         (output / "generator-session.json").write_text(
             json.dumps(result, indent=2) + "\n", encoding="utf-8"
