@@ -1,52 +1,91 @@
-name: Painted gtk3 soak
+name: Windows crash investigation (branch only)
 
 on:
   workflow_dispatch:
     inputs:
       sessions:
-        description: "Sessions per lane and extension mode (1–100)"
+        description: Fresh sessions per extension mode
         type: number
-        default: 20
-  workflow_call:
-    inputs:
-      sessions:
+        default: 10
+      experiment:
+        description: Original reorder session or targeted workbook closes
+        type: choice
+        options: [baseline, close]
+        default: baseline
+      iterations:
+        description: Eight close variants per iteration in each targeted session
         type: number
-        default: 20
+        default: 10
+      painted:
+        description: Use Windows windows instead of headless
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
   soak:
-    name: Soak gtk3 (${{ matrix.lane }})
-    runs-on: ubuntu-24.04
+    name: Windows soak (${{ matrix.mode }})
+    runs-on: windows-2025
     timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
-        lane: [minimum, current-26.2, current-26.8]
+        mode: [list, main, absent]
+    defaults:
+      run:
+        shell: pwsh
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Repeat isolated painted sessions in both extension modes
-        env:
-          LANE: ${{ matrix.lane }}
-          SESSIONS: ${{ inputs.sessions }}
-        run: python3 tools/linux_integration.py "$LANE" --sessions gtk3 --soak "$SESSIONS" --backtrace
-      - name: Publish every session's exit and fatal markers
-        if: always()
-        env:
-          LANE: ${{ matrix.lane }}
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 9e95515
+          path: control-main
+          persist-credentials: false
+      - run: ./ci/install-windows.ps1
+      - name: Configure full dumps and record debuggers
         run: |
-          if [ -f "test-results/$LANE/soak-summary.md" ]; then
-            cat "test-results/$LANE/soak-summary.md" >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo 'Soak did not produce a summary; inspect the build/runner log.' >> "$GITHUB_STEP_SUMMARY"
-          fi
+          New-Item -ItemType Directory -Path test-results/dumps -Force | Out-Null
+          $dumpPath = (Resolve-Path -LiteralPath test-results/dumps).Path
+          $key = 'HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\soffice.bin'
+          New-Item -Path $key -Force | Out-Null
+          New-ItemProperty -LiteralPath $key -Name DumpFolder -Value $dumpPath -PropertyType ExpandString -Force | Out-Null
+          New-ItemProperty -LiteralPath $key -Name DumpType -Value 2 -PropertyType DWord -Force | Out-Null
+          New-ItemProperty -LiteralPath $key -Name DumpCount -Value 10 -PropertyType DWord -Force | Out-Null
+          Get-ChildItem 'C:\Program Files (x86)\Windows Kits' -Filter cdb.exe -Recurse -ErrorAction SilentlyContinue |
+            Select-Object -ExpandProperty FullName | Set-Content test-results/debuggers.txt
+          Get-CimInstance Win32_OperatingSystem | Format-List * | Out-File test-results/operating-system.txt
+          git rev-parse HEAD | Set-Content test-results/source-commit.txt
+          git -C control-main rev-parse HEAD | Set-Content test-results/control-commit.txt
+      - name: Build and repeat fresh sessions without retries
+        env:
+          MODE: ${{ matrix.mode }}
+          SESSIONS: ${{ inputs.sessions }}
+          EXPERIMENT: ${{ inputs.experiment }}
+          ITERATIONS: ${{ inputs.iterations }}
+          PAINTED: ${{ inputs.painted }}
+        run: ./ci/windows-soak.ps1
+      - name: Collect WER events and analyse dumps
+        if: always()
+        run: |
+          Get-WinEvent -FilterHashtable @{LogName='Application'; StartTime=(Get-Date).AddHours(-2)} -ErrorAction SilentlyContinue |
+            Where-Object { $_.ProviderName -in @('Application Error', 'Windows Error Reporting', 'Application Hang') } |
+            Format-List TimeCreated,Id,ProviderName,Message | Out-File test-results/application-events.txt
+          $cdb = Get-Content test-results/debuggers.txt -ErrorAction SilentlyContinue | Where-Object { $_ -like '*\x64\cdb.exe' } | Select-Object -First 1
+          if ($cdb) {
+            foreach ($dump in Get-ChildItem -LiteralPath test-results/dumps -Filter '*.dmp') {
+              $symbols = "srv*$env:RUNNER_TEMP\symbols*https://dev-downloads.libreoffice.org/symstore/symbols;srv*$env:RUNNER_TEMP\symbols*https://msdl.microsoft.com/download/symbols"
+              & $cdb -z $dump.FullName -y $symbols -c '.ecxr; !analyze -v; ~* kp; q' 2>&1 |
+                Out-File "$($dump.FullName).analysis.txt"
+            }
+          }
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
-          name: gtk3-soak-${{ matrix.lane }}
+          name: windows-soak-${{ matrix.mode }}-${{ inputs.experiment }}
           path: test-results/
-          if-no-files-found: warn
+          if-no-files-found: error
+          retention-days: 7
