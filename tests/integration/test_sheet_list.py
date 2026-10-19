@@ -57,15 +57,32 @@ class Robot:
             "com.sun.star.awt.Toolkit", context
         )
 
-    def click(self, window, point, buttons=VCL_LEFT, modifiers=0):
+    def _event(self, window, point, buttons, modifiers):
         event = MouseEvent()
         event.Source = window
         event.Buttons, event.Modifiers, event.ClickCount = buttons, modifiers, 1
         event.X, event.Y = point
+        return event
+
+    def click(self, window, point, buttons=VCL_LEFT, modifiers=0, pause=0.6):
+        """Click; the pause keeps the next click on the same row from becoming a double click.
+
+        The robot only posts the events, so without a pause they are still queued when this
+        returns, ahead of anything the list schedules later.
+        """
+        event = self._event(window, point, buttons, modifiers)
         self.toolkit.mouseMove(event)
         self.toolkit.mousePress(event)
         self.toolkit.mouseRelease(event)
-        time.sleep(0.6)  # Keep the next click from becoming a double click.
+        time.sleep(pause)
+
+    def press(self, window, point):
+        event = self._event(window, point, VCL_LEFT, 0)
+        self.toolkit.mouseMove(event)
+        self.toolkit.mousePress(event)
+
+    def release(self, window, point):
+        self.toolkit.mouseRelease(self._event(window, point, VCL_LEFT, 0))
 
     def key(self, window, code):
         event = KeyEvent()
@@ -352,6 +369,76 @@ def check_identity(context, desktop, menus):
     return {"menu_tabs_after_replacement": menu_tabs, "stale_menu_command_refused": True}
 
 
+def check_stale_clicks(context, desktop):
+    """Clicks that meet rows the list has not refreshed yet (#28, #43, #44)."""
+    document = make_workbook(desktop, SIX)
+    controller = document.getCurrentController()
+    sheets = document.getSheets()
+    _, tree = open_list(context, document)
+    robot = Robot(context)
+    results: dict[str, Any] = {}
+
+    def active():
+        return controller.getActiveSheet().getName()
+
+    def settled():
+        poll(lambda: labels(tree) == expected_labels(document), "the list to show the workbook")
+
+    def unchanged(what):
+        state = {"active": active(), "tabs": tabs_of(context, document)}
+        assert state == {"active": "Alfa", "tabs": ["Alfa"]}, (what, state)
+        return state
+
+    settled()
+    say("a press held while its sheet is replaced does not activate the replacement (#28)")
+    point = row_point(tree, 1)
+    robot.press(tree, point)
+    poll(lambda: selection(tree, SIX) == ["Bravo"], "the press to select Bravo")
+    replace(document, "Bravo")
+    poll(lambda: selection(tree, SIX) == [], "the refresh to drop the replaced Bravo")
+    robot.release(tree, point)
+    time.sleep(1)
+    results["press_then_replace"] = unchanged("press, replace, release")
+
+    say("a press held while its sheet moves does not activate the sheet now in its row (#28)")
+    settled()
+    point = row_point(tree, 1)
+    robot.press(tree, point)
+    poll(lambda: selection(tree, SIX) == ["Bravo"], "the press to select Bravo")
+    sheets.moveByName("Bravo", len(SIX))
+    moved = ["Alfa", "Charlie", "Delta", "Echo", "Foxtrot", "Bravo"]
+    poll(lambda: names(tree) == moved, "the list to show the move")
+    robot.release(tree, point)
+    time.sleep(1)
+    results["press_then_move"] = unchanged("press, move, release")
+    sheets.moveByName("Bravo", 1)
+
+    say("a sheet hidden just before its row is clicked is not activated, nor another (#43)")
+    settled()
+    point = row_point(tree, 3)
+    sheets.getByName("Delta").IsVisible = False
+    robot.click(tree, point, pause=0)  # Queued before the list's refresh.
+    poll(lambda: "(hidden)" in labels(tree)[3], "the list to show Delta hidden")
+    time.sleep(1)
+    results["click_hidden_before_refresh"] = unchanged("hide, click")
+    sheets.getByName("Delta").IsVisible = True
+
+    say("a delayed refresh keeps a Ctrl+click made after a plain click (#44)")
+    settled()
+    first, second = row_point(tree, 1), row_point(tree, 3)
+    sheets.getByName("Foxtrot").TabColor = 0x2A6099  # Queues an ordinary delayed refresh.
+    robot.click(tree, first, pause=0)
+    robot.click(tree, second, modifiers=VCL_MOD1, pause=0)
+    poll(lambda: active() == "Bravo", "the plain click to go to Bravo")
+    settled()  # The delayed refresh has run: Bravo carries the active marker.
+    time.sleep(1)
+    kept = selection(tree, SIX)
+    assert kept == ["Bravo", "Delta"], kept
+    results["selection_after_delayed_refresh"] = kept
+    document.close(True)
+    return results
+
+
 class _FailingHandle:
     """Forwards to a real sheet, but fails when asked to show it after `allowed` others."""
 
@@ -508,6 +595,7 @@ def exercise(context, desktop, directory, output, *, headless):
             ("states_and_refresh", lambda: check_states_and_refresh(context, desktop)),
             ("selection_and_menu", lambda: check_selection_and_menu(context, desktop, headless)),
             ("identity", lambda: check_identity(context, desktop, headless)),
+            ("stale_clicks", lambda: check_stale_clicks(context, desktop)),
             ("show", lambda: check_show(context, desktop)),
             ("large_workbook", lambda: measure_large_workbook(context, desktop, 1000)),
         ):

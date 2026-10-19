@@ -11,8 +11,10 @@ import json
 import os
 import subprocess
 import sys
+import threading
 import time
 import traceback
+from contextlib import contextmanager
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -644,6 +646,105 @@ def check_drop_after_replacement(book):
     return evidence
 
 
+@contextmanager
+def refresh_waiting(book):
+    """Keep changing the last sheet's tab colour, so that the list waits to refresh.
+
+    The list refreshes once changes pause, but at the latest two seconds after the first change
+    it has not shown; the steps inside must take well under that. They then meet rows that are
+    out of date, as a user can on a slow machine or in a large workbook.
+    """
+    sheet = book.document.getSheets().getByName(NAMES[-1])
+    original = sheet.TabColor
+    stop = threading.Event()
+
+    def churn():
+        count = 0
+        while not stop.is_set():
+            sheet.TabColor = (0x2A6099, 0x996633)[count % 2]
+            count += 1
+            stop.wait(0.05)
+
+    thread = threading.Thread(target=churn, name="refresh-waiting", daemon=True)
+    thread.start()
+    time.sleep(0.2)
+    try:
+        yield
+    finally:
+        stop.set()
+        thread.join()
+        sheet.TabColor = original
+
+
+def check_press_then_change(book):
+    """A held press activates nothing once its sheet was replaced or moved (#28)."""
+    evidence = {}
+    for change in ("replace", "move"):
+        reset(book)
+        point = book.point(1)
+        book.pointer.press(*point)
+        wait_until(lambda: book.selection() == [NAMES[1]], "the press to select Bravo")
+        if change == "replace":
+            replace(book.document, NAMES[1])
+            wait_until(lambda: book.selection() == [], "the refresh to drop the replaced Bravo")
+        else:
+            book.document.getSheets().moveByName(NAMES[1], 6)
+            wait_until(lambda: view.names(book.tree)[1] == NAMES[2], "the list to show the move")
+        book.pointer.release()
+        time.sleep(1)
+        evidence[change] = {
+            "active": book.active(),
+            "calc_tabs": book.calc_tabs(),
+            "selection": book.selection(),
+        }
+        assert book.active() == NAMES[0] and book.calc_tabs() == [NAMES[0]], evidence
+    return evidence
+
+
+def check_click_hidden_before_refresh(book):
+    """A sheet hidden just before its row is clicked is not activated, nor any other (#43)."""
+    target = NAMES[3]
+    point = book.point(3)
+    with refresh_waiting(book):
+        book.document.getSheets().getByName(target).IsVisible = False
+        stale = "(hidden)" not in book.labels()[3]
+        book.pointer.click(*point, pause=0.8)
+    wait_until(lambda: "(hidden)" in book.labels()[3], "the list to show the sheet hidden")
+    time.sleep(0.5)
+    evidence = {
+        "row_still_shown_visible_when_clicked": stale,
+        "active": book.active(),
+        "calc_tabs": book.calc_tabs(),
+        "selection": book.selection(),
+    }
+    book.document.getSheets().getByName(target).IsVisible = True
+    assert stale, evidence  # Otherwise the click met an up-to-date row and proves nothing.
+    assert evidence["active"] == NAMES[0] and evidence["calc_tabs"] == [NAMES[0]], evidence
+    return evidence
+
+
+def check_newer_selection_kept(book):
+    """A delayed refresh keeps a Ctrl+click made after a plain click (#44)."""
+    first, second = book.point(1), book.point(3)
+    with refresh_waiting(book):
+        book.pointer.click(*first, pause=0.05)
+        book.pointer.click(*second, modifiers=("Control_L",), pause=0.3)
+        stale = not book.labels()[1].startswith(ACTIVE_MARK)
+        before_refresh = book.selection()
+    wait_until(lambda: book.labels()[1].startswith(ACTIVE_MARK), "the marker to move to Bravo")
+    time.sleep(1)
+    evidence = {
+        "marker_not_yet_moved": stale,
+        "before_refresh": before_refresh,
+        "after_refresh": book.selection(),
+        "active": book.active(),
+    }
+    assert stale, evidence  # Otherwise the refresh ran before the Ctrl+click.
+    assert evidence["after_refresh"] == [NAMES[1], NAMES[3]], evidence
+    assert evidence["active"] == NAMES[1], evidence
+    return evidence
+
+
 def check_other_document(lab, book):
     book.focus_list()
     other = Workbook(lab, "other", ["One", "Two", "Three"])
@@ -693,6 +794,9 @@ def run_checks(lab, output):
         ("plain_click_ends_group", lambda: check_plain_click_ends_group(book)),
         ("cursor_across_refresh", lambda: check_cursor_across_refresh(book)),
         ("drop_after_replacement", lambda: check_drop_after_replacement(book)),
+        ("press_then_change", lambda: check_press_then_change(book)),
+        ("click_hidden_before_refresh", lambda: check_click_hidden_before_refresh(book)),
+        ("newer_selection_kept", lambda: check_newer_selection_kept(book)),
         ("other_document", lambda: check_other_document(lab, book)),
     ]
     results = {}
