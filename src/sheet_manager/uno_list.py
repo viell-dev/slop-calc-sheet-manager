@@ -16,7 +16,6 @@ of them from other threads or in the middle of a change.
 """
 
 import contextlib
-import threading
 import time
 import uuid
 from dataclasses import dataclass, replace
@@ -49,6 +48,7 @@ from sheet_manager.reorder import plan_move
 from sheet_manager.selection import Ref, Selection, structure_kept
 from sheet_manager.sheet_list import RowGeometry, SheetRow, ordered, row_label
 from sheet_manager.uno_calc import (
+    Later,
     MainThread,
     dispatch,
     prop,
@@ -57,6 +57,7 @@ from sheet_manager.uno_calc import (
     select_tabs,
     selected_tabs,
     show_error,
+    start_thread,
     swatch_url,
 )
 from sheet_manager.uno_keys import ListKeyHandler, Shortcuts
@@ -331,7 +332,7 @@ class SheetList:
         )
         self._keys = ListKeyHandler(self, Shortcuts(context, self.document))
         self._keys_registered = False
-        self._refresh_timer: threading.Timer | None = None
+        self._refresh_timer: Later | None = None
         self._changed_at = 0.0  # The last document change.
         self._stale_since: float | None = None  # The first change not yet shown.
         self._refresh_cost = 0.0  # How long the last refresh took.
@@ -347,7 +348,7 @@ class SheetList:
         self._gap: int | None = None
         self._pointer_y = 0
         self._scroll = 0
-        self._scroll_thread: threading.Thread | None = None
+        self._scrolling = False  # Whether the auto-scroll thread runs.
         self._scroll_pending = False
         self._type_ahead = TypeAhead()
 
@@ -1126,19 +1127,20 @@ class SheetList:
 
     def _set_scroll(self, direction: int) -> None:
         self._scroll = direction
-        if direction and (self._scroll_thread is None or not self._scroll_thread.is_alive()):
-            self._scroll_thread = threading.Thread(
-                target=self._scroll_loop, name="sheet-manager-autoscroll", daemon=True
-            )
-            self._scroll_thread.start()
+        if direction and not self._scrolling:
+            self._scrolling = True
+            start_thread(self._scroll_loop, "auto-scroll")
 
     def _scroll_loop(self) -> None:
         # dragOver stops while the pointer rests, so a timer keeps scrolling at the edges.
-        while self._scroll and self._drag is not None and not self._disposed:
-            time.sleep(SCROLL_INTERVAL)
-            if not self._scroll_pending:
-                self._scroll_pending = True
-                self.post(self._scroll_step, "auto-scroll")
+        try:
+            while self._scroll and self._drag is not None and not self._disposed:
+                time.sleep(SCROLL_INTERVAL)
+                if not self._scroll_pending:
+                    self._scroll_pending = True
+                    self.post(self._scroll_step, "auto-scroll")
+        finally:
+            self._scrolling = False
 
     def _scroll_step(self) -> None:
         self._scroll_pending = False

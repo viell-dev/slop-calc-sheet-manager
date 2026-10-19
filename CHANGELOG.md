@@ -17,6 +17,8 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   rather than act on a sheet that was not selected
   ([#28](https://github.com/viell-dev/slop-calc-sheet-manager/issues/28)); a click ends any
   grouping of Calc's tabs ([#25](https://github.com/viell-dev/slop-calc-sheet-manager/issues/25));
+  Calc no longer hangs when the list schedules a refresh during a change
+  ([#55](https://github.com/viell-dev/slop-calc-sheet-manager/issues/55));
   showing hidden sheets needs undo and is undone on failure
   ([#27](https://github.com/viell-dev/slop-calc-sheet-manager/issues/27)); refreshing keeps the
   keyboard position ([#29](https://github.com/viell-dev/slop-calc-sheet-manager/issues/29)).
