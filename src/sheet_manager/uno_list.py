@@ -98,6 +98,7 @@ class _Press:
     modifiers: int
     name: str | None  # The sheet the pressed row showed,
     handle: Any  # and its handle at that moment: a refresh may put another sheet there.
+    rebuilds: int  # How often the list had been rebuilt when the button went down.
 
 
 @dataclass(frozen=True)
@@ -299,6 +300,9 @@ class SheetList:
         self._follow_input: int | None = None
         self._activating = False  # The list's own setActiveSheet call is running.
         self._press: _Press | None = None
+        # Rebuilds so far, and the selection and cursor the last one established.
+        self._rebuilds = 0
+        self._rebuilt: tuple[list[str], str | None] = ([], None)
         self._drag: _Drag | None = None
         self._gap: int | None = None
         self._pointer_y = 0
@@ -452,6 +456,8 @@ class SheetList:
             self.tree.makeNodeVisible(nodes[-1])
             self.tree.makeNodeVisible(nodes[names.index(top)])
         self._select(picked, cursor)
+        self._rebuilds += 1
+        self._rebuilt = (list(picked), cursor)
 
     def _select(self, names: list[str], cursor: str | None = None) -> None:
         """Select these rows and put the keyboard cursor on `cursor`, or on the first of them."""
@@ -574,6 +580,7 @@ class SheetList:
             return
         controller = self.controller
         previous = controller.getActiveSheet()
+        previous_name = previous.getName()
         previous_tabs = selected_tabs(self.context, controller)
         self._activating = True  # Calc reports the switch during the call.
         try:
@@ -581,15 +588,18 @@ class SheetList:
         finally:
             self._activating = False
         if controller.getActiveSheet().getName() != name:
-            # Calc went to another sheet after all: put the view back as it was.
-            controller.setActiveSheet(previous)
-            if selected_tabs(self.context, controller) != previous_tabs:
-                select_tabs(self.context, self.frame, previous_tabs)
+            # Calc went to another sheet after all: put the view back, and say whether it is.
+            restored = self.restore_view(previous, previous_name, previous_tabs)
             self.post(self.refresh, "refreshing the sheet list")
             show_error(
                 self.peer,
                 tr("Sheet Manager"),
-                tr("Calc could not go to this sheet. The view was left as it was."),
+                tr("Calc could not go to this sheet. The view was left as it was.")
+                if restored
+                else tr(
+                    "Calc could not go to this sheet, and the previous view could not be "
+                    "restored. Check which sheets are active and selected before editing cells."
+                ),
             )
             return
         index = list(self.document.getSheets().getElementNames()).index(name)
@@ -606,6 +616,24 @@ class SheetList:
                 tr("Sheet Manager"),
                 tr("Calc kept other sheets selected. Click the sheet's tab before editing cells."),
             )
+
+    def restore_view(self, previous: Any, name: str, tabs: list[int]) -> bool:
+        """Make `previous` active and `tabs` Calc's selection again; read back both (#46).
+
+        Calc may send this activation elsewhere too, for example when the previous sheet was
+        hidden meanwhile; then the view stays as Calc left it, and the caller says so.
+        """
+        controller = self.controller
+        try:
+            controller.setActiveSheet(previous)
+            if selected_tabs(self.context, controller) != tabs:
+                select_tabs(self.context, self.frame, tabs)
+            return (
+                controller.getActiveSheet().getName() == name
+                and selected_tabs(self.context, controller) == tabs
+            )
+        except Exception:
+            return False
 
     def activate_selection(self) -> None:
         picked = self.selected_names()
@@ -747,7 +775,7 @@ class SheetList:
         elif event.Buttons & LEFT:
             name = self.rows[row].name if row is not None else None
             handle = self._handles.get(name) if name is not None else None
-            self._press = _Press(row, event.Modifiers, name, handle)
+            self._press = _Press(row, event.Modifiers, name, handle, self._rebuilds)
             if row is not None:
                 # The tree has already handled the press: its cursor is on this row. Shift
                 # keeps or starts the range at the old cursor; other clicks end it.
@@ -766,16 +794,31 @@ class SheetList:
         press, self._press = self._press, None
         if not event.Buttons & LEFT or press is None or press.name is None:
             return
+        if not self._pressed_sheet_in_place(press):
+            # A refresh during the press moved the pressed sheet away or showed another sheet
+            # under its name. The gesture then has no effect at all (#28): no activation, and
+            # whatever the tree selected on release now sits in that row and was never
+            # picked, so the selection the refresh established comes back.
+            if press.rebuilds != self._rebuilds:
+                self._select(*self._rebuilt)
+            return
         row = press.row
         if row is None or press.modifiers & (SHIFT | MOD1):
             return
         if self.geometry().row_at(event.Y) != row:
             return
-        # A refresh between press and release may have moved the pressed sheet away or shown
-        # a replacement under its name: act only on the sheet that was pressed (#28).
-        if row >= len(self.rows) or self.rows[row].name != press.name:
-            return
         self.activate(press.name, press.handle)
+
+    def _pressed_sheet_in_place(self, press: _Press) -> bool:
+        """Whether the pressed row still shows the pressed sheet, under the same name."""
+        if press.row is None or press.row >= len(self.rows):
+            return False
+        if self.rows[press.row].name != press.name:
+            return False
+        try:
+            return press.handle is not None and press.handle.getName() == press.name
+        except Exception:
+            return False
 
     def open_menu_for_keyboard(self) -> None:
         picked = self.selected_names()

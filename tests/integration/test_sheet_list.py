@@ -14,6 +14,7 @@ import time
 from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 import uno
 from com.sun.star.awt import KeyEvent, MouseEvent
@@ -31,7 +32,7 @@ from sheet_list_view import (
     selection,
 )
 
-from sheet_manager import keys
+from sheet_manager import keys, uno_list
 from sheet_manager.sheet_list import SheetRow, row_label, tab_color
 from sheet_manager.uno_reorder import snapshot
 from sheet_manager.uno_show import show_sheets
@@ -384,9 +385,14 @@ def check_stale_clicks(context, desktop):
     def settled():
         poll(lambda: labels(tree) == expected_labels(document), "the list to show the workbook")
 
-    def unchanged(what):
+    def unchanged(what, picked=None):
+        """Alfa is still active and Calc's only tab; the list selects `picked`, if given."""
         state = {"active": active(), "tabs": tabs_of(context, document)}
-        assert state == {"active": "Alfa", "tabs": ["Alfa"]}, (what, state)
+        expected = {"active": "Alfa", "tabs": ["Alfa"]}
+        if picked is not None:
+            state["selection"] = selection(tree, list(sheets.getElementNames()))
+            expected["selection"] = picked
+        assert state == expected, (what, state)
         return state
 
     settled()
@@ -398,7 +404,7 @@ def check_stale_clicks(context, desktop):
     poll(lambda: selection(tree, SIX) == [], "the refresh to drop the replaced Bravo")
     robot.release(tree, point)
     time.sleep(1)
-    results["press_then_replace"] = unchanged("press, replace, release")
+    results["press_then_replace"] = unchanged("press, replace, release", picked=[])
 
     say("a press held while its sheet moves does not activate the sheet now in its row (#28)")
     settled()
@@ -410,7 +416,7 @@ def check_stale_clicks(context, desktop):
     poll(lambda: names(tree) == moved, "the list to show the move")
     robot.release(tree, point)
     time.sleep(1)
-    results["press_then_move"] = unchanged("press, move, release")
+    results["press_then_move"] = unchanged("press, move, release", picked=["Bravo"])
     sheets.moveByName("Bravo", 1)
 
     say("a sheet hidden just before its row is clicked is not activated, nor another (#43)")
@@ -437,6 +443,81 @@ def check_stale_clicks(context, desktop):
     results["selection_after_delayed_refresh"] = kept
     document.close(True)
     return results
+
+
+class _ActivationOwner:
+    """What SheetList.activate() uses, around a real document; Calc does the work."""
+
+    activate = uno_list.SheetList.activate
+    restore_view = uno_list.SheetList.restore_view
+
+    def __init__(self, context, document):
+        self.context, self.document = context, document
+        self.controller = document.getCurrentController()
+        self.frame = self.controller.getFrame()
+        self.peer = None
+        self._activating = False
+        self._handles: dict[str, Any] = {}
+
+    def post(self, function, where):
+        pass
+
+    def refresh(self):
+        pass
+
+
+def redirected_activation(context, desktop, hidden):
+    """Activate Bravo while Alfa and Delta are grouped, hiding `hidden` just before the switch.
+
+    The sheets go between the moment activate() notes the view and its switch, which real input
+    can only hit by chance: Calc then sends the switch, and maybe the restoration, elsewhere.
+    """
+    document = make_workbook(desktop, SIX)
+    sheets = document.getSheets()
+    owner = _ActivationOwner(context, document)
+    uno_list.select_tabs(context, owner.frame, [0, 3])
+    poll(lambda: tabs_of(context, document) == ["Alfa", "Delta"], "Alfa and Delta grouped")
+    real_tabs = uno_list.selected_tabs
+    calls = []
+    messages = []
+
+    def tabs_then_hide(ctx, controller):
+        result = real_tabs(ctx, controller)
+        calls.append(result)
+        if len(calls) == 1:  # activate() has noted the view; now the sheets go.
+            for name in hidden:
+                sheets.getByName(name).IsVisible = False
+        return result
+
+    def captured(peer, title, message):
+        messages.append(message)
+
+    with (
+        patch.object(uno_list, "selected_tabs", tabs_then_hide),
+        patch.object(uno_list, "show_error", captured),
+    ):
+        owner.activate("Bravo", sheets.getByName("Bravo"))
+    state = {
+        "active": document.getCurrentController().getActiveSheet().getName(),
+        "tabs": tabs_of(context, document),
+        "messages": messages,
+    }
+    document.close(True)
+    return state
+
+
+def check_activation_fallback(context, desktop):
+    """If Calc sends an activation elsewhere, the view is restored and read back (#46)."""
+    say("Bravo hidden before the switch: the view is restored")
+    restored = redirected_activation(context, desktop, ["Bravo"])
+    assert restored["active"] == "Alfa" and restored["tabs"] == ["Alfa", "Delta"], restored
+    assert len(restored["messages"]) == 1 and "left as it was" in restored["messages"][0]
+    say("Bravo and Alfa hidden before the switch: the restoration fails and says so")
+    failed = redirected_activation(context, desktop, ["Bravo", "Alfa"])
+    assert failed["active"] != "Alfa", failed
+    assert len(failed["messages"]) == 1, failed
+    assert "could not be restored" in failed["messages"][0], failed
+    return {"restored": restored, "not_restored": failed}
 
 
 class _FailingHandle:
@@ -596,6 +677,7 @@ def exercise(context, desktop, directory, output, *, headless):
             ("selection_and_menu", lambda: check_selection_and_menu(context, desktop, headless)),
             ("identity", lambda: check_identity(context, desktop, headless)),
             ("stale_clicks", lambda: check_stale_clicks(context, desktop)),
+            ("activation_fallback", lambda: check_activation_fallback(context, desktop)),
             ("show", lambda: check_show(context, desktop)),
             ("large_workbook", lambda: measure_large_workbook(context, desktop, 1000)),
         ):

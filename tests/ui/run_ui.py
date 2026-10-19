@@ -677,9 +677,14 @@ def refresh_waiting(book):
 
 
 def check_press_then_change(book):
-    """A held press activates nothing once its sheet was replaced or moved (#28)."""
+    """A held press has no effect once its sheet was replaced or moved (#28).
+
+    Neither the activation nor the selection that the tree makes on release survives, so the
+    sheet tab menu that follows has nothing to act on. It runs after a refused drop, which
+    made the tree select the replacement on release before this was fixed.
+    """
     evidence = {}
-    for change in ("replace", "move"):
+    for change, picked in (("replace", []), ("move", [NAMES[1]])):
         reset(book)
         point = book.point(1)
         book.pointer.press(*point)
@@ -692,12 +697,25 @@ def check_press_then_change(book):
             wait_until(lambda: view.names(book.tree)[1] == NAMES[2], "the list to show the move")
         book.pointer.release()
         time.sleep(1)
-        evidence[change] = {
+        state = {
             "active": book.active(),
             "calc_tabs": book.calc_tabs(),
             "selection": book.selection(),
         }
-        assert book.active() == NAMES[0] and book.calc_tabs() == [NAMES[0]], evidence
+        if change == "replace":
+            # The menu key opens the menu for the list's selection and groups Calc's tabs
+            # to match while it is open; with nothing picked it does nothing.
+            titles = book.undo_titles()
+            book.lab.input.tap("Menu", pause=0.8)
+            state["calc_tabs_after_menu_key"] = book.calc_tabs()
+            book.lab.input.tap("Escape", pause=0.3)
+            state["undo_unchanged"] = book.undo_titles() == titles
+        evidence[change] = state
+        assert state["active"] == NAMES[0] and state["calc_tabs"] == [NAMES[0]], evidence
+        assert state["selection"] == picked, evidence
+        if change == "replace":
+            assert state["calc_tabs_after_menu_key"] == [NAMES[0]], evidence
+            assert state["undo_unchanged"], evidence
     return evidence
 
 
