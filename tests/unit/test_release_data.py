@@ -82,7 +82,7 @@ def test_new_build_must_exceed_every_channel_and_orphan_tag() -> None:
         check_new_version("0.1.0", builds, ["0.2.0"])
 
 
-def test_history_refuses_removal_reclassification_and_later_lower_version() -> None:
+def test_history_refuses_removal_reclassification_and_duplicate_versions() -> None:
     old = published("0.0.90", 18, prerelease=True)
     new = published("0.1.0", 19)
     validate_history([new, old], [old])
@@ -90,11 +90,30 @@ def test_history_refuses_removal_reclassification_and_later_lower_version() -> N
         [new],
         [published("0.0.90", 18), new],
         [old, old],
-        [published("0.1.0", 18), published("0.0.90", 19, prerelease=True)],
         [PublishedBuild("0.0.90", True, "26.8.1", old.published), new],
     ):
         with pytest.raises(ValueError):
             validate_history(builds, [old])
+
+
+@pytest.mark.parametrize("prerelease", [False, True])
+def test_finishing_an_older_draft_retains_the_newest_feed_version(prerelease: bool) -> None:
+    newest = published("0.1.0", 18)
+    recovered = published("0.0.90" if prerelease else "0.0.89", 19, prerelease=prerelease)
+    validate_history([recovered, newest], [newest])
+    for stable in (False, True):
+        root = ET.fromstring(feed([recovered, newest], stable=stable))
+        versions = [
+            element.attrib["value"]
+            for element in root.findall(
+                f"{{{ATOM}}}entry/{{{ATOM}}}content/{{{UPDATE}}}description/{{{UPDATE}}}version"
+            )
+        ]
+        assert versions == (
+            [newest.version] if stable and prerelease else [newest.version, recovered.version]
+        )
+        if stable and prerelease:
+            assert feed([recovered, newest], stable=True) == feed([newest], stable=True)
 
 
 def test_feed_has_all_builds_newest_first_and_stable_ignores_candidates() -> None:

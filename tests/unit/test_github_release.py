@@ -54,6 +54,7 @@ def test_dry_run_builds_assets_and_prospective_feeds_without_api_writes(
         sys, "argv", ["release", "release", "--version", version(), "--output", str(tmp_path)]
     )
     monkeypatch.setenv("RELEASE_COMMIT", "a" * 40)
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "pull_request")
     if version_parts(version())[2] >= 90:
         sys.argv.append("--prerelease")
     monkeypatch.setattr(cli.subprocess, "check_output", Mock(return_value="a" * 40))
@@ -88,6 +89,54 @@ def test_existing_draft_and_mismatched_metadata_stop_preparation(
     with pytest.raises(ValueError, match="description.xml contains"):
         cli.prepare("999.0.0", False, "", tmp_path)
     assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("event", ["pull_request", "workflow_dispatch"])
+@pytest.mark.parametrize("draft", [False, True])
+def test_only_prs_skip_release_planning_for_an_already_published_metadata_version(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    event: str,
+    draft: bool,
+) -> None:
+    monkeypatch.setattr(
+        sys, "argv", ["release", "release", "--version", version(), "--output", str(tmp_path)]
+    )
+    if version_parts(version())[2] >= 90:
+        sys.argv.append("--prerelease")
+    monkeypatch.setenv("GITHUB_EVENT_NAME", event)
+    monkeypatch.setenv("RELEASE_COMMIT", "a" * 40)
+    monkeypatch.setattr(cli.subprocess, "check_output", Mock(return_value="a" * 40))
+    monkeypatch.setattr(
+        cli, "paginated", Mock(return_value=[{"tag_name": version(), "draft": draft}])
+    )
+    builds = [
+        PublishedBuild(
+            version(), version_parts(version())[2] >= 90, "26.2.1", "2026-10-19T00:00:00Z"
+        )
+    ]
+    monkeypatch.setattr(cli, "published_builds", Mock(return_value=builds))
+    monkeypatch.setattr(cli, "previous_builds", Mock(return_value=builds))
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        pytest.fail("Skipped release planning attempted CI polling or a GitHub write")
+
+    monkeypatch.setattr(cli, "require_ci", forbidden)
+    monkeypatch.setattr(cli, "api", forbidden)
+    if event == "pull_request" and not draft:
+        cli.main()
+        assert "::notice::" in capsys.readouterr().out
+        assert not (tmp_path / "release-plan.json").exists()
+        assert json.loads((tmp_path / "site/releases.json").read_text()) == [asdict(builds[0])]
+    else:
+        with pytest.raises(ValueError, match="draft already exists"):
+            cli.main()
+
+
+def test_noncanonical_published_release_tags_fail_loudly() -> None:
+    with pytest.raises(ValueError, match="three plain dotted numbers"):
+        cli.published_builds([{"tag_name": "manual-build", "draft": False, "prerelease": False}])
 
 
 def test_publishing_is_refused_from_a_pr_or_branch(monkeypatch: pytest.MonkeyPatch) -> None:

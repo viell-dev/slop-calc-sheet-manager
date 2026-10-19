@@ -216,6 +216,18 @@ def main() -> None:
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
     if commit != os.environ.get("RELEASE_COMMIT"):
         raise ValueError("Checkout does not match the exact requested release commit")
+    if os.environ.get("GITHUB_EVENT_NAME") == "pull_request":
+        releases = paginated(f"repos/{REPOSITORY}/releases?per_page=100")
+        if any(item["tag_name"] == args.version and not item["draft"] for item in releases):
+            # Workflow/tooling PRs commonly retain the last published metadata version.
+            # Still exercise the live assets and deployed-history safeguards, without
+            # pretending to prepare that version again or weakening dispatch validation.
+            write_site(args.output / "site", published_builds(releases))
+            print(
+                f"::notice::Version {args.version} is already published; release planning "
+                "skipped for this PR. Current published feeds validated without deployment."
+            )
+            return
     plan, builds = prepare(args.version, args.prerelease, args.target, args.output)
     ci_url = require_ci(commit, publishing=args.publish)
     plan["target_commitish"] = commit

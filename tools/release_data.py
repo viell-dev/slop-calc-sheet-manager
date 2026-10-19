@@ -119,7 +119,10 @@ class PublishedBuild:
 
 
 def validate_history(builds: list[PublishedBuild], previous: list[PublishedBuild]) -> None:
-    """Refuse rewritten history, removed builds, or non-increasing publication order."""
+    """Refuse rewritten history, removed builds, or duplicate versions.
+
+    A stalled draft may be completed after a newer version. Feeds remain version-sorted.
+    """
     by_version: dict[str, PublishedBuild] = {}
     for build in builds:
         release_title(build.version, build.prerelease)
@@ -130,12 +133,6 @@ def validate_history(builds: list[PublishedBuild], previous: list[PublishedBuild
     for old in previous:
         if by_version.get(old.version) != old:
             raise ValueError(f"Published build removed or changed: {old.version}")
-    ordered = sorted(builds, key=lambda item: (item.published, version_parts(item.version)))
-    for older, newer in zip(ordered, ordered[1:], strict=False):
-        if compare_versions(newer.version, older.version) <= 0:
-            raise ValueError(
-                f"Publication would move backwards: {older.version} -> {newer.version}"
-            )
 
 
 def check_new_version(version: str, builds: list[PublishedBuild], tags: list[str]) -> None:

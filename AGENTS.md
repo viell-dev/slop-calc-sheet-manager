@@ -152,9 +152,10 @@ one as not planned, and close an accepted one through the pull request that fixe
 - The owner has given standing approval for agents to publish releases, prereleases and stable
   versions alike, with their release notes, whenever the agents judge a build ready. Only the
   listing on extensions.libreoffice.org needs the owner's sign-in.
-- Version numbers are plain dotted numbers without a `v` prefix, strictly increasing across every
-  published build. There are no `-rc` suffixes, because LibreOffice's update check ranks
-  `0.1.0-rc.1` above `0.1.0`. Whether a build is a prerelease or stable is a property of its GitHub
+- Version numbers are plain dotted numbers without a `v` prefix. New versions exceed every
+  published build and reserved tag; an already-reserved draft can be recovered later without
+  changing the feeds' version order. There are no `-rc` suffixes, because LibreOffice's update
+  check ranks `0.1.0-rc.1` above `0.1.0`. Whether a build is a prerelease or stable is a property of its GitHub
   release and of the update feed it appears in.
 - Published files and tags are never replaced, and update feeds never move backwards: a bad release
   is fixed by a newer version.

@@ -2,7 +2,11 @@ name: Release
 
 on:
   pull_request:
-    paths: [".github/workflows/release.yml"]
+    paths:
+      - ".github/workflows/release.yml"
+      - ".github/workflows/pages.yml"
+      - "tools/github_release.py"
+      - "tools/release_data.py"
   workflow_dispatch:
     inputs:
       version:
@@ -116,6 +120,10 @@ jobs:
 
   feeds:
     needs: publish
+    # Hold the same lock as standalone Pages runs across generation and deployment.
+    concurrency:
+      group: update-feeds
+      cancel-in-progress: false
     permissions:
       contents: read
       pages: write

@@ -14,8 +14,9 @@ version tag.
 ## Versions and titles
 
 `extension/description.xml` is the only source of the extension version. Use exactly three plain
-dotted numbers, without a `v` prefix, leading zeroes, suffixes, or build metadata. Every published
-build must exceed every earlier build, stable or prerelease, and every reserved numeric tag.
+dotted numbers, without a `v` prefix, leading zeroes, suffixes, or build metadata. When reserving
+a new version, it must exceed every published build, stable or prerelease, and every reserved
+numeric tag. Completing an already-reserved draft follows the recovery procedure below.
 Never replace a published file, move a tag, delete a published release, or reclassify a prerelease
 as stable. Fix a bad build with a larger version.
 
@@ -60,13 +61,19 @@ and unit checks, requires successful CI on that commit, validates version/metada
 checks release history and tags, and generates prospective feeds. It creates no tag, draft,
 release, or deployment. `dry_run` defaults to true.
 
-For release-workflow development, a PR that changes `.github/workflows/release.yml` also runs
+For release-workflow development, a PR that changes `.github/workflows/release.yml`,
+`.github/workflows/pages.yml`, `tools/github_release.py`, or `tools/release_data.py` also runs
 this same dry run on its head commit, using the metadata version and inferring the candidate
-flag from its patch number. Its artifact is the branch dry run; it uses the PR's successful CI
-run instead of `main`'s. Manual dry runs may also choose a branch after the workflow has first
-landed on the default branch. All publishing jobs stay disabled outside a manual dispatch on
-`main`. Normal feature PRs do not run this release readiness gate: the metadata can still name
-the last published version until the next release is prepared.
+flag from its patch number. Its artifact is the branch dry run; it waits for the PR's successful
+CI run instead of `main`'s, so this check normally finishes after CI. If that metadata version is
+already published, the PR check emits a notice and skips release planning after static/unit
+checks and validation of live published assets, history, and current feeds. In that case its
+artifact contains only the current feed preview, with no prospective release plan. Existing
+drafts and reserved tags still fail preparation; manual dispatches never skip readiness checks.
+Manual dry runs may also choose a branch after the workflow has first landed on the default
+branch. All publishing jobs stay disabled outside a manual dispatch on `main`. Normal feature
+PRs do not run this release readiness gate: the metadata can still name the last published
+version until the next release is prepared.
 
 ## Publish
 
@@ -91,15 +98,24 @@ that version. Inspect the tag's exact commit, the draft and its assets, and the 
 A maintainer may finish that same draft by uploading only missing assets, verifying their bytes
 against a rebuild of the tagged commit, and publishing it. Never use `--clobber` or replace an
 asset. If its content is wrong or uncertain, abandon the draft/tag and prepare a higher version.
+An older stalled draft may be completed even after a higher version has been published: feeds
+sort by version, so the recovered build enters history without replacing the newest offer.
 If publication succeeded but Pages failed, rerun **Update feeds** on `main`; do not republish.
+
+The tag/draft/upload/publish sequence has mock coverage but has not been executed live. The first
+`0.0.90` candidate publication will be its first live test. Keep this recovery procedure open
+during that run; if the reserved tag or draft content is uncertain, abandon it and use a higher
+version.
 
 ## Feed storage and safeguards
 
 GitHub Releases are the source of truth, rather than release-bot commits to protected `main`.
 **Update feeds** downloads each published release's versioned OXT and checksum, verifies them,
 and reads its identifier, version, and minimum LibreOffice version from the packaged metadata.
-It ignores drafts and refuses missing assets or mismatched tags/checksums. This retains each
-build's actual compatibility floor even after the source metadata changes.
+It ignores drafts and refuses missing assets or mismatched tags/checksums. Published releases
+with noncanonical version tags also stop generation; this repository reserves GitHub Releases
+for extension builds, so unrelated manual releases must not silently disappear from its feeds.
+This retains each build's actual compatibility floor even after the source metadata changes.
 
 Both feeds are Atom documents whose entries contain descriptions in
 `http://openoffice.org/extensions/update/2006`. Entries have the extension identifier, version,
@@ -111,16 +127,19 @@ so publishing a candidate does not change it.
 
 The site also contains `releases.json`, the history used by the last deployment. Generation
 compares it with the current releases and refuses removal, reclassification, changed metadata,
-or a later publication with a lower version. History requests bypass cached URLs. A missing site
+or duplicate versions. Publication timestamps need not follow version order, so finishing an
+older draft cannot block future feeds. History requests bypass cached URLs. A missing site
 (HTTP 404) permits bootstrap only before any numeric version tag exists; afterwards it stops
 deployment so missing history cannot hide a regression. Other fetch failures also stop deployment.
 Do not delete the Pages site or its history; restore the last deployed history if it goes missing.
-Generation and deployment share one concurrency lock, so queued runs read fresh release data.
+Generation and deployment share the `update-feeds` concurrency lock, so queued runs read fresh
+release data. Both the release workflow's caller job and the standalone Pages workflow hold it
+across the complete build and deployment; locking deployment alone would allow stale builds.
 
 GitHub Pages must use **GitHub Actions** as its source. Set the `github-pages` environment's custom
 deployment policies to branch `main` and tags `[0-9]*`, so manual release events can deploy too.
 Other branches and PR refs cannot deploy. Pages uses tooling from `main`. A push to `main`, a
-manual dispatch, and an hourly schedule can rebuild feeds. The release
+manual dispatch, and a daily schedule at 03:23 UTC can rebuild feeds. The release
 workflow calls it directly because events created with `GITHUB_TOKEN` do not trigger another
 workflow's `release` event. The event trigger also handles a manually completed draft.
 
