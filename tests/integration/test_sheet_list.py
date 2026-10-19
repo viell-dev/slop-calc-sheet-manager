@@ -822,7 +822,7 @@ def _stall_dump(name, dump):
     print(f"STALL in {name}: test threads follow", flush=True)
     faulthandler.dump_traceback(file=sys.stdout, all_threads=True)
     sys.stdout.flush()
-    time.sleep(20)
+    time.sleep(1)
     print("office Python threads:", flush=True)
     print(dump.read_text(encoding="utf-8", errors="replace") if dump.exists() else "(none)")
     found = subprocess.run(["pgrep", "-x", "soffice.bin"], capture_output=True, text=True)
@@ -842,6 +842,9 @@ def exercise(context, desktop, directory, output, *, headless):
     scripts = Path(directory) / "profile" / "user" / "Scripts" / "python"
     scripts.mkdir(parents=True, exist_ok=True)
     (scripts / "sheetmanagerdiag.py").write_text(DIAGNOSTIC_MACRO, encoding="utf-8")
+    # One dump of the office's Python threads, late enough for a stall in the Show check.
+    dump = Path(output) / "office-python.txt"
+    _office_python(context, "arm", 130, str(dump))
     try:
         for name, check in (
             ("key_constants", check_key_constants),
@@ -857,8 +860,6 @@ def exercise(context, desktop, directory, output, *, headless):
             if name == "large_workbook":
                 results[name] = check() or True
                 continue
-            dump = Path(output) / f"office-python-{name}.txt"
-            _office_python(context, "arm", 140, str(dump))
             watchdog = threading.Timer(150, _stall_dump, (name, dump))
             watchdog.daemon = True
             watchdog.start()
@@ -866,7 +867,6 @@ def exercise(context, desktop, directory, output, *, headless):
                 results[name] = check() or True
             finally:
                 watchdog.cancel()
-                _office_python(context, "cancel")
     finally:
         for document in _CREATED:
             with suppress(Exception):  # Most are closed already.
