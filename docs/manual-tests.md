@@ -94,5 +94,5 @@ instead. Take screenshots only of this workbook.
 23. **Sheets added during a selection.** Click "Charlie" and Ctrl+click "Echo". Then choose
     Sheet ▸ Insert Sheet at End and confirm.
     Expected: the list no longer selects Charlie and Echo, and an information bar above the sheet
-    says that the selection was cleared because sheets were added, removed, or renamed. Close the
-    bar and delete the new sheet.
+    says that the selection was cleared because sheets may have been added, removed, or renamed.
+    Close the bar and delete the new sheet.
