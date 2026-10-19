@@ -34,7 +34,7 @@ def main():
     class RetainedLogs(run.tempfile.TemporaryDirectory):
         def cleanup(self):
             root = Path(self.name)
-            for pattern in ("*.log", "*.dmp", "*.json"):
+            for pattern in ("*.log", "*.dmp", "*.json", "*.ini"):
                 for source in root.rglob(pattern):
                     target = output / "private-profile-logs" / source.relative_to(root)
                     target.parent.mkdir(parents=True, exist_ok=True)

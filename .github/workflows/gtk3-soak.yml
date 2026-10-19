@@ -42,7 +42,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: 9e95515
+          ref: "9e95515b354baa784c9bf3c30b15a4b4fa93fcf7"
           path: control-main
           persist-credentials: false
       - run: ./ci/install-windows.ps1
@@ -71,12 +71,13 @@ jobs:
       - name: Collect WER events and analyse dumps
         if: always()
         run: |
+          New-Item -ItemType Directory -Path test-results/dumps -Force | Out-Null
           Get-WinEvent -FilterHashtable @{LogName='Application'; StartTime=(Get-Date).AddHours(-2)} -ErrorAction SilentlyContinue |
             Where-Object { $_.ProviderName -in @('Application Error', 'Windows Error Reporting', 'Application Hang') } |
             Format-List TimeCreated,Id,ProviderName,Message | Out-File test-results/application-events.txt
           $cdb = Get-Content test-results/debuggers.txt -ErrorAction SilentlyContinue | Where-Object { $_ -like '*\x64\cdb.exe' } | Select-Object -First 1
           if ($cdb) {
-            foreach ($dump in Get-ChildItem -LiteralPath test-results/dumps -Filter '*.dmp') {
+            foreach ($dump in Get-ChildItem -LiteralPath test-results -Filter '*.dmp' -Recurse) {
               $symbols = "srv*$env:RUNNER_TEMP\symbols*https://dev-downloads.libreoffice.org/symstore/symbols;srv*$env:RUNNER_TEMP\symbols*https://msdl.microsoft.com/download/symbols"
               & $cdb -z $dump.FullName -y $symbols -c '.ecxr; !analyze -v; ~* kp; q' 2>&1 |
                 Out-File "$($dump.FullName).analysis.txt"
