@@ -108,8 +108,11 @@ for the tested boundary and the remaining desktop check. Release dry runs and pu
 [RELEASING.md](RELEASING.md).
 
 The sheet list's selection model has a property test: random sequences of picks, refreshes,
-renames, moves, deletions, and same-name replacements, checking that nothing the list holds ever
-resolves to a sheet it was not picked as.
+insertions, deletions, renames, moves, same-name replacements, and a deleted sheet's name passed
+to another sheet, checking that nothing the list holds ever resolves to a sheet it was not picked
+as. Its workbook reproduces how LibreOffice's retained handles behave (a deleted sheet's handle
+turns to the previous sheet), and a companion test shows that per-handle name checks alone fail
+there.
 
 The reorder suite exhausts all permutations through seven sheets and all scenario partitions and
 block orders through seven. It checks the minimum call count against an independent
@@ -219,8 +222,11 @@ one sheet, keep the keyboard position across a refresh, refuse a drop after a sh
 during the drag, and switch documents. They release a press after its sheet was replaced or moved
 and check that no activation follows and that the release selects nothing new; after the
 replacement, the Menu key then does nothing. They hold a press while the list gets a newer pick,
-by following Calc to another sheet or by typing its first letter, replace the pressed sheet,
-release, and check that the Menu key's Hide hides the newer pick and not the replacement. While a
+by following Calc to another sheet or by typing its first letter, move the pressed sheet away,
+release, and check that the Menu key's Hide hides the newer pick. They pick Bravo, then delete it
+and give its name to another sheet, directly or after inserting one so that the count is kept, or
+replace it while it is held, and check that the picks are dropped, that the user is told, and
+that the Menu key then hides nothing. While a
 far sheet's colour keeps changing, so that the list waits to refresh, they click a sheet hidden
 just before, and Ctrl+click after a plain click, and check that nothing acts on the old rows.
 Results and screenshots are in `test-results/<lane>/ui-gtk3/` and `ui-gen/`. LibreOffice's

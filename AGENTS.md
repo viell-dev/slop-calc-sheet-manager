@@ -110,14 +110,21 @@ labelled `Status: Won't Do`.
   production factory.
 - The list keeps the `uno_reorder.snapshot` that produced its rows. Its picks, keyboard cursor,
   and Shift anchor live in `selection.py` as refs: the name a sheet had when the user's input made
-  the ref, and that sheet's retained handle. A ref is never made again from a name later; every
-  refresh, rebuild or not, drops refs whose handle no longer reports their name; everything the
-  list writes to the tree, restores, or acts on comes from those refs. So a replaced or renamed
-  sheet leaves the selection instead of passing it to another sheet (#28). Drops plan against the
-  snapshot of the drag's start through `apply_order`, which refuses stale state. The menu opens
-  only for refs checked just before, with a fresh snapshot; while it is open, a dispatch
-  interceptor on the frame checks at dispatch time that the picked sheets are unchanged and are
-  exactly Calc's selected tabs. `uno_show.show_sheets` applies the reorder
+  the ref, and that sheet's retained handle. A ref is never made again from a name later, and
+  everything the list writes to the tree, restores, or acts on comes from refs. Retained handles
+  are not identities: when a sheet is deleted, its handle turns to the previous sheet and can
+  report the deleted sheet's name again after a rename (measured; `docs/reordering.md`). So the
+  list notes the sheet count at every document change (`StructureWatch`) and checks at every
+  refresh that its handles map one to one onto the sheets with at most one rename
+  (`structure_kept`); if either fails, it drops every ref and any held press and tells the user
+  in an infobar, which only the user closes, since removing one moves the focus to the sheet.
+  Otherwise refs stay while their handles report their names, so a renamed pick goes and a moved
+  one stays (#28). Over-clearing is the accepted cost. Drops plan against the snapshot of the
+  drag's start through `apply_order`, which refuses stale state, and the list refuses a drop when
+  sheets were inserted or deleted during the drag. The menu opens only for refs checked just
+  before, with a fresh snapshot; while it is open, a dispatch interceptor on the frame checks at
+  dispatch time that no sheet was inserted or deleted, that the picked sheets are unchanged, and
+  that they are exactly Calc's selected tabs. `uno_show.show_sheets` applies the reorder
   layer's undo rules: refuse without undo or beyond the undo limit, one group, undo only its own
   group on failure, verify. A plain click or Enter makes the sheet Calc's only selected tab and
   reads that back: `setActiveSheet` keeps an existing group when the sheet belongs to it.

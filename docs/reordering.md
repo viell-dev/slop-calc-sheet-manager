@@ -19,11 +19,17 @@ result = apply_order(context, document, observed, plan)
 
 `snapshot` retains sheet handles and the document identity. Use the snapshot that produced the
 displayed list, rather than taking a new one to apply an old UI selection. A rename, insertion,
-deletion, reorder, or scenario change invalidates it. Retained handle names detect same-name
-recreation at every tested position, including index zero. Deleted handles can fall back to another
-sheet and follow later insertions; they are not stable sheet identities. The combined stale-state
-check is empirical, not proven complete for arbitrary edit sequences. Stronger identity validation
-before future destructive actions is tracked in
+deletion, reorder, or scenario change invalidates it. Retained handles are not stable sheet
+identities. Measured with LibreOffice 26.2.1.2 and 26.8.1.1: a handle follows its sheet through
+renames, moves, and insertions, and when its sheet is deleted it turns to the previous sheet (to
+the next one when the first sheet is deleted) and follows that sheet from then on. A deleted
+sheet's handle therefore reports a live name, and after a rename even its own old one. Inserting
+a sheet before Bravo, deleting Bravo, and renaming the new sheet to Bravo leaves every name, every
+position, and every handle's reported name as they were: `is_current` accepts such a snapshot
+although its Bravo handle now denotes the new sheet. Callers that keep a snapshot while the user
+works must also notice insertions and deletions as they happen; the sheet list notes the sheet
+count at every document change (`sheet_manager.selection.StructureWatch`) and drops what it holds
+when the count moved. A stronger identity is tracked in
 [#19](https://github.com/viell-dev/slop-calc-sheet-manager/issues/19).
 `preflight` is useful for enablement; `apply_order` always repeats it immediately before mutation.
 Catch `ValueError` from planning and expose its reason when the selection or target is invalid.

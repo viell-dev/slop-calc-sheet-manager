@@ -91,3 +91,8 @@ instead. Take screenshots only of this workbook.
 22. **Look.** Repeat step 1 and step 5 with a dark theme and, if available, at 150 % or 200 %
     display scaling.
     Expected: all text and swatches are readable and the insertion line is visible.
+23. **Sheets added during a selection.** Click "Charlie" and Ctrl+click "Echo". Then choose
+    Sheet ▸ Insert Sheet at End and confirm.
+    Expected: the list no longer selects Charlie and Echo, and an information bar above the sheet
+    says that the selection was cleared because sheets were added, removed, or renamed. Close the
+    bar and delete the new sheet.
