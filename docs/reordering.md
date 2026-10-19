@@ -19,11 +19,28 @@ result = apply_order(context, document, observed, plan)
 
 `snapshot` retains sheet handles and the document identity. Use the snapshot that produced the
 displayed list, rather than taking a new one to apply an old UI selection. A rename, insertion,
-deletion, reorder, or scenario change invalidates it. Retained handle names detect same-name
-recreation at every tested position, including index zero. Deleted handles can fall back to another
-sheet and follow later insertions; they are not stable sheet identities. The combined stale-state
-check is empirical, not proven complete for arbitrary edit sequences. Stronger identity validation
-before future destructive actions is tracked in
+deletion, reorder, or scenario change invalidates it. Retained handles are not stable sheet
+identities. Measured with LibreOffice 26.2.1.2 and 26.8.1.1: a handle follows its sheet through
+renames, moves, and insertions, and when its sheet is deleted it turns to the previous sheet (to
+the next one when the first sheet is deleted) and follows that sheet from then on. A deleted
+sheet's handle therefore reports a live name, and after a rename even its own old one. Inserting
+a sheet before Bravo, deleting Bravo, and renaming the new sheet to Bravo leaves every name, every
+position, and every handle's reported name as they were: `is_current` accepts such a snapshot
+although its Bravo handle now denotes the new sheet. Callers that keep a snapshot while the user
+works must also notice insertions and deletions as they happen. `sheet_manager.uno_structure`
+does that for the sheet list: it reads the sheet count at every modify and undo notification and
+moves a generation whenever a sheet may have been inserted or deleted. Measured with both
+versions: every recorded undo action is reported as it happens, also inside `lockControllers`,
+`addActionLock`, `disableSetModified`, and a caller's undo context, and the count read then
+shows each step; modify notifications come per change, once per `lockControllers` or
+`addActionLock` batch, and not at all under `disableSetModified`; undoing a whole context is
+reported as one action. Threat model: everything LibreOffice reports through some channel is
+caught. A program that turns off or locks undo recording and also batches or suppresses modify
+notifications around structural edits reports nothing at all (measured with undo disabled and
+`disableSetModified`); it cannot be detected, and it could hide or delete any sheet directly, so
+it is out of scope. This layer does not use the monitor yet: `snapshot`, `preflight`, and
+`apply_order` still rely on `is_current` alone, which the sequence above passes. Wiring the
+generation into them is tracked in
 [#19](https://github.com/viell-dev/slop-calc-sheet-manager/issues/19).
 `preflight` is useful for enablement; `apply_order` always repeats it immediately before mutation.
 Catch `ValueError` from planning and expose its reason when the selection or target is invalid.

@@ -41,6 +41,7 @@ def test_two_builds_are_identical_and_allowlisted(tmp_path: Path) -> None:
                     "reorder",
                     "selection",
                     "sheet_list",
+                    "structure",
                     "swatch",
                     "uno_calc",
                     "uno_keys",
@@ -49,6 +50,7 @@ def test_two_builds_are_identical_and_allowlisted(tmp_path: Path) -> None:
                     "uno_panel",
                     "uno_reorder",
                     "uno_show",
+                    "uno_structure",
                 )
             ),
         }

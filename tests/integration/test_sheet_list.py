@@ -13,6 +13,7 @@ import sys
 import time
 from contextlib import contextmanager
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
 
@@ -22,10 +23,13 @@ from com.sun.star.beans import PropertyValue
 from com.sun.star.table import CellRangeAddress
 from main_thread import close_document
 from sheet_list_view import (
+    BATCHES,
+    cover_batch,
     enabled_menu_items,
     labels,
     names,
     nodes,
+    on_main_thread,
     open_list,
     poll,
     row_point,
@@ -327,7 +331,9 @@ def check_identity(context, desktop, menus):
     robot.click(tree, row_point(tree, 1), modifiers=VCL_MOD1)
     poll(lambda: selection(tree, order) == ["Alfa", "Bravo"], "Alfa and Bravo selected")
     replace(document, "Bravo")
-    poll(lambda: selection(tree, order) == ["Alfa"], "the replaced sheet to leave the selection")
+    # A sheet was deleted and one inserted: no retained handle proves its sheet any more, so
+    # every pick goes, not only the replaced one (#28).
+    poll(lambda: selection(tree, order) == [], "the picks to be dropped")
     menu_tabs = None
     if menus:
         robot.click(tree, row_point(tree, 0), buttons=VCL_RIGHT)
@@ -421,21 +427,99 @@ def check_stale_clicks(context, desktop):
     results["press_then_move"] = unchanged("press, move, release", picked=["Bravo"])
     sheets.moveByName("Bravo", 1)
 
-    say("a voided press brings back the newer pick from following Calc, not the replacement")
+    say("a voided press brings back the newer pick from following Calc")
     settled()
     point = row_point(tree, 1)
     robot.press(tree, point)
     poll(lambda: selection(tree, SIX) == ["Bravo"], "the press to select Bravo")
     controller.setActiveSheet(sheets.getByName("Delta"))
     poll(lambda: selection(tree, SIX) == ["Delta"], "the list to follow Delta")
-    replace(document, "Bravo")
-    time.sleep(3)
+    sheets.moveByName("Bravo", len(SIX))  # The pressed row now shows another sheet.
+    time.sleep(2)
     robot.release(tree, point)
     time.sleep(1)
-    followed = {"active": active(), "selection": selection(tree, SIX)}
+    order = list(sheets.getElementNames())
+    followed = {"active": active(), "selection": selection(tree, order)}
     assert followed == {"active": "Delta", "selection": ["Delta"]}, followed
-    results["follow_then_replace"] = followed
+    results["follow_then_move"] = followed
+    sheets.moveByName("Bravo", 1)
     controller.setActiveSheet(sheets.getByName("Alfa"))
+
+    def pick_bravo_and_delta():
+        """Pick Bravo and Delta with Delta active, once no refresh is pending any more."""
+        time.sleep(1.5)  # A refresh after the last step's undo would drop the picks.
+        robot.click(tree, row_point(tree, 3))  # Delta becomes active.
+        robot.click(tree, row_point(tree, 1), modifiers=VCL_MOD1)
+        poll(lambda: selection(tree, SIX) == ["Bravo", "Delta"], "Bravo and Delta picked")
+        time.sleep(1.5)
+        kept = selection(tree, SIX)
+        assert kept == ["Bravo", "Delta"], ("the picks went before the change", kept)
+
+    say("a deleted sheet's handle reporting its name again does not keep the pick (#28)")
+    for case in ("delete, rename", "insert, delete, rename"):
+        settled()
+        pick_bravo_and_delta()
+        steps = len(document.getUndoManager().getAllUndoActionTitles())
+        if case == "insert, delete, rename":
+            sheets.insertNewByName("Newcomer", 1)
+        sheets.removeByName("Bravo")
+        renamed = "Newcomer" if case == "insert, delete, rename" else "Alfa"
+        sheets.getByName(renamed).setName("Bravo")
+        poll(lambda: selection(tree, list(sheets.getElementNames())) == [], "the picks to go")
+        results[case] = {
+            "selection": [],
+            "notice": bool(controller.hasInfobar(uno_list.NOTICE)),
+        }
+        undo = document.getUndoManager()
+        while len(undo.getAllUndoActionTitles()) > steps:
+            undo.undo()
+        poll(lambda: list(sheets.getElementNames()) == SIX, "undo to restore the sheets")
+        controller.setActiveSheet(sheets.getByName("Alfa"))
+
+    say("batched or quiet edits on LibreOffice's main thread do not keep the pick (#28)")
+    for wrapper in BATCHES:
+        settled()
+        pick_bravo_and_delta()
+        steps = len(document.getUndoManager().getAllUndoActionTitles())
+        on_main_thread(context, lambda w=wrapper: cover_batch(document, w))
+        poll(lambda: selection(tree, list(sheets.getElementNames())) == [], "the picks to go")
+        results[wrapper] = {"selection": [], "notice": bool(controller.hasInfobar(uno_list.NOTICE))}
+        undo = document.getUndoManager()
+        while len(undo.getAllUndoActionTitles()) > steps:
+            undo.undo()
+        poll(lambda: list(sheets.getElementNames()) == SIX, "undo to restore the sheets")
+        controller.setActiveSheet(sheets.getByName("Alfa"))
+
+    say("out of scope: undo off and modify notifications off report nothing (documented)")
+    document.getUndoManager().clear()
+    settled()
+    pick_bravo_and_delta()
+
+    def silenced():
+        document.IsUndoEnabled = False
+        try:
+            cover_batch(document, "disableSetModified")
+        finally:
+            document.IsUndoEnabled = True
+
+    on_main_thread(context, silenced)
+    time.sleep(2)
+    # This documents the limit rather than a wanted outcome: with undo recording off and
+    # modify notifications off, LibreOffice reports nothing, so the list keeps a pick that now
+    # names the newcomer. The threat model excludes this case (docs/reordering.md). If this
+    # starts failing, LibreOffice reports more than measured: update the documentation.
+    silenced_state = {
+        "selection": selection(tree, list(sheets.getElementNames())),
+        "marker": sheets.getByName("Bravo").getCellRangeByName("A1").getString(),
+    }
+    assert silenced_state == {"selection": ["Bravo", "Delta"], "marker": "replacement"}, (
+        silenced_state
+    )
+    results["silenced_out_of_scope"] = silenced_state
+    sheets.removeByName("Bravo")
+    sheets.insertNewByName("Bravo", 1)
+    controller.setActiveSheet(sheets.getByName("Alfa"))
+    poll(lambda: list(sheets.getElementNames()) == SIX, "Bravo back in place")
 
     say("a sheet hidden just before its row is clicked is not activated, nor another (#43)")
     settled()
@@ -476,6 +560,8 @@ class _ActivationOwner:
         self.peer = None
         self._activating = False
         self._handles: dict[str, Any] = {}
+        self._monitor = SimpleNamespace(generation=0)
+        self._proven = 0
 
     def post(self, function, where):
         pass

@@ -37,6 +37,7 @@ PACKAGE_FILES = (
     "reorder.py",
     "selection.py",
     "sheet_list.py",
+    "structure.py",
     "swatch.py",
     "uno_calc.py",
     "uno_keys.py",
@@ -45,6 +46,7 @@ PACKAGE_FILES = (
     "uno_panel.py",
     "uno_reorder.py",
     "uno_show.py",
+    "uno_structure.py",
 )
 DESCRIPTION_NS = "{http://openoffice.org/extensions/description/2006}"
 

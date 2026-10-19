@@ -115,10 +115,20 @@ class SheetMenu:
             select_tabs(self._context, self._frame, before)
         return False
 
-    def show(self, peer, x: int, y: int, observed: Snapshot, picked: list[str]) -> int | None:
+    def show(
+        self,
+        peer,
+        x: int,
+        y: int,
+        observed: Snapshot,
+        picked: list[str],
+        unchanged: Callable[[], bool] = lambda: True,
+    ) -> int | None:
         """Show the menu for the picked sheets; returns the chosen safe action, if any.
 
-        The caller has checked that the picked sheets are still the ones `observed` holds.
+        The caller has checked that the picked sheets are still the ones `observed` holds;
+        `unchanged` says whether that still holds as far as the caller can tell (no sheet was
+        inserted or deleted since), and is checked again when a command runs.
         """
         if self.is_open or time.monotonic() - self._closed_at < REPEAT_GUARD_SECONDS:
             return None
@@ -126,7 +136,7 @@ class SheetMenu:
         try:
             hidden = set(hidden_targets(observed, picked))
             if set(picked) - hidden and self.group_calc_tabs(picked):
-                self._native(peer, x, y, observed, picked)
+                self._native(peer, x, y, observed, picked, unchanged)
                 return None
             return self._safe(peer, x, y, observed, picked)
         finally:
@@ -137,14 +147,14 @@ class SheetMenu:
         manager = self._context.ServiceManager
         return manager.createInstanceWithContext("com.sun.star.awt.PopupMenu", self._context)
 
-    def _native(self, peer, x, y, observed, picked):
+    def _native(self, peer, x, y, observed, picked, unchanged):
         handles = dict(
             zip((sheet.name for sheet in observed.sheets), observed.handles, strict=True)
         )
 
         def verify() -> bool:
             try:
-                same = all(handles[name].getName() == name for name in picked)
+                same = unchanged() and all(handles[name].getName() == name for name in picked)
                 return same and sorted(self._tabs()) == sorted(picked)
             except Exception:
                 return False

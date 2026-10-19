@@ -11,8 +11,9 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   with an insertion line and auto-scroll, to a new place through the reorder layer, in one undo
   step; Esc cancels. Keys typed in the list stay out of the sheet while Calc's shortcuts keep
   working, and the sheet tab menu opens by right click, Menu key, or Shift+F10 for exactly the
-  selected sheets ([#2](https://github.com/viell-dev/slop-calc-sheet-manager/issues/2)). A sheet
-  deleted and recreated, or renamed and reused, leaves the selection rather than being acted on
+  selected sheets ([#2](https://github.com/viell-dev/slop-calc-sheet-manager/issues/2)). A
+  renamed sheet leaves the selection, and when sheets are added or removed the list clears its
+  selection and says so, rather than act on a sheet that was not selected
   ([#28](https://github.com/viell-dev/slop-calc-sheet-manager/issues/28)); a click ends any
   grouping of Calc's tabs ([#25](https://github.com/viell-dev/slop-calc-sheet-manager/issues/25));
   showing hidden sheets needs undo and is undone on failure
