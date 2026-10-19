@@ -125,8 +125,10 @@ labelled `Status: Won't Do`.
   every action checks its sheets when it runs, never against the cached rows. A left press keeps
   the pressed sheet's handle, and its release activates only that sheet, still in that row
   (#28). Activation reads the handle's current name and visibility first, because Calc sends the
-  activation of a hidden sheet to another sheet (#43). A request to follow Calc's selection
-  records the list's input count, and newer clicks or keys in the list win over it (#44).
+  activation of a hidden sheet to another sheet (#43). The list's mouse handlers and its notice
+  of a sheet switch both run after input already queued, so a switch is matched to the list's
+  input count when Calc reports it: newer clicks or keys in the list win over following Calc's
+  selection, and a switch the list made itself is not followed (#44).
 - `extension/description.xml` is the version source. `extension/sheet-manager.components` and
   `registration.py` provide passive Python registration. `Factories.xcu` maps tool-panel URLs to
   that factory; `Sidebar.xcu` registers the Calc-only deck and panel. `tools/build.py` explicitly
