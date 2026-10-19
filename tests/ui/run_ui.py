@@ -719,6 +719,45 @@ def check_press_then_change(book):
     return evidence
 
 
+def check_newer_pick_survives_voided_press(book):
+    """A voided press brings back the list's newer pick, never a replacement (#28).
+
+    Two ways to a newer pick while Bravo is held: Calc goes to Delta and the list follows, or
+    the user types "d". Then Bravo is replaced and the button released. Delta stays picked,
+    and the Menu key's Hide acts on Delta; the replacement Bravo stays visible.
+    """
+    sheets = book.document.getSheets()
+    evidence = {}
+    for way in ("calc_switch", "typing"):
+        reset(book)
+        point = book.point(1)
+        book.pointer.press(*point)
+        wait_until(lambda: book.selection() == [NAMES[1]], "the press to select Bravo")
+        if way == "calc_switch":
+            book.controller.setActiveSheet(sheets.getByName(NAMES[3]))
+            wait_until(lambda: book.selection() == [NAMES[3]], "the list to follow Delta")
+        else:
+            sheets.moveByName(NAMES[1], 6)
+            wait_until(lambda: view.names(book.tree)[1] == NAMES[2], "the list to show the move")
+            book.lab.input.tap("d", pause=0.5)
+            wait_until(lambda: book.selection() == [NAMES[3]], "typing to pick Delta")
+        replace(book.document, NAMES[1])
+        time.sleep(3)
+        book.pointer.release()
+        time.sleep(1)
+        state = {"selection": book.selection(), "active": book.active()}
+        evidence[way] = state
+        assert state["selection"] == [NAMES[3]], evidence
+        state["menu"] = hide_through_menu(
+            book, [NAMES[3]], lambda: book.lab.input.tap("Menu", pause=0.3)
+        )
+        bravo = sheets.getByName(NAMES[1])
+        state["replacement_visible"] = bool(bravo.IsVisible)
+        state["replacement_marker"] = bravo.getCellRangeByName("A1").getString()
+        assert state["replacement_visible"] and state["replacement_marker"] == "replacement"
+    return evidence
+
+
 def check_click_hidden_before_refresh(book):
     """A sheet hidden just before its row is clicked is not activated, nor any other (#43)."""
     target = NAMES[3]
@@ -813,6 +852,7 @@ def run_checks(lab, output):
         ("cursor_across_refresh", lambda: check_cursor_across_refresh(book)),
         ("drop_after_replacement", lambda: check_drop_after_replacement(book)),
         ("press_then_change", lambda: check_press_then_change(book)),
+        ("newer_pick_survives_voided_press", lambda: check_newer_pick_survives_voided_press(book)),
         ("click_hidden_before_refresh", lambda: check_click_hidden_before_refresh(book)),
         ("newer_selection_kept", lambda: check_newer_selection_kept(book)),
         ("other_document", lambda: check_other_document(lab, book)),

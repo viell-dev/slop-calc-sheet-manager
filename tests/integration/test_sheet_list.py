@@ -420,6 +420,22 @@ def check_stale_clicks(context, desktop):
     results["press_then_move"] = unchanged("press, move, release", picked=["Bravo"])
     sheets.moveByName("Bravo", 1)
 
+    say("a voided press brings back the newer pick from following Calc, not the replacement")
+    settled()
+    point = row_point(tree, 1)
+    robot.press(tree, point)
+    poll(lambda: selection(tree, SIX) == ["Bravo"], "the press to select Bravo")
+    controller.setActiveSheet(sheets.getByName("Delta"))
+    poll(lambda: selection(tree, SIX) == ["Delta"], "the list to follow Delta")
+    replace(document, "Bravo")
+    time.sleep(3)
+    robot.release(tree, point)
+    time.sleep(1)
+    followed = {"active": active(), "selection": selection(tree, SIX)}
+    assert followed == {"active": "Delta", "selection": ["Delta"]}, followed
+    results["follow_then_replace"] = followed
+    controller.setActiveSheet(sheets.getByName("Alfa"))
+
     say("a sheet hidden just before its row is clicked is not activated, nor another (#43)")
     settled()
     point = row_point(tree, 3)
