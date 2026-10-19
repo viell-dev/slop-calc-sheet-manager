@@ -526,8 +526,8 @@ class SheetList:
             return
         title = tr("Sheet Manager")
         text = tr(
-            "The sheet list's selection was cleared because sheets were added, removed, "
-            "or renamed. Select the sheets again."
+            "The sheet list's selection was cleared because sheets may have been added, "
+            "removed, or renamed. Select the sheets again."
         )
         try:
             if self.controller.hasInfobar(NOTICE):
@@ -610,7 +610,7 @@ class SheetList:
         None while a sheet insertion or deletion has not been through a refresh yet: the
         refresh this asks for decides what can still be proved.
         """
-        if self._monitor.generation != self._proven:
+        if self._monitor.check() != self._proven:
             self.post(self.refresh, "refreshing the sheet list")
             return []
         if self._press is None:
@@ -723,7 +723,7 @@ class SheetList:
         it, which would make a cell edit change every grouped sheet, so the single selection
         is established and read back.
         """
-        if self._monitor.generation != self._proven:  # The handle may prove nothing now.
+        if self._monitor.check() != self._proven:  # The handle may prove nothing now.
             self.post(self.refresh, "refreshing the sheet list")
             return
         if handle is None:
@@ -955,7 +955,7 @@ class SheetList:
         press, self._press = self._press, None
         if not event.Buttons & LEFT or press is None or press.name is None:
             return
-        moved = press.generation != self._monitor.generation
+        moved = press.generation != self._monitor.check()
         if press.voided or moved or not self._pressed_sheet_in_place(press):
             # A refresh during the press moved the pressed sheet away or showed another sheet
             # under its name. The gesture then has no effect at all (#28): no activation, and
@@ -1013,7 +1013,7 @@ class SheetList:
         generation, structure = self._generation, self._monitor.generation
 
         def unchanged() -> bool:
-            return self._monitor.generation == structure and self._generation == generation
+            return self._monitor.check() == structure and self._generation == generation
 
         chosen = self._menu.show(self.peer, x, y, observed, picked, unchanged)
         if chosen == SHOW:
@@ -1092,6 +1092,15 @@ class SheetList:
         self._drag = None
         self.clear_drag_feedback()
 
+    def _drop_refused(self) -> None:
+        """A sheet may have been inserted or deleted during the drag: its handles prove nothing."""
+        self.refresh()
+        show_error(
+            self.peer,
+            tr("Sheet Manager"),
+            tr("Sheets may have been added or removed during the drag. Nothing was moved."),
+        )
+
     def clear_drag_feedback(self) -> None:
         self._scroll = 0
         if self._gap is not None:
@@ -1151,14 +1160,8 @@ class SheetList:
         """
         if self._disposed:
             return
-        if drag.generation != self._monitor.generation or self._proven != drag.generation:
-            # A sheet was inserted or deleted during the drag: its handles prove nothing.
-            self.refresh()
-            show_error(
-                self.peer,
-                tr("Sheet Manager"),
-                tr("Sheets were added or removed during the drag. Nothing was moved."),
-            )
+        if drag.generation != self._monitor.check() or self._proven != drag.generation:
+            self._drop_refused()
             return
         try:
             plan = plan_move(drag.observed.sheets, drag.names, "drop", gap)
@@ -1168,13 +1171,20 @@ class SheetList:
         if not plan.moves:
             return  # Dropped in place.
         self._busy = True
+        result = None
         try:
             if not self.frame.isActive():
                 self.frame.activate()  # Calc's undo of sheet moves needs the active view.
-            result = apply_order(self.context, self.document, drag.observed, plan)
+            # The layer locks the controllers while it records. The monitor ignores that lock,
+            # unless someone else's lock or quiet state is in place already.
+            with self._monitor.own_move() as clear:
+                if clear:
+                    result = apply_order(self.context, self.document, drag.observed, plan)
         finally:
             self._busy = False
             self.refresh()
-        if result.status != "done" or result.message != tr("Sheets moved."):
+        if result is None:
+            self._drop_refused()
+        elif result.status != "done" or result.message != tr("Sheets moved."):
             # Refusals, failures, and a successful move whose view could not be restored.
             show_error(self.peer, tr("Sheet Manager"), result.message)
