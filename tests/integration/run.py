@@ -24,7 +24,12 @@ import unohelper
 from com.sun.star.beans import PropertyValue
 from com.sun.star.lang import XEventListener
 from main_thread import close_document
-from office_process import assert_clean_shutdown, finish_process, normal_startup_restart
+from office_process import (
+    assert_clean_shutdown,
+    finish_process,
+    normal_startup_restart,
+    retain_crash_dumps,
+)
 
 FACTORY = "dev.viell.sheetmanager.PanelFactory"
 DECK = "SheetManagerDeck"
@@ -195,6 +200,9 @@ def office_session(
             if trace_path is not None and generated_trace.exists():
                 trace_path.write_bytes(generated_trace.read_bytes())
                 startup["office_backtrace"] = trace_path.name
+            startup["office_crash_dumps"] = retain_crash_dumps(
+                directory / "profile" / "crash", output, f"crash-{headless}-{attempt}"
+            )
             log.close()
             (output / f"startup-{headless}-{attempt}.json").write_text(
                 json.dumps(startup, indent=2) + "\n", encoding="utf-8"
@@ -225,6 +233,9 @@ def office_session(
                     if generated_trace.exists():
                         trace_path.write_bytes(generated_trace.read_bytes())
                     result["office_backtrace"] = trace_path.name
+                result["office_crash_dumps"] = retain_crash_dumps(
+                    directory / "profile" / "crash", output, f"crash-{headless}-{attempt}"
+                )
             finally:
                 log.close()
                 temporary.cleanup()
@@ -483,6 +494,8 @@ def main():
         "gdbtrace-*.log",
         "startup-*.json",
         "startup-restart-*.log",
+        "crash-*.dmp",
+        "crash-*-dump.ini",
         "reorder-performance*.json",
     ):
         for artifact in output.glob(pattern):

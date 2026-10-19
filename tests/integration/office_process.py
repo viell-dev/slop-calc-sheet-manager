@@ -1,10 +1,29 @@
 """Collect and validate private office process shutdown without a UNO dependency."""
 
 import re
+import shutil
 import subprocess
 from pathlib import Path
 
 FATAL_MARKERS = ("Unspecified Application Error", "Fatal exception")
+
+
+def retain_crash_dumps(crash_directory: Path, output: Path, prefix: str) -> list[str]:
+    """Copy LibreOffice's own crash dumps out of a temporary profile; return the copies' names.
+
+    LibreOffice's crash handler writes a minidump into the profile's `crash` directory. On
+    Windows it then ends soffice.bin with exception code 0, so the office exits with status 0
+    after a crash (#48); the dump is the reliable sign there. `dump.ini` names the version and
+    the last UNO commands.
+    """
+    names = []
+    for dump in sorted(crash_directory.glob("*.dmp")):
+        target = output / f"{prefix}-{dump.name}"
+        shutil.copy2(dump, target)
+        names.append(target.name)
+    if names and (crash_directory / "dump.ini").exists():
+        shutil.copy2(crash_directory / "dump.ini", output / f"{prefix}-dump.ini")
+    return names
 
 
 def normal_startup_restart(trace: str) -> bool:
@@ -71,3 +90,4 @@ def assert_clean_shutdown(result: dict[str, object]) -> None:
     assert result["office_exit_code"] == 0, result
     assert not result["office_forced_shutdown"], result
     assert not result["office_fatal_markers"], result
+    assert not result.get("office_crash_dumps"), result
