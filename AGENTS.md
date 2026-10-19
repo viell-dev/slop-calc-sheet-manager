@@ -223,9 +223,10 @@ labelled `Status: Won't Do`.
   closes on the main thread, where this cannot happen. Close every Calc document in the tests and
   the workbook generator through `main_thread.close_document`, which on Windows closes inside an
   `AsyncCallback` notification, on the main thread; close in place of a `finally` clause with
-  `close_after`, and close a suite's leftovers through `teardown.run_checks`. A callback that
-  does not finish in time is recorded in `teardown` (#50): no further close is tried, the session
-  fails without an earlier failure being hidden, and the runner stops its own office process tree
+  `close_after`, close a suite's leftovers through `teardown.run_checks`, and set office settings
+  for a block with `teardown.Configured`. A callback that does not finish in time is recorded in
+  `teardown` (#50): no further close, check, suite, or settings restore is tried (#51), the UI
+  runner stops too (#52), the session fails without an earlier failure being hidden, and the runner stops its own office process tree
   instead of asking it to terminate, which would wait for the stuck main thread too (#40). A
   crashed office exits with status 0 on Windows
   ([#48](https://github.com/viell-dev/slop-calc-sheet-manager/issues/48)), so the runner copies
