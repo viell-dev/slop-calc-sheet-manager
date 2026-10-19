@@ -13,11 +13,12 @@ again. So a handle reporting the ref's name proves the ref's sheet only while no
 inserted or deleted since the ref was made.
 
 Hence the rules. A ref is made only for the sheet a row showed at the moment of the user's
-input, and never again from a name. At every document change the list notes whether the sheet
-count left the count it last showed (`StructureWatch`); at every refresh it also checks that its
-retained handles still map one to one onto the sheets (`structure_kept`). If either fails, every
-ref is dropped, since none can be proved; otherwise each ref stays while its handle still
-reports its name, so a renamed pick drops out and a moved one stays.
+input, and never again from a name. The list proves its refs at every refresh against
+`structure.StructureEvents`, whose generation moves whenever a sheet may have been inserted or
+deleted, and checks as a second line that its retained handles still map one to one onto the
+sheets (`structure_kept`). If either fails, every ref is dropped, since none can be proved;
+otherwise each ref stays while its handle still reports its name, so a renamed pick drops out
+and a moved one stays.
 """
 
 from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -86,25 +87,6 @@ class Selection:
         had = bool(self.picked) or self.cursor is not None or self.anchor is not None
         self.picked, self.cursor, self.anchor = [], None, None
         return had
-
-
-class StructureWatch:
-    """Whether the sheet count has left the count the list last showed, at any change since.
-
-    Insertions and deletions each change the count when they happen, even when later ones
-    restore it before the list refreshes; the list notes the count at every document change.
-    """
-
-    def __init__(self) -> None:
-        self.count: int | None = None
-        self.changed = False
-
-    def note(self, count: int | None) -> None:
-        if count is None or (self.count is not None and count != self.count):
-            self.changed = True
-
-    def settle(self, count: int) -> None:
-        self.count, self.changed = count, False
 
 
 def structure_kept(

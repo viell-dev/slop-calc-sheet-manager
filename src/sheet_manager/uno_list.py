@@ -46,7 +46,7 @@ from sheet_manager.keys import (
     range_end,
 )
 from sheet_manager.reorder import plan_move
-from sheet_manager.selection import Ref, Selection, StructureWatch, structure_kept
+from sheet_manager.selection import Ref, Selection, structure_kept
 from sheet_manager.sheet_list import RowGeometry, SheetRow, ordered, row_label
 from sheet_manager.uno_calc import (
     MainThread,
@@ -63,6 +63,7 @@ from sheet_manager.uno_keys import ListKeyHandler, Shortcuts
 from sheet_manager.uno_menu import SHOW, SheetMenu
 from sheet_manager.uno_reorder import Snapshot, apply_order, is_current, snapshot
 from sheet_manager.uno_show import show_sheets
+from sheet_manager.uno_structure import StructureMonitor
 
 MULTI = uno.Enum("com.sun.star.view.SelectionType", "MULTI")
 SINGLE = uno.Enum("com.sun.star.view.SelectionType", "SINGLE")
@@ -127,7 +128,8 @@ class _Press:
     modifiers: int
     name: str | None  # The sheet the pressed row showed,
     handle: Any  # and its handle at that moment: a refresh may put another sheet there.
-    voided: bool = False  # Sheets were inserted or deleted while it was held.
+    generation: int  # The structure generation when the button went down.
+    voided: bool = False  # The list dropped its picks while it was held.
 
 
 @dataclass(frozen=True)
@@ -135,7 +137,7 @@ class _Drag:
     names: list[str]  # The dragged sheets, in document order.
     observed: Snapshot  # The sheets the list showed when the drag started.
     transferable: object
-    generation: int  # The list's structure generation when the drag started.
+    generation: int  # The structure generation when the drag started.
 
 
 class _Transferable(unohelper.Base, XTransferable):
@@ -297,7 +299,9 @@ class SheetList:
         self.frame = frame
         self.controller = frame.getController()
         self.document = self.controller.getModel()
-        self._sheets = self.document.getSheets()
+        # Attached before the first snapshot, so that no structural change goes unnoticed.
+        self._monitor = StructureMonitor(self.document)
+        self._proven = self._monitor.generation  # The generation the picks were proved at.
         self.toolkit = parent_window.getToolkit()
         self.rows: list[SheetRow] = []
         self._observed: Snapshot | None = None
@@ -308,10 +312,10 @@ class SheetList:
         # is the selection the list last wrote to the tree or took from it.
         self._selection = Selection(_current)
         self._shown: tuple[str, ...] = ()
-        # A sheet inserted or deleted since the last refresh makes every retained handle
-        # suspect (selection.py), and the list then drops its picks; `_generation` counts the
-        # drops, so that a drag or an open menu started before one can tell.
-        self._watch = StructureWatch()
+        # A sheet that may have been inserted or deleted since the picks were proved makes
+        # every retained handle suspect (selection.py, structure.py), and the list then drops
+        # its picks; `_generation` counts the drops, so that a drag or an open menu started
+        # before one can tell.
         self._generation = 0
         self._user_picks = False  # Whether the picks came from the user rather than from Calc.
         self._disposed = False
@@ -408,6 +412,7 @@ class SheetList:
         self.focus_changed(False)
         for remove in (
             lambda: self.document.removeModifyListener(self._listeners["document"]),
+            self._monitor.dispose,
             lambda: self.controller.removeActivationEventListener(self._listeners["document"]),
             lambda: self._drop_target.setActive(False),
             lambda: self._drop_target.removeDropTargetListener(self._listeners["target"]),
@@ -470,11 +475,12 @@ class SheetList:
         previous = self._observed
         observed = snapshot(self.document)
         rows = read_rows(self.controller, observed)
-        if previous is not None and not self._identities_kept(previous, observed):
+        generation = self._monitor.check()
+        if previous is not None and not self._identities_kept(previous, observed, generation):
             dropped = self._drop_all_picks()
         else:
             dropped = self._selection.revalidate()
-        self._watch.settle(len(observed.sheets))
+        self._proven = generation
         changed = rows != self.rows or not self._nodes
         self._observed = observed
         self._handles = dict(
@@ -485,14 +491,14 @@ class SheetList:
         elif dropped or tuple(self._selection.names()) != self._shown:
             self._apply_selection()
 
-    def _identities_kept(self, previous: Snapshot, observed: Snapshot) -> bool:
+    def _identities_kept(self, previous: Snapshot, observed: Snapshot, generation: int) -> bool:
         """Whether the handles of the last refresh still prove which sheet each one is.
 
-        Not if a sheet was inserted or deleted at any change since (`StructureWatch`), nor if
-        the handles no longer map one to one onto the sheets with at most one rename
-        (`structure_kept`): a deleted sheet's handle turns to another sheet (selection.py).
+        Not if a sheet may have been inserted or deleted since (the structure generation
+        moved), nor if the handles no longer map one to one onto the sheets with at most one
+        rename (`structure_kept`): a deleted sheet's handle turns to another sheet.
         """
-        if self._watch.changed:
+        if generation != self._proven:
             return False
         reported = [_name_or_none(handle) for handle in previous.handles]
         recorded = [sheet.name for sheet in previous.sheets]
@@ -604,7 +610,7 @@ class SheetList:
         None while a sheet insertion or deletion has not been through a refresh yet: the
         refresh this asks for decides what can still be proved.
         """
-        if self._watch.changed:
+        if self._monitor.generation != self._proven:
             self.post(self.refresh, "refreshing the sheet list")
             return []
         if self._press is None:
@@ -717,7 +723,7 @@ class SheetList:
         it, which would make a cell edit change every grouped sheet, so the single selection
         is established and read back.
         """
-        if self._watch.changed:  # A sheet was inserted or deleted: the handle proves nothing.
+        if self._monitor.generation != self._proven:  # The handle may prove nothing now.
             self.post(self.refresh, "refreshing the sheet list")
             return
         if handle is None:
@@ -827,20 +833,12 @@ class SheetList:
             self._stale_since = now
 
     def document_modified(self) -> None:
-        """Note an insertion or deletion now; refresh once changes pause, or after a bounded wait.
+        """Refresh once changes pause, or at the latest after a bounded wait.
 
-        Runs for every change as Calc reports it, so a sheet inserted and another deleted
-        before the next refresh still show as two count changes (selection.py).
+        The structure monitor notes insertions and deletions itself, as they happen.
         """
         if self._disposed:
             return
-        try:
-            count = self._sheets.getCount()
-        except Exception:
-            count = None
-        self._watch.note(count)
-        if self._watch.changed and self._press is not None and not self._press.voided:
-            self._press = replace(self._press, voided=True)
         now = time.monotonic()
         self._changed_at = now
         self._mark_stale(now)
@@ -938,7 +936,7 @@ class SheetList:
             name = self.rows[row].name if row is not None else None
             handle = self._handles.get(name) if name is not None else None
             self._take_tree_selection()  # The tree has already applied the press.
-            self._press = _Press(row, event.Modifiers, name, handle)
+            self._press = _Press(row, event.Modifiers, name, handle, self._monitor.generation)
             if row is not None:
                 # The tree has already handled the press: its cursor is on this row. Shift
                 # keeps or starts the range at the old cursor; other clicks end it.
@@ -957,7 +955,8 @@ class SheetList:
         press, self._press = self._press, None
         if not event.Buttons & LEFT or press is None or press.name is None:
             return
-        if press.voided or not self._pressed_sheet_in_place(press):
+        moved = press.generation != self._monitor.generation
+        if press.voided or moved or not self._pressed_sheet_in_place(press):
             # A refresh during the press moved the pressed sheet away or showed another sheet
             # under its name. The gesture then has no effect at all (#28): no activation, and
             # whatever the tree selected on release is undone. The list's own picks come back,
@@ -1011,10 +1010,10 @@ class SheetList:
             self.refresh()  # A pick changed since this check began: open nothing.
             return
         picked = [ref.name for ref in refs]
-        generation = self._generation
+        generation, structure = self._generation, self._monitor.generation
 
         def unchanged() -> bool:
-            return not self._watch.changed and self._generation == generation
+            return self._monitor.generation == structure and self._generation == generation
 
         chosen = self._menu.show(self.peer, x, y, observed, picked, unchanged)
         if chosen == SHOW:
@@ -1047,7 +1046,7 @@ class SheetList:
             self.refresh()
             return
         transferable = _Transferable(uuid.uuid4().hex)
-        self._drag = _Drag(picked, self._observed, transferable, self._generation)
+        self._drag = _Drag(picked, self._observed, transferable, self._monitor.generation)
         try:
             self._drag_source.startDrag(
                 event, ACTION_MOVE, 0, 0, transferable, self._listeners["source"]
@@ -1152,7 +1151,7 @@ class SheetList:
         """
         if self._disposed:
             return
-        if drag.generation != self._generation or self._watch.changed:
+        if drag.generation != self._monitor.generation or self._proven != drag.generation:
             # A sheet was inserted or deleted during the drag: its handles prove nothing.
             self.refresh()
             show_error(
