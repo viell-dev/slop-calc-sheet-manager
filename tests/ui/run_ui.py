@@ -115,7 +115,7 @@ class Workbook:
         return view.row_point(self.tree, index, fraction)
 
     def first_visible(self):
-        rect = self.tree.getNodeRect(self.nodes()[0])
+        rect = view.row_rect(self.tree, 0, scroll=False)
         return -rect.Y // rect.Height
 
     # What the document says

@@ -270,6 +270,7 @@ def check_selection_and_menu(context, desktop, menus):
     while len(undo.getAllUndoActionTitles()) > depth:
         undo.undo()
     poll(lambda: hidden() == ["Six"], "undo to show the sheets again")
+    poll(lambda: labels(tree) == expected_labels(document), "the list to show them again")
 
     say("a plain click after the menu leaves exactly one selected tab (#25)")
     robot.click(tree, row_point(tree, 1))

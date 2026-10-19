@@ -10,6 +10,7 @@ from pathlib import Path
 
 import unohelper
 from com.sun.star.frame import XStatusListener
+from com.sun.star.lang import IllegalArgumentException
 from com.sun.star.util import URL
 
 DECK = "SheetManagerDeck"
@@ -84,11 +85,23 @@ def selection(tree, order):
     return [name for name in order if name in picked]
 
 
+def row_rect(tree, index, scroll=True):
+    """Row `index`'s rectangle, measured again if a refresh replaces the rows meanwhile."""
+    deadline = time.monotonic() + 10
+    while True:
+        node = nodes(tree)[index]
+        try:
+            if scroll:
+                tree.makeNodeVisible(node)
+                time.sleep(0.2)
+            return tree.getNodeRect(node)
+        except IllegalArgumentException:  # The node left the tree in a rebuild.
+            if time.monotonic() > deadline:
+                raise
+
+
 def row_point(tree, index, fraction=0.5):
-    node = nodes(tree)[index]
-    tree.makeNodeVisible(node)
-    time.sleep(0.2)
-    rect = tree.getNodeRect(node)
+    rect = row_rect(tree, index)
     return rect.X + 12, rect.Y + int(rect.Height * fraction)
 
 
