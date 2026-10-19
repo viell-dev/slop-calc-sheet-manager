@@ -202,10 +202,9 @@ second before closing Writer.
 Windows CI verifies a pinned MSI before silently installing it; this installation script is for
 disposable CI runners, not a contributor's existing installation.
 
-Required Linux jobs keep the names `Linux (LibreOffice …)` and run only headless checks.
-`Linux gtk3 (LibreOffice …)` jobs run the painted checks separately and are not required yet.
-They still fail on every test or shutdown failure and upload artifacts; inspect a red gtk3 job
-before merging. No error message is treated as an allowed crash.
+`Linux (LibreOffice …)` jobs run the headless checks and `Linux gtk3 (LibreOffice …)` jobs the
+painted checks under Xvfb; both are required for merging. Every job fails on any test or shutdown
+failure and uploads its artifacts; no error message is treated as an allowed crash.
 
 ### Soak painted sessions
 
