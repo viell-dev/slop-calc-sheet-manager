@@ -25,6 +25,7 @@ def main():
     parser.add_argument("--experiment", choices=["baseline", "close"], required=True)
     parser.add_argument("--iterations", type=int, default=20)
     parser.add_argument("--painted", action="store_true")
+    parser.add_argument("--settle", type=float, default=0)
     args = parser.parse_args()
     faulthandler.enable()
     faulthandler.dump_traceback_later(120, repeat=True)
@@ -45,7 +46,13 @@ def main():
     sys.path.insert(0, str(args.oxt.resolve()) + "/pythonpath")
     import test_reorder as reorder
 
-    result = {"mode": args.mode, "experiment": args.experiment, "completed": []}
+    result = {
+        "mode": args.mode,
+        "experiment": args.experiment,
+        "painted": args.painted,
+        "settle": args.settle,
+        "completed": [],
+    }
     try:
         with run.office_session(
             args.program.resolve(),
@@ -80,7 +87,10 @@ def main():
                             else:
                                 dispatch.executeDispatch(
                                     document.CurrentController.Frame,
-                                    ".uno:SidebarDeck.PropertyDeck", "", 0, (),
+                                    ".uno:SidebarDeck.PropertyDeck",
+                                    "",
+                                    0,
+                                    (),
                                 )
                         for change, delay in ((False, 0), (True, 0), (True, 0.05), (True, 1)):
                             label = [iteration, shown, change, delay]
@@ -89,6 +99,15 @@ def main():
                             other.CurrentController.Frame.activate()
                             if shown and args.mode != "absent":
                                 run.assert_panel(context, other)
+                            if args.settle:
+                                time.sleep(args.settle)
+                                if args.mode != "absent":
+                                    deck = (
+                                        other.CurrentController.getSidebar()
+                                        .getDecks()
+                                        .getByName(run.DECK)
+                                    )
+                                    assert deck.isActive() == shown, (label, deck.isActive())
                             if change:
                                 other.Sheets.insertNewByName("PendingRefresh", 2)
                                 other.CurrentController.setActiveSheet(
