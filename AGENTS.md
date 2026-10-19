@@ -113,21 +113,34 @@ labelled `Status: Won't Do`.
   the ref, and that sheet's retained handle. A ref is never made again from a name later, and
   everything the list writes to the tree, restores, or acts on comes from refs. Retained handles
   are not identities: when a sheet is deleted, its handle turns to the previous sheet and can
-  report the deleted sheet's name again after a rename (measured; `docs/reordering.md`). So the
-  list notes the sheet count at every document change (`StructureWatch`) and checks at every
-  refresh that its handles map one to one onto the sheets with at most one rename
-  (`structure_kept`); if either fails, it drops every ref and any held press and tells the user
-  in an infobar, which only the user closes, since removing one moves the focus to the sheet.
-  Otherwise refs stay while their handles report their names, so a renamed pick goes and a moved
-  one stays (#28). Over-clearing is the accepted cost. Drops plan against the snapshot of the
-  drag's start through `apply_order`, which refuses stale state, and the list refuses a drop when
-  sheets were inserted or deleted during the drag. The menu opens only for refs checked just
-  before, with a fresh snapshot; while it is open, a dispatch interceptor on the frame checks at
-  dispatch time that no sheet was inserted or deleted, that the picked sheets are unchanged, and
-  that they are exactly Calc's selected tabs. `uno_show.show_sheets` applies the reorder
-  layer's undo rules: refuse without undo or beyond the undo limit, one group, undo only its own
-  group on failure, verify. A plain click or Enter makes the sheet Calc's only selected tab and
-  reads that back: `setActiveSheet` keeps an existing group when the sheet belongs to it.
+  report the deleted sheet's name again after a rename (measured; `docs/reordering.md`). So each
+  list has a `uno_structure.StructureMonitor`: it listens to the document's modify and undo
+  notifications, reads the sheet count at each one, and moves a generation
+  (`structure.StructureEvents`) whenever a sheet may have been inserted or deleted, on every
+  undo and redo, and when undo recording or modify notifications are off at a check. Undo
+  notifications come for every recorded action, also inside `lockControllers`,
+  `addActionLock`, `disableSetModified`, and undo contexts, where modify notifications are
+  batched or missing. Picks, presses, drags, and an open menu carry the generation they were
+  proved at; when it moves, the list drops every ref and any held press and tells the user in an
+  infobar, which only the user closes, since removing one moves the focus to the sheet. As a
+  second line, every refresh checks that its handles map one to one onto the sheets with at most
+  one rename (`structure_kept`). Otherwise refs stay while their handles report their names, so
+  a renamed pick goes and a moved one stays (#28). Over-clearing is the accepted cost. Threat
+  model, decided by the maintainer: everything LibreOffice reports through some channel must be
+  caught; a program that turns off or locks undo recording and also batches or suppresses modify
+  notifications around structural edits reports nothing, cannot be detected, and could hide or
+  delete any sheet itself, so it is out of scope. The monitor's listeners read the sheet count
+  while LibreOffice notifies: a narrow exception to the rule that listeners only note and post,
+  for a getter that takes the main lock and does no UI work; call nothing else from them. Drops
+  plan against the snapshot of the drag's start through `apply_order`, which refuses stale
+  state, and the list refuses a drop when the generation moved during the drag. The menu opens
+  only for refs checked just before, with a fresh snapshot; while it is open, a dispatch
+  interceptor on the frame checks at dispatch time that the generation did not move, that the
+  picked sheets are unchanged, and that they are exactly Calc's selected tabs.
+  `uno_show.show_sheets` applies the reorder layer's undo rules: refuse without undo or beyond
+  the undo limit, one group, undo only its own group on failure, verify. A plain click or Enter
+  makes the sheet Calc's only selected tab and reads that back: `setActiveSheet` keeps an
+  existing group when the sheet belongs to it.
 - Refreshing reads every sheet and rebuilds the tree on the main thread, so `uno_list.py` limits
   it: an activation refreshes at once only after the list has been idle for several times the last
   refresh's cost, and other changes wait for a pause, with a bounded wait. Bulk API changes, such
