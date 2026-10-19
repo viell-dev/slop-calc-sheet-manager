@@ -2,19 +2,25 @@
 
 The tree control knows its rows only by name, and a name can pass to another sheet: a sheet is
 deleted and a new one inserted under its name, or renamed and its name reused. So the list keeps
-each pick as a `Ref`: the name the sheet had when the user picked it and a token that follows
-that sheet. In LibreOffice the token is the sheet's retained handle, and a ref is current while
-the handle still reports the ref's name (the check `uno_reorder.is_current` makes per sheet; see
-docs/reordering.md for why it is empirical). The position is kept for diagnostics only: sheets
-move, and a moved sheet stays picked.
+each pick as a `Ref`: the name the sheet had when the user picked it and the sheet's retained
+handle. The position is kept for diagnostics only: sheets move, and a moved sheet stays picked.
 
-The rules: a ref is created only for the sheet a row showed at the moment of the user's input,
-from the row tokens of that moment; it is never re-created from a name later. Every refresh
-drops refs that are no longer current, whether or not the rows change, so a pick never passes to
-a replacement. What the list writes back to the tree comes from these refs.
+A retained handle is not an identity on its own. Measured in LibreOffice 26.2 and 26.8 (see
+docs/reordering.md): handles follow their sheets through renames, moves, and insertions, but
+when a sheet is deleted, its handle turns to the previous sheet (the next one at index 0) and
+follows that sheet from then on. A rename can then make it report the deleted sheet's name
+again. So a handle reporting the ref's name proves the ref's sheet only while no sheet has been
+inserted or deleted since the ref was made.
+
+Hence the rules. A ref is made only for the sheet a row showed at the moment of the user's
+input, and never again from a name. At every document change the list notes whether the sheet
+count left the count it last showed (`StructureWatch`); at every refresh it also checks that its
+retained handles still map one to one onto the sheets (`structure_kept`). If either fails, every
+ref is dropped, since none can be proved; otherwise each ref stays while its handle still
+reports its name, so a renamed pick drops out and a moved one stays.
 """
 
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -74,3 +80,53 @@ class Selection:
         dropped = dropped or cursor is not self.cursor or anchor is not self.anchor
         self.picked, self.cursor, self.anchor = picked, cursor, anchor
         return dropped
+
+    def clear(self) -> bool:
+        """Drop every ref; True if there was anything to drop."""
+        had = bool(self.picked) or self.cursor is not None or self.anchor is not None
+        self.picked, self.cursor, self.anchor = [], None, None
+        return had
+
+
+class StructureWatch:
+    """Whether the sheet count has left the count the list last showed, at any change since.
+
+    Insertions and deletions each change the count when they happen, even when later ones
+    restore it before the list refreshes; the list notes the count at every document change.
+    """
+
+    def __init__(self) -> None:
+        self.count: int | None = None
+        self.changed = False
+
+    def note(self, count: int | None) -> None:
+        if count is None or (self.count is not None and count != self.count):
+            self.changed = True
+
+    def settle(self, count: int) -> None:
+        self.count, self.changed = count, False
+
+
+def structure_kept(
+    recorded: Sequence[str], reported: Sequence[str | None], current: Sequence[str]
+) -> bool:
+    """Whether retained handles show the same sheets as when recorded, with at most one rename.
+
+    `recorded` is the names of all sheets when their handles were taken, `reported` what those
+    handles report now (None if one fails), and `current` the names of all sheets now. The
+    sheets count as the same only if the counts match, the handles report distinct names that
+    are exactly the current ones, and at most one handle reports a new name that no recorded
+    sheet had, while no handle reports its old one.
+    """
+    if not len(recorded) == len(reported) == len(current):
+        return False
+    names = [name for name in reported if name is not None]
+    if len(names) != len(reported) or len(set(names)) != len(names) or set(names) != set(current):
+        return False
+    renamed = [index for index, name in enumerate(names) if name != recorded[index]]
+    if not renamed:
+        return True
+    if len(renamed) > 1:
+        return False
+    index = renamed[0]
+    return recorded[index] not in names and names[index] not in recorded
