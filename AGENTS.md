@@ -205,7 +205,8 @@ labelled `Status: Won't Do`.
   `AsyncCallback` notification, on the main thread. A crashed office exits with status 0 on Windows
   ([#48](https://github.com/viell-dev/slop-calc-sheet-manager/issues/48)), so the runner copies
   LibreOffice's own crash dumps from the profile into the results as `crash-*.dmp` and fails a
-  session that left one. GitHub's Windows runners have CDB under `Windows Kits\10\Debuggers\x64`;
+  session that left one. GitHub's Windows runners have CDB, not on `PATH`, at
+  `C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe`; with it,
   `cdb -z <dump> -y "srv*<cache>*https://dev-downloads.libreoffice.org/symstore/symbols;srv*<cache>*https://msdl.microsoft.com/download/symbols" -c ".ecxr; !analyze -v; ~* kp; q"`
   gives every thread's stack with TDF's symbols.
 - `ci/libreoffice.json`, `ci/Dockerfile`, and `tools/linux_integration.py` define the same Linux

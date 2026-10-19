@@ -24,13 +24,21 @@ CLOSE_TIMEOUT = 60
 class _Close(unohelper.Base, XCallback):
     def __init__(self, document):
         self._document = document
-        self.abandoned = threading.Event()  # The caller stopped waiting: do not close later.
+        self._lock = threading.Lock()
+        self._started = False
+        self._abandoned = False  # The caller stopped waiting: do not start the close later.
         self.done = threading.Event()
         self.error: Exception | None = None
 
+    def abandon(self) -> None:
+        with self._lock:
+            self._abandoned = not self._started
+
     def notify(self, aData):
         try:
-            if not self.abandoned.is_set():
+            with self._lock:
+                self._started = not self._abandoned
+            if self._started:
                 self._document.close(True)
         except Exception as error:  # Reported by close_document on the test's own thread.
             self.error = error
@@ -53,7 +61,7 @@ def close_document(context, document) -> None:
     )
     callback.addCallback(call, None)
     if not call.done.wait(CLOSE_TIMEOUT):
-        call.abandoned.set()
+        call.abandon()
         raise TimeoutError(f"LibreOffice did not close the document within {CLOSE_TIMEOUT} s")
     if call.error is not None:
         # Re-raising the UNO exception here would hide it behind #41's traceback error.

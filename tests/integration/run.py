@@ -77,6 +77,7 @@ def office_session(
     # occasionally loses soffice.bin just after a successful UNO connection. Such an attempt's
     # crash dumps are kept and listed, but do not fail a session whose retry starts cleanly.
     startup_dumps: list[str] = []
+    result["office_startup_crash_dumps"] = startup_dumps  # Filled in place, kept on failure.
     for attempt in range(startup_attempts):
         temporary = tempfile.TemporaryDirectory(prefix="sheet-manager-integration-")
         directory = Path(temporary.name)
@@ -217,7 +218,6 @@ def office_session(
                 result["failure_stage"] = "startup"
                 raise
             continue
-        result["office_startup_crash_dumps"] = startup_dumps
         try:
             yield context, desktop, directory
         finally:
