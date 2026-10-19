@@ -711,9 +711,9 @@ class SheetList:
     # Mouse and menu
 
     def mouse_pressed(self, event) -> None:
+        self._input += 1
         if event.PopupTrigger:
             return
-        self._input += 1
         row = self.geometry().row_at(event.Y)
         if event.Buttons & RIGHT:
             self._press = None
