@@ -2,9 +2,9 @@
 
 import re
 import textwrap
-from collections.abc import Iterator
+from collections.abc import Hashable, Iterator
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import pytest
 import yaml
@@ -32,6 +32,23 @@ def workflow_files(directory: Path) -> list[Path]:
     return sorted([*directory.glob("*.yml"), *directory.glob("*.yaml")])
 
 
+class WorkflowLoader(yaml.BaseLoader):
+    """Load every scalar as a string and refuse duplicate keys.
+
+    PyYAML's safe loader follows YAML 1.1, which reads unquoted `on`, `yes` and similar keys as
+    booleans, so two such job IDs would collapse into one before the guard sees them. GitHub
+    keeps them distinct and rejects duplicate keys, so this loader does both too.
+    """
+
+    def construct_mapping(self, node: yaml.MappingNode, deep: bool = False) -> dict[Hashable, Any]:
+        mapping = super().construct_mapping(node, deep=deep)
+        if len(mapping) != len(node.value):
+            raise yaml.constructor.ConstructorError(
+                None, None, "found a duplicate key", node.start_mark
+            )
+        return mapping
+
+
 def _mappings(node: object) -> Iterator[dict[object, object]]:
     if isinstance(node, dict):
         mapping = cast(dict[object, object], node)
@@ -47,18 +64,28 @@ def setup_node_steps(workflow: str) -> list[dict[object, object]]:
     """Return every mapping in a parsed workflow whose `uses` names actions/setup-node."""
     return [
         mapping
-        for mapping in _mappings(yaml.safe_load(workflow))
+        for mapping in _mappings(yaml.load(workflow, Loader=WorkflowLoader))
         if isinstance(uses := mapping.get("uses"), str)
         and uses.strip().lower().startswith(SETUP_NODE)
     ]
 
 
 def reads_nvmrc(step: dict[object, object]) -> bool:
+    """Whether the step's inputs make setup-node read `.nvmrc` and nothing that overrides it.
+
+    The runner matches action input names case-insensitively, so `NODE-VERSION` overrides the
+    file just as `node-version` does, and two spellings of one input are ambiguous.
+    """
     inputs = step.get("with")
     if not isinstance(inputs, dict):
         return False
-    given = cast(dict[object, object], inputs)
-    return given.get("node-version-file") == ".nvmrc" and "node-version" not in given
+    names: dict[str, object] = {}
+    for key, value in cast(dict[object, object], inputs).items():
+        name = str(key).casefold()
+        if name in names:
+            return False
+        names[name] = value
+    return names.get("node-version-file") == ".nvmrc" and "node-version" not in names
 
 
 def test_nvmrc_names_the_checks_image_node() -> None:
@@ -197,6 +224,32 @@ STEP_CASES = {
             node-version: 22
         """,
     ),
+    "capitalised file input": (
+        True,
+        """
+        - uses: actions/setup-node@abc
+          with:
+            NODE-VERSION-FILE: .nvmrc
+        """,
+    ),
+    "capitalised override": (
+        False,
+        """
+        - uses: actions/setup-node@abc
+          with:
+            node-version-file: .nvmrc
+            NODE-VERSION: 22
+        """,
+    ),
+    "two spellings of the file input": (
+        False,
+        """
+        - uses: actions/setup-node@abc
+          with:
+            node-version-file: .nvmrc
+            Node-Version-File: other
+        """,
+    ),
 }
 
 
@@ -204,6 +257,38 @@ STEP_CASES = {
 def test_setup_node_steps_must_read_nvmrc(accepted: bool, step: str) -> None:
     [found] = setup_node_steps(workflow(step))
     assert reads_nvmrc(found) is accepted
+
+
+def test_yaml_1_1_keywords_stay_distinct_job_ids() -> None:
+    steps = setup_node_steps(
+        textwrap.dedent(
+            """
+            on: push
+            jobs:
+              yes:
+                steps:
+                  - {uses: actions/setup-node@abc, with: {node-version: 22}}
+              on:
+                steps:
+                  - {uses: actions/setup-node@abc, with: {node-version-file: .nvmrc}}
+            """
+        )
+    )
+    assert [reads_nvmrc(step) for step in steps] == [False, True]
+
+
+def test_setup_node_steps_refuse_duplicate_keys() -> None:
+    with pytest.raises(yaml.constructor.ConstructorError, match="duplicate key"):
+        setup_node_steps(
+            workflow(
+                """
+                - uses: actions/setup-node@abc
+                  with:
+                    node-version: 22
+                    node-version: 24
+                """
+            )
+        )
 
 
 def test_setup_node_steps_ignore_other_steps_and_comments() -> None:
