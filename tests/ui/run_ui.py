@@ -554,12 +554,23 @@ def check_plain_click_ends_group(book):
         address = book.controller.getSelection().getRangeAddress()
         return (address.Sheet, address.StartColumn, address.StartRow)
 
-    # Click a cell of the sheet, as a user does, and type there.
+    # Click a cell of the sheet, as a user does, and type there. In CI with gen under gdb, Calc
+    # once moved the cell cursor more than 0.6 s after the click and once not within ten seconds;
+    # locally it moved within 0.15 s in 15 of 15 attempts. This check is about where the typing
+    # goes, so a click that has not arrived after five seconds is repeated once, and the evidence
+    # says so.
     before = cursor()
-    book.lab.input.move(260, 420)
-    book.lab.input.button(1, True)
-    book.lab.input.button(1, False)
-    wait_until(lambda: cursor() != before, "the click to move the cell cursor")
+    screen = Pointer(book.lab.input, (0, 0))
+    attempts = 0
+    while True:
+        attempts += 1
+        screen.click(260, 420, pause=0)
+        try:
+            wait_until(lambda: cursor() != before, "the click to move the cell cursor", 5)
+            break
+        except AssertionError:
+            if attempts == 2:
+                raise
     address = book.controller.getSelection().getRangeAddress()
     book.lab.input.tap("x")
     book.lab.input.tap("Return", pause=0.6)
@@ -574,6 +585,7 @@ def check_plain_click_ends_group(book):
         "cell": [address.Sheet, address.StartColumn, address.StartRow],
         "bravo": cell(NAMES[1]),
         "delta": cell(NAMES[3]),
+        "click_attempts": attempts,
     }
     assert address.Sheet == 1 and evidence["bravo"] == "x" and evidence["delta"] == "", evidence
     sheets.getByName(NAMES[1]).getCellByPosition(address.StartColumn, address.StartRow).setString(
