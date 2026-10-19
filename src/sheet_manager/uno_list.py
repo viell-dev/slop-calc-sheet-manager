@@ -254,7 +254,7 @@ class _Document(unohelper.Base, XModifyListener, XActivationEventListener):
         _guarded("noticing a change", self._owner.document_modified)
 
     def activeSpreadsheetChanged(self, event):
-        _guarded("noticing a sheet switch", self._owner.active_sheet_event)
+        _guarded("noticing a sheet switch", self._owner.active_sheet_event, event)
 
     def disposing(self, event):
         pass
@@ -298,7 +298,7 @@ class SheetList:
         self._input = 0
         self._follow_input: int | None = None
         self._activating: str | None = None  # The sheet the list itself is making active.
-        self._event_active: str | None = None  # The active sheet at the last switch handled.
+        self._event_active: str | None = None  # The active sheet of the last switch handled.
         self._press: _Press | None = None
         self._drag: _Drag | None = None
         self._gap: int | None = None
@@ -576,11 +576,13 @@ class SheetList:
         controller = self.controller
         previous = controller.getActiveSheet()
         previous_tabs = selected_tabs(self.context, controller)
-        self._activating = name
-        controller.setActiveSheet(handle)
+        self._activating = name  # Calc reports the switch during the call.
+        try:
+            controller.setActiveSheet(handle)
+        finally:
+            self._activating = None
         if controller.getActiveSheet().getName() != name:
             # Calc went to another sheet after all: put the view back as it was.
-            self._activating = None
             controller.setActiveSheet(previous)
             if selected_tabs(self.context, controller) != previous_tabs:
                 select_tabs(self.context, self.frame, previous_tabs)
@@ -655,34 +657,35 @@ class SheetList:
         self._mark_stale(now)
         self._schedule(self._refresh_delay())
 
-    def active_sheet_event(self) -> None:
+    def active_sheet_event(self, event) -> None:
         """Calc reports a sheet switch; the list handles it after the events already queued.
 
-        The list's mouse handlers also run after the tree has handled the input, so a click's
-        switch can be reported after a later click has reached the tree. Counting the input
-        now keeps that later click newer than the switch (#44).
+        What the switch means is read now, while Calc reports it: the sheet, whether the list
+        made the switch itself, and how much input the list had seen. The list's mouse handlers
+        also run after the tree has handled the input, so a click's switch can be handled after
+        a later click has reached the list; counting the input now keeps that click newer (#44).
         """
         seen = self._input
-        self.post(lambda: self.active_sheet_changed(seen), "following the active sheet")
+        try:
+            active = event.ActiveSheet.getName()
+        except Exception:
+            active = None
+        own = active is not None and active == self._activating
+        self.post(lambda: self.active_sheet_changed(active, own, seen), "following a sheet switch")
 
-    def active_sheet_changed(self, seen: int) -> None:
+    def active_sheet_changed(self, active: str | None, own: bool, seen: int) -> None:
         """Show the new active sheet, at once unless refreshes are being rate-limited.
 
         A switch the list made itself needs no following: the list already shows the sheet
         the user clicked or chose. Other switches make the list follow Calc's selection,
-        unless the user has used the list since (`seen`).
+        unless the user has used the list since the switch (`seen`).
         """
         if self._disposed:
             return
-        try:
-            active = self.controller.getActiveSheet().getName()
-        except Exception:
-            active = None
-        if active != self._event_active:
+        if active is None or active != self._event_active:
             self._event_active = active
-            if active is None or active != self._activating:
+            if not own:
                 self._follow_input = seen
-            self._activating = None
         now = time.monotonic()
         self._mark_stale(now)
         if self._refresh_timer is None and not self._busy and self._rate_wait(now) <= 0:
