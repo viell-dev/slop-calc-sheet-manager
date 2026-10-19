@@ -9,7 +9,9 @@ gtk3 session opens a native GTK menu, so there the suite skips its menu steps an
 UI tests cover the menu. Moving sheets is covered by ``test_reorder.py``.
 """
 
+import os
 import sys
+import threading
 import time
 from contextlib import contextmanager, suppress
 from pathlib import Path
@@ -785,6 +787,29 @@ def measure_large_workbook(context, desktop, count):
     return {"sheets": count, "open_seconds": round(opened, 2), "follow_seconds": round(followed, 2)}
 
 
+def _stall_dump(name):
+    """Diagnostic only: the check stalled; dump the test's threads and interrupt the office."""
+    import faulthandler
+    import signal
+    import subprocess
+
+    print(f"STALL in {name}: test threads follow", flush=True)
+    faulthandler.dump_traceback(file=sys.stdout, all_threads=True)
+    sys.stdout.flush()
+    found = subprocess.run(["pgrep", "-x", "soffice.bin"], capture_output=True, text=True)
+    print("soffice.bin pids:", found.stdout.split(), flush=True)
+    for pid in found.stdout.split():
+        for task in sorted(Path(f"/proc/{pid}/task").iterdir()):
+            try:
+                comm = (task / "comm").read_text().strip()
+                wchan = (task / "wchan").read_text().strip()
+                syscall = (task / "syscall").read_text().strip()[:60]
+            except OSError as error:
+                comm, wchan, syscall = "?", "?", str(error)
+            print(f"  task {task.name} {comm} wchan={wchan} syscall={syscall}", flush=True)
+        os.kill(int(pid), signal.SIGINT)
+
+
 def exercise(context, desktop, directory, output, *, headless):
     results: dict[str, object] = {}
     try:
@@ -799,7 +824,13 @@ def exercise(context, desktop, directory, output, *, headless):
             ("large_workbook", lambda: measure_large_workbook(context, desktop, 1000)),
         ):
             print("sheet list check:", name, flush=True)
-            results[name] = check() or True
+            watchdog = threading.Timer(150, _stall_dump, (name,))
+            watchdog.daemon = True
+            watchdog.start()
+            try:
+                results[name] = check() or True
+            finally:
+                watchdog.cancel()
     finally:
         for document in _CREATED:
             with suppress(Exception):  # Most are closed already.

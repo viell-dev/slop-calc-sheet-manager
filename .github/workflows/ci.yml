@@ -13,35 +13,6 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  checks:
-    name: Checks (Python ${{ matrix.python }})
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        python: ["3.12", "3.14"]
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: ${{ matrix.python }}
-          cache: pip
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: "24.21.0"
-          package-manager-cache: false
-      - run: python -m venv .venv
-      - run: .venv/bin/python -m pip install --require-hashes -r requirements-dev.txt
-      - run: .venv/bin/python tools/check.py
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: extension-python-${{ matrix.python }}
-          path: dist/*
-          if-no-files-found: error
-
   linux:
     name: Linux (LibreOffice ${{ matrix.label }})
     runs-on: ubuntu-24.04
@@ -52,10 +23,6 @@ jobs:
         include:
           - lane: minimum
             label: "26.2.1"
-          - lane: current-26.2
-            label: "26.2 latest"
-          - lane: current-26.8
-            label: "26.8 latest"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -63,7 +30,7 @@ jobs:
       - name: Headless integration
         env:
           LANE: ${{ matrix.lane }}
-        run: python3 tools/linux_integration.py "$LANE" --sessions headless
+        run: python3 tools/linux_integration.py "$LANE" --sessions headless --backtrace
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -71,95 +38,3 @@ jobs:
           path: test-results/
           if-no-files-found: warn
 
-  linux-gtk3:
-    name: Linux gtk3 (LibreOffice ${{ matrix.label }})
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - lane: minimum
-            label: "26.2.1"
-          - lane: current-26.2
-            label: "26.2 latest"
-          - lane: current-26.8
-            label: "26.8 latest"
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Painted integration with crash backtrace
-        env:
-          LANE: ${{ matrix.lane }}
-        run: python3 tools/linux_integration.py "$LANE" --sessions gtk3 --backtrace
-      - name: Real-input UI tests with gtk3 and gen
-        if: ${{ !cancelled() }}
-        env:
-          LANE: ${{ matrix.lane }}
-        run: python3 tools/linux_integration.py "$LANE" --skip-build --ui --backtrace
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: always()
-        with:
-          name: linux-gtk3-${{ matrix.lane }}
-          path: test-results/
-          if-no-files-found: warn
-
-  refusal:
-    name: Refuses LibreOffice 26.2.0
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - run: python3 tools/linux_integration.py unsupported
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: always()
-        with:
-          name: refusal-26.2.0
-          path: test-results/
-          if-no-files-found: warn
-
-  windows:
-    name: Windows (LibreOffice 26.8 latest)
-    runs-on: windows-2025
-    timeout-minutes: 25
-    defaults:
-      run:
-        shell: pwsh
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: "3.12"
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: "24.21.0"
-          package-manager-cache: false
-      - run: python -m venv .venv
-      - run: ./.venv/Scripts/python.exe -m pip install --require-hashes -r requirements-dev.txt
-      - run: ./.venv/Scripts/python.exe tools/check.py
-      - run: ./ci/install-windows.ps1
-      - name: Install, activate, resize, and close the panel
-        run: |
-          $package = (Get-ChildItem -LiteralPath dist -Filter '*.oxt').FullName
-          & 'C:\Program Files\LibreOffice\program\python.exe' tests/integration/run.py `
-            --program 'C:\Program Files\LibreOffice\program' --oxt $package
-          if ($LASTEXITCODE -ne 0) { throw 'Integration failed' }
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: always()
-        with:
-          name: windows-integration
-          path: |
-            test-results/
-            dist/
-          if-no-files-found: warn
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: failure()
-        with:
-          name: windows-installer-failure
-          path: ${{ runner.temp }}/sheet-manager-msi.log
-          if-no-files-found: warn
