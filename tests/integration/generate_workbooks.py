@@ -5,7 +5,7 @@ import json
 import sys
 from pathlib import Path
 
-from main_thread import close_document
+from main_thread import close_after
 from run import office_session
 
 
@@ -35,8 +35,10 @@ def main():
                     destination = output / f"synthetic-{count}.ods"
                     document.storeAsURL(destination.as_uri(), ())
                     print(destination, flush=True)
-                finally:
-                    close_document(context, document)
+                except BaseException as failure:
+                    close_after(context, document, failure)
+                    raise
+                close_after(context, document)
     finally:
         (output / "generator-session.json").write_text(
             json.dumps(result, indent=2) + "\n", encoding="utf-8"

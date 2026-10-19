@@ -250,7 +250,10 @@ attempt that is retried are kept and listed as `office_startup_crash_dumps` with
 session. On Windows the tests close Calc documents on LibreOffice's main thread, as its user
 interface does: closing one from the test's own thread crashed LibreOffice when a toolbar update
 was pending
-([#47](https://github.com/viell-dev/slop-calc-sheet-manager/issues/47)). The intermittent gtk3
+([#47](https://github.com/viell-dev/slop-calc-sheet-manager/issues/47)). If such a close, or other
+work run on the main thread, does not finish within 60 seconds, the session fails, no further close
+is tried, and the runner stops its own office instead of asking it to terminate
+([#50](https://github.com/viell-dev/slop-calc-sheet-manager/issues/50)). The intermittent gtk3
 abort of
 [issue #8](https://github.com/viell-dev/slop-calc-sheet-manager/issues/8) was a LibreOffice crash
 when a test closed Writer within milliseconds of opening it

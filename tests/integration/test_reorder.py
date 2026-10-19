@@ -10,7 +10,7 @@ from unittest.mock import patch
 import uno
 from com.sun.star.awt import Rectangle
 from com.sun.star.beans import PropertyValue
-from main_thread import close_document
+from main_thread import close_after, close_document
 
 from sheet_manager.reorder import Action, plan_move, plan_order
 from sheet_manager.uno_reorder import apply_order, preflight, snapshot
@@ -303,8 +303,10 @@ def assert_permissions(context, desktop, document, directory):
         plan = plan_move(observed.sheets, [order(readonly)[0]], "bottom")
         assert readonly.isReadonly()
         assert apply_order(context, readonly, observed, plan).status == "refused"
-    finally:
-        close_document(context, readonly)
+    except BaseException as failure:
+        close_after(context, readonly, failure)
+        raise
+    close_after(context, readonly)
     document.CurrentController.Frame.activate()
 
 
@@ -355,8 +357,10 @@ def assert_scenarios(context, desktop):
             assert base.Scenarios.ElementNames == expected
             document.UndoManager.undo()
         assert not document.Sheets.getByName("CaseOne").IsVisible
-    finally:
-        close_document(context, document)
+    except BaseException as failure:
+        close_after(context, document, failure)
+        raise
+    close_after(context, document)
 
 
 def populated_workbook(desktop, count):
@@ -456,8 +460,10 @@ def performance(context, desktop):
                     }
                 )
                 print(json.dumps(results[-1]), flush=True)
-        finally:
-            close_document(context, document)
+        except BaseException as failure:
+            close_after(context, document, failure)
+            raise
+        close_after(context, document)
     return results
 
 
@@ -525,8 +531,10 @@ def exercise(context, desktop, directory, output):
             document.UndoManager.undo()
             assert order(document) == original
         assert_permissions(context, desktop, document, directory)
-    finally:
-        close_document(context, document)
+    except BaseException as failure:
+        close_after(context, document, failure)
+        raise
+    close_after(context, document)
     assert_scenarios(context, desktop)
     with undo_capacity(context, 2):
         assert_scenarios(context, desktop)

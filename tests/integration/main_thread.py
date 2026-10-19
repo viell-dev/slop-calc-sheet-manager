@@ -10,6 +10,9 @@ notify() on its main thread, and URP runs the close made inside it nested on tha
 
 Other platforms close directly: the lock is not released there, and on gtk3 a main-thread close
 could run inside the nested main loop of a clipboard read (#30).
+
+A close that times out leaves the main thread's state unknown; it is recorded in `teardown`, and
+the session then fails without further closes (#50).
 """
 
 import os
@@ -17,6 +20,7 @@ import threading
 
 import unohelper
 from com.sun.star.awt import XCallback
+from teardown import close_leftovers, record_stalled_callback
 
 CLOSE_TIMEOUT = 60
 
@@ -62,7 +66,18 @@ def close_document(context, document) -> None:
     callback.addCallback(call, None)
     if not call.done.wait(CLOSE_TIMEOUT):
         call.abandon()
-        raise TimeoutError(f"LibreOffice did not close the document within {CLOSE_TIMEOUT} s")
+        message = f"LibreOffice did not close a document within {CLOSE_TIMEOUT} s"
+        record_stalled_callback(message)
+        raise TimeoutError(message)
     if call.error is not None:
         # Re-raising the UNO exception here would hide it behind #41's traceback error.
         raise AssertionError(f"Closing the document failed: {call.error!r}")
+
+
+def close_after(context, document, failure: BaseException | None = None) -> None:
+    """Close a document at the end of a block that `failure` ended, or that ended normally.
+
+    Use it in place of closing in a `finally` clause: after a stalled callback nothing is closed,
+    and a timeout here never replaces a failure that is already propagating (#50).
+    """
+    close_leftovers([document], lambda item: close_document(context, item), failure)

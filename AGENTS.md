@@ -222,10 +222,16 @@ labelled `Status: Won't Do`.
   ([#47](https://github.com/viell-dev/slop-calc-sheet-manager/issues/47)). The user interface
   closes on the main thread, where this cannot happen. Close every Calc document in the tests and
   the workbook generator through `main_thread.close_document`, which on Windows closes inside an
-  `AsyncCallback` notification, on the main thread. A crashed office exits with status 0 on Windows
+  `AsyncCallback` notification, on the main thread; close in place of a `finally` clause with
+  `close_after`, and close a suite's leftovers through `teardown.run_checks`. A callback that
+  does not finish in time is recorded in `teardown` (#50): no further close is tried, the session
+  fails without an earlier failure being hidden, and the runner stops its own office process tree
+  instead of asking it to terminate, which would wait for the stuck main thread too (#40). A
+  crashed office exits with status 0 on Windows
   ([#48](https://github.com/viell-dev/slop-calc-sheet-manager/issues/48)), so the runner copies
   LibreOffice's own crash dumps from the profile into the results as `crash-*.dmp` and fails a
-  session that left one. GitHub's Windows runners have CDB, not on `PATH`, at
+  session whose office left one; a retried startup attempt's dumps are kept but do not fail a
+  clean retry. GitHub's Windows runners have CDB, not on `PATH`, at
   `C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe`; with it,
   `cdb -z <dump> -y "srv*<cache>*https://dev-downloads.libreoffice.org/symstore/symbols;srv*<cache>*https://msdl.microsoft.com/download/symbols" -c ".ecxr; !analyze -v; ~* kp; q"`
   gives every thread's stack with TDF's symbols.

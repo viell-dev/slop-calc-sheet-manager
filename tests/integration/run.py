@@ -15,7 +15,7 @@ import sys
 import tempfile
 import time
 import uuid
-from contextlib import contextmanager, suppress
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, cast
 
@@ -26,10 +26,12 @@ from com.sun.star.lang import XEventListener
 from main_thread import close_document
 from office_process import (
     assert_clean_shutdown,
+    end_office,
     finish_process,
     normal_startup_restart,
     retain_crash_dumps,
 )
+from teardown import stalled_callbacks, start_session
 
 FACTORY = "dev.viell.sheetmanager.PanelFactory"
 DECK = "SheetManagerDeck"
@@ -218,19 +220,20 @@ def office_session(
                 result["failure_stage"] = "startup"
                 raise
             continue
+        start_session()
         try:
             yield context, desktop, directory
         finally:
-            # The bridge is normally disposed during successful termination.
-            with suppress(Exception):
-                desktop.terminate()
             try:
                 generated_trace = directory / "gdbtrace.log"
-                # finish_process must wait before copying the debugger's final output.
+                # Ends the office before the debugger's final output is copied. After a stalled
+                # main-thread callback it stops the office instead of asking it (#50).
                 result.update(
-                    finish_process(
+                    end_office(
+                        desktop,
                         process,
                         log_path,
+                        stalled=stalled_callbacks(),
                         backtrace_path=generated_trace if backtrace else None,
                     )
                 )

@@ -15,6 +15,7 @@ from com.sun.star.awt import XCallback
 from com.sun.star.frame import XStatusListener
 from com.sun.star.lang import IllegalArgumentException
 from com.sun.star.util import URL
+from teardown import record_stalled_callback
 
 DECK = "SheetManagerDeck"
 PANEL = "SheetManagerPanel"
@@ -47,6 +48,8 @@ def on_main_thread(context, work, timeout=60):
     )
     callback.addCallback(job, None)
     if not job.done.wait(timeout):
+        # The main thread is stuck: the session fails and the runner stops the office (#50).
+        record_stalled_callback("work on LibreOffice's main thread did not finish")
         raise AssertionError("The work on LibreOffice's main thread did not finish")
     if job.error:
         raise AssertionError(job.error)
