@@ -35,6 +35,7 @@ PACKAGE_FILES = (
     "i18n.py",
     "keys.py",
     "reorder.py",
+    "selection.py",
     "sheet_list.py",
     "swatch.py",
     "uno_calc.py",

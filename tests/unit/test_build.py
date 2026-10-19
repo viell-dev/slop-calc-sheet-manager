@@ -39,6 +39,7 @@ def test_two_builds_are_identical_and_allowlisted(tmp_path: Path) -> None:
                     "i18n",
                     "keys",
                     "reorder",
+                    "selection",
                     "sheet_list",
                     "swatch",
                     "uno_calc",

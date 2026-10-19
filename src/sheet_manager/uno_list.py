@@ -46,6 +46,7 @@ from sheet_manager.keys import (
     range_end,
 )
 from sheet_manager.reorder import plan_move
+from sheet_manager.selection import Ref, Selection
 from sheet_manager.sheet_list import RowGeometry, SheetRow, ordered, row_label
 from sheet_manager.uno_calc import (
     MainThread,
@@ -82,6 +83,14 @@ REFRESH_MAX_WAIT = 2.0  # During continuous changes, refresh at least this often
 SCROLL_INTERVAL = 0.1
 
 
+def _current(ref: Ref) -> bool:
+    """Whether the ref's retained handle still reports the ref's name (see selection.py)."""
+    try:
+        return ref.token is not None and ref.token.getName() == ref.name
+    except Exception:
+        return False
+
+
 def _guarded(where, function, *arguments):
     try:
         return function(*arguments)
@@ -98,7 +107,6 @@ class _Press:
     modifiers: int
     name: str | None  # The sheet the pressed row showed,
     handle: Any  # and its handle at that moment: a refresh may put another sheet there.
-    rebuilds: int  # How often the list had been rebuilt when the button went down.
 
 
 @dataclass(frozen=True)
@@ -272,9 +280,11 @@ class SheetList:
         self._observed: Snapshot | None = None
         self._handles: dict[str, Any] = {}
         self._nodes: list[object] = []
-        # The tree's keyboard cursor and Shift anchor, by sheet name: the tree has no API for them.
-        self._cursor: str | None = None
-        self._anchor: str | None = None
+        # The list's own picks, keyboard cursor, and Shift anchor, as sheet identities
+        # (selection.py): the tree knows its rows only by name and has no cursor API. `_shown`
+        # is the selection the list last wrote to the tree or took from it.
+        self._selection = Selection(_current)
+        self._shown: tuple[str, ...] = ()
         self._disposed = False
         self._busy = False
         self._main = MainThread(context)
@@ -300,9 +310,6 @@ class SheetList:
         self._follow_input: int | None = None
         self._activating = False  # The list's own setActiveSheet call is running.
         self._press: _Press | None = None
-        # Rebuilds so far, and the selection and cursor the last one established.
-        self._rebuilds = 0
-        self._rebuilt: tuple[list[str], str | None] = ([], None)
         self._drag: _Drag | None = None
         self._gap: int | None = None
         self._pointer_y = 0
@@ -386,13 +393,29 @@ class SheetList:
     def names(self) -> list[str]:
         return [row.name for row in self.rows]
 
-    def still_shown(self, name: str) -> bool:
-        """Whether the sheet the list shows as `name` still exists under that name."""
-        handle = self._handles.get(name)
-        try:
-            return handle is not None and handle.getName() == name
-        except Exception:
-            return False
+    @property
+    def _cursor(self) -> str | None:
+        cursor = self._selection.cursor
+        return cursor.name if cursor is not None else None
+
+    @_cursor.setter
+    def _cursor(self, name: str | None) -> None:
+        self._selection.cursor = self._ref(name)
+
+    @property
+    def _anchor(self) -> str | None:
+        anchor = self._selection.anchor
+        return anchor.name if anchor is not None else None
+
+    @_anchor.setter
+    def _anchor(self, name: str | None) -> None:
+        self._selection.anchor = self._ref(name)
+
+    def _ref(self, name: str | None) -> Ref | None:
+        """The sheet the row `name` shows now, reusing the list's ref for it if still current."""
+        if name is None:
+            return None
+        return self._selection.ref(name, self._handles, self.names())
 
     def refresh(self) -> None:
         """Read the sheets again; keep only selected rows whose sheets are still the same."""
@@ -407,25 +430,28 @@ class SheetList:
             self._stale_since = None
 
     def _refresh(self) -> None:
+        """Read the sheets, drop every pick that is no longer its sheet, and show the rest.
+
+        Picks, cursor, and anchor are revalidated on every refresh, whether or not the rows
+        change: a refresh that only renews the handles behind unchanged rows must still drop a
+        pick whose sheet was replaced under the same name (#28).
+        """
+        if self._press is None:
+            self._take_tree_selection()  # Input that no handler has taken yet.
         observed = snapshot(self.document)
         rows = read_rows(self.controller, observed)
-        names = {row.name for row in rows}
-        picked = self.selected_names()
-        kept = [name for name in picked if name in names and self.still_shown(name)]
-        cursor = self._cursor
-        if cursor is not None and (cursor not in names or not self.still_shown(cursor)):
-            cursor = None
-        anchor = self._anchor if self._anchor in names and self.still_shown(self._anchor) else None
+        dropped = self._selection.revalidate()
         changed = rows != self.rows or not self._nodes
-        invalidated = kept != picked or cursor != self._cursor or anchor != self._anchor
         self._observed = observed
         self._handles = dict(
             zip((sheet.name for sheet in observed.sheets), observed.handles, strict=True)
         )
-        if changed or invalidated:
-            self._rebuild(rows, kept, cursor)
+        if changed:
+            self._rebuild(rows)
+        elif dropped or tuple(self._selection.names()) != self._shown:
+            self._apply_selection()
 
-    def _rebuild(self, rows: list[SheetRow], picked: list[str], cursor: str | None) -> None:
+    def _rebuild(self, rows: list[SheetRow]) -> None:
         """Replace the whole data model.
 
         With a hidden root, the tree control mishandles every change event of the data model:
@@ -449,33 +475,55 @@ class SheetList:
             nodes.append(node)
         self.tree.getModel().DataModel = model
         self._nodes, self.rows = nodes, rows
-        self._anchor = None
+        self._shown = ()
+        self._selection.anchor = None
         names = self.names()
         if top in names and nodes:
             # Scroll to the end first, so that showing the old top row puts it at the top.
             self.tree.makeNodeVisible(nodes[-1])
             self.tree.makeNodeVisible(nodes[names.index(top)])
-        self._select(picked, cursor)
-        self._rebuilds += 1
-        self._rebuilt = (list(picked), cursor)
+        self._apply_selection()
 
     def _select(self, names: list[str], cursor: str | None = None) -> None:
-        """Select these rows and put the keyboard cursor on `cursor`, or on the first of them."""
-        wanted = set(names)
-        indices = [index for index, row in enumerate(self.rows) if row.name in wanted]
-        all_names = self.names()
-        if cursor not in all_names:
-            cursor = all_names[indices[0]] if indices else None
+        """Pick these rows as they show now and put the keyboard cursor on `cursor`."""
+        self._selection.take(names, self._handles, self.names())
+        self._selection.cursor = self._ref(cursor)
+        self._apply_selection()
+
+    def _apply_selection(self) -> None:
+        """Write the list's own picks and cursor to the tree; the cursor falls back to a pick."""
+        names = self.names()
+        cursor = self._selection.cursor
+        if cursor is None or cursor.name not in names:
+            cursor = self._selection.picked[0] if self._selection.picked else None
+            self._selection.cursor = cursor
+        wanted = {ref.name for ref in self._selection.picked}
+        indices = [index for index, name in enumerate(names) if name in wanted]
+        self._shown = tuple(names[index] for index in indices)
         if cursor is None:
             self.tree.clearSelection()
-            self._cursor = None
             return
-        self._focus_row(all_names.index(cursor), scroll=False)
-        if cursor not in wanted:
+        self._move_tree_cursor(names.index(cursor.name), scroll=False)
+        if cursor.name not in wanted:
             self.tree.clearSelection()  # Keeps the cursor where it is.
         for index in indices:
-            if all_names[index] != cursor:
+            if names[index] != cursor.name:
                 self.tree.addSelection(self._nodes[index])
+
+    def _take_tree_selection(self) -> None:
+        """Take a selection the user made in the tree, as the rows showed it."""
+        names = self.selected_names()
+        if tuple(names) != self._shown:
+            self._selection.take(names, self._handles, self.names())
+            self._shown = tuple(names)
+
+    def _current_picks(self) -> list[Ref]:
+        """The list's picks as they stand now, each still the sheet it was picked as."""
+        if self._press is None:
+            self._take_tree_selection()
+        if self._selection.revalidate() or tuple(self._selection.names()) != self._shown:
+            self._apply_selection()
+        return list(self._selection.picked)
 
     def geometry(self) -> RowGeometry:
         if not self._nodes:
@@ -505,7 +553,15 @@ class SheetList:
         return [index for index, row in enumerate(self.rows) if row.name in picked]
 
     def _focus_row(self, index: int, scroll: bool = True) -> None:
-        """Select only this row and move the tree's keyboard cursor to it.
+        """Pick only this row, as it shows now, and move the keyboard cursor to it."""
+        ref = self._ref(self.rows[index].name)
+        self._selection.picked = [ref] if ref is not None else []
+        self._selection.cursor = ref
+        self._move_tree_cursor(index, scroll)
+        self._shown = (self.rows[index].name,)
+
+    def _move_tree_cursor(self, index: int, scroll: bool = True) -> None:
+        """Select only this row in the tree, which moves its keyboard cursor there too.
 
         The tree control has no cursor API, but in single selection mode selecting a row also
         moves the cursor, so arrow keys continue from the row selected here.
@@ -516,7 +572,6 @@ class SheetList:
             self.tree.select(self._nodes[index])
         finally:
             model.SelectionType = MULTI
-        self._cursor = self.rows[index].name
         if scroll:
             self.tree.makeNodeVisible(self._nodes[index])
 
@@ -536,9 +591,12 @@ class SheetList:
             self.post(lambda: self._cursor_from_selection(shift), "following the cursor")
         elif code in MOVING:
             self._cursor = None
+        # The tree handles the key after this returns; take the selection it then shows.
+        self.post(self._take_tree_selection, "following the selection")
 
     def _cursor_from_selection(self, shift: bool) -> None:
         """After Page Up or Page Down the selection shows where the cursor went."""
+        self._take_tree_selection()
         selected = self._selected_indices()
         names = self.names()
         if not shift:
@@ -636,9 +694,9 @@ class SheetList:
             return False
 
     def activate_selection(self) -> None:
-        picked = self.selected_names()
+        picked = self._current_picks()
         if len(picked) == 1:
-            self.activate(picked[0])
+            self.activate(picked[0].name, picked[0].token)
 
     def type_ahead(self, char: str) -> None:
         self._input += 1
@@ -775,7 +833,8 @@ class SheetList:
         elif event.Buttons & LEFT:
             name = self.rows[row].name if row is not None else None
             handle = self._handles.get(name) if name is not None else None
-            self._press = _Press(row, event.Modifiers, name, handle, self._rebuilds)
+            self._take_tree_selection()  # The tree has already applied the press.
+            self._press = _Press(row, event.Modifiers, name, handle)
             if row is not None:
                 # The tree has already handled the press: its cursor is on this row. Shift
                 # keeps or starts the range at the old cursor; other clicks end it.
@@ -797,11 +856,13 @@ class SheetList:
         if not self._pressed_sheet_in_place(press):
             # A refresh during the press moved the pressed sheet away or showed another sheet
             # under its name. The gesture then has no effect at all (#28): no activation, and
-            # whatever the tree selected on release now sits in that row and was never
-            # picked, so the selection the refresh established comes back.
-            if press.rebuilds != self._rebuilds:
-                self._select(*self._rebuilt)
+            # whatever the tree selected on release is undone. The list's own picks come back,
+            # each still the sheet it was picked as, including any newer pick made meanwhile,
+            # by following Calc or by keyboard.
+            self._selection.revalidate()
+            self._apply_selection()
             return
+        self._take_tree_selection()  # A release can change the tree's selection too.
         row = press.row
         if row is None or press.modifiers & (SHIFT | MOD1):
             return
@@ -821,22 +882,31 @@ class SheetList:
             return False
 
     def open_menu_for_keyboard(self) -> None:
-        picked = self.selected_names()
+        picked = self._current_picks()
         if not picked:
             return
-        index = self.names().index(picked[0])
+        index = self.names().index(picked[0].name)
         self.tree.makeNodeVisible(self._nodes[index])
         geometry = self.geometry()
         self._open_menu(geometry.row_height, geometry.gap_y(index) + geometry.row_height // 2)
 
     def _open_menu(self, x: int, y: int) -> None:
-        picked = self.selected_names()
-        if self._disposed or self._busy or not picked or self._observed is None:
+        """Open the sheet tab menu for the list's picks, each checked to be its sheet still.
+
+        The menu gets a fresh snapshot whose handles are those sheets; it checks them again
+        when the chosen command runs.
+        """
+        if self._disposed or self._busy or self._observed is None:
             return
-        if not all(self.still_shown(name) for name in picked):
-            self.refresh()  # A picked sheet was replaced or renamed: drop it, open nothing.
+        refs = self._current_picks()
+        if not refs:
             return
-        observed = self._observed
+        observed = snapshot(self.document)
+        names = {sheet.name for sheet in observed.sheets}
+        if not all(ref.name in names and _current(ref) for ref in refs):
+            self.refresh()  # A pick changed since this check began: open nothing.
+            return
+        picked = [ref.name for ref in refs]
         chosen = self._menu.show(self.peer, x, y, observed, picked)
         if chosen == SHOW:
             result = show_sheets(self.context, self.document, observed, picked)
@@ -858,7 +928,7 @@ class SheetList:
         self._press = None  # A drag is not a click.
         if self._busy or self._drag is not None or self._observed is None:
             return
-        picked = self.selected_names()
+        picked = [ref.name for ref in self._current_picks()]
         if not picked or self.document.isReadonly() or self.document.isProtected():
             return
         if not is_current(self.document, self._observed):
