@@ -4,11 +4,14 @@ The panel's ``XPanel.getDialog()`` window holds the list's tree control as a chi
 nodes carry the sheet names. No test hook exists in the extension.
 """
 
+import threading
 import time
+import traceback
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import unohelper
+from com.sun.star.awt import XCallback
 from com.sun.star.frame import XStatusListener
 from com.sun.star.lang import IllegalArgumentException
 from com.sun.star.util import URL
@@ -17,6 +20,63 @@ DECK = "SheetManagerDeck"
 PANEL = "SheetManagerPanel"
 TREE = "com.sun.star.awt.tree.XTreeControl"
 MENU_NS = "{http://openoffice.org/2001/menu}"
+
+
+class _OnMain(unohelper.Base, XCallback):
+    def __init__(self, work):
+        self.work, self.done, self.error = work, threading.Event(), None
+
+    def notify(self, aData):
+        try:
+            self.work()
+        except Exception:
+            self.error = traceback.format_exc()
+        finally:
+            self.done.set()
+
+
+def on_main_thread(context, work, timeout=60):
+    """Run `work` on LibreOffice's main thread, as a macro runs; nothing else runs meanwhile.
+
+    The office calls back into this process with its main thread waiting, so the calls `work`
+    makes run on that thread: the list cannot refresh halfway through.
+    """
+    job = _OnMain(work)
+    callback = context.ServiceManager.createInstanceWithContext(
+        "com.sun.star.awt.AsyncCallback", context
+    )
+    callback.addCallback(job, None)
+    if not job.done.wait(timeout):
+        raise AssertionError("The work on LibreOffice's main thread did not finish")
+    if job.error:
+        raise AssertionError(job.error)
+
+
+BATCHES = ("lockControllers", "addActionLock", "disableSetModified")
+
+
+def cover_batch(document, wrapper):
+    """Insert a sheet before Bravo, delete Bravo, rename the newcomer to Bravo, in one batch.
+
+    The wrappers are the ones that make LibreOffice report the batch differently: one modify
+    notification at the end (`lockControllers`, `addActionLock`) or none
+    (`disableSetModified`). The undo notifications still come for each step.
+    """
+    begin, end = {
+        "lockControllers": (document.lockControllers, document.unlockControllers),
+        "addActionLock": (document.addActionLock, document.removeActionLock),
+        "disableSetModified": (document.disableSetModified, document.enableSetModified),
+    }[wrapper]
+    sheets = document.getSheets()
+    index = list(sheets.getElementNames()).index("Bravo")
+    begin()
+    try:
+        sheets.insertNewByName("Newcomer", index)
+        sheets.getByName("Newcomer").getCellRangeByName("A1").setString("replacement")
+        sheets.removeByName("Bravo")
+        sheets.getByName("Newcomer").setName("Bravo")
+    finally:
+        end()
 
 
 def poll(function, description, timeout=20):

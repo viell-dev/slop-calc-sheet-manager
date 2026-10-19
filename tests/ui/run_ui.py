@@ -760,14 +760,16 @@ def check_picks_dropped_when_sheets_change(book):
 
     A deleted sheet's handle turns to another sheet and can report the deleted sheet's name
     again once that sheet is renamed, so the list cannot tell which sheet its handles mean.
-    Three ways: Bravo deleted and Alfa renamed to Bravo; a new sheet inserted before Bravo,
-    Bravo deleted, and the new sheet renamed to Bravo (the sheet count ends as it began); and
-    Bravo replaced while it is held and the list follows Calc to Delta.
+    The ways: Bravo deleted and Alfa renamed to Bravo; a new sheet inserted before Bravo,
+    Bravo deleted, and the new sheet renamed to Bravo (the sheet count ends as it began); Bravo
+    replaced while it is held and the list follows Calc to Delta; and the insert-delete-rename
+    batch run on LibreOffice's main thread inside lockControllers, addActionLock, or
+    disableSetModified, which LibreOffice reports with one modify notification or none.
     """
     sheets = book.document.getSheets()
     undo = book.document.getUndoManager()
     evidence = {}
-    for way in ("delete_rename", "insert_delete_rename", "held_replace"):
+    for way in ("delete_rename", "insert_delete_rename", "held_replace", *view.BATCHES):
         reset(book)
         sheets.getByName(NAMES[0]).getCellRangeByName("A1").setString("victim")
         sheets.getByName(NAMES[1]).getCellRangeByName("A1").setString("original")
@@ -781,9 +783,16 @@ def check_picks_dropped_when_sheets_change(book):
             time.sleep(3)
             book.pointer.release()
         else:
+            time.sleep(1.5)  # A refresh after the last way's undo would drop the pick.
             book.click(3)  # Delta becomes active.
             book.lab.input.tap("b", pause=0.5)  # Bravo is picked; Delta stays active.
             wait_until(lambda: book.selection() == [NAMES[1]], "typing to pick Bravo")
+            time.sleep(1.5)
+            assert book.selection() == [NAMES[1]], "The pick went before the change"
+        if way in view.BATCHES:
+            view.on_main_thread(book.lab.context, lambda w=way: view.cover_batch(book.document, w))
+            time.sleep(3)
+        elif way != "held_replace":
             if way == "insert_delete_rename":
                 sheets.insertNewByName("Newcomer", 1)
             sheets.removeByName(NAMES[1])
