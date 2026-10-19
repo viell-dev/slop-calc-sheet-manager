@@ -100,6 +100,13 @@ Unit tests need no LibreOffice and run as part of the checks. To run them alone:
 .venv/bin/python -m pytest
 ```
 
+Release tests cover version ordering, candidate policy, changelog extraction, and update feeds.
+The integration runner also sends generated loopback HTTP feeds through LibreOffice's update
+parser and checks candidate compatibility through its deployment API. The update dialog itself
+has no public headless offered-update API; see [RELEASING.md](RELEASING.md#verification-boundary)
+for the tested boundary and the remaining desktop check. Release dry runs and publication follow
+[RELEASING.md](RELEASING.md).
+
 The reorder suite exhausts all permutations through seven sheets and all scenario partitions and
 block orders through seven. It checks the minimum call count against an independent
 longest-common-subsequence oracle. The panel-facing contract is in

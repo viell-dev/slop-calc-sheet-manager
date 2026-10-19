@@ -1,10 +1,13 @@
 # Changelog
 
 Notable changes to Sheet Manager, newest first. Version numbers are plain dotted numbers; see
-[AGENTS.md](AGENTS.md#releases) for why there are no prerelease suffixes.
+[RELEASING.md](RELEASING.md#versions-and-titles) for why there are no prerelease suffixes.
 
 ## Unreleased
 
+- Added checked release publication with versioned OXT/checksum assets, a read-only dry run, and
+  stable/prerelease update feeds on GitHub Pages. Installed copies use the stable feed. No build
+  has been published yet ([#6](https://github.com/viell-dev/slop-calc-sheet-manager/issues/6)).
 - Added the reorder operation layer for drag/drop and Top, Up, Down, and Bottom: minimum-call
   planning, scenario blocks, permission checks, one undo step, and verified failure recovery.
   The sidebar controls will use this interface when the list panel is integrated.
@@ -41,3 +44,8 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   and whether a person reviewed it.
 - Required the painted gtk3 checks for merging again, after 180 painted sessions on `main` ran
   without a failure ([#32](https://github.com/viell-dev/slop-calc-sheet-manager/issues/32)).
+
+## 0.0.1 - Development baseline (unpublished)
+
+- Initial development package for release-process dry runs. This is not a published release;
+  the first feature release is planned as 0.1.0.

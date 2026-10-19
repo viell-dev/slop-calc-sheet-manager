@@ -57,7 +57,8 @@ def test_metadata_and_registration_agree(tmp_path: Path) -> None:
             "{http://libreoffice.org/extensions/description/2011}LibreOffice-minimal-version"
         )
         assert dependency is not None and dependency.attrib["value"] == "26.2.1"
-        assert version() == "0.0.1"
+        packaged_version = description.find(f"{DESCRIPTION_NS}version")
+        assert packaged_version is not None and packaged_version.attrib["value"] == version()
         assert description.findtext(f"{DESCRIPTION_NS}display-name/{DESCRIPTION_NS}name") == (
             "Sheet Manager"
         )
