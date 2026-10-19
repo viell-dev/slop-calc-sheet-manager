@@ -10,6 +10,7 @@ so that neither hides the other.
 
 from collections.abc import Callable, Iterable
 from contextlib import suppress
+from types import TracebackType
 from typing import Any
 
 _stalled: list[str] = []
@@ -71,6 +72,46 @@ def close_leftovers(
     for problem in problems[:-1] if _stalled else problems[1:]:
         _note(raised, problem)
     raise raised
+
+
+class Configured:
+    """Apply an office setting for a `with` block, and restore it afterwards.
+
+    Restoring is a UNO request that a stuck main thread could block for good, so after a stalled
+    callback it is skipped: the profile is temporary, and the runner stops the office (#51). If
+    the block failed and restoring fails too, the restore error becomes a note on the block's
+    failure, which stays the one raised. A class rather than a generator, so that a UNO exception
+    passes through unchanged (#41).
+    """
+
+    def __init__(self, apply: Callable[[], None], restore: Callable[[], None]) -> None:
+        self._apply, self._restore = apply, restore
+
+    def __enter__(self) -> None:
+        try:
+            self._apply()
+        except BaseException as failure:
+            self._restore_after(failure)
+            raise
+
+    def __exit__(
+        self,
+        kind: type[BaseException] | None,
+        failure: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        if failure is not None:
+            self._restore_after(failure)
+        elif not _stalled:
+            self._restore()
+
+    def _restore_after(self, failure: BaseException) -> None:
+        if _stalled:
+            return
+        try:
+            self._restore()
+        except Exception as error:
+            _note(failure, f"Restoring the office setting also failed: {error!r}")
 
 
 def run_checks(

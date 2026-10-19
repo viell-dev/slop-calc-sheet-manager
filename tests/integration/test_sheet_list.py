@@ -11,7 +11,6 @@ UI tests cover the menu. Moving sheets is covered by ``test_reorder.py``.
 
 import sys
 import time
-from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -36,7 +35,7 @@ from sheet_list_view import (
     selected_tabs,
     selection,
 )
-from teardown import run_checks
+from teardown import Configured, run_checks
 
 from sheet_manager import keys, uno_list
 from sheet_manager.sheet_list import SheetRow, row_label, tab_color
@@ -115,8 +114,8 @@ class Robot:
         self.key(window, keys.RETURN)
 
 
-@contextmanager
 def undo_capacity(context, steps):
+    """Set the undo limit for a `with` block; restored after it unless a callback stalled (#51)."""
     # The context belongs to the runner's private office and profile, never the user profile.
     provider = context.ServiceManager.createInstanceWithContext(
         "com.sun.star.configuration.ConfigurationProvider", context
@@ -127,14 +126,16 @@ def undo_capacity(context, steps):
         "com.sun.star.configuration.ConfigurationUpdateAccess", (argument,)
     )
     original = access.getPropertyValue("Steps")
-    try:
-        access.setPropertyValue("Steps", steps)
+
+    def set_steps(value):
+        access.setPropertyValue("Steps", value)
         access.commitChanges()
-        yield
-    finally:
-        access.setPropertyValue("Steps", original)
-        access.commitChanges()
+
+    def restore():
+        set_steps(original)
         access.dispose()
+
+    return Configured(lambda: set_steps(steps), restore)
 
 
 def make_workbook(desktop, sheet_names):

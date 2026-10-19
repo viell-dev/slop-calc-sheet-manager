@@ -3,7 +3,6 @@
 import json
 import statistics
 import time
-from contextlib import contextmanager
 from typing import Any, cast
 from unittest.mock import patch
 
@@ -11,6 +10,7 @@ import uno
 from com.sun.star.awt import Rectangle
 from com.sun.star.beans import PropertyValue
 from main_thread import close_after, close_document
+from teardown import Configured
 
 from sheet_manager.reorder import Action, plan_move, plan_order
 from sheet_manager.uno_reorder import apply_order, preflight, snapshot
@@ -26,8 +26,8 @@ def order(document):
     return tuple(document.Sheets.ElementNames)
 
 
-@contextmanager
 def undo_capacity(context, steps):
+    """Set the undo limit for a `with` block; restored after it unless a callback stalled (#51)."""
     # The context belongs to this runner's private office/profile, never the user profile.
     provider = context.ServiceManager.createInstanceWithContext(
         "com.sun.star.configuration.ConfigurationProvider", context
@@ -37,14 +37,16 @@ def undo_capacity(context, steps):
         (prop("nodepath", "/org.openoffice.Office.Common/Undo"),),
     )
     original = access.getPropertyValue("Steps")
-    try:
-        access.setPropertyValue("Steps", steps)
+
+    def set_steps(value):
+        access.setPropertyValue("Steps", value)
         access.commitChanges()
-        yield
-    finally:
-        access.setPropertyValue("Steps", original)
-        access.commitChanges()
+
+    def restore():
+        set_steps(original)
         access.dispose()
+
+    return Configured(lambda: set_steps(steps), restore)
 
 
 def workbook(desktop, count=7):
