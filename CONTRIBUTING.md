@@ -249,8 +249,10 @@ held on purpose. Python stays on 3.12, the oldest supported version, so Dependab
 Dependabot proposes newer Node 24 releases and digest refreshes but not Node 26. The workflows
 install Node separately from `.nvmrc`, which Dependabot cannot change: a pull request that moves
 the Node image to a new version must also change `.nvmrc`, so that local and CI checks use the
-same Node, and a unit test fails until they match. Moving to a new major version of Python or Node
-is a deliberate change made by hand.
+same Node, and a unit test fails until they match. That test accepts setup-node steps only as
+`actions/setup-node@<commit SHA>`, with the action's lowercase input names and no expressions in
+keys or `uses`. Moving to a new major version of Python or Node is a deliberate change made by
+hand.
 
 ## Pull requests
 

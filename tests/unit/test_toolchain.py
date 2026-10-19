@@ -1,4 +1,12 @@
-"""Keep the Node that contributors and CI install equal to the checks image's Node."""
+"""Keep the Node that contributors and CI install equal to the checks image's Node.
+
+The workflow guard catches drift in the form this repository writes setup-node steps; it is not
+a model of everything GitHub accepts. A setup-node reference must be
+`actions/setup-node@<commit SHA>`, its input names must be the lowercase ASCII names the action
+declares, and no mapping key or `uses` value may contain an expression. Any other spelling fails
+the test, even where GitHub would run it. Node installed by other means, such as a script or
+another action, is outside the guard.
+"""
 
 import re
 import textwrap
@@ -11,7 +19,9 @@ import yaml
 
 from tools.build import ROOT
 
-SETUP_NODE = "actions/setup-node@"
+SETUP_NODE = re.compile(r"actions/setup-node@[0-9a-f]{40}")
+INPUT_NAME = re.compile(r"[a-z0-9-]+")
+EXPRESSION = "${{"
 
 
 def runtime_node_version(dockerfile: str) -> str:
@@ -60,32 +70,40 @@ def _mappings(node: object) -> Iterator[dict[object, object]]:
             yield from _mappings(value)
 
 
+def _names_setup_node(uses: str) -> bool:
+    """Whether the runner could resolve `uses` to the actions/setup-node repository."""
+    parts = [part.strip().casefold() for part in uses.split("@", 1)[0].split("/")]
+    return [part for part in parts if part][:2] == ["actions", "setup-node"]
+
+
 def setup_node_steps(workflow: str) -> list[dict[object, object]]:
-    """Return every mapping in a parsed workflow whose `uses` names actions/setup-node."""
-    return [
-        mapping
-        for mapping in _mappings(yaml.load(workflow, Loader=WorkflowLoader))
-        if isinstance(uses := mapping.get("uses"), str)
-        and uses.strip().lower().startswith(SETUP_NODE)
-    ]
+    """Return every setup-node step, raising on a spelling outside the repository's form."""
+    steps: list[dict[object, object]] = []
+    for mapping in _mappings(yaml.load(workflow, Loader=WorkflowLoader)):
+        for key in mapping:
+            if EXPRESSION in str(key):
+                raise ValueError(f"expression in a mapping key: {key!r}")
+        uses = mapping.get("uses")
+        if not isinstance(uses, str):
+            continue
+        if EXPRESSION in uses:
+            raise ValueError(f"expression in `uses`: {uses!r}")
+        if _names_setup_node(uses):
+            if not SETUP_NODE.fullmatch(uses):
+                raise ValueError(f"write `actions/setup-node@<commit SHA>`, not {uses!r}")
+            steps.append(mapping)
+    return steps
 
 
 def reads_nvmrc(step: dict[object, object]) -> bool:
-    """Whether the step's inputs make setup-node read `.nvmrc` and nothing that overrides it.
-
-    The runner matches action input names case-insensitively, so `NODE-VERSION` overrides the
-    file just as `node-version` does, and two spellings of one input are ambiguous.
-    """
+    """Whether the step's inputs, in their declared spelling, make setup-node read `.nvmrc`."""
     inputs = step.get("with")
     if not isinstance(inputs, dict):
         return False
-    names: dict[str, object] = {}
-    for key, value in cast(dict[object, object], inputs).items():
-        name = str(key).casefold()
-        if name in names:
-            return False
-        names[name] = value
-    return names.get("node-version-file") == ".nvmrc" and "node-version" not in names
+    given = cast(dict[object, object], inputs)
+    if not all(isinstance(name, str) and INPUT_NAME.fullmatch(name) for name in given):
+        return False
+    return given.get("node-version-file") == ".nvmrc" and "node-version" not in given
 
 
 def test_nvmrc_names_the_checks_image_node() -> None:
@@ -131,9 +149,14 @@ def test_workflow_files_include_both_extensions(tmp_path: Path) -> None:
     assert [path.name for path in workflow_files(tmp_path)] == ["a.yml", "b.yaml"]
 
 
+def pinned(text: str) -> str:
+    """Replace the placeholder ref `@abc` with a full commit SHA."""
+    return text.replace("@abc", f"@{'0' * 40}")
+
+
 def workflow(step: str) -> str:
     steps = textwrap.indent(textwrap.dedent(step).strip("\n"), " " * 6)
-    return f"jobs:\n  checks:\n    steps:\n      - uses: actions/checkout@abc\n{steps}\n"
+    return pinned(f"jobs:\n  checks:\n    steps:\n      - uses: actions/checkout@abc\n{steps}\n")
 
 
 STEP_CASES = {
@@ -155,6 +178,15 @@ STEP_CASES = {
         """,
     ),
     "flow style": (True, "- {uses: actions/setup-node@abc, with: {node-version-file: .nvmrc}}"),
+    "expression value": (
+        True,
+        """
+        - uses: actions/setup-node@abc
+          with:
+            node-version-file: .nvmrc
+            package-manager-cache: ${{ matrix.cache }}
+        """,
+    ),
     "commented": (
         False,
         """
@@ -216,16 +248,8 @@ STEP_CASES = {
             node-version-file: .nvmrc
         """,
     ),
-    "capitalised action": (
-        False,
-        """
-        - uses: Actions/Setup-Node@abc
-          with:
-            node-version: 22
-        """,
-    ),
     "capitalised file input": (
-        True,
+        False,
         """
         - uses: actions/setup-node@abc
           with:
@@ -241,13 +265,12 @@ STEP_CASES = {
             NODE-VERSION: 22
         """,
     ),
-    "two spellings of the file input": (
+    "non-ASCII file input": (
         False,
         """
         - uses: actions/setup-node@abc
           with:
-            node-version-file: .nvmrc
-            Node-Version-File: other
+            node-verſion-file: .nvmrc
         """,
     ),
 }
@@ -259,19 +282,51 @@ def test_setup_node_steps_must_read_nvmrc(accepted: bool, step: str) -> None:
     assert reads_nvmrc(found) is accepted
 
 
+REFUSED_STEPS = {
+    "capitalised action": "- {uses: Actions/Setup-Node@abc, with: {node-version: 22}}",
+    "trailing slash": "- {uses: actions/setup-node/@abc, with: {node-version: 22}}",
+    "leading slash": "- {uses: /actions/setup-node@abc, with: {node-version: 22}}",
+    "tag instead of SHA": "- {uses: actions/setup-node@v7, with: {node-version-file: .nvmrc}}",
+    "expression reference": """
+        - uses: ${{ 'actions/setup-node@abc' }}
+          with:
+            node-version: 22
+        """,
+    "expression uses key": """
+        - "${{ 'uses' }}": actions/setup-node@abc
+          with:
+            node-version: 22
+        """,
+    "expression input key": """
+        - uses: actions/setup-node@abc
+          with:
+            node-version-file: .nvmrc
+            "${{ 'node-version' }}": 22
+        """,
+}
+
+
+@pytest.mark.parametrize("step", REFUSED_STEPS.values(), ids=REFUSED_STEPS.keys())
+def test_setup_node_steps_refuse_other_spellings(step: str) -> None:
+    with pytest.raises(ValueError):
+        setup_node_steps(workflow(step))
+
+
 def test_yaml_1_1_keywords_stay_distinct_job_ids() -> None:
     steps = setup_node_steps(
-        textwrap.dedent(
-            """
-            on: push
-            jobs:
-              yes:
-                steps:
-                  - {uses: actions/setup-node@abc, with: {node-version: 22}}
-              on:
-                steps:
-                  - {uses: actions/setup-node@abc, with: {node-version-file: .nvmrc}}
-            """
+        pinned(
+            textwrap.dedent(
+                """
+                on: push
+                jobs:
+                  yes:
+                    steps:
+                      - {uses: actions/setup-node@abc, with: {node-version: 22}}
+                  on:
+                    steps:
+                      - {uses: actions/setup-node@abc, with: {node-version-file: .nvmrc}}
+                """
+            )
         )
     )
     assert [reads_nvmrc(step) for step in steps] == [False, True]
