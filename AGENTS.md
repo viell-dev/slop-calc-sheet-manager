@@ -108,12 +108,16 @@ labelled `Status: Won't Do`.
   UNO: the `XPanel.getDialog()` window, its child tree control
   (`tests/integration/sheet_list_view.py`), and its `XEventListener`; keep test hooks out of the
   production factory.
-- The list keeps the `uno_reorder.snapshot` that produced its rows. A selected row survives a
-  refresh only while its retained handle still has the row's name, so a replaced or renamed sheet
-  leaves the selection instead of passing it to another sheet. Drops plan against the snapshot of
-  the drag's start through `apply_order`, which refuses stale state. While the built-in sheet tab
-  menu is open, a dispatch interceptor on the frame checks at dispatch time that the picked sheets
-  are unchanged and are exactly Calc's selected tabs. `uno_show.show_sheets` applies the reorder
+- The list keeps the `uno_reorder.snapshot` that produced its rows. Its picks, keyboard cursor,
+  and Shift anchor live in `selection.py` as refs: the name a sheet had when the user's input made
+  the ref, and that sheet's retained handle. A ref is never made again from a name later; every
+  refresh, rebuild or not, drops refs whose handle no longer reports their name; everything the
+  list writes to the tree, restores, or acts on comes from those refs. So a replaced or renamed
+  sheet leaves the selection instead of passing it to another sheet (#28). Drops plan against the
+  snapshot of the drag's start through `apply_order`, which refuses stale state. The menu opens
+  only for refs checked just before, with a fresh snapshot; while it is open, a dispatch
+  interceptor on the frame checks at dispatch time that the picked sheets are unchanged and are
+  exactly Calc's selected tabs. `uno_show.show_sheets` applies the reorder
   layer's undo rules: refuse without undo or beyond the undo limit, one group, undo only its own
   group on failure, verify. A plain click or Enter makes the sheet Calc's only selected tab and
   reads that back: `setActiveSheet` keeps an existing group when the sheet belongs to it.
@@ -125,8 +129,10 @@ labelled `Status: Won't Do`.
   every action checks its sheets when it runs, never against the cached rows. A left press keeps
   the pressed sheet's handle, and its release activates only that sheet, still in that row
   (#28). If a refresh during the press moved the sheet or showed another under its name, the
-  release has no effect at all: the selection the refresh set comes back, whatever the tree
-  selected on release. Activation reads the handle's current name and visibility first, because
+  release has no effect at all: the list writes its own refs back, whatever the tree selected on
+  release, so a newer pick made meanwhile (following Calc, or by keyboard) stays. While a press
+  is held, a refresh does not take the tree's selection as the user's; the press and release
+  handlers do. Activation reads the handle's current name and visibility first, because
   Calc sends the activation of a hidden sheet to another sheet (#43); if Calc goes elsewhere
   anyway, the list restores the previous sheet and tabs and reads both back before saying the
   view is unchanged (#46). The list's mouse handlers and its notice of a sheet switch both run

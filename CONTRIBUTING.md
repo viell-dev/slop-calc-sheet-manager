@@ -107,6 +107,10 @@ has no public headless offered-update API; see [RELEASING.md](RELEASING.md#verif
 for the tested boundary and the remaining desktop check. Release dry runs and publication follow
 [RELEASING.md](RELEASING.md).
 
+The sheet list's selection model has a property test: random sequences of picks, refreshes,
+renames, moves, deletions, and same-name replacements, checking that nothing the list holds ever
+resolves to a sheet it was not picked as.
+
 The reorder suite exhausts all permutations through seven sheets and all scenario partitions and
 block orders through seven. It checks the minimum call count against an independent
 longest-common-subsequence oracle. The panel-facing contract is in
@@ -213,10 +217,12 @@ Down, Ctrl+Z, and Ctrl+S from the list, open the sheet tab menu by right click, 
 Shift+F10, check that a plain click after the menu leaves one selected tab so that typing edits
 one sheet, keep the keyboard position across a refresh, refuse a drop after a sheet was replaced
 during the drag, and switch documents. They release a press after its sheet was replaced or moved
-and check that neither an activation nor a selection follows, and that the Menu key then does
-nothing. While a far sheet's colour keeps changing, so that the list waits to refresh, they click
-a sheet hidden just before, and Ctrl+click after a plain click, and check that nothing acts on the
-old rows.
+and check that no activation follows and that the release selects nothing new; after the
+replacement, the Menu key then does nothing. They hold a press while the list gets a newer pick,
+by following Calc to another sheet or by typing its first letter, replace the pressed sheet,
+release, and check that the Menu key's Hide hides the newer pick and not the replacement. While a
+far sheet's colour keeps changing, so that the list waits to refresh, they click a sheet hidden
+just before, and Ctrl+click after a plain click, and check that nothing acts on the old rows.
 Results and screenshots are in `test-results/<lane>/ui-gtk3/` and `ui-gen/`. LibreOffice's
 synthetic input on Windows bypasses key handlers and cannot start a native drag; those checks are
 on the [manual checklist](docs/manual-tests.md), with a synthetic workbook from
