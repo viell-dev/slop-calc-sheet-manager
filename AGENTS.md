@@ -226,9 +226,9 @@ labelled `Status: Won't Do`.
   `close_after`, close a suite's leftovers through `teardown.run_checks`, and set office settings
   for a block with `teardown.Configured`. A callback that does not finish in time is recorded in
   `teardown` (#50): no further close, check, suite, or settings restore is tried (#51), the UI
-  runner stops too (#52), the session fails without an earlier failure being hidden, and the runner stops its own office process tree
-  instead of asking it to terminate, which would wait for the stuck main thread too (#40). A
-  crashed office exits with status 0 on Windows
+  runner stops too (#52), the session fails without an earlier failure being hidden, and the
+  runner stops its own office process tree instead of asking it to terminate, which would wait
+  for the stuck main thread too (#40). A crashed office exits with status 0 on Windows
   ([#48](https://github.com/viell-dev/slop-calc-sheet-manager/issues/48)), so the runner copies
   LibreOffice's own crash dumps from the profile into the results as `crash-*.dmp` and fails a
   session whose office left one; a retried startup attempt's dumps are kept but do not fail a
