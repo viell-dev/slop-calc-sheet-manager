@@ -25,8 +25,8 @@ updates:
       # The checks image runs the oldest supported Python, the one LibreOffice 26.2 bundles.
       - dependency-name: python
         update-types: ["version-update:semver-major", "version-update:semver-minor"]
-      # Node stays on its current major version, which the workflow's node-version also names.
-      # A pull request for a newer Node 24 release must update the workflow and CONTRIBUTING.md
-      # to the same version before it merges.
+      # Node stays on its current major version, which .nvmrc also names for the workflows and
+      # local checks. A pull request for a newer Node 24 release must update .nvmrc to the same
+      # version before it merges; tests/unit/test_toolchain.py fails until it does.
       - dependency-name: node
         update-types: ["version-update:semver-major"]

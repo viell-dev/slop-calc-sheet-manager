@@ -27,7 +27,8 @@ Report vulnerabilities privately, as [SECURITY.md](SECURITY.md) describes.
 
 ## Set up
 
-Use Python 3.12–3.14, Git, and Node.js (24.21.0 in CI, for Pyright). Install Node before running
+Use Python 3.12–3.14, Git, and Node.js for Pyright, at the version in `.nvmrc` that CI also
+installs; `nvm use` or `fnm use` in the repository root selects it. Install Node before running
 checks; the check command fails without it rather than allowing Pyright to download a runtime.
 The extension has no third-party runtime dependencies. Development tools and UNO type stubs stay
 in a project virtual environment; never install them into LibreOffice's Python. Docker Desktop
@@ -57,10 +58,10 @@ docker build --file ci/checks.Dockerfile --tag sheet-manager-checks .
 docker run --rm --network none --mount "type=bind,source=${PWD},target=/work" sheet-manager-checks
 ```
 
-This uses digest-pinned Python 3.12.15 and Node 24.21.0 images and hash-pinned development tools.
-It writes caches, test output and `dist/` into the checkout; the container is removed on exit.
-Rebuild the image after changing `requirements-dev.txt`. This checks Linux semantics; CI also runs
-the complete check command on Windows in the Windows integration job.
+This uses digest-pinned Python 3.12.15 and Node images, the latter at the `.nvmrc` version, and
+hash-pinned development tools. It writes caches, test output and `dist/` into the checkout; the
+container is removed on exit. Rebuild the image after changing `requirements-dev.txt`. This checks
+Linux semantics; CI also runs the complete check command on Windows in the Windows integration job.
 
 ## Checks
 
@@ -245,11 +246,12 @@ GitHub-owned actions and Docker base images weekly after a seven-day cooldown. A
 remain full commit SHAs, with their versions in comments. The checks image's two base images are
 held on purpose. Python stays on 3.12, the oldest supported version, so Dependabot proposes only
 3.12 patch releases and digest refreshes for it. Node stays on its current major version, so
-Dependabot proposes newer Node 24 releases and digest refreshes but not Node 26. The workflow
-installs Node separately with its own `node-version`, which Dependabot cannot change: a pull
-request that moves the Node image to a new version must also change both `node-version` entries
-in `.github/workflows/ci.yml` and the Node version named in this file, so that local and CI checks
-use the same Node. Moving to a new major version of Python or Node is a deliberate change made by
+Dependabot proposes newer Node 24 releases and digest refreshes but not Node 26. The workflows
+install Node separately from `.nvmrc`, which Dependabot cannot change: a pull request that moves
+the Node image to a new version must also change `.nvmrc`, so that local and CI checks use the
+same Node, and a unit test fails until they match. That test accepts setup-node steps only as
+`actions/setup-node@<commit SHA>`, with the action's lowercase input names and no expressions in
+keys or `uses`. Moving to a new major version of Python or Node is a deliberate change made by
 hand.
 
 ## Pull requests
