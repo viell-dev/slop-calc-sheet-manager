@@ -199,7 +199,9 @@ labelled `Status: Won't Do`.
   tracks it from clicks and the keys it passes to the tree (`keys.cursor_after`); a rebuild cannot
   restore the tree's Shift anchor, so the next Shift move starts a range at the cursor. Listener
   callbacks can arrive on other threads or during a change; they only record state or post work
-  through `AsyncCallback`.
+  through `AsyncCallback`. Start threads only through `uno_calc.start_thread`, never with
+  `threading`: `Thread.start` waits for the new thread, whose first steps can wait for
+  LibreOffice's main lock that listeners and the main thread hold, and Calc then hangs (#55).
 - Keys: a toolkit `XKeyHandler` is registered only while the tree has focus and checks
   `hasFocus()` again for every key. Navigation keys go to the tree (the sidebar swallows what the
   tree ignores); Enter, typed characters, and the menu keys are handled by the list; other
