@@ -145,3 +145,63 @@ def test_pages_refuses_to_remove_previously_deployed_builds(
         cli.write_site(tmp_path, [new])
     cli.write_site(tmp_path, [old, new])
     assert json.loads((tmp_path / "releases.json").read_text()) == [asdict(old), asdict(new)]
+
+
+@pytest.mark.parametrize("missing_asset", [False, True])
+def test_publication_attaches_both_assets_to_draft_before_publishing(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    missing_asset: bool,
+) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["release", "release", "--version", version(), "--publish", "--output", str(tmp_path)],
+    )
+    candidate = version_parts(version())[2] >= 90
+    if candidate:
+        sys.argv.append("--prerelease")
+    monkeypatch.setenv("GITHUB_REF", "refs/heads/main")
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
+    monkeypatch.setenv("RELEASE_COMMIT", "a" * 40)
+    monkeypatch.setattr(cli.subprocess, "check_output", Mock(return_value="a" * 40))
+    monkeypatch.setattr(cli, "paginated", Mock(return_value=[]))
+    monkeypatch.setattr(cli, "previous_builds", Mock(return_value=[]))
+    monkeypatch.setattr(cli, "require_ci", Mock(return_value="https://example.invalid/ci/1"))
+    events: list[str] = []
+
+    def api(path: str, *, method: str = "GET", data: dict[str, object] | None = None) -> Any:
+        events.append(f"{method} {path.rsplit('/', 1)[1]}")
+        if method == "POST" and path.endswith("/refs"):
+            assert data == {"ref": f"refs/tags/{version()}", "sha": "a" * 40}
+        if method == "POST" and path.endswith("/releases"):
+            assert data is not None and data["draft"] is True
+            assert data["target_commitish"] == "a" * 40
+            assert data["prerelease"] == candidate
+            return {"id": 37}
+        if path.endswith("/assets"):
+            names = [f"sheet-manager-{version()}.oxt", f"sheet-manager-{version()}.oxt.sha256"]
+            return [{"name": name} for name in (names[:1] if missing_asset else names)]
+        if method == "PATCH":
+            assert data == {"draft": False, "make_latest": "false" if candidate else "true"}
+        return {}
+
+    def upload(command: list[str], *, check: bool) -> None:
+        assert check and command[:4] == ["gh", "release", "upload", version()]
+        assert [Path(item).name for item in command[4:6]] == [
+            f"sheet-manager-{version()}.oxt",
+            f"sheet-manager-{version()}.oxt.sha256",
+        ]
+        assert "--clobber" not in command
+        events.append("upload")
+
+    monkeypatch.setattr(cli, "api", api)
+    monkeypatch.setattr(cli.subprocess, "run", upload)
+    if missing_asset:
+        with pytest.raises(ValueError, match="exactly the OXT and its checksum"):
+            cli.main()
+    else:
+        cli.main()
+    assert events == ["POST refs", "POST releases", "upload", "GET assets"] + (
+        [] if missing_asset else ["PATCH 37"]
+    )

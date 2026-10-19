@@ -53,14 +53,32 @@ def release_title(version: str, prerelease: bool, target: str = "") -> str:
 
 def changelog_section(text: str, version: str) -> str:
     version_parts(version)
-    headings = list(re.finditer(r"^## (.+)$", text, re.MULTILINE))
+    # A heading inside a fenced example belongs to the notes, not to a new section.
+    headings: list[tuple[int, int, str]] = []
+    fence = ""
+    offset = 0
+    for line in text.splitlines(keepends=True):
+        marker = re.match(r" {0,3}(`{3,}|~{3,})(.*)$", line.rstrip("\r\n"))
+        if fence:
+            if (
+                marker is not None
+                and marker.group(1)[0] == fence[0]
+                and len(marker.group(1)) >= len(fence)
+                and not marker.group(2).strip()
+            ):
+                fence = ""
+        elif marker is not None:
+            fence = marker.group(1)
+        else:
+            heading = re.match(r" {0,3}## +(.+?)\s*#*\s*$", line)
+            if heading is not None:
+                headings.append((offset, offset + len(line), heading.group(1)))
+        offset += len(line)
     sections: list[str] = []
-    for index, heading in enumerate(headings):
-        if re.match(
-            rf"(?:\[{re.escape(version)}\]|{re.escape(version)})(?:\s|$)", heading.group(1)
-        ):
-            end = headings[index + 1].start() if index + 1 < len(headings) else len(text)
-            sections.append(text[heading.end() : end].strip())
+    for index, (_, start, heading) in enumerate(headings):
+        if re.match(rf"(?:\[{re.escape(version)}\]|{re.escape(version)})(?:\s|$)", heading):
+            end = headings[index + 1][0] if index + 1 < len(headings) else len(text)
+            sections.append(text[start:end].strip())
     if len(sections) != 1 or not sections[0]:
         raise ValueError(f"CHANGELOG.md needs exactly one nonempty section for {version}")
     return sections[0] + "\n"
@@ -137,6 +155,8 @@ def feed(builds: list[PublishedBuild], *, stable: bool) -> bytes:
     root = ET.Element(f"{{{ATOM}}}feed")
     ET.SubElement(root, f"{{{ATOM}}}id").text = f"{SITE}/updates/{channel}.xml"
     ET.SubElement(root, f"{{{ATOM}}}title").text = f"Sheet Manager {channel} updates"
+    author = ET.SubElement(root, f"{{{ATOM}}}author")
+    ET.SubElement(author, f"{{{ATOM}}}name").text = "viell"
     selected = sorted(
         (item for item in builds if not stable or not item.prerelease),
         key=lambda item: version_parts(item.version),

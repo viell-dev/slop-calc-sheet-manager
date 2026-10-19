@@ -140,6 +140,13 @@ def test_changelog_extracts_exact_section_with_subheadings_and_no_attribution() 
             changelog_section(bad, "0.1.1" if bad == text else "0.1.0")
 
 
+def test_changelog_preserves_fenced_examples_containing_headings() -> None:
+    for fence in ("```", "~~~~"):
+        notes = f"### Example\n\n{fence}md\n## 0.1.0\n## Example heading\n{fence}\n\n- Rest.\n"
+        text = f"## 0.1.0 - 2026-10-19\n\n{notes}\n## 0.0.90\n\n- Older.\n"
+        assert changelog_section(text, "0.1.0") == notes
+
+
 def test_metadata_floor_and_stable_feed_stay_in_the_package() -> None:
     description = (ROOT / "extension/description.xml").read_bytes()
     version, minimum = package_metadata(description)
