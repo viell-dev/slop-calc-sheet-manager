@@ -30,7 +30,7 @@ jobs:
       - name: Headless integration
         env:
           LANE: ${{ matrix.lane }}
-        run: python3 tools/linux_integration.py "$LANE" --sessions headless --backtrace
+        run: python3 tools/linux_integration.py "$LANE" --sessions headless
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:

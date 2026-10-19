@@ -787,8 +787,34 @@ def measure_large_workbook(context, desktop, count):
     return {"sheets": count, "open_seconds": round(opened, 2), "follow_seconds": round(followed, 2)}
 
 
-def _stall_dump(name):
-    """Diagnostic only: the check stalled; dump the test's threads and interrupt the office."""
+DIAGNOSTIC_MACRO = """
+import faulthandler
+
+_files = []
+
+
+def arm(seconds, path):
+    _files.append(open(path, "w"))
+    faulthandler.dump_traceback_later(seconds, repeat=False, file=_files[-1])
+
+
+def cancel():
+    faulthandler.cancel_dump_traceback_later()
+"""
+
+
+def _office_python(context, function, *arguments):
+    """Diagnostic only: run a function of the macro above in the office's own Python."""
+    factory = context.ServiceManager.createInstanceWithContext(
+        "com.sun.star.script.provider.MasterScriptProviderFactory", context
+    )
+    provider = factory.createScriptProvider("")
+    uri = f"vnd.sun.star.script:sheetmanagerdiag.py${function}?language=Python&location=user"
+    return provider.getScript(uri).invoke(tuple(arguments), (), ())
+
+
+def _stall_dump(name, dump):
+    """Diagnostic only: the check stalled; show both processes' Python threads, stop the office."""
     import faulthandler
     import signal
     import subprocess
@@ -796,22 +822,26 @@ def _stall_dump(name):
     print(f"STALL in {name}: test threads follow", flush=True)
     faulthandler.dump_traceback(file=sys.stdout, all_threads=True)
     sys.stdout.flush()
+    time.sleep(20)
+    print("office Python threads:", flush=True)
+    print(dump.read_text(encoding="utf-8", errors="replace") if dump.exists() else "(none)")
     found = subprocess.run(["pgrep", "-x", "soffice.bin"], capture_output=True, text=True)
-    print("soffice.bin pids:", found.stdout.split(), flush=True)
     for pid in found.stdout.split():
         for task in sorted(Path(f"/proc/{pid}/task").iterdir()):
             try:
                 comm = (task / "comm").read_text().strip()
                 wchan = (task / "wchan").read_text().strip()
-                syscall = (task / "syscall").read_text().strip()[:60]
             except OSError as error:
-                comm, wchan, syscall = "?", "?", str(error)
-            print(f"  task {task.name} {comm} wchan={wchan} syscall={syscall}", flush=True)
-        os.kill(int(pid), signal.SIGINT)
+                comm, wchan = "?", str(error)
+            print(f"  task {task.name} {comm} wchan={wchan}", flush=True)
+        os.kill(int(pid), signal.SIGKILL)
 
 
 def exercise(context, desktop, directory, output, *, headless):
     results: dict[str, object] = {}
+    scripts = Path(directory) / "profile" / "user" / "Scripts" / "python"
+    scripts.mkdir(parents=True, exist_ok=True)
+    (scripts / "sheetmanagerdiag.py").write_text(DIAGNOSTIC_MACRO, encoding="utf-8")
     try:
         for name, check in (
             ("key_constants", check_key_constants),
@@ -824,13 +854,19 @@ def exercise(context, desktop, directory, output, *, headless):
             ("large_workbook", lambda: measure_large_workbook(context, desktop, 1000)),
         ):
             print("sheet list check:", name, flush=True)
-            watchdog = threading.Timer(150, _stall_dump, (name,))
+            if name == "large_workbook":
+                results[name] = check() or True
+                continue
+            dump = Path(output) / f"office-python-{name}.txt"
+            _office_python(context, "arm", 140, str(dump))
+            watchdog = threading.Timer(150, _stall_dump, (name, dump))
             watchdog.daemon = True
             watchdog.start()
             try:
                 results[name] = check() or True
             finally:
                 watchdog.cancel()
+                _office_python(context, "cancel")
     finally:
         for document in _CREATED:
             with suppress(Exception):  # Most are closed already.
