@@ -46,8 +46,6 @@ jobs:
     name: Documentation
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    env:
-      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -60,8 +58,8 @@ jobs:
           node-version-file: .nvmrc
           package-manager-cache: false
       - run: npm ci
-      - name: Generate the feeds that Pages would deploy, from the published releases
-        run: python tools/github_release.py pages --output _site
+      - name: Generate empty feeds offline; Pages checks the live release history when it deploys
+        run: python tools/github_release.py pages --offline --output _site
       - name: Build the user guide; broken links between pages fail the build
         env:
           SHEET_MANAGER_RELEASES: _site/releases.json

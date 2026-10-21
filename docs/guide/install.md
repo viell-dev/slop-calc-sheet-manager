@@ -24,7 +24,7 @@ mainly useful for testing.
 2. In the `slop-calc-sheet-manager` folder, run `python tools/build.py` with Python 3.12 or later.
    On Windows, LibreOffice's own Python works too:
    `& 'C:\Program Files\LibreOffice\program\python.exe' tools/build.py`.
-3. The package is `dist/sheet-manager-0.0.1.oxt`.
+3. The package is `dist/sheet-manager-<version>.oxt`, named after the version it was built as.
 
 To install a package:
 

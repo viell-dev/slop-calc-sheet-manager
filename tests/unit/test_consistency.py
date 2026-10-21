@@ -66,6 +66,7 @@ def readme_region(name: str) -> str:
 
 def bullets(markdown: str, heading: str) -> list[str]:
     """The top-level list items that follow `heading`, joined across wrapped lines."""
+    assert heading in markdown, f"Missing the anchor {heading!r}"
     section = markdown.split(heading, 1)[1]
     items: list[str] = []
     for line in section.splitlines():
@@ -87,13 +88,22 @@ def test_minimum_version_agrees_everywhere() -> None:
     oldest = [int(part) for part in version.split(".")]
     refused = [int(part) for part in pins["unsupported"]["version"].split(".")[:3]]
     assert refused < oldest, "The refusal lane must test a version below the minimum"
+    # Every page that states a lower bound or a refused range must state these versions.
+    refused_text = ".".join(str(part) for part in refused)
+    pages = [ROOT / "README.md", *DOCS.rglob("*.md")]
+    for page in (page for page in pages if "node_modules" not in page.parts):
+        content = text(page)
+        for stated in re.findall(r"(\d+\.\d+\.\d+) or later", content):
+            assert stated == version, (page.name, stated)
+        for stated in re.findall(r"(\d+\.\d+\.\d+) and earlier", content):
+            assert stated == refused_text, (page.name, stated)
 
 
 def test_environment_table_names_the_tested_builds() -> None:
     table = readme_region("environments")
     pins = lanes()
     linux = next(line for line in table.splitlines() if line.startswith("| Linux x86-64"))
-    for lane in ("minimum", "current-26.2", "current-26.8"):
+    for lane in set(pins) - {"unsupported", "windows"}:
         assert pins[lane]["version"] in linux, lane
     windows = next(line for line in table.splitlines() if line.startswith("| Windows x86-64"))
     assert pins["windows"]["version"] in windows

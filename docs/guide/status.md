@@ -11,10 +11,10 @@ what the first release is planned to do.
 - **An empty Sheet Manager deck in Calc's sidebar.** The deck is there, in read-only workbooks
   too, and fills the sidebar as you resize it. It shows nothing yet, and it neither reads nor
   changes the content of your documents.
-- **The operation that will move sheets.** It plans the fewest moves to reach a new order, makes
-  each move one undo step, checks permissions first, and recovers and verifies if a move fails
-  part-way. It is tested against real LibreOffice on workbooks of up to 1,000 sheets. No control
-  reaches it yet.
+- **The operation that will move sheets.** It reaches a new order with the fewest moves and
+  applies the whole change as one undo step. It checks permissions first, and recovers and
+  verifies if a change fails part-way. It is tested against real LibreOffice on workbooks of up to
+  1,000 sheets. No control reaches it yet.
 - **Release and update infrastructure**, with no published build yet. The update feeds are empty.
 
 ## Planned for 0.1.0

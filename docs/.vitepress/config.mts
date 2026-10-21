@@ -40,10 +40,12 @@ function newest(builds: PublishedBuild[], prerelease: boolean): PublishedBuild |
 
 export interface ThemeConfig extends DefaultTheme.Config {
   release: { stable: PublishedBuild | null; prerelease: PublishedBuild | null };
+  commit: string;
+  repository: string;
 }
 
-// The commit the site is built from, for its footer: from Git, or SHEET_MANAGER_DOCS_COMMIT where
-// Git is unavailable, as in a container without it.
+// The commit the site is built from, shown on every page: from Git, or SHEET_MANAGER_DOCS_COMMIT
+// where Git is unavailable, as in a container without it.
 function sourceCommit(): string {
   try {
     return execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
@@ -68,6 +70,8 @@ export default defineConfigWithTheme<ThemeConfig>({
       stable: newest(builds, false),
       prerelease: newest(builds, true),
     },
+    commit,
+    repository,
     nav: [
       { text: "Guide", link: "/guide/status" },
       { text: "Development", link: "/development/" },
@@ -100,7 +104,7 @@ export default defineConfigWithTheme<ThemeConfig>({
       text: "Suggest a change to this page",
     },
     footer: {
-      message: `Built from <a href="${repository}/commit/${commit}">${commit.slice(0, 7)}</a> on main. Released under the <a href="${repository}/blob/main/LICENSE">Mozilla Public License 2.0</a>.`,
+      message: `Released under the <a href="${repository}/blob/main/LICENSE">Mozilla Public License 2.0</a>.`,
       copyright: "Written and maintained by AI agents.",
     },
     search: { provider: "local" },

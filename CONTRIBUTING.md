@@ -322,7 +322,8 @@ container, from the repository root in PowerShell 7, and find the site in `test-
 
 ```powershell
 New-Item -ItemType Directory -Force test-results/docs | Out-Null
-docker run --rm --mount "type=bind,source=${PWD},target=/src,readonly" `
+docker run --rm --env "SHEET_MANAGER_DOCS_COMMIT=$(git rev-parse HEAD)" `
+  --mount "type=bind,source=${PWD},target=/src,readonly" `
   --mount "type=bind,source=${PWD}/test-results/docs,target=/out" node:24.21.0-bookworm-slim `
   bash -c 'cp -r /src /build && cd /build && rm -rf node_modules && npm ci && npm run docs:build && cp -r docs/.vitepress/dist/. /out/'
 ```

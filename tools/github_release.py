@@ -113,8 +113,14 @@ def previous_builds() -> list[PublishedBuild]:
     return [PublishedBuild(**record) for record in records]
 
 
-def write_site(output: Path, builds: list[PublishedBuild]) -> None:
-    validate_history(builds, previous_builds())
+def write_site(output: Path, builds: list[PublishedBuild], *, check_history: bool = True) -> None:
+    """Write the feeds and release history; refuse a history that drops or changes a build.
+
+    Only `pages --offline` skips the check, to give pull request builds a feed site without
+    depending on live release data; it writes empty feeds and is never deployed.
+    """
+    if check_history:
+        validate_history(builds, previous_builds())
     updates = output / "updates"
     updates.mkdir(parents=True, exist_ok=True)
     for stable in (True, False):
@@ -156,7 +162,10 @@ def combine_site(guide: Path, site: Path) -> list[str]:
             raise ValueError(f"The user guide lacks {name}")
     files = sorted(path for path in guide.rglob("*") if path.is_file())
     relative = [path.relative_to(guide).as_posix() for path in files]
-    overlaps = [name for name in relative if (site / name).exists() or name.startswith("updates/")]
+    reserved = {name.split("/")[0] for name in FEED_FILES} | {".nojekyll"}
+    overlaps = [
+        name for name in relative if name.split("/")[0] in reserved or (site / name).exists()
+    ]
     if overlaps:
         raise ValueError(f"The user guide would replace feed site files: {overlaps}")
     for source, name in zip(files, relative, strict=True):
@@ -227,6 +236,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=["release", "pages", "combine"])
     parser.add_argument("--guide", type=Path, help="combine: the built user guide")
+    parser.add_argument(
+        "--offline", action="store_true", help="pages: write empty feeds without reading GitHub"
+    )
     parser.add_argument("--version")
     parser.add_argument("--prerelease", action="store_true")
     parser.add_argument("--target", default="")
@@ -234,6 +246,9 @@ def main() -> None:
     parser.add_argument("--output", type=Path, default=ROOT / "dist/release")
     args = parser.parse_args()
     if args.command == "pages":
+        if args.offline:
+            write_site(args.output, [], check_history=False)
+            return
         write_site(
             args.output, published_builds(paginated(f"repos/{REPOSITORY}/releases?per_page=100"))
         )

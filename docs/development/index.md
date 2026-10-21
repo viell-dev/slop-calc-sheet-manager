@@ -6,12 +6,13 @@ together with the extension's update feeds.
 
 ## Which version it describes
 
-- **Default.** The guide describes the latest release. Anything that exists only in the
-  development version on `main` is marked **Unreleased** where it appears.
-- **Before the first release.** There is no release yet, so the whole guide describes the
-  development version and says so at the top of every page.
-- **The notice at the top** is generated from the published releases when the site is built.
-- **The footer** names the commit that the site was built from.
+- **Default.** The guide describes the latest stable release. Anything not in a stable release yet
+  is marked **Unreleased** where it appears.
+- **Before the first stable release.** While only test builds exist, the guide describes the
+  newest test build and marks what is not in it. Before any release, it describes the development
+  version.
+- **The notice at the top of every page** says which of these applies. It is generated from the
+  published releases when the site is built, and names the commit that the site was built from.
 - **Corrections.** A correction is an ordinary pull request to `main`. The site is rebuilt when it
   merges, so no release has to change, and no tag moves.
 

@@ -225,7 +225,10 @@ def test_the_guide_joins_the_feeds_without_replacing_them(
     assert (site / ".nojekyll").exists()
 
 
-@pytest.mark.parametrize("overlap", ["releases.json", "updates/stable.xml", "updates/other.html"])
+@pytest.mark.parametrize(
+    "overlap",
+    ["releases.json", "releases.json/nested.html", "updates/stable.xml", "updates/other.html"],
+)
 def test_the_guide_may_not_overlap_the_feeds(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, overlap: str
 ) -> None:
@@ -237,6 +240,23 @@ def test_the_guide_may_not_overlap_the_feeds(
         cli.combine_site(guide, site)
     assert {name: (site / name).read_bytes() for name in cli.FEED_FILES} == feeds
     assert not (site / "index.html").exists(), "Nothing is copied when any file overlaps"
+
+
+def test_offline_pages_write_empty_feeds_without_reading_github(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    def no_network(*_: object, **__: object) -> object:
+        raise AssertionError("offline generation must not read GitHub")
+
+    for name in ("previous_builds", "paginated", "download"):
+        monkeypatch.setattr(cli, name, no_network)
+    monkeypatch.setattr(
+        sys, "argv", ["github_release.py", "pages", "--offline", "--output", str(tmp_path)]
+    )
+    cli.main()
+    assert json.loads((tmp_path / "releases.json").read_text()) == []
+    for name in cli.FEED_FILES:
+        assert (tmp_path / name).is_file(), name
 
 
 def test_combining_requires_both_halves(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

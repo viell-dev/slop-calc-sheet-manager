@@ -45,7 +45,9 @@ range and stable patch limit.
    released into a nonempty `## VERSION - YYYY-MM-DD` section in `CHANGELOG.md`, retaining an
    `Unreleased` section above it. The exact section body becomes the release notes; write for
    users, without an agent callout or footer. Update compatibility and installation documentation
-   if needed. Do not change the extension identifier.
+   if needed. Do not change the extension identifier. In the user guide, remove the **Unreleased**
+   markers for what this release contains. For the first release, also rewrite the statements that
+   no release exists; `git grep -n -i "no release" -- docs README.md` finds them.
 2. Run `python tools/check.py` and the relevant LibreOffice integration checks described in
    [CONTRIBUTING.md](CONTRIBUTING.md). Readiness rests on those checks and on CI; no release waits
    on a manual checklist. If an observation that no check can make matters for this release, ask
@@ -139,13 +141,19 @@ Generation and deployment share the `update-feeds` concurrency lock, so queued r
 release data. Both the release workflow's caller job and the standalone Pages workflow hold it
 across the complete build and deployment; locking deployment alone would allow stale builds.
 
-The same deployment serves the user guide. **Pages** builds the guide with VitePress from `main`,
-passing it the release history it has just generated, so the guide's notice names the latest
-release. It then copies the guide into the generated site, and refuses to replace any file there:
-the guide may not write `releases.json` or anything under `updates/`. CI's **Documentation** job
-runs the same generation, build, and combination on every pull request, without deploying. The
-footer of each page, and the run's summary, name the commit the site was built from. No other
-workflow deploys Pages, so a guide deployment and a feed update cannot overwrite each other.
+The same deployment serves the user guide.
+
+- **Building.** **Pages** builds the guide with VitePress from `main`. It passes the guide the
+  release history it has just generated, so that the guide's notice names the latest release.
+- **Combining.** Pages then copies the guide into the generated site, and refuses to replace any
+  file there: the guide may not write `releases.json` or anything under `updates/`.
+- **Pull requests.** CI's **Documentation** job builds and combines the guide on every pull
+  request, against empty feeds generated offline (`pages --offline`), so the live release history
+  cannot block an unrelated pull request. Pages checks the live history when it deploys.
+- **Recording the deployment.** The notice at the top of each page, and the run's summary, name
+  the commit the site was built from.
+- **One workflow.** No other workflow deploys Pages, so a guide deployment and a feed update
+  cannot overwrite each other.
 
 GitHub Pages must use **GitHub Actions** as its source. Set the `github-pages` environment's custom
 deployment policies to branch `main` and tags `[0-9]*`, so manual release events can deploy too.

@@ -208,13 +208,18 @@ reconsider. The owner may report a defect themselves, in their own words.
   `tests/unit/test_consistency.py` compares what can be compared mechanically. Prose is reviewed
   for meaning. After a change that affects the About text or the homepage, read the live settings
   and correct them.
-- **Which version the guide describes.** The guide describes the latest release. Behaviour that
-  exists only on `main` is marked **Unreleased** where it appears, and the release pull request
-  removes the markers for what it releases. Until the first release, the whole guide describes the
-  development version, and its notice says so.
+- **Which version the guide describes.** The guide describes the latest stable release.
+  Behaviour that is not in a stable release yet is marked **Unreleased** where it appears, and
+  the release pull request removes the markers for what it releases.
+  - While only release candidates exist, the guide describes the newest candidate and marks what
+    is not in it.
+  - Before any release, the whole guide describes the development version.
+  - The notice at the top of each page says which of these applies.
+  - The first release pull request also rewrites the guide's statements that no release exists;
+    RELEASING.md lists how to find them.
   - A correction to the guide is an ordinary pull request. It deploys when it merges, and no tag
     moves.
-  - Each page's footer names the commit the site was built from.
+  - The same notice names the commit the site was built from.
 - **How the guide is built.**
   - The guide is built with an exactly pinned VitePress 2 prerelease. CI's **Documentation** job
     builds it and combines it with the feeds on every pull request.
