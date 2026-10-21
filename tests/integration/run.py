@@ -585,12 +585,16 @@ def check_lifecycle(program, package, output) -> dict[str, object]:
             removed = run(str(installer), profile, "remove", IDENTIFIER)
             assert removed.returncode == 0, "Removal failed"
             assert IDENTIFIER not in run(str(installer), profile, "list").stdout
-            leftovers = [
-                str(path.relative_to(profile_path))
+            # LibreOffice keeps a staging copy of each package it added under extensions/tmp;
+            # the installed copy must be gone from every other location.
+            copies = [
+                path.relative_to(profile_path).as_posix()
                 for path in profile_path.rglob("*")
                 if path.name.startswith("sheet-manager")
             ]
+            leftovers = [copy for copy in copies if not copy.startswith("user/extensions/tmp/")]
             assert not leftovers, f"Package files left after removal: {leftovers}"
+            result["staging_copies_after_removal"] = len(copies)
 
             after: dict[str, object] = {}
             result["after_removal"] = after
