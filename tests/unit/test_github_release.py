@@ -196,6 +196,57 @@ def test_pages_refuses_to_remove_previously_deployed_builds(
     assert json.loads((tmp_path / "releases.json").read_text()) == [asdict(old), asdict(new)]
 
 
+def feed_site(monkeypatch: pytest.MonkeyPatch, site: Path) -> None:
+    monkeypatch.setattr(cli, "previous_builds", lambda: [])
+    cli.write_site(site, [])
+
+
+def built_guide(guide: Path, *extra: str) -> None:
+    for name in ("index.html", "404.html", "guide/install.html", "assets/app.js", *extra):
+        (guide / name).parent.mkdir(parents=True, exist_ok=True)
+        (guide / name).write_text(f"guide {name}", encoding="utf-8")
+
+
+def test_the_guide_joins_the_feeds_without_replacing_them(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    site, guide = tmp_path / "site", tmp_path / "guide"
+    feed_site(monkeypatch, site)
+    assert not (site / "index.html").exists(), "The site root belongs to the user guide"
+    feeds = {name: (site / name).read_bytes() for name in cli.FEED_FILES}
+    built_guide(guide)
+    copied = cli.combine_site(guide, site)
+    assert copied == ["404.html", "assets/app.js", "guide/install.html", "index.html"]
+    assert (site / "index.html").read_text(encoding="utf-8") == "guide index.html"
+    assert {name: (site / name).read_bytes() for name in cli.FEED_FILES} == feeds
+    assert (site / ".nojekyll").exists()
+
+
+@pytest.mark.parametrize("overlap", ["releases.json", "updates/stable.xml", "updates/other.html"])
+def test_the_guide_may_not_overlap_the_feeds(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, overlap: str
+) -> None:
+    site, guide = tmp_path / "site", tmp_path / "guide"
+    feed_site(monkeypatch, site)
+    feeds = {name: (site / name).read_bytes() for name in cli.FEED_FILES}
+    built_guide(guide, overlap)
+    with pytest.raises(ValueError, match="would replace feed site files"):
+        cli.combine_site(guide, site)
+    assert {name: (site / name).read_bytes() for name in cli.FEED_FILES} == feeds
+    assert not (site / "index.html").exists(), "Nothing is copied when any file overlaps"
+
+
+def test_combining_requires_both_halves(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    site, guide = tmp_path / "site", tmp_path / "guide"
+    built_guide(guide)
+    with pytest.raises(ValueError, match="feed site lacks"):
+        cli.combine_site(guide, site)
+    feed_site(monkeypatch, site)
+    (guide / "404.html").unlink()
+    with pytest.raises(ValueError, match="user guide lacks 404.html"):
+        cli.combine_site(guide, site)
+
+
 def test_missing_history_only_bootstraps_before_any_version_was_reserved(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -165,6 +165,43 @@ reconsider. The owner may report a defect themselves, in their own words.
 - **Checking new releases.** During maintenance, and before each release, check new LibreOffice
   releases against the overview. Log each check, and each change of state, in the overview.
 
+## Public surfaces and documentation
+
+- **Sources of facts.** Each fact has one source, and every surface that repeats it must agree with
+  that source:
+  - `extension/description.xml`: the identifier, the version, the minimum LibreOffice version,
+    and the update feed;
+  - `ci/libreoffice.json`: the tested LibreOffice builds;
+  - GitHub Releases, and the feeds and `releases.json` that Pages generates from them: what is
+    published;
+  - the README's Status section: what exists and what is planned.
+
+  The surfaces that repeat these facts are:
+  - the README;
+  - the user guide in `docs/`;
+  - SECURITY.md;
+  - CHANGELOG.md;
+  - the release notes;
+  - the repository's About text, homepage, and topics on GitHub.
+- **One delivery.** Update every affected surface in the same pull request.
+  `tests/unit/test_consistency.py` compares what can be compared mechanically. Prose is reviewed
+  for meaning. After a change that affects the About text or the homepage, read the live settings
+  and correct them.
+- **Which version the guide describes.** The guide describes the latest release. Behaviour that
+  exists only on `main` is marked **Unreleased** where it appears, and the release pull request
+  removes the markers for what it releases. Until the first release, the whole guide describes the
+  development version, and its notice says so.
+  - A correction to the guide is an ordinary pull request. It deploys when it merges, and no tag
+    moves.
+  - Each page's footer names the commit the site was built from.
+- **How the guide is built.**
+  - The guide is built with an exactly pinned VitePress 2 prerelease. CI's **Documentation** job
+    builds it and combines it with the feeds on every pull request.
+  - `pages.yml` is the only workflow that deploys Pages. It builds the guide and the feeds
+    together, and refuses any guide file that would replace a feed or the release history.
+- **Guide pages.** Keep every guide page in the sidebar. A new page that users need belongs in the
+  Guide section. Developer reference goes in the Development section.
+
 ## Git and merging
 
 - Pull requests merge with a merge commit after checking the exact head

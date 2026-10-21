@@ -8,6 +8,9 @@ across dozens of others means a long, precise drag, and the alternative, the Mov
 dialog, is buried in a menu. Sheet Manager puts every sheet in one vertical list, as browsers do
 with vertical tabs, where any selection of sheets moves any distance in one drag or one click.
 
+The [user guide](https://viell-dev.github.io/slop-calc-sheet-manager/) covers installation,
+updates, removal, use, known issues, troubleshooting, and reporting a problem.
+
 ## Status
 
 Under development; there is no release yet. What `main` contains today is a foundation: an
@@ -40,6 +43,8 @@ project.
   can be a separate package, such as `python3-uno` on Debian and Ubuntu or `libreoffice-pyuno` on
   Fedora and openSUSE.
 
+<!-- #region environments -->
+
 | Environment                                                                       | Status                                 |
 | --------------------------------------------------------------------------------- | -------------------------------------- |
 | Linux x86-64, libreoffice.org 26.2.1.2, 26.2.6.3, and 26.8.1.1: headless and gtk3 | Verified in CI for every change        |
@@ -49,6 +54,8 @@ project.
 | Flatpak, Snap, Arm builds, and the Windows interface in a visible window          | Expected to work, not verified         |
 | LibreOffice 26.2.0 and earlier                                                    | Unsupported: installation is refused   |
 | LibreOffice without Python support                                                | Unsupported: the extension cannot run  |
+
+<!-- #endregion environments -->
 
 The gtk3 checks run under X11 in a virtual display. If Sheet Manager does not work somewhere it is
 expected to, please [report it](CONTRIBUTING.md#report-a-defect).
