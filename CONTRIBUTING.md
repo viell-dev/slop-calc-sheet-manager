@@ -206,10 +206,28 @@ Image changes retain older `sheet-manager-ci:<version>-<fingerprint>` tags local
 
 Logs, actual office/Python versions, package inventory, and results are in `test-results/` and in
 CI artifacts. The runner records the exit status of each office session and rejects nonzero exits,
-forced shutdowns after a 30-second grace period, and fatal-error messages, including during
-termination. The intermittent gtk3 abort of
-[issue #8](https://github.com/viell-dev/slop-calc-sheet-manager/issues/8) was a LibreOffice crash
-when a test closed Writer within milliseconds of opening it
+forced shutdowns after a 30-second grace period, fatal-error messages, and LibreOffice's own crash
+dumps, including during termination. It copies those dumps into the results as `crash-*.dmp`,
+with the `dump.ini` that names the version and the last commands; on Windows a crashed office
+exits with status 0, so the dump is the sign there
+([#48](https://github.com/viell-dev/slop-calc-sheet-manager/issues/48)). Dumps from a startup
+attempt that is retried are kept and listed as `office_startup_crash_dumps` without failing the
+session. On Windows the tests close Calc documents on LibreOffice's main thread, as its user
+interface does: closing one from the test's own thread crashed LibreOffice when a toolbar update
+was pending
+([#47](https://github.com/viell-dev/slop-calc-sheet-manager/issues/47)). If such a close does not
+finish within 60 seconds, the session fails, no further close is tried, and the runner stops its
+own office instead of asking it to terminate
+([#50](https://github.com/viell-dev/slop-calc-sheet-manager/issues/50)). A terminate request that
+does not return within 30 seconds, for example because a painted office asks whether to save a
+workbook that a failed check left open, also ends in a forced shutdown and a failed session,
+rather than a run that hangs until the job's time limit
+([#40](https://github.com/viell-dev/slop-calc-sheet-manager/issues/40)). The painted resize check
+repeats its initial geometry request when the new window is maximized after it, and records every
+request and measurement in `resize-initial-*.json`
+([#9](https://github.com/viell-dev/slop-calc-sheet-manager/issues/9)). The intermittent gtk3
+abort of [issue #8](https://github.com/viell-dev/slop-calc-sheet-manager/issues/8) was a
+LibreOffice crash when a test closed Writer within milliseconds of opening it
 ([#30](https://github.com/viell-dev/slop-calc-sheet-manager/issues/30)); the runner now waits a
 second before closing Writer.
 Windows CI verifies a pinned MSI before silently installing it; this installation script is for
