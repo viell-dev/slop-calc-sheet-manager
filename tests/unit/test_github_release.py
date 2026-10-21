@@ -197,7 +197,10 @@ def test_pages_refuses_to_remove_previously_deployed_builds(
 
 
 def feed_site(monkeypatch: pytest.MonkeyPatch, site: Path) -> None:
-    monkeypatch.setattr(cli, "previous_builds", lambda: [])
+    def no_history() -> list[PublishedBuild]:
+        return []
+
+    monkeypatch.setattr(cli, "previous_builds", no_history)
     cli.write_site(site, [])
 
 

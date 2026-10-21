@@ -53,7 +53,9 @@ def lanes() -> dict[str, dict[str, str]]:
 
 def readme_region(name: str) -> str:
     match = re.search(
-        rf"<!-- #region {name} -->\n(.*?)\n<!-- #endregion {name} -->", text(ROOT / "README.md"), re.S
+        rf"<!-- #region {name} -->\n(.*?)\n<!-- #endregion {name} -->",
+        text(ROOT / "README.md"),
+        re.S,
     )
     assert match, f"README.md lacks the {name} region"
     return match[1]
@@ -94,7 +96,9 @@ def test_environment_table_names_the_tested_builds() -> None:
     assert pins["windows"]["version"] in windows
     refused = ".".join(pins["unsupported"]["version"].split(".")[:3])
     assert f"| LibreOffice {refused} and earlier " in table
-    assert "<!--@include: ../../README.md#environments-->" in text(DOCS / "guide" / "known-issues.md")
+    assert "<!--@include: ../../README.md#environments-->" in text(
+        DOCS / "guide" / "known-issues.md"
+    )
 
 
 def test_identifier_and_feed_agree_everywhere() -> None:

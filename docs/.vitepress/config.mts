@@ -89,6 +89,7 @@ export default defineConfigWithTheme<ThemeConfig>({
         text: "Development",
         items: [
           { text: "About this site", link: "/development/" },
+          { text: "Verification map", link: "/verification" },
           { text: "Reordering interface", link: "/reordering" },
         ],
       },

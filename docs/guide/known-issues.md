@@ -8,8 +8,8 @@ Every change runs against official LibreOffice builds from libreoffice.org, in t
 
 "Verified" means automated checks on every change. They install the extension, open and resize the
 deck, check read-only workbooks and Writer, press modifier keys in a real window, convert a file
-headlessly, and remove the extension. The checks and their limits are listed in the project's
-[verification map](https://github.com/viell-dev/slop-calc-sheet-manager/blob/main/docs/verification.md).
+headlessly, and remove the extension. The checks and their limits are listed in the
+[verification map](../verification.md).
 
 If Sheet Manager does not work in an environment where it is expected to, please
 [report it](./report.md).

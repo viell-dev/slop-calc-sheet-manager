@@ -23,6 +23,7 @@ together with the extension's update feeds.
   that the maintaining agents follow, including the safety rules for changing documents.
 - [RELEASING.md](https://github.com/viell-dev/slop-calc-sheet-manager/blob/main/RELEASING.md):
   versions, release candidates, publication, and the update feeds.
+- [Verification map](../verification.md): each promise, the checks that show it, and their limits.
 - [Reordering interface](../reordering.md): the contract between the planned sheet list and the
   operation that moves sheets.
 
