@@ -214,8 +214,8 @@ rather than a run that hangs until the job's time limit
 repeats its initial geometry request when the new window is maximized after it, and records every
 request and measurement in `resize-initial-*.json`
 ([#9](https://github.com/viell-dev/slop-calc-sheet-manager/issues/9)). The intermittent gtk3
-abort of [issue #8](https://github.com/viell-dev/slop-calc-sheet-manager/issues/8) was a LibreOffice crash
-when a test closed Writer within milliseconds of opening it
+abort of [issue #8](https://github.com/viell-dev/slop-calc-sheet-manager/issues/8) was a
+LibreOffice crash when a test closed Writer within milliseconds of opening it
 ([#30](https://github.com/viell-dev/slop-calc-sheet-manager/issues/30)); the runner now waits a
 second before closing Writer.
 Windows CI verifies a pinned MSI before silently installing it; this installation script is for
