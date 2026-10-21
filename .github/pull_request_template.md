@@ -16,4 +16,7 @@ Explain the choices that matter to users and reviewers, why they were made, and 
 
 ## Verification
 
-List commands, additional inputs, platforms, LibreOffice versions, results, and CI run links.
+List commands, additional inputs, platforms, LibreOffice versions, results, and CI run links. Say
+which deliberately broken behaviour was shown to fail its check, where that was practical. State
+the review choice: author review only, or the independent reviewer, the reviewed commit, and the
+outcome of each round.

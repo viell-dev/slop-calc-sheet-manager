@@ -13,17 +13,29 @@ note.
 ## Report a defect
 
 Search the open and closed [issues](https://github.com/viell-dev/slop-calc-sheet-manager/issues)
-first, then open one with:
+first, then open one with the
+[bug report form](https://github.com/viell-dev/slop-calc-sheet-manager/issues/new?template=bug.yml).
+It asks for:
 
-- the Sheet Manager version, from Tools ▸ Extension Manager;
-- the LibreOffice version and user interface, from Help ▸ About (the "VCL" line, such as `win`,
-  `gtk3`, or `kf6`), and the operating system;
+- the Sheet Manager version, from Tools ▸ Extension Manager, or the commit you built;
+- LibreOffice's version information: in Help ▸ About, select **Copy Version Information**. It
+  includes the operating system and the user interface (the "VCL" line, such as `win`, `gtk3`, or
+  `kf6`);
+- how LibreOffice was installed, such as from libreoffice.org or as a distribution package;
 - the exact steps, from opening the workbook to the problem;
 - what happened and what you expected;
 - a workbook that shows it, made for the report: never attach a real workbook or a screenshot of
   one with private content.
 
-Report vulnerabilities privately, as [SECURITY.md](SECURITY.md) describes.
+Suggest an improvement to existing behaviour or a new capability with the other forms, and ask how
+something works with the question form.
+[#33](https://github.com/viell-dev/slop-calc-sheet-manager/issues/33) lists known defects in
+LibreOffice that affect Sheet Manager. Report vulnerabilities privately, as
+[SECURITY.md](SECURITY.md) describes.
+
+Maintainers label each issue with one `Type:` label, at most one `Status:` label, and `Needs: Owner`
+or `Needs: Human` when a particular person has to act. The labels and their meanings are in
+[`.github/labels.json`](.github/labels.json).
 
 ## Set up
 
@@ -105,7 +117,7 @@ Release tests cover version ordering, candidate policy, changelog extraction, an
 The integration runner also sends generated loopback HTTP feeds through LibreOffice's update
 parser and checks candidate compatibility through its deployment API. The update dialog itself
 has no public headless offered-update API; see [RELEASING.md](RELEASING.md#verification-boundary)
-for the tested boundary and the remaining desktop check. Release dry runs and publication follow
+for the tested boundary and the remaining gap. Release dry runs and publication follow
 [RELEASING.md](RELEASING.md).
 
 The reorder suite exhausts all permutations through seven sheets and all scenario partitions and
