@@ -121,8 +121,9 @@ such as Dependabot, the agent that merges it does the author review.
 
 Labels follow [`.github/labels.json`](.github/labels.json), which copies the owner's common catalog
 for agent-maintained projects. A project-specific label, added only for a distinction the catalog
-lacks, goes after the catalog's entries in the file and uses one of its prefixes. `python tools/labels.py check` compares GitHub's labels with the file. After a change to the
-file reaches `main`, relabel the items of any label it removes or renames, then run
+lacks, goes after the catalog's entries in the file and uses one of its prefixes.
+`python tools/labels.py check` compares GitHub's labels with the file. After a change to the file
+reaches `main`, relabel the items of any label it removes or renames, then run
 `python tools/labels.py sync`. Rename a label on GitHub, rather than deleting and recreating it,
 when its items should keep it.
 
@@ -139,8 +140,8 @@ when its items should keep it.
 
 ## Defects in LibreOffice
 
-LibreOffice is the extension's only runtime upstream. The owner has decided that agents submit no bug
-reports or patches to LibreOffice: reporting there is not a route this project uses, so every
+LibreOffice is the extension's only runtime upstream. The owner has decided that agents submit no
+bug reports or patches to LibreOffice: reporting there is not a route this project uses, so every
 defect is handled here, with a workaround or a documented limit. Do not ask the owner to
 reconsider. The owner may report a defect themselves, in their own words.
 
@@ -170,13 +171,17 @@ reconsider. The owner may report a defect themselves, in their own words.
 - **Checking new releases.** During maintenance, and before each release, check new LibreOffice
   releases against the overview. Log each check, and each change of state, in the overview.
 - **Other dependencies.** Before reporting a defect to any other dependency's project, read its
-  contribution guide, code of conduct, templates, and AI policy, and record them in the overview.
-  Respect a prohibition. Disclose that an agent wrote the report.
-  - Where that project's acceptance of agent-written reports is unknown, send one initial report,
-    invite its maintainers to say if they want no further agent reports, and send more only after
-    a maintainer's response establishes acceptance. Silence and automated replies do not establish
-    it.
-  - Offer code only once code contributions are shown to be welcome, and stop when asked.
+  contribution guide, code of conduct, templates, and AI policy, and record in the overview what
+  they permit, with the evidence. Disclose that an agent wrote the report.
+  - **A prohibition settles the route.** Handle the defect here, and do not ask the owner to
+    overrule the prohibition or to set up an account for it.
+  - **Access needs acceptance first.** Establish that the intended agent-written contribution is
+    acceptable before asking the owner for any account, tracker access, or credentials.
+  - **Unknown acceptance.** Where the project's acceptance of agent-written reports is unknown,
+    send one initial report and invite its maintainers to say if they want no further agent
+    reports. Send more only after a maintainer's response establishes acceptance. Silence,
+    automated replies, and the absence of a ban do not establish it.
+  - **Code.** Offer code only once code contributions are shown to be welcome, and stop when asked.
 
 ## Git and merging
 
