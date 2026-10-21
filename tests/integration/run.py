@@ -620,7 +620,7 @@ def check_lifecycle(program, package, output, result) -> None:
             leftovers = installed_copies(profile_path, package)
             assert not leftovers, f"Package files left after removal: {leftovers}"
             staging = profile_path / "user" / "extensions" / "tmp"
-            result["staging_files_after_removal"] = sum(1 for _ in staging.rglob("*"))
+            result["staging_entries_after_removal"] = sum(1 for _ in staging.rglob("*"))
 
             after: dict[str, object] = {}
             result["after_removal"] = after
