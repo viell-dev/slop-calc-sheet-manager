@@ -92,6 +92,10 @@ def test_label_differences_name_missing_changed_and_extra_labels() -> None:
     present = {"B": label("B"), "C": label("C", description="old"), "D": label("D")}
     assert differences(wanted, present) == (["A"], ["C"], ["D"])
     assert differences(wanted, dict(wanted)) == ([], [], [])
+    # GitHub label names are case-insensitive: a change of case is an update, not a new label.
+    assert differences(
+        {"Needs: Owner": label("Needs: Owner")}, {"Needs: owner": label("Needs: owner")}
+    ) == ([], ["Needs: Owner"], [])
 
 
 def test_dependabot_labels_exist() -> None:

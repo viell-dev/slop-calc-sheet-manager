@@ -88,14 +88,16 @@ where they can:
 Every pull request gets its author's review of the complete diff after the checks pass, trying
 inputs the tests do not cover. The author decides whether a separate reviewer is also needed,
 weighing sensitivity, complexity, impact, and uncertainty, and records the choice in the
-"Verification" section. A small diff can still be high risk.
+"Verification" section. A small diff can still be high risk. For a pull request opened by a bot,
+such as Dependabot, the agent that merges it does the author review.
 
 - **Independent review is required** for:
   - changes to code that changes documents or decides whether it may, which the safety invariants
     above cover;
   - the release and Pages workflows, the release tooling, and the update feeds;
   - compatibility metadata such as the minimum LibreOffice version;
-  - any change that loosens a safety invariant, a verification rule, or this section;
+  - any change that loosens a safety invariant, a verification rule, a required check or what it
+    exercises, or this section;
   - every release pull request.
 
   The extension changes the user's documents, and its safety depends on how LibreOffice behaves
@@ -118,8 +120,8 @@ weighing sensitivity, complexity, impact, and uncertainty, and records the choic
 ## Issues and labels
 
 Labels follow [`.github/labels.json`](.github/labels.json), which copies the owner's common catalog
-for agent-maintained projects; add a project-specific label only for a distinction the catalog
-lacks. `python tools/labels.py check` compares GitHub's labels with the file. After a change to the
+for agent-maintained projects. A project-specific label, added only for a distinction the catalog
+lacks, goes after the catalog's entries in the file and uses one of its prefixes. `python tools/labels.py check` compares GitHub's labels with the file. After a change to the
 file reaches `main`, relabel the items of any label it removes or renames, then run
 `python tools/labels.py sync`. Rename a label on GitHub, rather than deleting and recreating it,
 when its items should keep it.
@@ -137,7 +139,7 @@ when its items should keep it.
 
 ## Defects in LibreOffice
 
-LibreOffice is the extension's only upstream. The owner has decided that agents submit no bug
+LibreOffice is the extension's only runtime upstream. The owner has decided that agents submit no bug
 reports or patches to LibreOffice: reporting there is not a route this project uses, so every
 defect is handled here, with a workaround or a documented limit. Do not ask the owner to
 reconsider. The owner may report a defect themselves, in their own words.
@@ -151,12 +153,15 @@ reconsider. The owner may report a defect themselves, in their own words.
   - **Resolved upstream:** a fix is verified in a named LibreOffice release, and the overview
     tracks what remains here, such as adoption or removing a workaround.
   - **Upstream route unavailable:** used only for defects in a dependency other than LibreOffice
-    whose project is unresponsive or declines the contribution. Defects in LibreOffice itself use
-    the first three states, since reports there are ruled out for every defect.
+    whose project is unresponsive, declines the relevant collaboration, or prohibits the proposed
+    contribution. Defects in LibreOffice itself use the first three states, since reports there are
+    ruled out for every defect.
 
   The overview also records the user-visible limits and any release impact.
 - **One issue per defect,** labelled `Status: Blocked`. It records the affected versions, the
-  impact, a reproduction, the local handling, and what would reopen work.
+  impact, a reproduction, the local handling, and what would reopen work. An issue for actionable
+  local work around a defect, such as reducing a workaround's cost, stays open with its own
+  status and is linked from the overview.
 - **Parked issues.** When no local work remains, close the issue as not planned and keep
   `Status: Blocked`: it is parked, not fixed or declined.
 - **Reopening.** Reopen the issue when a LibreOffice release fixes the defect, so that the
@@ -164,6 +169,14 @@ reconsider. The owner may report a defect themselves, in their own words.
   Close it as completed only after verifying the local result.
 - **Checking new releases.** During maintenance, and before each release, check new LibreOffice
   releases against the overview. Log each check, and each change of state, in the overview.
+- **Other dependencies.** Before reporting a defect to any other dependency's project, read its
+  contribution guide, code of conduct, templates, and AI policy, and record them in the overview.
+  Respect a prohibition. Disclose that an agent wrote the report.
+  - Where that project's acceptance of agent-written reports is unknown, send one initial report,
+    invite its maintainers to say if they want no further agent reports, and send more only after
+    a maintainer's response establishes acceptance. Silence and automated replies do not establish
+    it.
+  - Offer code only once code contributions are shown to be welcome, and stop when asked.
 
 ## Git and merging
 

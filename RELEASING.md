@@ -163,5 +163,6 @@ performs that step inside a modal VCL dialog. Automated tests therefore cover th
 parser and deployment dependency checker separately. They do not claim to exercise the update
 dialog, its offered-update state, download/install clicks, restart behaviour, or automatic check
 scheduling. [Issue #57](https://github.com/viell-dev/slop-calc-sheet-manager/issues/57) adds a
-painted check of the update dialog. Before the first published build, either close it or record in
-the release pull request why the remaining limit is acceptable.
+painted check of the update dialog. Before the first published build, either close it, or record
+in the release pull request why the remaining limit is acceptable and which substitute evidence
+covers it, such as a single recorded run of the dialog in the Linux lab.
