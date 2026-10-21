@@ -46,6 +46,11 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   and whether a person reviewed it.
 - Required the painted gtk3 checks for merging again, after 180 painted sessions on `main` ran
   without a failure ([#32](https://github.com/viell-dev/slop-calc-sheet-manager/issues/32)).
+- Added issue forms for bug reports, improvements, feature requests, and questions. The bug form
+  asks for LibreOffice's copied version information, how LibreOffice was installed, and a workbook
+  made for the report. The README now says which LibreOffice versions and environments are
+  verified, expected to work, or unsupported
+  ([#56](https://github.com/viell-dev/slop-calc-sheet-manager/issues/56)).
 - Made the integration checks fail visibly instead of passing or hanging:
   - They keep LibreOffice's crash dumps, and fail a session whose office crashed even though it
     exited with status 0 on Windows

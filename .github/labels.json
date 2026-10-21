@@ -2,47 +2,52 @@
   {
     "name": "Type: Bug",
     "color": "d73a4a",
-    "description": "Incorrect behaviour, broken functionality, or a regression."
+    "description": "Incorrect behavior, broken functionality, or a regression."
   },
   {
-    "name": "Type: Feature",
+    "name": "Type: Enhancement",
+    "color": "a2eeef",
+    "description": "Improve an existing capability, including usability or performance."
+  },
+  {
+    "name": "Type: Feature Request",
     "color": "0e8a16",
-    "description": "A new capability or an improvement to an existing one."
+    "description": "Add a new independently useful capability."
   },
   {
     "name": "Type: Maintenance",
     "color": "6a737d",
-    "description": "Dependencies, CI, releases, refactoring, or repository upkeep."
+    "description": "Dependencies, CI, tests, releases, refactoring, or repository upkeep."
   },
   {
     "name": "Type: Documentation",
     "color": "0075ca",
-    "description": "Documentation or contributor instructions."
+    "description": "Documentation, examples, or contributor instructions."
+  },
+  {
+    "name": "Type: Discussion",
+    "color": "5319e7",
+    "description": "Explore a design or project direction before an actionable proposal."
   },
   {
     "name": "Type: Question",
     "color": "d876e3",
-    "description": "How the extension works or how to use it."
+    "description": "Ask how the project works or how to use it."
   },
   {
     "name": "Status: Confirmed",
     "color": "0e8a16",
-    "description": "Reproduced defect or accepted request; not a delivery commitment."
+    "description": "Reproduced defect or accepted actionable request; not a delivery commitment."
   },
   {
     "name": "Status: Needs Information",
     "color": "fbca04",
-    "description": "Waiting for details, answers, or validation results."
-  },
-  {
-    "name": "Status: Needs Owner Testing",
-    "color": "c5def5",
-    "description": "Waiting for a check on a real desktop by the owner."
+    "description": "Waiting for reporter details, answers, or validation results."
   },
   {
     "name": "Status: Blocked",
     "color": "d93f0b",
-    "description": "Accepted work waiting on an identified external dependency."
+    "description": "Waiting on a stated condition; parked dependency issues retain it while closed."
   },
   {
     "name": "Status: Can't Reproduce",
@@ -52,11 +57,31 @@
   {
     "name": "Status: Duplicate",
     "color": "cfd3d7",
-    "description": "Already tracked elsewhere; the canonical item is linked."
+    "description": "Already tracked elsewhere; link the canonical issue or PR."
   },
   {
     "name": "Status: Won't Do",
     "color": "666666",
     "description": "Declined as out of scope or unsuitable in its proposed form."
+  },
+  {
+    "name": "Needs: Human",
+    "color": "fbca04",
+    "description": "Needs human observation or action that a suitable person can provide."
+  },
+  {
+    "name": "Needs: Owner",
+    "color": "c5def5",
+    "description": "Needs the owner's decision, identity, access, or personal observation."
+  },
+  {
+    "name": "Good First Issue",
+    "color": "7057ff",
+    "description": "A scoped, ready task with a clear approach and beginner-friendly validation."
+  },
+  {
+    "name": "Help Wanted",
+    "color": "008672",
+    "description": "A scoped, accepted task for which outside contributions are welcome."
   }
 ]
