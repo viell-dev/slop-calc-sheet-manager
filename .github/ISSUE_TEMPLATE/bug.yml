@@ -1,0 +1,89 @@
+name: Bug report
+description: Report a crash, wrong behaviour, or another reproducible defect
+labels: ["Type: Bug"]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Thank you for reporting. Never attach a real workbook or a screenshot of one with private
+        content: make a small workbook for the report instead, with made-up sheet names and data.
+        If an AI agent wrote or submitted this report, say so at the start of your first answer
+        below: which agent, for whom, and whether a person reviewed it.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before reporting
+      options:
+        - label: I searched the open and closed issues and found no report of this.
+          required: true
+        - label: Any workbook or screenshot I attach was made for this report and holds no private content.
+          required: true
+        - label: >-
+            I follow the project's [code of
+            conduct](https://github.com/viell-dev/slop-calc-sheet-manager/blob/main/CODE_OF_CONDUCT.md).
+          required: true
+  - type: input
+    id: extension-version
+    attributes:
+      label: Sheet Manager version
+      description: >-
+        From Tools ▸ Extension Manager. If you built it yourself, the commit it was built from.
+      placeholder: "As shown in Tools ▸ Extension Manager"
+    validations:
+      required: true
+  - type: textarea
+    id: libreoffice-version
+    attributes:
+      label: LibreOffice version information
+      description: >-
+        Open Help ▸ About, select **Copy Version Information**, and paste it here. It includes the
+        version, the operating system, and the user interface (the "VCL" line, such as `win`,
+        `gtk3`, or `kf6`).
+      render: text
+    validations:
+      required: true
+  - type: dropdown
+    id: installation
+    attributes:
+      label: How LibreOffice is installed
+      options:
+        - Download from libreoffice.org
+        - Linux distribution package
+        - Flatpak
+        - Snap
+        - Other, or not sure
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Every step, from opening the workbook to the problem.
+      placeholder: |
+        1. Open the attached workbook.
+        2. ...
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened
+      description: Include any error message exactly as shown. Paste screenshots here.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: workbook
+    attributes:
+      label: Workbook
+      description: >-
+        Attach a small workbook made for this report that shows the problem, or describe one: how
+        many sheets, which are hidden, protected, or scenarios, and anything else that matters. Say
+        whether the problem also happens without Sheet Manager installed, if you know.
+    validations:
+      required: true

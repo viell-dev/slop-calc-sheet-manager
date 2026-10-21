@@ -47,9 +47,12 @@ range and stable patch limit.
    users, without an agent callout or footer. Update compatibility and installation documentation
    if needed. Do not change the extension identifier.
 2. Run `python tools/check.py` and the relevant LibreOffice integration checks described in
-   [CONTRIBUTING.md](CONTRIBUTING.md). Have the candidate tested on real desktops with the batched
-   checklist in [AGENTS.md](AGENTS.md#testing-with-the-owner). Complete independent review, then
-   merge the preparation PR and wait for **CI** on its exact `main` commit to succeed.
+   [CONTRIBUTING.md](CONTRIBUTING.md). Readiness rests on those checks and on CI; no release waits
+   on a manual checklist. If an observation that no check can make matters for this release, ask
+   for it as [AGENTS.md](AGENTS.md#requests-to-the-owner) describes, and say in the preparation PR
+   whether it blocks the release. Complete the release review that
+   [AGENTS.md](AGENTS.md#review) requires, then merge the preparation PR and wait for **CI** on its
+   exact `main` commit to succeed.
 3. In Actions, select **Release → Run workflow**, choose `main`, enter the exact version, select
    `prerelease` for a candidate, and leave `dry_run` checked. For a next-major candidate supply
    its `target`; next-minor candidates derive it automatically. Inspect the resulting artifact:
@@ -159,5 +162,7 @@ provider parses descriptions without evaluating dependencies; the UI's
 performs that step inside a modal VCL dialog. Automated tests therefore cover the real feed
 parser and deployment dependency checker separately. They do not claim to exercise the update
 dialog, its offered-update state, download/install clicks, restart behaviour, or automatic check
-scheduling. Check the Extension Manager's visible update behaviour on real desktops before the
-first release.
+scheduling. [Issue #57](https://github.com/viell-dev/slop-calc-sheet-manager/issues/57) adds a
+painted check of the update dialog. Before the first published build, either close it, or record
+in the release pull request why the remaining limit is acceptable and which substitute evidence
+covers it, such as a single recorded run of the dialog in the Linux lab.
