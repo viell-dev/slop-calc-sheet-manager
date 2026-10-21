@@ -113,10 +113,13 @@ def office_session(
             if package is not None
             else None
         )
-        (output / f"install-{headless}-{attempt}.log").write_text(
-            install.stdout + install.stderr if install is not None else "Extension not installed\n",
-            encoding="utf-8",
-        )
+        if install is not None:
+            installed = install.stdout + install.stderr
+        elif profile_directory is not None:
+            installed = "Nothing installed by this session; the caller supplied the profile\n"
+        else:
+            installed = "Extension not installed\n"
+        (output / f"install-{headless}-{attempt}.log").write_text(installed, encoding="utf-8")
         if install is not None and install.returncode:
             temporary.cleanup()
             raise AssertionError(f"Installation failed: {install.stdout}\n{install.stderr}")
@@ -215,6 +218,10 @@ def office_session(
             )
             startup["office_crash_dumps"] = dumps
             startup_dumps.extend(dumps)
+            if profile_directory is not None:
+                # A reused profile outlives the attempt; its kept dumps must not count again.
+                for dump in (profile_path / "crash").glob("*.dmp"):
+                    dump.unlink()
             log.close()
             (output / f"startup-{headless}-{attempt}.json").write_text(
                 json.dumps(startup, indent=2) + "\n", encoding="utf-8"
@@ -507,18 +514,37 @@ def assert_deck(context, desktop, *, installed):
     close_after(context, document)
 
 
-def check_lifecycle(program, package, output) -> dict[str, object]:
+def installed_copies(profile_path, package):
+    """Copies of the extension in a profile, outside LibreOffice's staging area for added packages.
+
+    A copy is the package file itself, or an unpacked description naming the extension's
+    identifier, so it is found whatever file name the package was installed under.
+    """
+    copies = []
+    for path in profile_path.rglob("*"):
+        relative = path.relative_to(profile_path).as_posix()
+        if relative.startswith("user/extensions/tmp/") or not path.is_file():
+            continue
+        if path.name == package.name or (
+            path.name == "description.xml"
+            and IDENTIFIER in path.read_text(encoding="utf-8", errors="replace")
+        ):
+            copies.append(relative)
+    return copies
+
+
+def check_lifecycle(program, package, output, result) -> None:
     """Install, convert a file headlessly, and remove the extension in one private profile.
 
     The conversion runs with the extension installed, where a sidebar crash was reported for
     LibreOffice 26.8.0 (tdf#173676). After removal, a new office must have neither the deck nor
-    the panel factory, and the profile must hold no copy of the package.
+    the panel factory, and the profile must hold no copy of the package. `result` is filled in
+    place, so that it is recorded even when a check fails.
     """
     output.mkdir(parents=True, exist_ok=True)
     installer = program / ("unopkg.exe" if os.name == "nt" else "unopkg")
     office = program / ("soffice.exe" if os.name == "nt" else "soffice")
     log: list[str] = []
-    result: dict[str, object] = {}
     with tempfile.TemporaryDirectory(prefix="sheet-manager-lifecycle-") as name:
         base = Path(name)
         profile_path = base / "profile"
@@ -543,6 +569,10 @@ def check_lifecycle(program, package, output) -> dict[str, object]:
             added = run(str(installer), profile, "add", str(package))
             assert added.returncode == 0, "Installation failed"
             assert IDENTIFIER in run(str(installer), profile, "list").stdout
+            # The search below must find the installed copy before it can show the copy is gone.
+            installed = installed_copies(profile_path, package)
+            assert installed, "No installed copy found in the profile"
+            result["installed_copies"] = installed
             source = base / "synthetic.csv"
             source.write_text("Sheet,Value\nAlfa,1\nBravo,2\n", encoding="utf-8")
             converted = base / "converted"
@@ -587,14 +617,10 @@ def check_lifecycle(program, package, output) -> dict[str, object]:
             assert IDENTIFIER not in run(str(installer), profile, "list").stdout
             # LibreOffice keeps a staging copy of each package it added under extensions/tmp;
             # the installed copy must be gone from every other location.
-            copies = [
-                path.relative_to(profile_path).as_posix()
-                for path in profile_path.rglob("*")
-                if path.name.startswith("sheet-manager")
-            ]
-            leftovers = [copy for copy in copies if not copy.startswith("user/extensions/tmp/")]
+            leftovers = installed_copies(profile_path, package)
             assert not leftovers, f"Package files left after removal: {leftovers}"
-            result["staging_copies_after_removal"] = len(copies)
+            staging = profile_path / "user" / "extensions" / "tmp"
+            result["staging_files_after_removal"] = sum(1 for _ in staging.rglob("*"))
 
             after: dict[str, object] = {}
             result["after_removal"] = after
@@ -611,7 +637,6 @@ def check_lifecycle(program, package, output) -> dict[str, object]:
             result["removed"] = True
         finally:
             (output / "lifecycle.log").write_text("\n".join(log), encoding="utf-8")
-    return result
 
 
 def main():
@@ -703,9 +728,9 @@ def main():
                     result["assertions_passed"] = True
             if not arguments.without_extension and arguments.suites == "all" and sessions != "gtk3":
                 # Once per run, in a profile of its own; headless, so painted jobs skip it.
-                results.append(
-                    {"lifecycle": check_lifecycle(program, package, output / "lifecycle")}
-                )
+                lifecycle: dict[str, object] = {}
+                results.append({"lifecycle": lifecycle})
+                check_lifecycle(program, package, output / "lifecycle", lifecycle)
     finally:
         (output / "results.json").write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(results, indent=2))
