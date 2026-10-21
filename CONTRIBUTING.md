@@ -304,6 +304,35 @@ same Node, and a unit test fails until they match. That test accepts setup-node 
 keys or `uses`. Moving to a new major version of Python or Node is a deliberate change made by
 hand.
 
+## Documentation
+
+The user guide is in `docs/` and is built with VitePress, whose exact version `package.json` pins.
+It is published on [GitHub Pages](https://viell-dev.github.io/slop-calc-sheet-manager/) together
+with the update feeds. To work on it, select the Node.js version in `.nvmrc` (`nvm use` or
+`fnm use`), then run:
+
+```sh
+npm ci
+npm run docs:dev
+```
+
+`npm run docs:build` builds it as CI does; a broken link between pages fails the build. Some
+Windows security policies block the native module that VitePress's bundler loads. Then build in a
+container, from the repository root in PowerShell 7, and find the site in `test-results/docs/`:
+
+```powershell
+New-Item -ItemType Directory -Force test-results/docs | Out-Null
+docker run --rm --env "SHEET_MANAGER_DOCS_COMMIT=$(git rev-parse HEAD)" `
+  --mount "type=bind,source=${PWD},target=/src,readonly" `
+  --mount "type=bind,source=${PWD}/test-results/docs,target=/out" node:24.21.0-bookworm-slim `
+  bash -c 'cp -r /src /build && cd /build && rm -rf node_modules && npm ci && npm run docs:build && cp -r docs/.vitepress/dist/. /out/'
+```
+
+Write for users of the extension. A user-visible change updates the guide in the same pull
+request. Until the change is released, mark it **Unreleased**. Every page is listed in the sidebar
+in `docs/.vitepress/config.mts`, and `tests/unit/test_consistency.py` checks the sidebar and the
+facts that the README, the guide, and the extension's metadata share.
+
 ## Pull requests
 
 Every change to `main` goes through a pull request with passing checks and is merged with a merge

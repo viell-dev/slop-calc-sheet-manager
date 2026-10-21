@@ -186,6 +186,48 @@ reconsider. The owner may report a defect themselves, in their own words.
     automated replies, and the absence of a ban do not establish it.
   - **Code.** Offer code only once code contributions are shown to be welcome, and stop when asked.
 
+## Public surfaces and documentation
+
+- **Sources of facts.** Each fact has one source, and every surface that repeats it must agree with
+  that source:
+  - `extension/description.xml`: the identifier, the version, the minimum LibreOffice version,
+    and the update feed;
+  - `ci/libreoffice.json`: the tested LibreOffice builds;
+  - GitHub Releases, and the feeds and `releases.json` that Pages generates from them: what is
+    published;
+  - the README's Status section: what exists and what is planned.
+
+  The surfaces that repeat these facts are:
+  - the README;
+  - the user guide in `docs/`;
+  - SECURITY.md;
+  - CHANGELOG.md;
+  - the release notes;
+  - the repository's About text, homepage, and topics on GitHub.
+- **One delivery.** Update every affected surface in the same pull request.
+  `tests/unit/test_consistency.py` compares what can be compared mechanically. Prose is reviewed
+  for meaning. After a change that affects the About text or the homepage, read the live settings
+  and correct them.
+- **Which version the guide describes.** The guide describes the latest stable release.
+  Behaviour that is not in a stable release yet is marked **Unreleased** where it appears, and
+  the release pull request removes the markers for what it releases.
+  - While only release candidates exist, the guide describes the newest candidate and marks what
+    is not in it.
+  - Before any release, the whole guide describes the development version.
+  - The notice at the top of each page says which of these applies.
+  - The first release pull request also rewrites the guide's statements that no release exists;
+    RELEASING.md lists how to find them.
+  - A correction to the guide is an ordinary pull request. It deploys when it merges, and no tag
+    moves.
+  - The same notice names the commit the site was built from.
+- **How the guide is built.**
+  - The guide is built with an exactly pinned VitePress 2 prerelease. CI's **Documentation** job
+    builds it and combines it with the feeds on every pull request.
+  - `pages.yml` is the only workflow that deploys Pages. It builds the guide and the feeds
+    together, and refuses any guide file that would replace a feed or the release history.
+- **Guide pages.** Keep every guide page in the sidebar. A new page that users need belongs in the
+  Guide section. Developer reference goes in the Development section.
+
 ## Git and merging
 
 - Pull requests merge with a merge commit after checking the exact head

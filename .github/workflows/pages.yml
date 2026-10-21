@@ -1,4 +1,4 @@
-name: Update feeds
+name: Pages
 
 on:
   push:
@@ -12,6 +12,7 @@ on:
 
 permissions: {}
 
+# The update feeds and the user guide share one Pages deployment, built together here.
 # Generation and deployment share a lock: a queued run reads fresh release data.
 concurrency:
   group: update-feeds
@@ -38,6 +39,23 @@ jobs:
           python-version: "3.12"
       - name: Generate feeds from published OXTs, refusing history changes or regressions
         run: python tools/github_release.py pages --output _site
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - run: npm ci
+      - name: Build the user guide for the releases just read
+        env:
+          SHEET_MANAGER_RELEASES: _site/releases.json
+        run: npm run docs:build
+      - name: Combine the guide with the feeds, refusing to replace any feed file
+        run: python tools/github_release.py combine --guide docs/.vitepress/dist --output _site
+      - name: Record the deployed content
+        run: |
+          {
+            echo "Site built from $(git rev-parse HEAD) on main."
+            echo "Published builds in the feeds: $(python -c 'import json; print(len(json.load(open("_site/releases.json"))))')"
+          } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: _site
