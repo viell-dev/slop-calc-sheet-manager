@@ -10,7 +10,11 @@ with vertical tabs, where any selection of sheets moves any distance in one drag
 
 ## Status
 
-Under development; there is no release yet. The first release, 0.1.0, is planned to offer:
+Under development; there is no release yet. What `main` contains today is a foundation: an
+installable extension that adds an empty Sheet Manager deck to Calc's sidebar, and the tested
+operation layer that will move sheets for it. The sheet list is being built in
+[#21](https://github.com/viell-dev/slop-calc-sheet-manager/pull/21). The first release, 0.1.0, is
+planned to offer:
 
 - every sheet in document order, kept in sync with changes from anywhere, with the active sheet,
   hidden sheets, tab colours, and protection shown;
@@ -23,9 +27,10 @@ Under development; there is no release yet. The first release, 0.1.0, is planned
 - one undo step per change, and respect for protected and read-only documents.
 
 Sheet Manager is written and maintained by AI agents, and no person reviews the code. A change is
-accepted on its tests, on CI on Linux and Windows, on an independent review by an agent from a
-different model provider than the one that wrote it, and, before a release, on checks on real
-desktops. [AGENTS.md](AGENTS.md) holds the agents' rules that are specific to this project.
+accepted on its tests and on CI against real LibreOffice builds on Linux and Windows. Changes to
+code that changes documents, to the release process, and to these safeguards also get an
+independent review by a separate agent. [AGENTS.md](AGENTS.md) holds the agents' rules for this
+project.
 
 ## Requirements
 
@@ -34,8 +39,19 @@ desktops. [AGENTS.md](AGENTS.md) holds the agents' rules that are specific to th
 - LibreOffice's Python support. Builds from libreoffice.org include it. On Linux distributions it
   can be a separate package, such as `python3-uno` on Debian and Ubuntu or `libreoffice-pyuno` on
   Fedora and openSUSE.
-- Windows and Linux are tested. macOS, Qt/KDE desktops, Flatpak, and Snap are expected to work but
-  have not been verified yet.
+
+| Environment                                                                       | Status                                 |
+| --------------------------------------------------------------------------------- | -------------------------------------- |
+| Linux x86-64, libreoffice.org 26.2.1.2, 26.2.6.3, and 26.8.1.1: headless and gtk3 | Verified in CI for every change        |
+| Windows x86-64, libreoffice.org 26.8.1.1: headless                                | Verified in CI for every change        |
+| Other 26.2 and 26.8 releases, and later versions, from libreoffice.org            | Expected to work, not verified         |
+| Distribution packages, other interfaces such as kf6 or gtk4, Wayland, macOS       | Expected to work, not verified         |
+| Flatpak, Snap, Arm builds, and the Windows interface in a visible window          | Expected to work, not verified         |
+| LibreOffice 26.2.0 and earlier                                                    | Unsupported: installation is refused   |
+| LibreOffice without Python support                                                | Unsupported: the extension cannot run  |
+
+The gtk3 checks run under X11 in a virtual display. If Sheet Manager does not work somewhere it is
+expected to, please [report it](CONTRIBUTING.md#report-a-defect).
 
 ## Install and update
 
@@ -59,11 +75,13 @@ for the release procedure and version rules.
 
 ## Known issues
 
-- In LibreOffice 26.8.0 and 26.8.1, Duplicate Sheet and Move or Copy Sheet copy formulas with
-  relative sheet references incorrectly
-  ([tdf#173608](https://bugs.documentfoundation.org/show_bug.cgi?id=173608)); 26.8.2 fixes it.
-  These commands are LibreOffice's own and behave the same whether started from the tab bar or from
-  Sheet Manager.
+- The deck is empty until the sheet list lands; `main` has no sheet commands yet.
+- Planned for 0.1.0: the sheet tab menu will run LibreOffice's own Duplicate Sheet and Move or Copy
+  Sheet. In LibreOffice 26.8.0 and 26.8.1 these commands copy formulas with relative sheet
+  references incorrectly ([tdf#173608](https://bugs.documentfoundation.org/show_bug.cgi?id=173608)),
+  whether they are started from the tab bar or from the menu. LibreOffice's fix is due in 26.8.2.
+- Defects in LibreOffice that affect Sheet Manager, and how each is handled, are listed in
+  [#33](https://github.com/viell-dev/slop-calc-sheet-manager/issues/33).
 
 ## Contributing, security, and licence
 

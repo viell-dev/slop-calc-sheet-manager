@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/viell-dev/slop-calc-sheet-manager/security/advisories/new
+    about: Report it privately. Do not open a public issue for a vulnerability.
+  - name: Status and planned features
+    url: https://github.com/viell-dev/slop-calc-sheet-manager#status
+    about: What the extension does today and what the first release is planned to offer.
