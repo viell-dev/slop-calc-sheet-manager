@@ -135,9 +135,9 @@ labelled `Status: Won't Do`.
   jobs without requiring a display in headless jobs. Keep shared lifecycle changes additive.
   A new document's window can be maximized after the runner's first geometry request (#9), so
   `exercise()` repeats that setup request until four consecutive measurements agree; never retry
-  the resize assertions themselves. The office's terminate request runs with a time limit: a dialog such as
-  "Save Document?" for a workbook that a failed check left modified holds it, and the runner then
-  stops the office and records a forced shutdown instead of hanging (#40).
+  the resize assertions themselves. The office's terminate request runs with a time limit: a
+  dialog such as "Save Document?" for a workbook that a failed check left modified holds it, and
+  the runner then stops the office and records a forced shutdown instead of hanging (#40).
 - PyUNO exceptions reject a new `__traceback__`, so a UNO exception leaving a `@contextmanager`
   block, such as `office_session`, arrives as a RuntimeException about a traceback object
   ([#41](https://github.com/viell-dev/slop-calc-sheet-manager/issues/41)). Keep UNO calls whose

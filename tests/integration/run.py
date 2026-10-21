@@ -325,8 +325,8 @@ def exercise(context, desktop, directory, output, *, screenshot):
     # gtk3 can report a 475px frame height for a 500px native request (#9).
     # Establish the actual baseline, then require both frame and panel to grow by 150px.
     # The new window can also be maximized after that request has taken effect (#9), so the
-    # baseline must hold for four consecutive samples, 0.75 s, and a window found at another size
-    # is asked again. Only this setup request repeats; the resize assertions never do.
+    # baseline must hold for four consecutive samples, about a second, and a window found at
+    # another size is asked again. Only this setup request repeats; the resize assertions never do.
     previous: tuple[int, ...] | None = None
     steady = 0
     measurements: list[object] = []
@@ -364,7 +364,7 @@ def exercise(context, desktop, directory, output, *, screenshot):
     request_initial_geometry()
     try:
         frame_before, before = wait_for(
-            stable_geometry, "two matching initial frame/panel measurements"
+            stable_geometry, "four matching initial frame/panel measurements"
         )
     finally:
         (output / f"resize-initial-{not screenshot}.json").write_text(
