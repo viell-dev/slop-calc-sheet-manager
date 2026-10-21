@@ -9,11 +9,13 @@ import importlib.util
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
 import time
 import uuid
+import zipfile
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, cast
@@ -22,7 +24,7 @@ import uno
 import unohelper
 from com.sun.star.beans import PropertyValue
 from com.sun.star.lang import XEventListener
-from main_thread import close_document
+from main_thread import close_after, close_document
 from office_process import (
     assert_clean_shutdown,
     end_office,
@@ -34,6 +36,7 @@ from teardown import stalled_callbacks, start_session
 
 FACTORY = "dev.viell.sheetmanager.PanelFactory"
 DECK = "SheetManagerDeck"
+IDENTIFIER = "dev.viell.sheetmanager"
 # LibreOffice defect #30: on gtk3, a new Writer window reads the clipboard within milliseconds
 # and releases LibreOffice's lock while it waits; closing the document from this process during
 # that wait crashes the office (#8). Closing 100 ms or more after loading never crashed.
@@ -72,7 +75,10 @@ def office_session(
     headless,
     backtrace=False,
     startup_attempts=3,
+    profile_directory=None,
 ):
+    # `profile_directory` reuses an existing private profile, such as one prepared with unopkg;
+    # by default each attempt gets a new one inside its temporary directory.
     # Retry only startup, before opening documents or making test assertions. Windows
     # occasionally loses soffice.bin just after a successful UNO connection. Such an attempt's
     # crash dumps are kept and listed, but do not fail a session whose retry starts cleanly.
@@ -81,7 +87,8 @@ def office_session(
     for attempt in range(startup_attempts):
         temporary = tempfile.TemporaryDirectory(prefix="sheet-manager-integration-")
         directory = Path(temporary.name)
-        profile = "-env:UserInstallation=" + (directory / "profile").as_uri()
+        profile_path = profile_directory or directory / "profile"
+        profile = "-env:UserInstallation=" + profile_path.as_uri()
         pipe = "sheet_manager_" + uuid.uuid4().hex
         environment = os.environ.copy()
         environment.pop("WAYLAND_DISPLAY", None)
@@ -204,7 +211,7 @@ def office_session(
                 trace_path.write_bytes(generated_trace.read_bytes())
                 startup["office_backtrace"] = trace_path.name
             dumps = retain_crash_dumps(
-                directory / "profile" / "crash", output, f"crash-{headless}-{attempt}"
+                profile_path / "crash", output, f"crash-{headless}-{attempt}"
             )
             startup["office_crash_dumps"] = dumps
             startup_dumps.extend(dumps)
@@ -240,7 +247,7 @@ def office_session(
                         trace_path.write_bytes(generated_trace.read_bytes())
                     result["office_backtrace"] = trace_path.name
                 result["office_crash_dumps"] = retain_crash_dumps(
-                    directory / "profile" / "crash", output, f"crash-{headless}-{attempt}"
+                    profile_path / "crash", output, f"crash-{headless}-{attempt}"
                 )
             finally:
                 log.close()
@@ -486,6 +493,123 @@ def check_refusal(program, package, output) -> dict[str, object]:
         return {"refused": True, "dependency_error": True, "not_installed": True}
 
 
+def assert_deck(context, desktop, *, installed):
+    """Open a Calc document and check whether Sheet Manager's deck and factory are present."""
+    document = desktop.loadComponentFromURL("private:factory/scalc", "_blank", 0, ())
+    try:
+        decks = document.getCurrentController().getSidebar().getDecks()
+        assert decks.hasByName(DECK) is installed, f"Deck present: {decks.hasByName(DECK)}"
+        factory = context.ServiceManager.createInstanceWithContext(FACTORY, context)
+        assert (factory is not None) is installed, f"Factory present: {factory is not None}"
+    except BaseException as failure:
+        close_after(context, document, failure)
+        raise
+    close_after(context, document)
+
+
+def check_lifecycle(program, package, output) -> dict[str, object]:
+    """Install, convert a file headlessly, and remove the extension in one private profile.
+
+    The conversion runs with the extension installed, where a sidebar crash was reported for
+    LibreOffice 26.8.0 (tdf#173676). After removal, a new office must have neither the deck nor
+    the panel factory, and the profile must hold no copy of the package.
+    """
+    output.mkdir(parents=True, exist_ok=True)
+    installer = program / ("unopkg.exe" if os.name == "nt" else "unopkg")
+    office = program / ("soffice.exe" if os.name == "nt" else "soffice")
+    log: list[str] = []
+    result: dict[str, object] = {}
+    with tempfile.TemporaryDirectory(prefix="sheet-manager-lifecycle-") as name:
+        base = Path(name)
+        profile_path = base / "profile"
+        profile = "-env:UserInstallation=" + profile_path.as_uri()
+        runtime = base / "runtime"
+        runtime.mkdir(mode=0o700)
+        environment = os.environ.copy()
+        for variable in ("WAYLAND_DISPLAY", "DISPLAY"):
+            environment.pop(variable, None)
+        environment["XDG_RUNTIME_DIR"] = str(runtime)
+        environment["SAL_USE_VCLPLUGIN"] = "svp"
+
+        def run(*command: str, timeout: float = 90) -> subprocess.CompletedProcess[str]:
+            completed = subprocess.run(
+                list(command), env=environment, capture_output=True, text=True, timeout=timeout
+            )
+            log.append(f"$ {' '.join(command)}\n{completed.stdout}{completed.stderr}")
+            log.append(f"exit {completed.returncode}\n")
+            return completed
+
+        try:
+            added = run(str(installer), profile, "add", str(package))
+            assert added.returncode == 0, "Installation failed"
+            assert IDENTIFIER in run(str(installer), profile, "list").stdout
+            source = base / "synthetic.csv"
+            source.write_text("Sheet,Value\nAlfa,1\nBravo,2\n", encoding="utf-8")
+            converted = base / "converted"
+            conversion = run(
+                str(office),
+                profile,
+                "--headless",
+                "--norestore",
+                "--nologo",
+                "--nolockcheck",
+                "--convert-to",
+                "ods",
+                "--outdir",
+                str(converted),
+                str(source),
+                timeout=180,
+            )
+            assert conversion.returncode == 0, "Headless conversion failed"
+            target = converted / "synthetic.ods"
+            assert target.exists() and zipfile.is_zipfile(target), "No converted workbook"
+            with zipfile.ZipFile(target) as workbook:
+                assert "Bravo" in workbook.read("content.xml").decode("utf-8")
+            dumps = retain_crash_dumps(profile_path / "crash", output, "crash-conversion")
+            assert not dumps, f"The office crashed during conversion: {dumps}"
+            result["converted_with_extension"] = True
+
+            before: dict[str, object] = {}
+            result["before_removal"] = before
+            (output / "before").mkdir(exist_ok=True)
+            with office_session(
+                program,
+                None,
+                output / "before",
+                before,
+                headless=True,
+                profile_directory=profile_path,
+            ) as (context, desktop, _):
+                assert_deck(context, desktop, installed=True)
+
+            removed = run(str(installer), profile, "remove", IDENTIFIER)
+            assert removed.returncode == 0, "Removal failed"
+            assert IDENTIFIER not in run(str(installer), profile, "list").stdout
+            leftovers = [
+                str(path.relative_to(profile_path))
+                for path in profile_path.rglob("*")
+                if path.name.startswith("sheet-manager")
+            ]
+            assert not leftovers, f"Package files left after removal: {leftovers}"
+
+            after: dict[str, object] = {}
+            result["after_removal"] = after
+            (output / "after").mkdir(exist_ok=True)
+            with office_session(
+                program,
+                None,
+                output / "after",
+                after,
+                headless=True,
+                profile_directory=profile_path,
+            ) as (context, desktop, _):
+                assert_deck(context, desktop, installed=False)
+            result["removed"] = True
+        finally:
+            (output / "lifecycle.log").write_text("\n".join(log), encoding="utf-8")
+    return result
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--program", type=Path, required=True)
@@ -521,6 +645,7 @@ def main():
     ):
         for artifact in output.glob(pattern):
             artifact.unlink()
+    shutil.rmtree(output / "lifecycle", ignore_errors=True)
     package = arguments.oxt.resolve()
     program = arguments.program.resolve()
     # Add once for all sessions; feature suites exercise packaged modules, not src/.
@@ -572,6 +697,11 @@ def main():
                                         encoding="utf-8",
                                     )
                     result["assertions_passed"] = True
+            if not arguments.without_extension and arguments.suites == "all" and sessions != "gtk3":
+                # Once per run, in a profile of its own; headless, so painted jobs skip it.
+                results.append(
+                    {"lifecycle": check_lifecycle(program, package, output / "lifecycle")}
+                )
     finally:
         (output / "results.json").write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(results, indent=2))
