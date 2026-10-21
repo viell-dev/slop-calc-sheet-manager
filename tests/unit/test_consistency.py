@@ -10,6 +10,9 @@ import json
 import re
 import xml.etree.ElementTree as ElementTree
 from pathlib import Path
+from typing import Any, cast
+
+import yaml
 
 from tools.build import ROOT
 
@@ -115,6 +118,32 @@ def test_planned_features_match_the_readme() -> None:
     readme = bullets(text(ROOT / "README.md"), "planned to offer:\n")
     guide = bullets(text(DOCS / "guide" / "status.md"), "The first release is planned to offer:\n")
     assert readme and readme == guide
+
+
+def ci_job_names() -> set[str]:
+    """The names CI reports for its jobs, with each matrix entry's values filled in."""
+    workflow = yaml.load(text(ROOT / ".github" / "workflows" / "ci.yml"), Loader=yaml.BaseLoader)
+    names: set[str] = set()
+    for job in cast(dict[str, dict[str, Any]], workflow["jobs"]).values():
+        template = cast(str, job["name"])
+        matrix = cast(dict[str, Any], job.get("strategy", {}).get("matrix", {}))
+        entries = cast(list[dict[str, str]], matrix.get("include", [])) or [
+            {key: value} for key, values in matrix.items() for value in cast(list[str], values)
+        ]
+        for entry in entries or [{}]:
+            name = template
+            for key, value in entry.items():
+                name = name.replace("${{ matrix." + key + " }}", value)
+            names.add(name)
+    return names
+
+
+def test_recorded_ruleset_requires_exactly_the_ci_jobs() -> None:
+    ruleset = json.loads(text(ROOT / ".github" / "rulesets" / "main.json"))
+    rule = next(rule for rule in ruleset["rules"] if rule["type"] == "required_status_checks")
+    required = {check["context"] for check in rule["parameters"]["required_status_checks"]}
+    assert required == ci_job_names()
+    assert rule["parameters"]["strict_required_status_checks_policy"] is False
 
 
 def test_every_guide_page_is_in_the_sidebar_and_every_link_has_a_page() -> None:
