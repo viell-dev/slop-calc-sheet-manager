@@ -7,8 +7,8 @@ body:
       value: >-
         Thank you for reporting. Never attach a real workbook or a screenshot of one with private
         content: make a small workbook for the report instead, with made-up sheet names and data.
-        If an AI agent wrote or submitted this report, say so at the start of the description:
-        which agent, for whom, and whether a person reviewed it.
+        If an AI agent wrote or submitted this report, say so at the start of your first answer
+        below: which agent, for whom, and whether a person reviewed it.
   - type: checkboxes
     id: checks
     attributes:
@@ -28,7 +28,7 @@ body:
       label: Sheet Manager version
       description: >-
         From Tools ▸ Extension Manager. If you built it yourself, the commit it was built from.
-      placeholder: "0.1.0"
+      placeholder: "As shown in Tools ▸ Extension Manager"
     validations:
       required: true
   - type: textarea

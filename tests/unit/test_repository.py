@@ -35,6 +35,8 @@ def test_label_catalog_is_well_formed() -> None:
     catalog = labels()
     names = [label["name"] for label in catalog]
     assert len(names) == len(set(names)), "duplicate label names"
+    # GitHub compares label names case-insensitively, and so does tools/labels.py.
+    assert len({name.casefold() for name in names}) == len(names), "names differing only in case"
     for label in catalog:
         assert set(label) == {"name", "color", "description"}, label
         assert COLOR.fullmatch(label["color"]), label
@@ -92,6 +94,10 @@ def test_label_differences_name_missing_changed_and_extra_labels() -> None:
     present = {"B": label("B"), "C": label("C", description="old"), "D": label("D")}
     assert differences(wanted, present) == (["A"], ["C"], ["D"])
     assert differences(wanted, dict(wanted)) == ([], [], [])
+    # GitHub label names are case-insensitive: a change of case is an update, not a new label.
+    assert differences(
+        {"Needs: Owner": label("Needs: Owner")}, {"Needs: owner": label("Needs: owner")}
+    ) == ([], ["Needs: Owner"], [])
 
 
 def test_dependabot_labels_exist() -> None:

@@ -301,8 +301,10 @@ commit. Contributions are made under the [Mozilla Public License 2.0](LICENSE).
 
 - Describe the problem, the resulting behaviour, and the decisions made and why, for a reader who
   will not read the diff. Link the issue.
-- Add a "Verification" section: the commands run, the inputs tried beyond the tests, and the
-  platforms and LibreOffice versions checked.
+- Add a "Verification" section: the commands run, the inputs tried beyond the tests, the
+  platforms and LibreOffice versions checked, and any behaviour you broke on purpose to show that
+  a check catches it. Maintainers add how the change was reviewed, as
+  [AGENTS.md](AGENTS.md#review) describes.
 - Update every document, test, and setting that describes what you changed, in the same pull
   request, and add the change to the `Unreleased` section of [CHANGELOG.md](CHANGELOG.md).
 - Keep changes scoped, and state remaining limits.

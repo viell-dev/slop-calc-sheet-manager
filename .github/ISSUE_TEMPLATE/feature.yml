@@ -7,8 +7,8 @@ body:
       value: >-
         Check the [status](https://github.com/viell-dev/slop-calc-sheet-manager#status) first: some
         features are planned but not built yet. To change how something that exists works, use the
-        improvement form. If an AI agent wrote or submitted this, say so at the start: which agent,
-        for whom, and whether a person reviewed it.
+        improvement form. If an AI agent wrote or submitted this, say so at the start of your first
+        answer below: which agent, for whom, and whether a person reviewed it.
   - type: checkboxes
     id: checks
     attributes:
