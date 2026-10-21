@@ -46,6 +46,17 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   and whether a person reviewed it.
 - Required the painted gtk3 checks for merging again, after 180 painted sessions on `main` ran
   without a failure ([#32](https://github.com/viell-dev/slop-calc-sheet-manager/issues/32)).
+- Made the integration checks fail visibly instead of passing or hanging:
+  - They keep LibreOffice's crash dumps, and fail a session whose office crashed even though it
+    exited with status 0 on Windows
+    ([#48](https://github.com/viell-dev/slop-calc-sheet-manager/issues/48)).
+  - On Windows they close test workbooks on LibreOffice's main thread
+    ([#47](https://github.com/viell-dev/slop-calc-sheet-manager/issues/47)).
+  - They stop an office whose callback or terminate request stalls
+    ([#50](https://github.com/viell-dev/slop-calc-sheet-manager/issues/50),
+    [#40](https://github.com/viell-dev/slop-calc-sheet-manager/issues/40)).
+  - They repeat the painted resize check's setup when the new window is maximized late
+    ([#9](https://github.com/viell-dev/slop-calc-sheet-manager/issues/9)).
 
 ## 0.0.1 - Development baseline (unpublished)
 
