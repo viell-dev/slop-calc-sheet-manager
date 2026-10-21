@@ -103,6 +103,10 @@ different zlib versions cannot change the result. Add new shipped modules to the
 
 ## Tests
 
+[docs/verification.md](docs/verification.md) maps each promise the extension makes to the checks
+that verify it, where they run, and what they do not show. Update it in the same pull request as a
+change to a promise or to its checks.
+
 Unit tests need no LibreOffice and run as part of the checks. To run them alone:
 
 ```powershell
@@ -162,6 +166,22 @@ real Shift, Ctrl, and Alt keys with `xdotool` while the panel is shown. Every wo
 and loaded visibly, even when the office process itself is headless. It retries only startup, up to
 three times, to tolerate a Windows crash just after connecting. It never attaches to an existing
 office or uses the normal LibreOffice profile.
+
+Once per run that includes a headless session, with the extension installed and all suites
+enabled, the runner also checks the extension's lifecycle in a profile of its own:
+
+1. It installs the OXT with `unopkg`.
+2. It converts a synthetic CSV file with `soffice --headless --convert-to ods`, with the extension
+   installed.
+3. It confirms the deck and the panel factory in a new office.
+4. It removes the extension.
+5. It confirms that a new office has neither. It also confirms that no installed copy is left
+   outside LibreOffice's own staging area, `user/extensions/tmp`. A copy is found by its
+   description naming the extension's identifier, whatever its file name, and the same search must
+   find the copy before removal.
+
+Its logs are in `lifecycle/` in the runner's output directory, `test-results/<lane>/` for the
+Linux lanes.
 
 On Windows, build and test the installed LibreOffice with its bundled Python:
 
