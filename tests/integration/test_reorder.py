@@ -3,13 +3,14 @@
 import json
 import statistics
 import time
-from contextlib import contextmanager
 from typing import Any, cast
 from unittest.mock import patch
 
 import uno
 from com.sun.star.awt import Rectangle
 from com.sun.star.beans import PropertyValue
+from main_thread import close_after, close_document
+from teardown import Configured
 
 from sheet_manager.reorder import Action, plan_move, plan_order
 from sheet_manager.uno_reorder import apply_order, preflight, snapshot
@@ -25,8 +26,8 @@ def order(document):
     return tuple(document.Sheets.ElementNames)
 
 
-@contextmanager
 def undo_capacity(context, steps):
+    """Set the undo limit for a `with` block; restored after it unless a callback stalled (#51)."""
     # The context belongs to this runner's private office/profile, never the user profile.
     provider = context.ServiceManager.createInstanceWithContext(
         "com.sun.star.configuration.ConfigurationProvider", context
@@ -36,14 +37,16 @@ def undo_capacity(context, steps):
         (prop("nodepath", "/org.openoffice.Office.Common/Undo"),),
     )
     original = access.getPropertyValue("Steps")
-    try:
-        access.setPropertyValue("Steps", steps)
+
+    def set_steps(value):
+        access.setPropertyValue("Steps", value)
         access.commitChanges()
-        yield
-    finally:
-        access.setPropertyValue("Steps", original)
-        access.commitChanges()
+
+    def restore():
+        set_steps(original)
         access.dispose()
+
+    return Configured(lambda: set_steps(steps), restore)
 
 
 def workbook(desktop, count=7):
@@ -275,7 +278,7 @@ def assert_permissions(context, desktop, document, directory):
     other = workbook(desktop, 2)
     other.CurrentController.Frame.activate()
     refused("Activate")
-    other.close(True)
+    close_document(context, other)
     document.CurrentController.Frame.activate()
     observed = snapshot(document)
     plan = plan_move(observed.sheets, [order(document)[0]], "bottom")
@@ -302,8 +305,10 @@ def assert_permissions(context, desktop, document, directory):
         plan = plan_move(observed.sheets, [order(readonly)[0]], "bottom")
         assert readonly.isReadonly()
         assert apply_order(context, readonly, observed, plan).status == "refused"
-    finally:
-        readonly.close(True)
+    except BaseException as failure:
+        close_after(context, readonly, failure)
+        raise
+    close_after(context, readonly)
     document.CurrentController.Frame.activate()
 
 
@@ -354,8 +359,10 @@ def assert_scenarios(context, desktop):
             assert base.Scenarios.ElementNames == expected
             document.UndoManager.undo()
         assert not document.Sheets.getByName("CaseOne").IsVisible
-    finally:
-        document.close(True)
+    except BaseException as failure:
+        close_after(context, document, failure)
+        raise
+    close_after(context, document)
 
 
 def populated_workbook(desktop, count):
@@ -455,8 +462,10 @@ def performance(context, desktop):
                     }
                 )
                 print(json.dumps(results[-1]), flush=True)
-        finally:
-            document.close(True)
+        except BaseException as failure:
+            close_after(context, document, failure)
+            raise
+        close_after(context, document)
     return results
 
 
@@ -524,8 +533,10 @@ def exercise(context, desktop, directory, output):
             document.UndoManager.undo()
             assert order(document) == original
         assert_permissions(context, desktop, document, directory)
-    finally:
-        document.close(True)
+    except BaseException as failure:
+        close_after(context, document, failure)
+        raise
+    close_after(context, document)
     assert_scenarios(context, desktop)
     with undo_capacity(context, 2):
         assert_scenarios(context, desktop)

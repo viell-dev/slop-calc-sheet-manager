@@ -67,6 +67,9 @@ where they can:
 
 ## Verification
 
+- [docs/verification.md](docs/verification.md) maps each promise to the checks that show it, where
+  they run, their limits, and the checks shown to fail when deliberately broken. Change it in the
+  same pull request as a promise or a check.
 - Before implementing an issue, reproduce or measure its claim on `main` and record, with the
   evidence, whether it is accepted, narrowed, or declined. Reports from agents get the same
   scrutiny as any other.
@@ -277,6 +280,36 @@ reconsider. The owner may report a defect themselves, in their own words.
   `--sessions headless|gtk3|both` selects sessions; default headless. Add real-input UI tests to
   the painted path in `exercise()` (`screenshot=True`), so they join the separate `linux-gtk3`
   jobs without requiring a display in headless jobs. Keep shared lifecycle changes additive.
+  A new document's window can be maximized after the runner's first geometry request (#9), so
+  `exercise()` repeats that setup request until four consecutive measurements agree; never retry
+  the resize assertions themselves. The office's terminate request runs with a time limit: a
+  dialog such as "Save Document?" for a workbook that a failed check left modified holds it, and
+  the runner then stops the office and records a forced shutdown instead of hanging (#40).
+- PyUNO exceptions reject a new `__traceback__`, so a UNO exception leaving a `@contextmanager`
+  block, such as `office_session`, arrives as a RuntimeException about a traceback object
+  ([#41](https://github.com/viell-dev/slop-calc-sheet-manager/issues/41)). Keep UNO calls whose
+  exceptions a caller catches out of generator-based context managers; in a failed run, read the
+  first traceback.
+- On Windows, a Calc document closed from the test's own thread, which is a UNO bridge thread in
+  the office, crashes LibreOffice when one of its toolbars has an update pending: the close
+  releases LibreOffice's lock while it destroys native windows, and the main thread then updates
+  a toolbar control being disposed
+  ([#47](https://github.com/viell-dev/slop-calc-sheet-manager/issues/47)). The user interface
+  closes on the main thread, where this cannot happen. Close every Calc document in the tests and
+  the workbook generator through `main_thread.close_document`, which on Windows closes inside an
+  `AsyncCallback` notification, on the main thread; close in place of a `finally` clause with
+  `close_after`, and set office settings for a block with `teardown.Configured`. A callback that
+  does not finish in time is recorded in `teardown` (#50): no further close, suite, or settings
+  restore is tried (#51), the session fails without an earlier failure being hidden, and the
+  runner stops its own office process tree instead of asking it to terminate, which would wait
+  for the stuck main thread too. A crashed office exits with status 0 on Windows
+  ([#48](https://github.com/viell-dev/slop-calc-sheet-manager/issues/48)), so the runner copies
+  LibreOffice's own crash dumps from the profile into the results as `crash-*.dmp` and fails a
+  session whose office left one; a retried startup attempt's dumps are kept but do not fail a
+  clean retry. GitHub's Windows runners have CDB, not on `PATH`, at
+  `C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe`; with it,
+  `cdb -z <dump> -y "srv*<cache>*https://dev-downloads.libreoffice.org/symstore/symbols;srv*<cache>*https://msdl.microsoft.com/download/symbols" -c ".ecxr; !analyze -v; ~* kp; q"`
+  gives every thread's stack with TDF's symbols.
 - `ci/libreoffice.json`, `ci/Dockerfile`, and `tools/linux_integration.py` define the same Linux
   lab for CI and local tests. Headless checks use svp; screenshot checks use gtk3 under Xvfb.
   Never mount host display sockets or use an existing office profile. The Windows MSI installer

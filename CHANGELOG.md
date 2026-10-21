@@ -51,6 +51,20 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   made for the report. The README now says which LibreOffice versions and environments are
   verified, expected to work, or unsupported
   ([#56](https://github.com/viell-dev/slop-calc-sheet-manager/issues/56)).
+- Made the integration checks fail visibly instead of passing or hanging:
+  - They keep LibreOffice's crash dumps, and fail a session whose office crashed even though it
+    exited with status 0 on Windows
+    ([#48](https://github.com/viell-dev/slop-calc-sheet-manager/issues/48)).
+  - On Windows they close test workbooks on LibreOffice's main thread
+    ([#47](https://github.com/viell-dev/slop-calc-sheet-manager/issues/47)).
+  - They stop an office whose callback or terminate request stalls
+    ([#50](https://github.com/viell-dev/slop-calc-sheet-manager/issues/50),
+    [#40](https://github.com/viell-dev/slop-calc-sheet-manager/issues/40)).
+  - They repeat the painted resize check's setup when the new window is maximized late
+    ([#9](https://github.com/viell-dev/slop-calc-sheet-manager/issues/9)).
+- Checked that LibreOffice still converts files headlessly with the extension installed, and that
+  removing the extension leaves no deck, panel, or installed copy behind. `docs/verification.md`
+  maps each promise to the checks that verify it.
 
 ## 0.0.1 - Development baseline (unpublished)
 
