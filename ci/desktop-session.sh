@@ -20,6 +20,8 @@ fi
 runner=/work/tests/integration/run.py
 if [[ " $* " == *" --soak "* ]]; then
     runner=/work/tests/integration/soak.py
+elif [[ " $* " == *" --ui "* ]]; then
+    runner=/work/tests/ui/run_ui.py
 fi
 /opt/lo/program/python "$runner" \
     --program /opt/lo/program --oxt /packages/extension.oxt --output /results "$@"

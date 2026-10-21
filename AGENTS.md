@@ -208,9 +208,76 @@ reconsider. The owner may report a defect themselves, in their own words.
   named ranges, and charts at 200/1,000 sheets and emit median complete-move/undo timings.
   `generate_workbooks.py` retains copies for inspection using the same synthetic generator.
 - `src/sheet_manager/` ships under `pythonpath/sheet_manager/`. Keep pure logic importable without
-  `uno`; `uno_panel.py` owns the UNO factory and panel. Integration tests use the public
-  `XPanel.getDialog()` window and observe disposal with its `XEventListener`; keep test hooks out
-  of the production factory.
+  `uno` (`keys.py`, `sheet_list.py`, `swatch.py`, `reorder.py`); the `uno_*.py` modules adapt
+  it: `uno_panel.py` owns the UNO factory and panel, `uno_list.py` the tree control, its drag and
+  drop and refresh, `uno_keys.py` the key handler, `uno_menu.py` the sheet tab menu, `uno_show.py`
+  the list's own Show operation, and `uno_calc.py` shared Calc helpers. Tests observe only public
+  UNO: the `XPanel.getDialog()` window, its child tree control
+  (`tests/integration/sheet_list_view.py`), and its `XEventListener`; keep test hooks out of the
+  production factory.
+- The list keeps the `uno_reorder.snapshot` that produced its rows. Its picks, keyboard cursor,
+  and Shift anchor live in `selection.py` as refs: the name a sheet had when the user's input made
+  the ref, and that sheet's retained handle. A ref is never made again from a name later, and
+  everything the list writes to the tree, restores, or acts on comes from refs. Retained handles
+  are not identities: when a sheet is deleted, its handle turns to the previous sheet and can
+  report the deleted sheet's name again after a rename (measured; `docs/reordering.md`). So each
+  list has a `uno_structure.StructureMonitor`: it listens to the document's modify, undo, and
+  document events, reads the sheet count and the document's undo and lock state at every modify
+  and undo notification, and moves a generation (`structure.StructureEvents`) whenever a sheet
+  may have been inserted or deleted. It moves when the count changes; when undo recording is
+  off or locked, the controllers or actions are locked, or modify notifications are off at a
+  notification, except for the controller lock of the list's own move (`own_move`); on every
+  undo and redo; at a modify notification that no recorded undo action explains, except inside
+  a save window (`OnSave`, `OnSaveAs`, or `OnCopyTo` up to its `Done` or `Failed` event, or the
+  next undo notification); and at a check, when the undo history changed without a notification
+  or any of those states holds then, since a lock still held may be holding back the report of a
+  whole batch (except the list's own move's lock, and modify notifications being off inside a
+  save window, where LibreOffice turns them off itself). Undo notifications come for every
+  recorded action, also inside `lockControllers`, `addActionLock`, `disableSetModified`, and
+  undo contexts, where modify notifications are batched or missing. Every action checks the
+  generation again when it runs (`check()`). Picks, presses, drags, and an open menu carry the
+  generation they were proved at; when it moves, the list drops every ref and any held press and
+  tells the user in an infobar, which only the user closes, since removing one moves the focus
+  to the sheet. As a second line, every refresh checks that its handles map one to one onto the
+  sheets with at most one rename (`structure_kept`). Otherwise refs stay while their handles
+  report their names, so a renamed pick goes and a moved one stays (#28). Over-clearing is the
+  accepted cost: undo and redo, document property changes, and other changes LibreOffice does
+  not record for undo clear the picks too. Threat model, decided by the maintainer: everything
+  LibreOffice reports must be caught; only a structural edit that LibreOffice does not report at
+  all (undo recording and modify notifications both off), or whose only report falls inside a
+  save window, is out of scope. The one other known way past the rules is a sequence built to
+  report like typed input, documented in `structure.py`; such a program could hide or delete any
+  sheet itself. The monitor's listeners read the sheet count and the five state getters while
+  LibreOffice notifies: a narrow exception to the rule that listeners only note and post, for
+  getters that take the main lock and return a count or a flag without UI work (checked in the
+  pinned sources); call nothing else from them. Drops plan against the snapshot of the drag's
+  start through `apply_order`, which refuses stale state, and the list refuses a drop when the
+  generation moved during the drag. The menu opens
+  only for refs checked just before, with a fresh snapshot; while it is open, a dispatch
+  interceptor on the frame checks at dispatch time that the generation did not move, that the
+  picked sheets are unchanged, and that they are exactly Calc's selected tabs.
+  `uno_show.show_sheets` applies the reorder layer's undo rules: refuse without undo or beyond
+  the undo limit, one group, undo only its own group on failure, verify. A plain click or Enter
+  makes the sheet Calc's only selected tab and reads that back: `setActiveSheet` keeps an
+  existing group when the sheet belongs to it.
+- Refreshing reads every sheet and rebuilds the tree on the main thread, so `uno_list.py` limits
+  it: an activation refreshes at once only after the list has been idle for several times the last
+  refresh's cost, and other changes wait for a pause, with a bounded wait. Bulk API changes, such
+  as a 500-call move, send an event for each call; refreshing on each one slowed such a move on
+  Windows from seconds to over a minute. So rows can be out of date when the user acts on them:
+  every action checks its sheets when it runs, never against the cached rows. A left press keeps
+  the pressed sheet's handle, and its release activates only that sheet, still in that row
+  (#28). If a refresh during the press moved the sheet or showed another under its name, the
+  release has no effect at all: the list writes its own refs back, whatever the tree selected on
+  release, so a newer pick made meanwhile (following Calc, or by keyboard) stays. While a press
+  is held, a refresh does not take the tree's selection as the user's; the press and release
+  handlers do. Activation reads the handle's current name and visibility first, because
+  Calc sends the activation of a hidden sheet to another sheet (#43); if Calc goes elsewhere
+  anyway, the list restores the previous sheet and tabs and reads both back before saying the
+  view is unchanged (#46). The list's mouse handlers and its notice of a sheet switch both run
+  after input already queued, so a switch is matched to the list's input count when Calc reports
+  it: newer clicks or keys in the list win over following Calc's selection, and a switch the list
+  made itself is not followed (#44).
 - `extension/description.xml` is the version source. `extension/sheet-manager.components` and
   `registration.py` provide passive Python registration. `Factories.xcu` maps tool-panel URLs to
   that factory; `Sidebar.xcu` registers the Calc-only deck and panel. `tools/build.py` explicitly
@@ -233,13 +300,63 @@ reconsider. The owner may report a defect themselves, in their own words.
   change, VCL's access-key walk enters each tab control's current page and crashes on a tab
   control without pages (#18), but it does not descend into plain windows. Keep any page-less tab
   control out of that walk, and keep the painted modifier-key test.
+- The list is a borderless `TreeControl` (so that it is a direct child of the panel window) with
+  a hidden root. With a hidden root, the tree peer mishandles every data-model change event and
+  re-parents all rows under the root, so never change nodes in place: build a new data model and
+  restore selection, scroll position, and keyboard cursor. The tree exposes no cursor, so the list
+  tracks it from clicks and the keys it passes to the tree (`keys.cursor_after`); a rebuild cannot
+  restore the tree's Shift anchor, so the next Shift move starts a range at the cursor. Listener
+  callbacks can arrive on other threads or during a change; they only record state or post work
+  through `AsyncCallback`. Start threads only through `uno_calc.start_thread`, never with
+  `threading`: `Thread.start` waits for the new thread, whose first steps can wait for
+  LibreOffice's main lock that listeners and the main thread hold, and Calc then hangs (#55).
+- Keys: a toolkit `XKeyHandler` is registered only while the tree has focus and checks
+  `hasFocus()` again for every key. Navigation keys go to the tree (the sidebar swallows what the
+  tree ignores); Enter, typed characters, and the menu keys are handled by the list; other
+  shortcuts are resolved through the document, Calc, and global shortcut configurations and
+  dispatched to the panel's frame; Tab, F6, F10, and Esc pass; everything else is consumed so it
+  cannot reach a cell (`keys.py` documents the routing).
 - `tests/integration/run.py` runs with the tested office's bundled Python, installs into a new
   temporary profile, starts only its own process with a unique pipe, and disposes it afterwards.
   Open documents visibly even in headless runs: hidden documents do not reliably execute Calc
   commands or undo. Startup retries end before document creation and never retry failed tests.
-  `--sessions headless|gtk3|both` selects sessions; default headless. Add real-input UI tests to
-  the painted path in `exercise()` (`screenshot=True`), so they join the separate `linux-gtk3`
-  jobs without requiring a display in headless jobs. Keep shared lifecycle changes additive.
+  `--sessions headless|gtk3|both` selects sessions; default headless. The feature suite
+  `test_sheet_list.py` checks the list's contents, refresh, identity, robot clicks and menu,
+  clicks on rows not yet refreshed, and Show with LibreOffice's synthetic input; the robot only
+  posts events, so they reach the list ahead of its delayed refresh. Robot input cannot reach
+  gtk3's native menus, so it skips the menu steps in painted sessions, and it closes leftover
+  workbooks after a failure: a painted office asks to save them when the runner terminates it,
+  which blocks the run (#40).
+  Real-input UI tests live in `tests/ui/run_ui.py`, use XTEST under Xvfb with separate gtk3 and
+  gen sessions, and run in the `linux-gtk3` jobs through `tools/linux_integration.py <lane> --ui`.
+  What neither can reach is on the manual checklist, `docs/manual-tests.md`; keep it current.
+  Keep shared lifecycle changes additive.
+- PyUNO exceptions reject a new `__traceback__`, so a UNO exception leaving a `@contextmanager`
+  block, such as `office_session`, arrives as a RuntimeException about a traceback object
+  ([#41](https://github.com/viell-dev/slop-calc-sheet-manager/issues/41)). Keep UNO calls whose
+  exceptions a caller catches out of generator-based context managers; in a failed run, read the
+  first traceback.
+- On Windows, a Calc document closed from the test's own thread, which is a UNO bridge thread in
+  the office, crashes LibreOffice when one of its toolbars has an update pending: the close
+  releases LibreOffice's lock while it destroys native windows, and the main thread then updates
+  a toolbar control being disposed
+  ([#47](https://github.com/viell-dev/slop-calc-sheet-manager/issues/47)). The user interface
+  closes on the main thread, where this cannot happen. Close every Calc document in the tests and
+  the workbook generator through `main_thread.close_document`, which on Windows closes inside an
+  `AsyncCallback` notification, on the main thread; close in place of a `finally` clause with
+  `close_after`, close a suite's leftovers through `teardown.run_checks`, and set office settings
+  for a block with `teardown.Configured`. A callback that does not finish in time is recorded in
+  `teardown` (#50): no further close, check, suite, or settings restore is tried (#51), the UI
+  runner stops too (#52), the session fails without an earlier failure being hidden, and the
+  runner stops its own office process tree instead of asking it to terminate, which would wait
+  for the stuck main thread too (#40). A crashed office exits with status 0 on Windows
+  ([#48](https://github.com/viell-dev/slop-calc-sheet-manager/issues/48)), so the runner copies
+  LibreOffice's own crash dumps from the profile into the results as `crash-*.dmp` and fails a
+  session whose office left one; a retried startup attempt's dumps are kept but do not fail a
+  clean retry. GitHub's Windows runners have CDB, not on `PATH`, at
+  `C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe`; with it,
+  `cdb -z <dump> -y "srv*<cache>*https://dev-downloads.libreoffice.org/symstore/symbols;srv*<cache>*https://msdl.microsoft.com/download/symbols" -c ".ecxr; !analyze -v; ~* kp; q"`
+  gives every thread's stack with TDF's symbols.
 - `ci/libreoffice.json`, `ci/Dockerfile`, and `tools/linux_integration.py` define the same Linux
   lab for CI and local tests. Headless checks use svp; screenshot checks use gtk3 under Xvfb.
   Never mount host display sockets or use an existing office profile. The Windows MSI installer

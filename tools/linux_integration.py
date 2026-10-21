@@ -20,6 +20,9 @@ def main() -> None:
     parser.add_argument(
         "--soak", type=int, metavar="N", help="Run N gtk3 sessions per extension mode"
     )
+    parser.add_argument(
+        "--ui", action="store_true", help="Run the real-input UI tests with gtk3 and gen instead"
+    )
     arguments = parser.parse_args()
     if arguments.soak is not None and not 1 <= arguments.soak <= 100:
         parser.error("--soak must be between 1 and 100")
@@ -29,6 +32,13 @@ def main() -> None:
         or arguments.screenshot
     ):
         parser.error("--soak requires a supported lane and --sessions gtk3")
+    if arguments.ui and (
+        arguments.lane == "unsupported"
+        or arguments.sessions is not None
+        or arguments.soak is not None
+        or arguments.screenshot
+    ):
+        parser.error("--ui requires a supported lane and no --sessions, --soak, or --screenshot")
     if os.name == "posix":
         uid, gid = os.getuid(), os.getgid()
         if uid == 0:
@@ -83,6 +93,10 @@ def main() -> None:
     command.append(image)
     if arguments.lane == "unsupported":
         command.append("--expect-refusal")
+    elif arguments.ui:
+        command.append("--ui")
+        if arguments.backtrace:
+            command.append("--backtrace")
     else:
         command.extend(
             [

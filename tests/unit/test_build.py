@@ -32,11 +32,27 @@ def test_two_builds_are_identical_and_allowlisted(tmp_path: Path) -> None:
             "registration.py",
             "icons/deck.svg",
             "LICENSE.txt",
-            "pythonpath/sheet_manager/__init__.py",
-            "pythonpath/sheet_manager/i18n.py",
-            "pythonpath/sheet_manager/reorder.py",
-            "pythonpath/sheet_manager/uno_panel.py",
-            "pythonpath/sheet_manager/uno_reorder.py",
+            *(
+                f"pythonpath/sheet_manager/{name}.py"
+                for name in (
+                    "__init__",
+                    "i18n",
+                    "keys",
+                    "reorder",
+                    "selection",
+                    "sheet_list",
+                    "structure",
+                    "swatch",
+                    "uno_calc",
+                    "uno_keys",
+                    "uno_list",
+                    "uno_menu",
+                    "uno_panel",
+                    "uno_reorder",
+                    "uno_show",
+                    "uno_structure",
+                )
+            ),
         }
         for member in archive.infolist():
             assert member.date_time == (2000, 1, 1, 0, 0, 0)
