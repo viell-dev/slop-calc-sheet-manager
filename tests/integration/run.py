@@ -317,19 +317,23 @@ def exercise(context, desktop, directory, output, *, screenshot):
     window = document.getCurrentController().getFrame().getContainerWindow()
     # gtk3 can report a 475px frame height for a 500px native request (#9).
     # Establish the actual baseline, then require both frame and panel to grow by 150px.
+    # The new window can also be maximized after that request has taken effect (#9), so the
+    # baseline must hold for four consecutive samples, 0.75 s, and a window found at another size
+    # is asked again. Only this setup request repeats; the resize assertions never do.
     previous: tuple[int, ...] | None = None
+    steady = 0
     measurements: list[object] = []
     requested_at = 0.0
 
     def request_initial_geometry():
-        nonlocal requested_at, previous
+        nonlocal requested_at, previous, steady
         window.IsMaximized = False
         window.setPosSize(0, 0, 1000, 500, 15)
-        requested_at, previous = time.monotonic(), None
+        requested_at, previous, steady = time.monotonic(), None, 0
         measurements.append("requested 1000x500")
 
     def stable_geometry():
-        nonlocal previous
+        nonlocal previous, steady
         frame, panel_size = window.getPosSize(), panel.getPosSize()
         measured = (
             frame.X,
@@ -341,12 +345,11 @@ def exercise(context, desktop, directory, output, *, screenshot):
         )
         measurements.append(measured)
         as_requested = frame.Width == 1000 and 100 < frame.Height <= 500
-        if measured == previous and as_requested:
-            return frame, panel_size
+        steady = steady + 1 if as_requested and measured == previous else 0
         previous = measured
+        if steady >= 3:
+            return frame, panel_size
         if not as_requested and time.monotonic() - requested_at >= 2:
-            # A new document's window can be maximized after the first request has been applied
-            # (#9). Repeat the setup request; the resize assertions below are never retried.
             request_initial_geometry()
         time.sleep(0.25)
         return None
