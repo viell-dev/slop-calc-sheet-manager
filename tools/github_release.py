@@ -245,6 +245,8 @@ def main() -> None:
     parser.add_argument("--publish", action="store_true", help="Default is a read-only dry run")
     parser.add_argument("--output", type=Path, default=ROOT / "dist/release")
     args = parser.parse_args()
+    if args.offline and args.command != "pages":
+        parser.error("--offline applies only to pages")
     if args.command == "pages":
         if args.offline:
             write_site(args.output, [], check_history=False)

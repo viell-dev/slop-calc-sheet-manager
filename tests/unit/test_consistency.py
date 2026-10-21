@@ -95,6 +95,8 @@ def test_minimum_version_agrees_everywhere() -> None:
         content = text(page)
         for stated in re.findall(r"(\d+\.\d+\.\d+) or later", content):
             assert stated == version, (page.name, stated)
+        for stated in re.findall(r"older than (\d+\.\d+\.\d+)", content):
+            assert stated == version, (page.name, stated)
         for stated in re.findall(r"(\d+\.\d+\.\d+) and earlier", content):
             assert stated == refused_text, (page.name, stated)
 

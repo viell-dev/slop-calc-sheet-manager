@@ -47,7 +47,9 @@ range and stable patch limit.
    users, without an agent callout or footer. Update compatibility and installation documentation
    if needed. Do not change the extension identifier. In the user guide, remove the **Unreleased**
    markers for what this release contains. For the first release, also rewrite the statements that
-   no release exists; `git grep -n -i "no release" -- docs README.md` finds them.
+   no release exists, which
+   `git grep -n -i -E "no (release|build|download)|published yet|until then" -- docs README.md`
+   finds.
 2. Run `python tools/check.py` and the relevant LibreOffice integration checks described in
    [CONTRIBUTING.md](CONTRIBUTING.md). Readiness rests on those checks and on CI; no release waits
    on a manual checklist. If an observation that no check can make matters for this release, ask
