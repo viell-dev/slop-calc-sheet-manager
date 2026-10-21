@@ -67,6 +67,9 @@ where they can:
 
 ## Verification
 
+- [docs/verification.md](docs/verification.md) maps each promise to the checks that show it, where
+  they run, their limits, and the checks shown to fail when deliberately broken. Change it in the
+  same pull request as a promise or a check.
 - Before implementing an issue, reproduce or measure its claim on `main` and record, with the
   evidence, whether it is accepted, narrowed, or declined. Reports from agents get the same
   scrutiny as any other.
