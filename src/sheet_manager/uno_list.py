@@ -1009,7 +1009,9 @@ class SheetList:
             permission = move_availability(self.context, self.document)
             if not permission.allowed:
                 reason = permission.reason
-            elif self._monitor.check() != self._proven:
+            # Enablement is only a hint. A full check consumes pending undo evidence and
+            # must not run between an edit's undo and modify notifications (#66).
+            elif self._monitor.generation != self._proven:
                 reason = tr("The sheet list has changed. Refresh it and try again.")
             else:
                 for action in ACTIONS:

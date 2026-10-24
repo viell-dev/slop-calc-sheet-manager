@@ -78,6 +78,8 @@ For control enablement, `move_availability` reads the common document permission
 `plan_availability` adds each plan's no-op and undo-capacity checks. These are hints, without the
 full sheet scan or identity proof. Execution always calls `apply_order` with the snapshot and
 selection captured for the user's request; its full preflight remains authoritative.
+Enablement compares the monitor's reported `generation` without calling `check()`: a full check
+consumes undo evidence that an edit's pending modify notification may still need.
 
 `plan_move(sheets, selected, action, gap=None)` accepts `"drop"`, `"top"`, `"up"`, `"down"`, and
 `"bottom"`. `target_order` computes just the target; `plan_order(sheets, target)` supports arbitrary

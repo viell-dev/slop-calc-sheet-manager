@@ -3,9 +3,12 @@
 import ast
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
+from unittest.mock import Mock
 
 import pytest
+
+from sheet_manager.structure import Quiet, StructureEvents
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -124,6 +127,58 @@ def test_failed_move_control_update_releases_busy_and_refreshes() -> None:
     with pytest.raises(RuntimeError, match="control update failure"):
         move(owner, "top", SimpleNamespace(sheets=()), (SimpleNamespace(name="Bravo"),), 7)
     assert not owner._busy and refreshed == [True]
+
+
+def test_move_enablement_does_not_consume_an_edits_pending_modify_notification() -> None:
+    events = StructureEvents(count=80, history=(0, None))
+    states: list[Any] = []
+    permission = SimpleNamespace(allowed=True)
+
+    def availability(allowed: bool, reason: str) -> SimpleNamespace:
+        return SimpleNamespace(allowed=allowed, reason=reason)
+
+    monitor = SimpleNamespace(
+        generation=0,
+        check=lambda: events.check(80, (1, "Tab Color"), Quiet.NONE),
+    )
+    owner = SimpleNamespace(
+        _moves=SimpleNamespace(update=states.append),
+        _disposed=False,
+        _busy=False,
+        _observed=SimpleNamespace(sheets=()),
+        _selection=SimpleNamespace(picked=["Bravo"], names=lambda: ["Bravo"]),
+        _monitor=monitor,
+        _proven=0,
+        context=object(),
+        document=object(),
+    )
+    update = method(
+        "src/sheet_manager/uno_list.py",
+        "SheetList",
+        "_update_moves",
+        {
+            "ACTIONS": ("up",),
+            "Availability": availability,
+            "move_availability": Mock(return_value=permission),
+            "plan_move": Mock(return_value=object()),
+            "plan_availability": Mock(return_value=permission),
+            "cast": cast,
+            "Action": str,
+            "tr": str,
+        },
+    )
+    # An ordinary edit reports its undo action before its modify notification. A hint
+    # requested between them must not make that notification look unrecorded (#66).
+    events.action_added(80, Quiet.NONE)
+    update(owner)
+    events.modified(80, Quiet.NONE)
+    assert events.generation == 0
+    assert states[-1]["up"].allowed
+
+    # Reported structural changes still disable the hint before execution's full preflight.
+    monitor.generation = 1
+    update(owner)
+    assert not states[-1]["up"].allowed
 
 
 @pytest.mark.parametrize(

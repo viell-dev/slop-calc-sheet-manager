@@ -13,6 +13,7 @@ _xtst = ctypes.cdll.LoadLibrary("libXtst.so.6")
 _x11.XOpenDisplay.restype = ctypes.c_void_p
 _x11.XOpenDisplay.argtypes = [ctypes.c_char_p]
 _x11.XSync.argtypes = [ctypes.c_void_p, ctypes.c_int]
+_x11.XAutoRepeatOff.argtypes = [ctypes.c_void_p]
 _x11.XStringToKeysym.argtypes = [ctypes.c_char_p]
 _x11.XStringToKeysym.restype = ctypes.c_ulong
 _x11.XKeysymToKeycode.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
@@ -41,6 +42,10 @@ class XInput:
         values = [ctypes.c_int() for _ in range(4)]
         if not _xtst.XTestQueryExtension(self._display, *(ctypes.byref(v) for v in values)):
             raise RuntimeError("The X server has no XTEST extension")
+        # A descheduled client between a flushed press and release must not turn one
+        # intended tap into repeated keys. This display belongs to the private test lab.
+        _x11.XAutoRepeatOff(self._display)
+        self._sync()
 
     def _sync(self):
         _x11.XSync(self._display, 0)
