@@ -632,14 +632,15 @@ class SheetList:
             if names[index] != cursor.name:
                 self.tree.addSelection(self._nodes[index])
 
-    def _take_tree_selection(self) -> None:
+    def _take_tree_selection(self, update_moves: bool = True) -> None:
         """Take a selection the user made in the tree, as the rows showed it."""
         names = self.selected_names()
         if tuple(names) != self._shown:
             self._selection.take(names, self._handles, self.names())
             self._shown = tuple(names)
             self._user_picks = True
-            self._update_moves()
+            if update_moves:
+                self._update_moves()
 
     def _current_picks(self) -> list[Ref]:
         """The list's picks as they stand now, each still the sheet it was picked as.
@@ -962,6 +963,22 @@ class SheetList:
     def owns_tree_keys(self) -> bool:
         return not self._disposed and bool(self.peer.hasFocus())
 
+    def travel_focus(self, backwards: bool) -> bool:
+        """Tab through enabled panel controls; at a boundary LibreOffice handles travel."""
+        controls = [self.tree, *(self._moves.buttons.values() if self._moves is not None else ())]
+        current = next(
+            (index for index, control in enumerate(controls) if control.getPeer().hasFocus()), None
+        )
+        if current is None:
+            return False
+        step = -1 if backwards else 1
+        for index in range(current + step, -1 if backwards else len(controls), step):
+            control = controls[index]
+            if index == 0 or control.getModel().Enabled:
+                self.post(control.setFocus, "moving focus within Sheet Manager")
+                return True
+        return False
+
     # Movement controls
 
     def _update_moves(self) -> None:
@@ -996,6 +1013,10 @@ class SheetList:
         """Capture the shown selection now; queued work never adopts later picks or proof."""
         if self._disposed or self._busy or action not in ACTIONS:
             return
+        if self._press is None:
+            # Native navigation may already have changed the tree while its posted selection
+            # callback is still queued. Read that selection without doing UI work here.
+            self._take_tree_selection(update_moves=False)
         self._input += 1
         observed, picks, proof = self._observed, tuple(self._selection.picked), self._proven
         self.post(lambda: self._move_selection(action, observed, picks, proof), "moving sheets")
@@ -1022,8 +1043,8 @@ class SheetList:
             show_error(self.peer, tr("Sheet Manager"), str(error))
             return
         self._busy = True
-        self._update_moves()
         try:
+            self._update_moves()
             result = apply_order(self.context, self.document, observed, plan)
         finally:
             self._busy = False

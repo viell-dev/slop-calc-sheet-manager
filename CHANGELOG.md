@@ -5,7 +5,7 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
-- Added Top, Up, Down, and Bottom buttons above the list, with Alt+Shift+Home/Up/Down/End
+- Added Top, Up, Down, and Bottom buttons above the list, with Alt+Home/Up/Down/End
   shortcuts, disabled reasons in tooltips, and selection preserved for repeated moves. Each press
   uses the guarded reorder adapter and is one undo step
   ([#35](https://github.com/viell-dev/slop-calc-sheet-manager/issues/35)).

@@ -336,7 +336,7 @@ def check_move_controls(book, shortcuts):
         button = view.move_buttons(book.panel)[label]
         wait_until(button.isEnabled, "the move control enabled")
         if shortcuts:
-            book.lab.input.tap(key, modifiers=("Alt_L", "Shift_L"), pause=0.3)
+            book.lab.input.tap(key, modifiers=("Alt_L",), pause=0.3)
         else:
             book.move_button(label)
         wait_until(lambda e=expected: book.order() == e, "the requested move")
@@ -355,6 +355,10 @@ def check_move_controls(book, shortcuts):
 def check_move_edges_and_refusal(book):
     book.click(0)
     buttons = view.move_buttons(book.panel)
+    book.lab.input.tap("space", modifiers=("Control_L",), pause=0.3)
+    wait_until(lambda: all(not b.isEnabled() for b in buttons.values()), "no selection controls")
+    assert all("Select sheets" in b.getProperty("HelpText") for b in buttons.values())
+    book.click(0)
     wait_until(
         lambda: not buttons["Top"].isEnabled() and not buttons["Up"].isEnabled(), "edge controls"
     )
@@ -380,13 +384,66 @@ def check_move_edges_and_refusal(book):
         book.move_button("Bottom")
         assert book.order() == before and book.undo_titles() == history
         book.tree.setFocus()
-        book.lab.input.tap("End", modifiers=("Alt_L", "Shift_L"), pause=0.8)
+        book.lab.input.tap("End", modifiers=("Alt_L",), pause=0.8)
         book.lab.screenshot("move-refused-protected")
         book.lab.input.tap("Escape", pause=0.4)
         assert book.order() == before and book.undo_titles() == history
     finally:
         book.document.unprotect("synthetic")
-    return {"edges_disabled": True, "repeated_moves": True, "protected_refusal": True}
+    book.document.RecordChanges = True
+    try:
+        book.click(2)
+        wait_until(
+            lambda: all(not b.isEnabled() for b in buttons.values()), "recorded changes controls"
+        )
+        assert all("recorded" in b.getProperty("HelpText") for b in buttons.values())
+    finally:
+        book.document.RecordChanges = False
+    return {
+        "no_selection_disabled": True,
+        "edges_disabled": True,
+        "repeated_moves": True,
+        "protected_refusal": True,
+        "recorded_changes_disabled": True,
+    }
+
+
+def check_move_focus_and_queued_navigation(book):
+    book.click(2)
+    buttons = view.move_buttons(book.panel)
+    keep = book.document.Sheets.getByIndex(0).getCellRangeByName("A1").String
+    before = book.order()
+    book.lab.input.tap("Tab", pause=0.3)
+    wait_until(buttons["Top"].hasFocus, "Tab to reach the Top button")
+    book.lab.input.tap("q", pause=0.2)
+    assert buttons["Top"].hasFocus()
+    assert book.document.Sheets.getByIndex(0).getCellRangeByName("A1").String == keep
+    book.lab.input.tap("space", pause=0.3)
+    expected = list(target_order([Sheet(n) for n in before], [NAMES[2]], "top"))
+    wait_until(lambda: book.order() == expected, "Space to press Top")
+    assert book.tree.hasFocus()
+    book.document.UndoManager.undo()
+    wait_until(lambda: view.names(book.tree) == before, "the original order")
+    book.click(2)
+    for _ in range(3):
+        book.lab.input.tap("Tab", pause=0.15)
+    wait_until(buttons["Down"].hasFocus, "Tab to reach Down")
+    book.lab.input.tap("Return", pause=0.3)
+    expected = list(target_order([Sheet(n) for n in before], [NAMES[2]], "down"))
+    wait_until(lambda: book.order() == expected, "Enter to press Down")
+    book.document.UndoManager.undo()
+    wait_until(lambda: view.names(book.tree) == before, "the original order")
+    book.click(2)
+    # No pause lets native navigation run ahead of its posted selection callback.
+    book.lab.input.tap("Down", pause=0)
+    book.lab.input.tap("Up", modifiers=("Alt_L",), pause=0.3)
+    expected = list(target_order([Sheet(n) for n in before], [NAMES[3]], "up"))
+    wait_until(lambda: book.order() == expected, "the move to use the newly navigated row")
+    assert book.selection() == [NAMES[3]]
+    assert book.undo_titles() == ["Move Sheets"]
+    book.document.UndoManager.undo()
+    wait_until(lambda: book.order() == before, "one undo of the queued move")
+    return {"native_button_keyboard": True, "no_cell_input": True, "queued_navigation": True}
 
 
 def check_drop_in_place_and_escape(book):
@@ -1192,6 +1249,7 @@ def run_checks(lab, output):
         ("move_buttons", lambda: check_move_controls(book, False)),
         ("move_shortcuts", lambda: check_move_controls(book, True)),
         ("move_edges_and_refusal", lambda: check_move_edges_and_refusal(book)),
+        ("move_focus_and_queued_navigation", lambda: check_move_focus_and_queued_navigation(book)),
         ("click_activates", lambda: check_click_activates(book)),
         ("ctrl_shift_selection", lambda: check_ctrl_shift_selection(book)),
         ("drag_two_sheets_above_midpoint", lambda: check_drag_two_sheets(book, 0.25, 12)),

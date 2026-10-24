@@ -57,7 +57,7 @@ S = 530  # Key S
         (PAGEUP, 0, "", KeyRoute.TREE),
         (PAGEDOWN, MOD1, "", KeyRoute.SHORTCUT),
         (PAGEUP, MOD1 | SHIFT, "", KeyRoute.SHORTCUT),
-        (DOWN, MOD2, "", KeyRoute.SHORTCUT),
+        (DOWN, MOD2, "", KeyRoute.MOVE),
         (SPACE, 0, " ", KeyRoute.IGNORE),
         (SPACE, SHIFT, " ", KeyRoute.IGNORE),
         (SPACE, MOD1, " ", KeyRoute.TREE),
@@ -111,9 +111,9 @@ def test_unbound_shortcuts() -> None:
 def test_move_shortcuts_are_exact_and_preserve_calc_and_tree_combinations(
     code: int, action: str
 ) -> None:
-    assert move_action(code, MOD2 | SHIFT) == action
-    assert route_key(code, MOD2 | SHIFT) is KeyRoute.MOVE
-    for modifiers in (0, SHIFT, MOD1 | SHIFT, MOD2, MOD1 | MOD2 | SHIFT, MOD3 | MOD2 | SHIFT):
+    assert move_action(code, MOD2) == action
+    assert route_key(code, MOD2) is KeyRoute.MOVE
+    for modifiers in (0, SHIFT, MOD1 | SHIFT, MOD2 | SHIFT, MOD1 | MOD2, MOD3 | MOD2):
         assert move_action(code, modifiers) is None
         assert route_key(code, modifiers) is not KeyRoute.MOVE
 
@@ -122,7 +122,7 @@ def test_native_button_keys_and_printable_input() -> None:
     for code in (RETURN, SPACE, UP, DOWN, HOME, END):
         assert button_route(route_key(code, 0), code, 0) is KeyRoute.LIBREOFFICE
     assert button_route(route_key(S, 0, "s"), S, 0) is KeyRoute.IGNORE
-    assert button_route(route_key(DOWN, MOD2 | SHIFT), DOWN, MOD2 | SHIFT) is KeyRoute.MOVE
+    assert button_route(route_key(DOWN, MOD2), DOWN, MOD2) is KeyRoute.MOVE
     assert button_route(route_key(S, MOD1), S, MOD1) is KeyRoute.SHORTCUT
 
 

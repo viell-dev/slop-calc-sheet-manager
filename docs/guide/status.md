@@ -17,7 +17,7 @@ what the first release is planned to do.
   verifies if a change fails part-way. It is tested against real LibreOffice on workbooks of up to
   1,000 sheets. Drag any selection to an insertion line; the list scrolls near its edges.
 - **Move buttons (Unreleased).** Top, Up, Down, and Bottom act on the list's selection, in one
-  undo step, with Alt+Shift+Home/Up/Down/End shortcuts. Unavailable buttons explain why in their
+  undo step, with Alt+Home/Up/Down/End shortcuts. Unavailable buttons explain why in their
   tooltips, and a move keeps the sheets selected for the next press.
 - **Release and update infrastructure**, with no published build yet. The update feeds are empty.
 

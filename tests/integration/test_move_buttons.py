@@ -2,6 +2,7 @@
 
 from typing import cast
 
+from com.sun.star.beans import PropertyValue
 from main_thread import close_after
 from sheet_list_view import move_buttons, names, open_list, poll, row_point, selection
 from test_sheet_list import Robot
@@ -50,6 +51,23 @@ def exercise(context, desktop, directory, output):
         poll(lambda: all(not button.isEnabled() for button in buttons.values()), "disabled moves")
         assert all("protected" in button.getProperty("HelpText") for button in buttons.values())
         document.unprotect("synthetic")
+        path = directory / "move-controls-readonly.ods"
+        document.storeToURL(path.as_uri(), ())
+        argument = PropertyValue()
+        argument.Name, argument.Value = "ReadOnly", True
+        readonly = desktop.loadComponentFromURL(path.as_uri(), "_blank", 0, (argument,))
+        try:
+            readonly_panel, _ = open_list(context, readonly)
+            readonly_buttons = move_buttons(readonly_panel)
+            poll(
+                lambda: all(not b.isEnabled() for b in readonly_buttons.values()),
+                "read-only move controls",
+            )
+            assert all("read-only" in b.getProperty("HelpText") for b in readonly_buttons.values())
+        except BaseException as failure:
+            close_after(context, readonly, failure)
+            raise
+        close_after(context, readonly)
     except BaseException as failure:
         close_after(context, document, failure)
         raise

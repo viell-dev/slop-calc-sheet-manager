@@ -156,7 +156,7 @@ after each real mutation, and a silently ineffective undo.
 and unrecorded batches, held locks, Undo, and shared-monitor disposal. It verifies that closing one
 list view keeps other views and held snapshots protected until the document closes.
 `test_move_buttons.py` checks native button names, robot clicks, refusal tooltips, and one Undo
-per press. The real-input UI suite exercises every button and Alt+Shift move shortcut, separated
+per press. The real-input UI suite exercises every button and Alt move shortcut, separated
 picks, repeated moves, edges, and permission refusals.
 The failure suite also runs with two configured undo steps, forcing nested groups, and checks zero
 and one-step settings. Full-stack tests put both native and extension moves above 99 inputs and

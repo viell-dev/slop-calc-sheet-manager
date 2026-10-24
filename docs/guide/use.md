@@ -69,15 +69,17 @@ to the list. While the list has focus:
 | Ctrl+A | Select every row |
 | Letters and other printable characters | Search sheet names |
 | Enter | Go to the selected visible sheet |
-| Alt+Shift+Home, Up, Down, End | Move the selection to the top, up, down, or to the bottom |
+| Alt+Home, Up, Down, End | Move the selection to the top, up, down, or to the bottom |
 | Menu or Shift+F10 | Open the sheet tab menu |
 | Ctrl+S, Ctrl+Z, Ctrl+Page Down | Run Calc's save, undo, or next-sheet command |
 
 The four move shortcuts also work while a move button has focus. They apply only inside Sheet
-Manager, without changing Calc's shortcut configuration. Plain Alt+Down retains Calc's Data Select
-command, and Ctrl+Shift with navigation retains the list's selection behavior.
+Manager, without changing Calc's shortcut configuration. Alt+Down moves the picked sheets while a
+Sheet Manager control has focus. In a cell it retains Calc's Data Select command. Ctrl+Shift with
+navigation retains the list's selection behavior.
 
-Space and Shift+Space do nothing in the list. Tab, F6, F10, Esc, and unbound Alt menu mnemonics retain
+Space and Shift+Space do nothing in the list. Tab steps through enabled move buttons, and
+LibreOffice handles it at the panel's boundaries. F6, F10, Esc, and unbound Alt menu mnemonics retain
 LibreOffice's behaviour. Keys used by the list do not type into cells. Other documents keep their
 own keyboard handling. After Ctrl+S, focus moves to the sheet; use the focus cycle to return.
 

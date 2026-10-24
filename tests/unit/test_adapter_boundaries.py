@@ -70,12 +70,18 @@ def test_move_request_keeps_its_snapshot_refs_and_proof_while_queued() -> None:
     def move(*args: Any) -> None:
         seen.append(args)
 
+    def take_selection(update_moves: bool) -> None:
+        assert not update_moves
+        owner._selection.picked = [original_ref]
+
     owner = SimpleNamespace(
         _disposed=False,
         _busy=False,
         _input=0,
         _observed=original_snapshot,
-        _selection=SimpleNamespace(picked=[original_ref]),
+        _selection=SimpleNamespace(picked=[object()]),  # A queued navigation callback is behind.
+        _press=None,
+        _take_tree_selection=take_selection,
         _proven=7,
         post=post,
         _move_selection=move,
@@ -88,6 +94,36 @@ def test_move_request_keeps_its_snapshot_refs_and_proof_while_queued() -> None:
     queued[0]()
     assert seen == [("top", original_snapshot, (original_ref,), 7)]
     assert owner._input == 1
+
+
+def test_failed_move_control_update_releases_busy_and_refreshes() -> None:
+    refreshed: list[bool] = []
+
+    def fail_update() -> None:
+        raise RuntimeError("injected control update failure")
+
+    def current(ref: object) -> bool:
+        return True
+
+    def plan(sheets: object, names: list[str], action: str) -> object:
+        return object()
+
+    owner = SimpleNamespace(
+        _disposed=False,
+        _busy=False,
+        _monitor=SimpleNamespace(check=lambda: 7),
+        _update_moves=fail_update,
+        refresh=lambda: refreshed.append(True),
+    )
+    move = method(
+        "src/sheet_manager/uno_list.py",
+        "SheetList",
+        "_move_selection",
+        {"_current": current, "plan_move": plan},
+    )
+    with pytest.raises(RuntimeError, match="control update failure"):
+        move(owner, "top", SimpleNamespace(sheets=()), (SimpleNamespace(name="Bravo"),), 7)
+    assert not owner._busy and refreshed == [True]
 
 
 @pytest.mark.parametrize("display", ["", ":0"])

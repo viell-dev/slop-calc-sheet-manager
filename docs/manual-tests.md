@@ -110,8 +110,8 @@ instead. Take screenshots only of this workbook.
     edge or each other; the same sheets stay selected and each press is one undo step.
 27. **Bottom.** Select Charlie and Echo and press Bottom, then undo.
     Expected: Charlie and Echo are the last two sheets, in that order, still selected.
-28. **Move shortcuts and focus.** Repeat steps 24–27 with Alt+Shift+Home, Alt+Shift+Up,
-    Alt+Shift+Down, and Alt+Shift+End while the list is focused. Use Tab to focus a button and
+28. **Move shortcuts and focus.** Repeat steps 24–27 with Alt+Home, Alt+Up,
+    Alt+Down, and Alt+End while the list is focused. Use Tab to focus a button and
     Space or Enter to press it. Type a letter while a button is focused.
     Expected: the shortcuts match the buttons, a successful move returns focus to the list,
     and no letter reaches a cell. A disabled button's tooltip explains why it cannot move.

@@ -16,10 +16,10 @@ class MoveButtons(unohelper.Base, XActionListener):
         self._cleanup = contextlib.ExitStack()
         self.buttons = {}
         self._help = {
-            "top": tr("Move selected sheets to the top (Alt+Shift+Home)."),
-            "up": tr("Move selected sheets up one place (Alt+Shift+Up)."),
-            "down": tr("Move selected sheets down one place (Alt+Shift+Down)."),
-            "bottom": tr("Move selected sheets to the bottom (Alt+Shift+End)."),
+            "top": tr("Move selected sheets to the top (Alt+Home)."),
+            "up": tr("Move selected sheets up one place (Alt+Up)."),
+            "down": tr("Move selected sheets down one place (Alt+Down)."),
+            "bottom": tr("Move selected sheets to the bottom (Alt+End)."),
         }
         labels = (tr("Top"), tr("Up"), tr("Down"), tr("Bottom"))
         sizes = []
@@ -47,7 +47,7 @@ class MoveButtons(unohelper.Base, XActionListener):
             self.dispose()
             raise
         self.height = max(size.Height for size in sizes) + 8
-        self.minimum_width = sum(size.Width for size in sizes) + 20
+        self.minimum_width = 4 * max(size.Width for size in sizes) + 20
 
     def set_bounds(self, width):
         usable = max(width - 20, 0)
