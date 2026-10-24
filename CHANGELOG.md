@@ -5,6 +5,9 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Move-button enablement no longer consumes a pending ordinary edit notification, which could
+  clear the list's picks at the next refresh
+  ([#66](https://github.com/viell-dev/slop-calc-sheet-manager/issues/66)).
 - Added Top, Up, Down, and Bottom buttons above the list, with Alt+Home/Up/Down/End
   shortcuts, disabled reasons in tooltips, and selection preserved for repeated moves. Each press
   uses the guarded reorder adapter and is one undo step

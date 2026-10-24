@@ -360,7 +360,9 @@ reconsider. The owner may report a defect themselves, in their own words.
   provide accessible names; tooltips include disabled reasons. The list captures the observed
   snapshot, refs and proof before posting a move request. Enablement shares the adapter's common
   permission and plan checks without rescanning every sheet for each button; execution still
-  uses full `apply_order` preflight. Alt+Home/Up/Down/End are local to the panel; Alt+Down
+  uses full `apply_order` preflight. Enablement reads the reported monitor generation, never
+  `check()`: that consumes pending undo evidence, which a modify notification may still need.
+  Alt+Home/Up/Down/End are local to the panel; Alt+Down
   is reserved for moving sheets while the panel has focus; Calc's cell shortcut stays unchanged.
   Button activation returns focus to the tree.
   Tab/Shift+Tab steps through enabled controls within the panel, then focuses the frame's
