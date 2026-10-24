@@ -287,6 +287,55 @@ def test_failed_rebuild_releases_the_cursor_restoration_guard() -> None:
     assert not owner._restoring_cursor
 
 
+@pytest.mark.parametrize("stage", ["context", "index"])
+@pytest.mark.parametrize("disposed", [True, False])
+def test_stale_accessible_rows_preserve_cursor_without_hiding_other_errors(
+    stage: str, disposed: bool
+) -> None:
+    class DisposedRow(Exception):
+        pass
+
+    failure = DisposedRow if disposed else RuntimeError
+    original = Ref("Bravo", object(), 1)
+    handle = object()
+    owner = SimpleNamespace(
+        _disposed=False,
+        _restoring_cursor=False,
+        _selection=SimpleNamespace(cursor=original),
+        rows=[SimpleNamespace(name="Alfa")],
+        _handles={"Alfa": handle},
+    )
+
+    def index() -> int:
+        raise failure("stale accessible row")
+
+    def context() -> Any:
+        if stage == "context":
+            raise failure("stale accessible row")
+        return SimpleNamespace(getAccessibleIndexInParent=index)
+
+    changed = method(
+        "src/sheet_manager/uno_list.py",
+        "SheetList",
+        "cursor_changed",
+        {"Any": Any, "Ref": Ref, "DisposedException": DisposedRow},
+    )
+    if disposed:
+        changed(owner, SimpleNamespace(getAccessibleContext=context))
+    else:
+        with pytest.raises(RuntimeError, match="stale accessible row"):
+            changed(owner, SimpleNamespace(getAccessibleContext=context))
+    assert owner._selection.cursor is original
+    changed(
+        owner,
+        SimpleNamespace(
+            getAccessibleContext=lambda: SimpleNamespace(getAccessibleIndexInParent=lambda: 0)
+        ),
+    )
+    assert owner._selection.cursor.name == "Alfa"
+    assert owner._selection.cursor.token is handle
+
+
 @pytest.mark.parametrize(
     "active,owned,enabled,boundary,expected",
     [

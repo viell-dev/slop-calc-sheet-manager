@@ -31,6 +31,7 @@ from com.sun.star.datatransfer.dnd import (
     XDragSourceListener,
     XDropTargetListener,
 )
+from com.sun.star.lang import DisposedException
 from com.sun.star.sheet import XActivationEventListener
 from com.sun.star.util import XModifyListener
 
@@ -732,7 +733,12 @@ class SheetList:
         """
         if self._disposed or self._restoring_cursor:
             return
-        index = accessible.getAccessibleContext().getAccessibleIndexInParent()
+        try:
+            index = accessible.getAccessibleContext().getAccessibleIndexInParent()
+        except DisposedException:
+            # A cached event row may already belong to a discarded model. It supplies no
+            # new position; preserve the last cursor proved against the displayed rows.
+            return
         if 0 <= index < len(self.rows):
             name = self.rows[index].name
             self._selection.cursor = Ref(name, self._handles[name], index)

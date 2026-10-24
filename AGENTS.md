@@ -354,7 +354,9 @@ reconsider. The owner may report a defect themselves, in their own words.
   cached sibling index that maps directly to the flat rows; the callback reads only that index and
   records a ref from the shown handles. Delivery is synchronous in supported LibreOffice versions.
   Ignore intermediate focus events during model replacement/restoration, and remove the listener
-  on failed setup and disposal. Never predict cursor movement from toolkit callback counts: a
+  on failed setup and disposal. A disposed event row supplies no new position: catch only
+  `DisposedException` from its getters and retain the last valid cursor; report other errors.
+  Never predict cursor movement from toolkit callback counts: a
   native input event can be forwarded more than once. A rebuild cannot restore the tree's Shift
   anchor, so the next Shift move starts a range at the cursor. Listener callbacks can arrive on
   other threads or during a change; they only record state or post work
