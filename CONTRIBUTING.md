@@ -263,6 +263,11 @@ python tools/linux_integration.py minimum --ui
 python tools/linux_integration.py current-26.8 --ui
 ```
 
+The input helper disables keyboard repeat on its private Xvfb display. Otherwise, a client
+descheduled between a flushed key press and release can turn an intended tap into several keys.
+A real-input regression pauses for one second with Down pressed and still expects one cursor
+step. These tests exercise explicit key events, not the operating system's timed repeat behavior.
+
 They click, Ctrl+click, and Shift+click rows, drag two separate sheets above and below a row's
 midpoint and check the order and the single undo step, cancel a drag with Esc, auto-scroll and
 wheel-scroll the list, type into the focused list and check that no cell changes, use Ctrl+Page

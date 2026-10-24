@@ -79,6 +79,10 @@ session in each of these cases:
 - **Held terminate request.** The terminate request does not return, for example because a dialog
   holds it ([#40](https://github.com/viell-dev/slop-calc-sheet-manager/issues/40)).
 
+The UI input helper disables keyboard repeat on the private Xvfb display, so a paused input
+client cannot turn one intended tap into extra keys. `single_tap_after_client_pause` holds Down
+for one second and checks exactly one cursor step. Timed operating-system repeat is not covered.
+
 Only startup is retried, and never a test assertion. `tests/unit/test_office_process.py`,
 `test_teardown.py`, and `test_stalled_cleanup.py` cover these rules against fakes.
 
@@ -98,3 +102,4 @@ These checks were shown to fail when the behaviour they guard was deliberately b
 | Move request capture and busy cleanup (#35) | Load `queue_move` and `_move_selection` from `721add9` in the deterministic boundary regressions | Both tests reject the old methods: stale cached picks are captured before queued navigation catches up, and a failed control update leaves the list busy. |
 | Leaving move controls (#35) | Packaged `9c77f8d`, real Tab at Bottom on gtk3, LibreOffice 26.2.1.2 | The post-check author probe fails because native traversal keeps focus in the panel. The regression checks both exit boundaries and shortcut scope after exit. |
 | Observational button enablement (#66) | Main `afd0692`'s enablement method between an ordinary edit's undo and modify notifications | The deterministic boundary regression fails: generation advances despite unchanged sheets. It also checks that a reported structural change still disables the controls. |
+| One tap despite a paused client (#68) | Re-enable Xvfb keyboard repeat before `single_tap_after_client_pause` | The real-input regression fails because Down repeats during the one-second client pause; with repeat disabled it advances exactly one row. |

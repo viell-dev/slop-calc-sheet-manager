@@ -804,6 +804,22 @@ def check_plain_click_ends_group(book):
     return evidence
 
 
+def check_single_tap_after_client_pause(book):
+    """A paused input client still delivers one Down press on the private display."""
+    book.click(1)
+    try:
+        book.lab.input.key("Control_L", True)
+        book.lab.input.key("Down", True)
+        time.sleep(1)  # Longer than Xvfb's default repeat delay, as if the client lost its CPU.
+    finally:
+        book.lab.input.key("Down", False)
+        book.lab.input.key("Control_L", False)
+    book.lab.input.tap("space", ("Control_L",), pause=0.4)
+    evidence = {"selection": book.selection()}
+    assert evidence["selection"] == [NAMES[1], NAMES[2]], evidence
+    return evidence
+
+
 def check_cursor_across_refresh(book):
     """A refresh keeps the keyboard cursor where it was, not on the first selected row (#29)."""
     foxtrot = book.document.getSheets().getByName(NAMES[5])
@@ -1287,6 +1303,7 @@ def run_checks(lab, output):
         ("menu_keyboard", lambda: check_menu_keyboard(book)),
         ("menu_hidden_only", lambda: check_menu_hidden_only(book)),
         ("plain_click_ends_group", lambda: check_plain_click_ends_group(book)),
+        ("single_tap_after_client_pause", lambda: check_single_tap_after_client_pause(book)),
         ("cursor_across_refresh", lambda: check_cursor_across_refresh(book)),
         ("drop_after_replacement", lambda: check_drop_after_replacement(book)),
         ("press_then_change", lambda: check_press_then_change(book)),
