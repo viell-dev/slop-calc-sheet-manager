@@ -26,8 +26,8 @@ If Sheet Manager does not work in an environment where it is expected to, please
   ([#23](https://github.com/viell-dev/slop-calc-sheet-manager/issues/23)).
 - **Conservative selection clearing.** Inserting or deleting sheets, undoing or redoing, and
   modifications whose continuity cannot be established can clear the list's selection. A notice
-  explains conservative clearing of a user-made selection. A refresh also starts the next Shift range at
-  the keyboard cursor because Calc's tree control cannot restore its previous range anchor.
+  explains conservative clearing of a user-made selection. A refresh also starts the next Shift
+  range at the keyboard cursor because Calc's tree control cannot restore its previous range anchor.
 - **Large lists.** The list rebuilds after changes. During rapid sheet switches the active-sheet
   marker can lag; timing measurements and the remaining work are in
   [#22](https://github.com/viell-dev/slop-calc-sheet-manager/issues/22).
