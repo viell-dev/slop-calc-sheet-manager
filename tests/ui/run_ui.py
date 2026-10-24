@@ -443,7 +443,30 @@ def check_move_focus_and_queued_navigation(book):
     assert book.undo_titles() == ["Move Sheets"]
     book.document.UndoManager.undo()
     wait_until(lambda: book.order() == before, "one undo of the queued move")
-    return {"native_button_keyboard": True, "no_cell_input": True, "queued_navigation": True}
+    book.click(2)
+    for _ in range(4):
+        book.lab.input.tap("Tab", pause=0.15)
+    wait_until(buttons["Bottom"].hasFocus, "Tab to reach the last button")
+    book.lab.input.tap("Tab", pause=0.3)
+
+    def outside():
+        return not book.tree.hasFocus() and not any(b.hasFocus() for b in buttons.values())
+
+    wait_until(outside, "Tab at the last button to leave the panel")
+    history = book.undo_titles()
+    book.lab.input.tap("Down", modifiers=("Alt_L",), pause=0.4)
+    book.lab.input.tap("Escape", pause=0.2)
+    assert book.order() == before and book.undo_titles() == history
+    book.tree.setFocus()
+    book.lab.input.tap("Tab", modifiers=("Shift_L",), pause=0.3)
+    wait_until(outside, "Shift+Tab at the first control to leave the panel")
+    return {
+        "native_button_keyboard": True,
+        "no_cell_input": True,
+        "queued_navigation": True,
+        "tab_boundaries": True,
+        "outside_panel_shortcut_scope": True,
+    }
 
 
 def check_drop_in_place_and_escape(book):

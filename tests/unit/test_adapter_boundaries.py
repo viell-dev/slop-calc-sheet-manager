@@ -126,6 +126,37 @@ def test_failed_move_control_update_releases_busy_and_refreshes() -> None:
     assert not owner._busy and refreshed == [True]
 
 
+@pytest.mark.parametrize(
+    "active,owned,enabled,boundary,expected",
+    [
+        (False, True, True, False, []),
+        (True, False, True, False, []),
+        (True, True, True, False, ["button"]),
+        (True, True, False, False, ["tree"]),
+        (True, True, True, True, ["calc"]),
+    ],
+)
+def test_posted_focus_respects_later_focus_and_disabled_targets(
+    active: bool, owned: bool, enabled: bool, boundary: bool, expected: list[str]
+) -> None:
+    focused: list[str] = []
+    button = SimpleNamespace(
+        getModel=lambda: SimpleNamespace(Enabled=enabled), setFocus=lambda: focused.append("button")
+    )
+    owner = SimpleNamespace(
+        _disposed=False,
+        frame=SimpleNamespace(
+            isActive=lambda: active,
+            getComponentWindow=lambda: SimpleNamespace(setFocus=lambda: focused.append("calc")),
+        ),
+        owns_keys=lambda: owned,
+        tree=SimpleNamespace(setFocus=lambda: focused.append("tree")),
+    )
+    focus = method("src/sheet_manager/uno_list.py", "SheetList", "_focus_control", {})
+    focus(owner, None if boundary else button)
+    assert focused == expected
+
+
 @pytest.mark.parametrize("display", ["", ":0"])
 def test_input_refuses_a_display_without_the_private_launcher_opt_in(display: str) -> None:
     opened: list[object] = []

@@ -1,8 +1,8 @@
 """Keep keys typed in the sheet list out of the sheet, without disturbing other windows.
 
-UNO key listeners cannot consume a key, so the list registers a toolkit key handler while it
-has the focus. The handler sees every key in the application first; it acts only when the
-list's own tree has the focus at that moment, and routes keys as ``sheet_manager.keys``
+UNO key listeners cannot consume a key, so the list registers a toolkit key handler while a
+panel control has focus. The handler sees every key in the application first; it acts only when
+the list's tree or a move button has focus at that moment, and routes keys as ``sheet_manager.keys``
 describes. Shortcuts are resolved through the document's, Calc's, and the global shortcut
 configuration, in the order LibreOffice itself uses, and dispatched to the panel's frame.
 """
@@ -71,7 +71,7 @@ class Shortcuts:
 
 
 class ListKeyHandler(unohelper.Base, XKeyHandler):
-    """Registered only while the list has the focus; checks that again for every key."""
+    """Registered while a panel control has focus; checks that again for every key."""
 
     def __init__(self, sheet_list, shortcuts: Shortcuts):
         self._list = sheet_list
@@ -92,7 +92,7 @@ class ListKeyHandler(unohelper.Base, XKeyHandler):
                 and event.Modifiers in (0, SHIFT)
                 and self._list.travel_focus(event.Modifiers == SHIFT)
             ):
-                route = KeyRoute.IGNORE  # The panel posted its internal focus step.
+                route = KeyRoute.IGNORE  # The panel posted its focus step.
             if not self._list.owns_tree_keys():
                 route = button_route(route, event.KeyCode, event.Modifiers)
             if route is KeyRoute.TREE:

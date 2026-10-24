@@ -114,4 +114,5 @@ instead. Take screenshots only of this workbook.
     Alt+Down, and Alt+End while the list is focused. Use Tab to focus a button and
     Space or Enter to press it. Type a letter while a button is focused.
     Expected: the shortcuts match the buttons, a successful move returns focus to the list,
-    and no letter reaches a cell. A disabled button's tooltip explains why it cannot move.
+    and no letter reaches a cell. Tab after Bottom and Shift+Tab before the list return focus
+    to Calc. A disabled button's tooltip explains why it cannot move.

@@ -964,7 +964,7 @@ class SheetList:
         return not self._disposed and bool(self.peer.hasFocus())
 
     def travel_focus(self, backwards: bool) -> bool:
-        """Tab through enabled panel controls; at a boundary LibreOffice handles travel."""
+        """Tab through enabled panel controls, then return focus to Calc at either boundary."""
         controls = [self.tree, *(self._moves.buttons.values() if self._moves is not None else ())]
         current = next(
             (index for index, control in enumerate(controls) if control.getPeer().hasFocus()), None
@@ -975,9 +975,24 @@ class SheetList:
         for index in range(current + step, -1 if backwards else len(controls), step):
             control = controls[index]
             if index == 0 or control.getModel().Enabled:
-                self.post(control.setFocus, "moving focus within Sheet Manager")
+                self.post(
+                    lambda target=control: self._focus_control(target),
+                    "moving focus within Sheet Manager",
+                )
                 return True
-        return False
+        self.post(lambda: self._focus_control(None), "leaving Sheet Manager")
+        return True
+
+    def _focus_control(self, control) -> None:
+        # A later click or document switch wins over this posted focus request.
+        if self._disposed or not self.frame.isActive() or not self.owns_keys():
+            return
+        if control is None:
+            self.frame.getComponentWindow().setFocus()
+        elif control is self.tree or control.getModel().Enabled:
+            control.setFocus()
+        else:
+            self.tree.setFocus()  # The target button became disabled while the request waited.
 
     # Movement controls
 

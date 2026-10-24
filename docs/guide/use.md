@@ -78,9 +78,10 @@ Manager, without changing Calc's shortcut configuration. Alt+Down moves the pick
 Sheet Manager control has focus. In a cell it retains Calc's Data Select command. Ctrl+Shift with
 navigation retains the list's selection behavior.
 
-Space and Shift+Space do nothing in the list. Tab steps through enabled move buttons, and
-LibreOffice handles it at the panel's boundaries. F6, F10, Esc, and unbound Alt menu mnemonics retain
-LibreOffice's behaviour. Keys used by the list do not type into cells. Other documents keep their
+Space and Shift+Space do nothing in the list. Tab steps through enabled move buttons. Tab after
+the last button, or Shift+Tab before the list, returns focus to Calc. F6, F10, Esc, and unbound
+Alt menu mnemonics retain LibreOffice's behaviour. Keys used by the list do not type into cells.
+Other documents keep their
 own keyboard handling. After Ctrl+S, focus moves to the sheet; use the focus cycle to return.
 
 Rows use LibreOffice's native tree control and its accessible names. States are written in text

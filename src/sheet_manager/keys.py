@@ -10,7 +10,7 @@ therefore routed as follows:
 - keys the list handles itself (Enter, typed characters, the menu keys) are consumed;
 - other shortcuts are consumed and their Calc command is dispatched to the panel's own frame,
   because the sidebar swallows some of them (Ctrl+Page Down) before they reach Calc;
-- Tab steps within the panel's controls are handled there; other focus travel, the menu bar,
+- Tab steps within the panel and back to Calc are handled there; other focus travel, the menu bar,
   and Escape are left to LibreOffice;
 - everything else is consumed so that it cannot reach a cell.
 
