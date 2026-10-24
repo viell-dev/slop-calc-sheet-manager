@@ -122,6 +122,8 @@ def assert_failures(context, document):
     assert len(plan.moves) == 6
     for step in range(1, len(plan.moves) + 1):
         document.UndoManager.clear()
+        # A verified rollback still includes Undo, which invalidates the previous snapshot.
+        original = snapshot(document)
         wrapped = FaultyDocument(document, FaultySheets(document.Sheets, step))
         result = apply_order(context, wrapped, original, plan)
         assert result.status == "failed-restored", result
@@ -135,6 +137,7 @@ def assert_failures(context, document):
     document.UndoManager.leaveUndoContext()
     history = document.UndoManager.AllUndoActionTitles
     for options in ({"before": True}, {"silent": True}):
+        original = snapshot(document)
         wrapped = FaultyDocument(document, FaultySheets(document.Sheets, 1, **options))
         result = apply_order(context, wrapped, original, plan)
         assert result.status == "failed-restored", result
@@ -143,6 +146,7 @@ def assert_failures(context, document):
     wrapped = FaultyDocument(
         document, FaultySheets(document.Sheets, 1), BrokenUndo(document.UndoManager)
     )
+    original = snapshot(document)
     result = apply_order(context, wrapped, original, plan)
     assert result.status == "failed-not-restored", result
     assert order(document) != tuple(sheet.name for sheet in original.sheets)
@@ -248,10 +252,10 @@ def assert_permissions(context, desktop, document, directory):
     refused("recorded")
     document.RecordChanges = False
     document.IsUndoEnabled = False
-    refused("undo")
+    refused("sheet list has changed")
     document.IsUndoEnabled = True
     document.UndoManager.lock()
-    refused("undo")
+    refused("sheet list has changed")
     document.UndoManager.unlock()
     observed = snapshot(document)
     plan = plan_move(observed.sheets, [order(document)[0]], "bottom")
@@ -343,6 +347,7 @@ def assert_scenarios(context, desktop):
                 assert document.UndoManager.AllUndoActionTitles == ()
                 continue
             for step in range(1, len(plan.moves) + 1):
+                observed = snapshot(document)
                 wrapped = FaultyDocument(document, FaultySheets(document.Sheets, step))
                 result = apply_order(context, wrapped, observed, plan)
                 assert result.status == "failed-restored", result

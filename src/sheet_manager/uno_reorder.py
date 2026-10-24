@@ -8,13 +8,16 @@ from com.sun.star.beans import PropertyValue
 
 from sheet_manager.i18n import tr
 from sheet_manager.reorder import Move, Plan, Sheet, ordered_blocks, plan_order
+from sheet_manager.uno_structure import StructureMonitor, monitor_for
 
 
 @dataclass(frozen=True)
 class Snapshot:
     sheets: tuple[Sheet, ...]
     document_id: str
-    # Retained handle names detect tested replacements, but are not stable sheet identities.
+    monitor: StructureMonitor
+    generation: int
+    # A second line of checking; these are not stable sheet identities.
     handles: tuple[Any, ...]
 
 
@@ -36,29 +39,44 @@ class Result:
 
 def snapshot(document: Any) -> Snapshot:
     """Read fresh physical ordering, including hidden and scenario sheets."""
+    monitor = monitor_for(document)
+    generation = monitor.check()
+    sheets, handles = _read_sheets(document)
+    return Snapshot(sheets, str(document.RuntimeUID), monitor, generation, handles)
+
+
+def _read_sheets(document: Any) -> tuple[tuple[Sheet, ...], tuple[Any, ...]]:
+    """Read physical state without consuming the monitor's pending notification evidence."""
     collection = document.getSheets()
     names = tuple(collection.getElementNames())
     handles = tuple(collection.getByName(name) for name in names)
-    return Snapshot(
+    return (
         tuple(
             Sheet(name, bool(handle.getIsScenario()))
             for name, handle in zip(names, handles, strict=True)
         ),
-        str(document.RuntimeUID),
         handles,
     )
 
 
 def is_current(document: Any, observed: Snapshot) -> bool:
-    """Whether the document still has exactly the observed sheets, by order and handle names.
-
-    Retained handle names detect tested same-name replacements; see docs/reordering.md.
-    """
+    """Check structural continuity, physical order, scenario flags, and retained handle names."""
     if str(document.RuntimeUID) != observed.document_id:
         return False
-    return snapshot(document).sheets == observed.sheets and all(
-        handle.getName() == sheet.name
-        for handle, sheet in zip(observed.handles, observed.sheets, strict=True)
+    if observed.monitor.check() != observed.generation:
+        return False
+    fresh = snapshot(document)
+    return (
+        fresh.monitor is observed.monitor
+        and fresh.generation == observed.generation
+        and (
+            fresh.sheets == observed.sheets
+            and all(
+                handle.getName() == sheet.name
+                for handle, sheet in zip(observed.handles, observed.sheets, strict=True)
+            )
+            and observed.monitor.check() == observed.generation
+        )
     )
 
 
@@ -154,11 +172,13 @@ def _restore_view(context: Any, controller: Any, active: str, selected: tuple[st
 
 
 def _verify(document: Any, target: tuple[str, ...], original: Snapshot) -> None:
-    fresh = snapshot(document)
-    if tuple(sheet.name for sheet in fresh.sheets) != target:
+    # A check here would consume the undo evidence explaining the modify notification at
+    # unlockControllers, falsely invalidating picks after our own successful move.
+    sheets, _ = _read_sheets(document)
+    if tuple(sheet.name for sheet in sheets) != target:
         raise RuntimeError("The sheet order does not match the plan")
     expected_flags = {sheet.name: sheet.scenario for sheet in original.sheets}
-    if any(sheet.scenario != expected_flags[sheet.name] for sheet in fresh.sheets):
+    if any(sheet.scenario != expected_flags[sheet.name] for sheet in sheets):
         raise RuntimeError("Scenario sheet identities changed")
     # Also checks scenario adjacency/ownership against the original blocks.
     ordered_blocks(original.sheets, target)
@@ -175,6 +195,17 @@ def apply_order(context: Any, document: Any, observed: Snapshot, plan: Plan) -> 
     permission = preflight(context, document, observed, plan)
     if not permission.allowed:
         return Result("refused", permission.reason, detail=permission.detail)
+    # All callers get the own-move exception, including callers without a sheet-list view.
+    # It covers unlock notifications too, and excludes pre-existing locks/quiet states.
+    with observed.monitor.own_move() as clear:
+        if not clear:
+            return Result("refused", tr("The sheet list has changed. Refresh it and try again."))
+        return _apply_order(context, document, observed, plan, permission)
+
+
+def _apply_order(
+    context: Any, document: Any, observed: Snapshot, plan: Plan, permission: Availability
+) -> Result:
     controller = document.getCurrentController()
     undo = document.getUndoManager()
     title = tr("Move Sheets")

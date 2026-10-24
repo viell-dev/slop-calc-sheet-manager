@@ -64,7 +64,7 @@ from sheet_manager.uno_keys import ListKeyHandler, Shortcuts
 from sheet_manager.uno_menu import SHOW, SheetMenu
 from sheet_manager.uno_reorder import Snapshot, apply_order, is_current, snapshot
 from sheet_manager.uno_show import show_sheets
-from sheet_manager.uno_structure import StructureMonitor
+from sheet_manager.uno_structure import monitor_for
 
 MULTI = uno.Enum("com.sun.star.view.SelectionType", "MULTI")
 SINGLE = uno.Enum("com.sun.star.view.SelectionType", "SINGLE")
@@ -317,8 +317,7 @@ class SheetList:
         self.controller = frame.getController()
         self.document = self.controller.getModel()
         # Attached before the first snapshot, so that no structural change goes unnoticed.
-        self._monitor = StructureMonitor(self.document)
-        self._release_with(self._monitor.dispose)
+        self._monitor = monitor_for(self.document)
         self._proven = self._monitor.generation  # The generation the picks were proved at.
         self.toolkit = parent_window.getToolkit()
         self.rows: list[SheetRow] = []
@@ -1188,20 +1187,13 @@ class SheetList:
         if not plan.moves:
             return  # Dropped in place.
         self._busy = True
-        result = None
         try:
             if not self.frame.isActive():
                 self.frame.activate()  # Calc's undo of sheet moves needs the active view.
-            # The layer locks the controllers while it records. The monitor ignores that lock,
-            # unless someone else's lock or quiet state is in place already.
-            with self._monitor.own_move() as clear:
-                if clear:
-                    result = apply_order(self.context, self.document, drag.observed, plan)
+            result = apply_order(self.context, self.document, drag.observed, plan)
         finally:
             self._busy = False
             self.refresh()
-        if result is None:
-            self._drop_refused()
-        elif result.status != "done" or result.message != tr("Sheets moved."):
+        if result.status != "done" or result.message != tr("Sheets moved."):
             # Refusals, failures, and a successful move whose view could not be restored.
             show_error(self.peer, tr("Sheet Manager"), result.message)

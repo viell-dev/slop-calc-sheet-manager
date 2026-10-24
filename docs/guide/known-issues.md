@@ -33,9 +33,8 @@ If Sheet Manager does not work in an environment where it is expected to, please
   [#22](https://github.com/viell-dev/slop-calc-sheet-manager/issues/22).
 - **Macros that suppress notifications.** The list cannot detect structural edits for which
   LibreOffice reports nothing, or a deliberately constructed edit indistinguishable from ordinary
-  typed input. The [reordering interface](../reordering.md) describes the tested boundary. The
-  reorder adapter's separate stale-snapshot gap remains tracked in
-  [#19](https://github.com/viell-dev/slop-calc-sheet-manager/issues/19).
+  typed input. The reorder adapter uses the same structural monitor and has the same boundary.
+  The [reordering interface](../reordering.md) describes what is detected.
 - **A LibreOffice defect in two commands.** The sheet tab menu runs
   LibreOffice's own Duplicate Sheet and Move or Copy Sheet. In LibreOffice 26.8.0 and 26.8.1 these
   commands copy formulas with relative sheet references incorrectly
