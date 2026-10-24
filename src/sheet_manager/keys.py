@@ -10,7 +10,8 @@ therefore routed as follows:
 - keys the list handles itself (Enter, typed characters, the menu keys) are consumed;
 - other shortcuts are consumed and their Calc command is dispatched to the panel's own frame,
   because the sidebar swallows some of them (Ctrl+Page Down) before they reach Calc;
-- focus travel, the menu bar, and Escape are left to LibreOffice;
+- Tab steps within the panel and back to Calc are handled there; other focus travel, the menu bar,
+  and Escape are left to LibreOffice;
 - everything else is consumed so that it cannot reach a cell.
 
 The numbers below are the values of the ``com.sun.star.awt.Key`` and ``KeyModifier`` constants;
@@ -37,6 +38,7 @@ class KeyRoute(Enum):
     ACTIVATE = "activate"  # Consumed: go to the selected sheet.
     TYPE_AHEAD = "type-ahead"  # Consumed: select the next sheet whose name starts so.
     MENU = "menu"  # Consumed: open the sheet tab menu for the selection.
+    MOVE = "move"  # Consumed: move the picked sheets, only while the panel owns focus.
     SHORTCUT = "shortcut"  # Consumed if Calc has a command for it; see unbound_route().
     IGNORE = "ignore"  # Consumed: the key has no meaning in the list and must not reach a cell.
 
@@ -56,6 +58,8 @@ def typed_character(char: str, modifiers: int) -> bool:
 def route_key(code: int, modifiers: int, char: str = "") -> KeyRoute:
     """Route one key press received while the list has focus."""
     shift, ctrl, alt = bool(modifiers & SHIFT), bool(modifiers & MOD1), bool(modifiers & MOD2)
+    if move_action(code, modifiers) is not None:
+        return KeyRoute.MOVE
     if typed_character(char, modifiers):
         return KeyRoute.TYPE_AHEAD
     if code == 0:
@@ -83,6 +87,20 @@ def route_key(code: int, modifiers: int, char: str = "") -> KeyRoute:
     if ctrl or alt or modifiers & MOD3 or F1 <= code <= F26:
         return KeyRoute.SHORTCUT
     return KeyRoute.IGNORE
+
+
+def move_action(code: int, modifiers: int) -> str | None:
+    """Panel-local shortcuts; Alt+Down outside the panel keeps Calc's Data Select command."""
+    if modifiers != MOD2:
+        return None
+    return {HOME: "top", UP: "up", DOWN: "down", END: "bottom"}.get(code)
+
+
+def button_route(route: KeyRoute, code: int, modifiers: int) -> KeyRoute:
+    """Native buttons keep their activation/navigation keys; printable input stays out of cells."""
+    if route in (KeyRoute.TREE, KeyRoute.ACTIVATE) or code == SPACE and modifiers == 0:
+        return KeyRoute.LIBREOFFICE
+    return KeyRoute.IGNORE if route is KeyRoute.TYPE_AHEAD else route
 
 
 def unbound_route(modifiers: int) -> KeyRoute:

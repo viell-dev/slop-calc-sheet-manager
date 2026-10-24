@@ -249,7 +249,13 @@ def test_ui_checks_stop_at_a_stall_without_more_office_calls(tmp_path: Path, pos
     run, _ = ui_run_checks(probe, None)
     order = [name for name in run(Lab(probe), tmp_path)]
     stalled_name = order[0] if position == "first" else "picks_dropped_when_sheets_change"
-    stalled_check = next(call for call in probe if call.endswith(stalled_name))
+    # Several UI cases may share a parameterized check function, so their names need not
+    # match that function. The first actual check call follows the first reset.
+    stalled_check = (
+        probe[probe.index("reset") + 1]
+        if position == "first"
+        else next(call for call in probe if call.endswith(stalled_name))
+    )
     run, _ = ui_run_checks(calls, stalled_check)
     with pytest.raises(TimeoutError, match="main thread did not finish"):
         run(Lab(calls), tmp_path)

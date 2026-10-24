@@ -44,7 +44,7 @@ from sheet_manager.keys import (
     find_prefix,
     range_end,
 )
-from sheet_manager.reorder import plan_move
+from sheet_manager.reorder import Action, plan_move
 from sheet_manager.selection import Ref, Selection, structure_kept
 from sheet_manager.sheet_list import RowGeometry, SheetRow, ordered, row_label
 from sheet_manager.uno_calc import (
@@ -62,7 +62,16 @@ from sheet_manager.uno_calc import (
 )
 from sheet_manager.uno_keys import ListKeyHandler, Shortcuts
 from sheet_manager.uno_menu import SHOW, SheetMenu
-from sheet_manager.uno_reorder import Snapshot, apply_order, is_current, snapshot
+from sheet_manager.uno_moves import ACTIONS, MoveButtons
+from sheet_manager.uno_reorder import (
+    Availability,
+    Snapshot,
+    apply_order,
+    is_current,
+    move_availability,
+    plan_availability,
+    snapshot,
+)
 from sheet_manager.uno_show import show_sheets
 from sheet_manager.uno_structure import monitor_for
 
@@ -302,6 +311,7 @@ class SheetList:
         self._scroll = 0
         self._keys_registered = False
         self._cleanup = contextlib.ExitStack()
+        self._moves: MoveButtons | None = None
         try:
             self._initialize(context, frame, parent_window)
         except BaseException:
@@ -388,6 +398,8 @@ class SheetList:
             "target": _Target(self),
             "document": _Document(self),
         }
+        self._moves = MoveButtons(context, parent_window, self.queue_move, self._listeners["focus"])
+        self._release_with(self._moves.dispose)
         self.tree.addMouseListener(self._listeners["mouse"])
         self.tree.addFocusListener(self._listeners["focus"])
         self.tree.addPaintListener(self._listeners["paint"])
@@ -422,7 +434,14 @@ class SheetList:
 
     def set_bounds(self, width: int, height: int) -> None:
         if not self._disposed:
-            self.tree.setPosSize(0, 0, width, height, POSSIZE)
+            bar = self._moves.height if self._moves is not None else 0
+            if self._moves is not None:
+                self._moves.set_bounds(width)
+            self.tree.setPosSize(0, bar, width, max(height - bar, 0), POSSIZE)
+
+    @property
+    def minimal_width(self) -> int:
+        return max(150, self._moves.minimum_width if self._moves is not None else 0)
 
     def panel_hidden(self) -> None:
         self.focus_changed(False)
@@ -505,6 +524,7 @@ class SheetList:
             self._rebuild(rows)
         elif dropped or tuple(self._selection.names()) != self._shown:
             self._apply_selection()
+        self._update_moves()
 
     def _identities_kept(self, previous: Snapshot, observed: Snapshot, generation: int) -> bool:
         """Whether the handles of the last refresh still prove which sheet each one is.
@@ -601,6 +621,7 @@ class SheetList:
         wanted = {ref.name for ref in self._selection.picked}
         indices = [index for index, name in enumerate(names) if name in wanted]
         self._shown = tuple(names[index] for index in indices)
+        self._update_moves()
         if cursor is None:
             self.tree.clearSelection()
             return
@@ -611,13 +632,15 @@ class SheetList:
             if names[index] != cursor.name:
                 self.tree.addSelection(self._nodes[index])
 
-    def _take_tree_selection(self) -> None:
+    def _take_tree_selection(self, update_moves: bool = True) -> None:
         """Take a selection the user made in the tree, as the rows showed it."""
         names = self.selected_names()
         if tuple(names) != self._shown:
             self._selection.take(names, self._handles, self.names())
             self._shown = tuple(names)
             self._user_picks = True
+            if update_moves:
+                self._update_moves()
 
     def _current_picks(self) -> list[Ref]:
         """The list's picks as they stand now, each still the sheet it was picked as.
@@ -669,6 +692,7 @@ class SheetList:
         self._user_picks = True
         self._move_tree_cursor(index, scroll)
         self._shown = (self.rows[index].name,)
+        self._update_moves()
 
     def _move_tree_cursor(self, index: int, scroll: bool = True) -> None:
         """Select only this row in the tree, which moves its keyboard cursor there too.
@@ -929,8 +953,120 @@ class SheetList:
             self.toolkit.removeKeyHandler(self._keys)
 
     def owns_keys(self) -> bool:
-        """Whether the key being handled is for this list: its tree has the focus right now."""
-        return not self._disposed and not self._menu.is_open and bool(self.peer.hasFocus())
+        """Whether a Sheet Manager control has focus at this moment."""
+        return (
+            not self._disposed
+            and not self._menu.is_open
+            and (self.owns_tree_keys() or self._moves is not None and self._moves.has_focus())
+        )
+
+    def owns_tree_keys(self) -> bool:
+        return not self._disposed and bool(self.peer.hasFocus())
+
+    def travel_focus(self, backwards: bool) -> bool:
+        """Tab through enabled panel controls, then return focus to Calc at either boundary."""
+        controls = [self.tree, *(self._moves.buttons.values() if self._moves is not None else ())]
+        current = next(
+            (index for index, control in enumerate(controls) if control.getPeer().hasFocus()), None
+        )
+        if current is None:
+            return False
+        step = -1 if backwards else 1
+        for index in range(current + step, -1 if backwards else len(controls), step):
+            control = controls[index]
+            if index == 0 or control.getModel().Enabled:
+                self.post(
+                    lambda target=control: self._focus_control(target),
+                    "moving focus within Sheet Manager",
+                )
+                return True
+        self.post(lambda: self._focus_control(None), "leaving Sheet Manager")
+        return True
+
+    def _focus_control(self, control) -> None:
+        # A later click or document switch wins over this posted focus request.
+        if self._disposed or not self.frame.isActive() or not self.owns_keys():
+            return
+        if control is None:
+            self.frame.getComponentWindow().setFocus()
+        elif control is self.tree or control.getModel().Enabled:
+            control.setFocus()
+        else:
+            self.tree.setFocus()  # The target button became disabled while the request waited.
+
+    # Movement controls
+
+    def _update_moves(self) -> None:
+        if self._moves is None or self._disposed:
+            return
+        reason = ""
+        states = {}
+        if self._busy:
+            reason = tr("Wait for the current move to finish.")
+        elif self._observed is None or not self._selection.picked:
+            reason = tr("Select sheets to move.")
+        else:
+            permission = move_availability(self.context, self.document)
+            if not permission.allowed:
+                reason = permission.reason
+            elif self._monitor.check() != self._proven:
+                reason = tr("The sheet list has changed. Refresh it and try again.")
+            else:
+                for action in ACTIONS:
+                    try:
+                        plan = plan_move(
+                            self._observed.sheets, self._selection.names(), cast(Action, action)
+                        )
+                        states[action] = plan_availability(permission, plan)
+                    except ValueError as error:
+                        states[action] = Availability(False, str(error))
+        if reason:
+            states = {action: Availability(False, reason) for action in ACTIONS}
+        self._moves.update(states)
+
+    def queue_move(self, action: str) -> None:
+        """Capture the shown selection now; queued work never adopts later picks or proof."""
+        if self._disposed or self._busy or action not in ACTIONS:
+            return
+        if self._press is None:
+            # Native navigation may already have changed the tree while its posted selection
+            # callback is still queued. Read that selection without doing UI work here.
+            self._take_tree_selection(update_moves=False)
+        self._input += 1
+        observed, picks, proof = self._observed, tuple(self._selection.picked), self._proven
+        self.post(lambda: self._move_selection(action, observed, picks, proof), "moving sheets")
+
+    def _move_selection(self, action, observed, picks, proof) -> None:
+        if self._disposed or self._busy:
+            return
+        reason = ""
+        if (
+            observed is None
+            or proof != self._monitor.check()
+            or any(not _current(p) for p in picks)
+        ):
+            reason = tr("The sheet list has changed. Refresh it and try again.")
+        elif not picks:
+            reason = tr("Select sheets to move.")
+        if reason or observed is None:
+            self.refresh()
+            show_error(self.peer, tr("Sheet Manager"), reason)
+            return
+        try:
+            plan = plan_move(observed.sheets, [p.name for p in picks], action)
+        except ValueError as error:
+            show_error(self.peer, tr("Sheet Manager"), str(error))
+            return
+        self._busy = True
+        try:
+            self._update_moves()
+            result = apply_order(self.context, self.document, observed, plan)
+        finally:
+            self._busy = False
+            self.refresh()
+        self.tree.setFocus()
+        if result.status != "done" or result.message != tr("Sheets moved."):
+            show_error(self.peer, tr("Sheet Manager"), result.message)
 
     def run_command(self, command: str) -> None:
         self.post(lambda: dispatch(self.context, self.frame, command), "a shortcut")

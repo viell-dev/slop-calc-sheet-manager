@@ -99,3 +99,20 @@ instead. Take screenshots only of this workbook.
     Expected: the list no longer selects Charlie and Echo, and an information bar above the sheet
     says that the selection was cleared because sheets may have been added, removed, or renamed.
     Close the bar and delete the new sheet.
+24. **Top.** Click Charlie and Ctrl+click Echo, then press Top above the list.
+    Expected: Charlie and Echo become the first two sheets, in that order, remain selected, and
+    Calc keeps its active sheet. One Undo restores the original order.
+25. **Up.** Select Charlie and Echo again and press Up twice.
+    Expected: each separate selected run moves one place per press, stopping at an edge. Each
+    press is one undo step and keeps the same sheets selected. Undo twice.
+26. **Down.** Select Charlie and Echo and press Down twice, then undo twice.
+    Expected: each run moves one place per press, with the gaps preserved until runs meet an
+    edge or each other; the same sheets stay selected and each press is one undo step.
+27. **Bottom.** Select Charlie and Echo and press Bottom, then undo.
+    Expected: Charlie and Echo are the last two sheets, in that order, still selected.
+28. **Move shortcuts and focus.** Repeat steps 24–27 with Alt+Home, Alt+Up,
+    Alt+Down, and Alt+End while the list is focused. Use Tab to focus a button and
+    Space or Enter to press it. Type a letter while a button is focused.
+    Expected: the shortcuts match the buttons, a successful move returns focus to the list,
+    and no letter reaches a cell. Tab after Bottom and Shift+Tab before the list return focus
+    to Calc. A disabled button's tooltip explains why it cannot move.

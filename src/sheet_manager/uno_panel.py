@@ -79,7 +79,7 @@ class SheetPanel(
         return LayoutSize(0, -1, 400)
 
     def getMinimalWidth(self):
-        return 150
+        return self.list.minimal_width if self.list is not None else 150
 
     def dispose(self):
         if self._disposed:

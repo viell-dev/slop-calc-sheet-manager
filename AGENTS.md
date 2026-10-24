@@ -356,12 +356,23 @@ reconsider. The owner may report a defect themselves, in their own words.
   through `AsyncCallback`. Start threads only through `uno_calc.start_thread`, never with
   `threading`: `Thread.start` waits for the new thread, whose first steps can wait for
   LibreOffice's main lock that listeners and the main thread hold, and Calc then hangs (#55).
-- Keys: a toolkit `XKeyHandler` is registered only while the tree has focus and checks
-  `hasFocus()` again for every key. Navigation keys go to the tree (the sidebar swallows what the
+- `uno_moves.py` owns four native buttons above the list, sized from the native minimums. Labels
+  provide accessible names; tooltips include disabled reasons. The list captures the observed
+  snapshot, refs and proof before posting a move request. Enablement shares the adapter's common
+  permission and plan checks without rescanning every sheet for each button; execution still
+  uses full `apply_order` preflight. Alt+Home/Up/Down/End are local to the panel; Alt+Down
+  is reserved for moving sheets while the panel has focus; Calc's cell shortcut stays unchanged.
+  Button activation returns focus to the tree.
+  Tab/Shift+Tab steps through enabled controls within the panel, then focuses the frame's
+  component window at either boundary. Native sidebar traversal alone does not reach these child
+  peers or leave them reliably. Posted focus requests refuse when focus or the active frame moved.
+- Keys: a toolkit `XKeyHandler` is registered while the tree or a move button has focus and checks
+  focus again for every key. Navigation keys go to the tree (the sidebar swallows what the
   tree ignores); Enter, typed characters, and the menu keys are handled by the list; other
   shortcuts are resolved through the document, Calc, and global shortcut configurations and
-  dispatched to the panel's frame; Tab, F6, F10, Esc, modifier-only keys, and unbound Alt mnemonics
-  pass; everything else is consumed so it cannot reach a cell (`keys.py` documents the routing).
+  dispatched to the panel's frame; modified Tab combinations, F6, F10, Esc, modifier-only keys,
+  and unbound Alt mnemonics pass. Native buttons retain Space/Enter activation and navigation;
+  everything else is consumed so it cannot reach a cell (`keys.py` documents the routing).
 - `tests/integration/run.py` runs with the tested office's bundled Python, installs into a new
   temporary profile, starts only its own process with a unique pipe, and disposes it afterwards.
   Open documents visibly even in headless runs: hidden documents do not reliably execute Calc

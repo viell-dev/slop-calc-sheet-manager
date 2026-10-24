@@ -29,8 +29,10 @@ from sheet_manager.keys import (
     KeyRoute,
     TypeAhead,
     anchor_after,
+    button_route,
     cursor_after,
     find_prefix,
+    move_action,
     range_end,
     route_key,
     typed_character,
@@ -55,7 +57,7 @@ S = 530  # Key S
         (PAGEUP, 0, "", KeyRoute.TREE),
         (PAGEDOWN, MOD1, "", KeyRoute.SHORTCUT),
         (PAGEUP, MOD1 | SHIFT, "", KeyRoute.SHORTCUT),
-        (DOWN, MOD2, "", KeyRoute.SHORTCUT),
+        (DOWN, MOD2, "", KeyRoute.MOVE),
         (SPACE, 0, " ", KeyRoute.IGNORE),
         (SPACE, SHIFT, " ", KeyRoute.IGNORE),
         (SPACE, MOD1, " ", KeyRoute.TREE),
@@ -101,6 +103,27 @@ def test_unbound_shortcuts() -> None:
     assert unbound_route(MOD1) is KeyRoute.IGNORE
     assert unbound_route(MOD1 | MOD2) is KeyRoute.IGNORE
     assert unbound_route(0) is KeyRoute.IGNORE
+
+
+@pytest.mark.parametrize(
+    "code,action", [(HOME, "top"), (UP, "up"), (DOWN, "down"), (END, "bottom")]
+)
+def test_move_shortcuts_are_exact_and_preserve_calc_and_tree_combinations(
+    code: int, action: str
+) -> None:
+    assert move_action(code, MOD2) == action
+    assert route_key(code, MOD2) is KeyRoute.MOVE
+    for modifiers in (0, SHIFT, MOD1 | SHIFT, MOD2 | SHIFT, MOD1 | MOD2, MOD3 | MOD2):
+        assert move_action(code, modifiers) is None
+        assert route_key(code, modifiers) is not KeyRoute.MOVE
+
+
+def test_native_button_keys_and_printable_input() -> None:
+    for code in (RETURN, SPACE, UP, DOWN, HOME, END):
+        assert button_route(route_key(code, 0), code, 0) is KeyRoute.LIBREOFFICE
+    assert button_route(route_key(S, 0, "s"), S, 0) is KeyRoute.IGNORE
+    assert button_route(route_key(DOWN, MOD2), DOWN, MOD2) is KeyRoute.MOVE
+    assert button_route(route_key(S, MOD1), S, MOD1) is KeyRoute.SHORTCUT
 
 
 def test_typed_character() -> None:

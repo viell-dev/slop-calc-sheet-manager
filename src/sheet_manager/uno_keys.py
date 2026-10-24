@@ -1,8 +1,8 @@
 """Keep keys typed in the sheet list out of the sheet, without disturbing other windows.
 
-UNO key listeners cannot consume a key, so the list registers a toolkit key handler while it
-has the focus. The handler sees every key in the application first; it acts only when the
-list's own tree has the focus at that moment, and routes keys as ``sheet_manager.keys``
+UNO key listeners cannot consume a key, so the list registers a toolkit key handler while a
+panel control has focus. The handler sees every key in the application first; it acts only when
+the list's tree or a move button has focus at that moment, and routes keys as ``sheet_manager.keys``
 describes. Shortcuts are resolved through the document's, Calc's, and the global shortcut
 configuration, in the order LibreOffice itself uses, and dispatched to the panel's frame.
 """
@@ -11,7 +11,15 @@ import unohelper
 from com.sun.star.awt import KeyEvent, XKeyHandler
 from com.sun.star.container import NoSuchElementException
 
-from sheet_manager.keys import KeyRoute, route_key, unbound_route
+from sheet_manager.keys import (
+    SHIFT,
+    TAB,
+    KeyRoute,
+    button_route,
+    move_action,
+    route_key,
+    unbound_route,
+)
 from sheet_manager.uno_calc import report
 
 CALC_MODULE = "com.sun.star.sheet.SpreadsheetDocument"
@@ -63,7 +71,7 @@ class Shortcuts:
 
 
 class ListKeyHandler(unohelper.Base, XKeyHandler):
-    """Registered only while the list has the focus; checks that again for every key."""
+    """Registered while a panel control has focus; checks that again for every key."""
 
     def __init__(self, sheet_list, shortcuts: Shortcuts):
         self._list = sheet_list
@@ -79,6 +87,14 @@ class ListKeyHandler(unohelper.Base, XKeyHandler):
             # PyUNO passes a UNO char as uno.Char; its value is the one-character string.
             char = getattr(event.KeyChar, "value", event.KeyChar)
             route = route_key(event.KeyCode, event.Modifiers, char)
+            if (
+                event.KeyCode == TAB
+                and event.Modifiers in (0, SHIFT)
+                and self._list.travel_focus(event.Modifiers == SHIFT)
+            ):
+                route = KeyRoute.IGNORE  # The panel posted its focus step.
+            if not self._list.owns_tree_keys():
+                route = button_route(route, event.KeyCode, event.Modifiers)
             if route is KeyRoute.TREE:
                 self._list.tree_key(event.KeyCode, event.Modifiers)
             elif route is KeyRoute.SHORTCUT:
@@ -93,6 +109,8 @@ class ListKeyHandler(unohelper.Base, XKeyHandler):
                 self._list.post(lambda: self._list.type_ahead(char), "type-ahead")
             elif route is KeyRoute.MENU:
                 self._list.post(self._list.open_menu_for_keyboard, "the sheet tab menu")
+            elif route is KeyRoute.MOVE:
+                self._list.queue_move(move_action(event.KeyCode, event.Modifiers))
             self._consumed[event.KeyCode] = route.consumed
             return route.consumed
         except Exception:

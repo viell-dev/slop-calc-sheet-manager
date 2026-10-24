@@ -16,6 +16,7 @@ import time
 import traceback
 from contextlib import contextmanager
 from pathlib import Path
+from typing import cast
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
@@ -29,7 +30,7 @@ from run import office_session, wait_for  # noqa: E402
 from teardown import stalled_callbacks  # noqa: E402
 from xinput import RIGHT, Pointer, XInput  # noqa: E402
 
-from sheet_manager.reorder import Sheet, target_order  # noqa: E402
+from sheet_manager.reorder import Action, Sheet, target_order  # noqa: E402
 from sheet_manager.sheet_list import ACTIVE_MARK  # noqa: E402
 
 NATO = [
@@ -101,7 +102,7 @@ class Workbook:
         self.window.IsMaximized = False
         self.window.setPosSize(0, 0, 1500, 950, 15)
         self.controller.setActiveSheet(sheets.getByIndex(0))
-        _, self.tree = view.open_list(lab.context, document)
+        self.panel, self.tree = view.open_list(lab.context, document)
         wait_for(lambda: len(self.nodes()) == len(names), "every sheet in the list")
         time.sleep(1)
         self.pointer = Pointer(lab.input, lab.calibrate(self.tree, self.window))
@@ -145,6 +146,14 @@ class Workbook:
     def focus_list(self):
         """Click the active sheet's row: the list gets the focus, nothing else changes."""
         self.click(self.order().index(self.active()))
+
+    def move_button(self, label):
+        button = view.move_buttons(self.panel)[label]
+        rectangle, tree = button.getPosSize(), self.tree.getPosSize()
+        self.pointer.click(
+            rectangle.X - tree.X + rectangle.Width // 2,
+            rectangle.Y - tree.Y + rectangle.Height // 2,
+        )
 
     def choose(self, command):
         """Choose a menu entry with the keyboard; generated mnemonics differ between plugins."""
@@ -303,6 +312,162 @@ def check_drag_two_sheets(book, fraction, gap):
     wait_until(lambda: book.order() == before, "one undo to restore the order")
     evidence["undo_restored"] = True
     return evidence
+
+
+def check_move_controls(book, shortcuts):
+    evidence = {}
+    for action, label, key in (
+        ("top", "Top", "Home"),
+        ("up", "Up", "Up"),
+        ("down", "Down", "Down"),
+        ("bottom", "Bottom", "End"),
+    ):
+        book.click(2)
+        book.click(5, modifiers=("Control_L",))
+        picked = [NAMES[2], NAMES[5]]
+        wait_until(lambda p=picked: book.selection() == p, "two separate rows selected")
+        before, history, active, tabs = (
+            book.order(),
+            book.undo_titles(),
+            book.active(),
+            book.calc_tabs(),
+        )
+        expected = list(target_order([Sheet(n) for n in before], picked, cast(Action, action)))
+        button = view.move_buttons(book.panel)[label]
+        wait_until(button.isEnabled, "the move control enabled")
+        if shortcuts:
+            book.lab.input.tap(key, modifiers=("Alt_L",), pause=0.3)
+        else:
+            book.move_button(label)
+        wait_until(lambda e=expected: book.order() == e, "the requested move")
+        wait_until(lambda e=expected: view.names(book.tree) == e, "the moved list order")
+        wait_until(lambda p=picked: book.selection() == p, "the picked sheets to stay picked")
+        assert book.undo_titles() == ["Move Sheets", *history]
+        assert book.active() == active and book.calc_tabs() == tabs
+        assert book.tree.hasFocus(), "Moving must leave keyboard focus in the list"
+        evidence[action] = {"one_undo": True, "picks_kept": book.selection(), "view_kept": True}
+        book.document.getUndoManager().undo()
+        wait_until(lambda b=before: book.order() == b, "one undo to restore the order")
+        wait_until(lambda b=before: view.names(book.tree) == b, "the restored list order")
+    return evidence
+
+
+def check_move_edges_and_refusal(book):
+    book.click(0)
+    buttons = view.move_buttons(book.panel)
+    book.lab.input.tap("space", modifiers=("Control_L",), pause=0.3)
+    wait_until(lambda: all(not b.isEnabled() for b in buttons.values()), "no selection controls")
+    assert all("Select sheets" in b.getProperty("HelpText") for b in buttons.values())
+    book.click(0)
+    wait_until(
+        lambda: not buttons["Top"].isEnabled() and not buttons["Up"].isEnabled(), "edge controls"
+    )
+    assert "already in that position" in buttons["Top"].getProperty("HelpText")
+    before, history = book.order(), book.undo_titles()
+    book.move_button("Top")  # A native disabled button must not dispatch.
+    assert book.order() == before and book.undo_titles() == history
+    for index in (1, 2):
+        book.move_button("Down")
+        wait_until(lambda i=index: book.order().index(NAMES[0]) == i, "a repeated Down press")
+        wait_until(lambda: book.selection() == [NAMES[0]], "the same sheet after repeated movement")
+    assert book.undo_titles() == ["Move Sheets", "Move Sheets", *history]
+    book.document.getUndoManager().undo()
+    assert book.order().index(NAMES[0]) == 1
+    book.document.getUndoManager().undo()
+    assert book.order() == before
+    book.document.protect("synthetic")
+    try:
+        book.click(2)
+        wait_until(lambda: all(not b.isEnabled() for b in buttons.values()), "protected controls")
+        assert all("protected" in b.getProperty("HelpText") for b in buttons.values())
+        history = book.undo_titles()
+        book.move_button("Bottom")
+        assert book.order() == before and book.undo_titles() == history
+        book.tree.setFocus()
+        book.lab.input.tap("End", modifiers=("Alt_L",), pause=0.8)
+        book.lab.screenshot("move-refused-protected")
+        book.lab.input.tap("Escape", pause=0.4)
+        assert book.order() == before and book.undo_titles() == history
+    finally:
+        book.document.unprotect("synthetic")
+    book.document.RecordChanges = True
+    try:
+        book.click(2)
+        wait_until(
+            lambda: all(not b.isEnabled() for b in buttons.values()), "recorded changes controls"
+        )
+        assert all("recorded" in b.getProperty("HelpText") for b in buttons.values())
+    finally:
+        book.document.RecordChanges = False
+    return {
+        "no_selection_disabled": True,
+        "edges_disabled": True,
+        "repeated_moves": True,
+        "protected_refusal": True,
+        "recorded_changes_disabled": True,
+    }
+
+
+def check_move_focus_and_queued_navigation(book):
+    book.click(2)
+    buttons = view.move_buttons(book.panel)
+    keep = book.document.Sheets.getByIndex(0).getCellRangeByName("A1").String
+    before = book.order()
+    book.lab.input.tap("Tab", pause=0.3)
+    wait_until(buttons["Top"].hasFocus, "Tab to reach the Top button")
+    book.lab.input.tap("q", pause=0.2)
+    assert buttons["Top"].hasFocus()
+    assert book.document.Sheets.getByIndex(0).getCellRangeByName("A1").String == keep
+    book.lab.input.tap("space", pause=0.3)
+    expected = list(target_order([Sheet(n) for n in before], [NAMES[2]], "top"))
+    wait_until(lambda: book.order() == expected, "Space to press Top")
+    assert book.tree.hasFocus()
+    book.document.UndoManager.undo()
+    wait_until(lambda: view.names(book.tree) == before, "the original order")
+    book.click(2)
+    for _ in range(3):
+        book.lab.input.tap("Tab", pause=0.15)
+    wait_until(buttons["Down"].hasFocus, "Tab to reach Down")
+    book.lab.input.tap("Return", pause=0.3)
+    expected = list(target_order([Sheet(n) for n in before], [NAMES[2]], "down"))
+    wait_until(lambda: book.order() == expected, "Enter to press Down")
+    book.document.UndoManager.undo()
+    wait_until(lambda: view.names(book.tree) == before, "the original order")
+    book.click(2)
+    # No pause lets native navigation run ahead of its posted selection callback.
+    book.lab.input.tap("Down", pause=0)
+    book.lab.input.tap("Up", modifiers=("Alt_L",), pause=0.3)
+    expected = list(target_order([Sheet(n) for n in before], [NAMES[3]], "up"))
+    wait_until(lambda: book.order() == expected, "the move to use the newly navigated row")
+    assert book.selection() == [NAMES[3]]
+    assert book.undo_titles() == ["Move Sheets"]
+    book.document.UndoManager.undo()
+    wait_until(lambda: book.order() == before, "one undo of the queued move")
+    wait_until(lambda: view.names(book.tree) == before, "the list after the queued move's undo")
+    book.click(2)
+    for _ in range(4):
+        book.lab.input.tap("Tab", pause=0.15)
+    wait_until(buttons["Bottom"].hasFocus, "Tab to reach the last button")
+    book.lab.input.tap("Tab", pause=0.3)
+
+    def outside():
+        return not book.tree.hasFocus() and not any(b.hasFocus() for b in buttons.values())
+
+    wait_until(outside, "Tab at the last button to leave the panel")
+    history = book.undo_titles()
+    book.lab.input.tap("Down", modifiers=("Alt_L",), pause=0.4)
+    book.lab.input.tap("Escape", pause=0.2)
+    assert book.order() == before and book.undo_titles() == history
+    book.tree.setFocus()
+    book.lab.input.tap("Tab", modifiers=("Shift_L",), pause=0.3)
+    wait_until(outside, "Shift+Tab at the first control to leave the panel")
+    return {
+        "native_button_keyboard": True,
+        "no_cell_input": True,
+        "queued_navigation": True,
+        "tab_boundaries": True,
+        "outside_panel_shortcut_scope": True,
+    }
 
 
 def check_drop_in_place_and_escape(book):
@@ -1105,6 +1270,10 @@ def run_checks(lab, output):
     book = Workbook(lab, "synthetic", NAMES)
     lab.screenshot("panel")
     checks = [
+        ("move_buttons", lambda: check_move_controls(book, False)),
+        ("move_shortcuts", lambda: check_move_controls(book, True)),
+        ("move_edges_and_refusal", lambda: check_move_edges_and_refusal(book)),
+        ("move_focus_and_queued_navigation", lambda: check_move_focus_and_queued_navigation(book)),
         ("click_activates", lambda: check_click_activates(book)),
         ("ctrl_shift_selection", lambda: check_ctrl_shift_selection(book)),
         ("drag_two_sheets_above_midpoint", lambda: check_drag_two_sheets(book, 0.25, 12)),
