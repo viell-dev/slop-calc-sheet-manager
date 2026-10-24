@@ -6,11 +6,17 @@ you can find, select, and rearrange them quickly, however many there are.
 The sheet tab bar at the bottom of Calc is small and scrolls one tab at a time. Moving a sheet
 across dozens of others means a long, precise drag, and the alternative, the Move or Copy Sheet
 dialog, is buried in a menu. Sheet Manager puts every sheet in one vertical list, as browsers do
-with vertical tabs, where any selection of sheets moves any distance in one drag or one click.
+with vertical tabs, where any selection of sheets moves any distance in one drag.
+
+The [user guide](https://viell-dev.github.io/slop-calc-sheet-manager/) covers installation,
+updates, removal, use, known issues, troubleshooting, and reporting a problem.
 
 ## Status
 
-Under development; there is no release yet. The first release, 0.1.0, is planned to offer:
+Under development; there is no release yet. **Unreleased:** the development version lists the
+workbook's sheets, supports selection and drag and drop, handles keyboard navigation, and opens
+Calc's sheet tab menu. Each extension move is one undo step. The remaining synchronization work
+and movement buttons are tracked in #5 and #35. The first release, 0.1.0, is planned to offer:
 
 - every sheet in document order, kept in sync with changes from anywhere, with the active sheet,
   hidden sheets, tab colours, and protection shown;
@@ -23,9 +29,10 @@ Under development; there is no release yet. The first release, 0.1.0, is planned
 - one undo step per change, and respect for protected and read-only documents.
 
 Sheet Manager is written and maintained by AI agents, and no person reviews the code. A change is
-accepted on its tests, on CI on Linux and Windows, on an independent review by an agent from a
-different model provider than the one that wrote it, and, before a release, on checks on real
-desktops. [AGENTS.md](AGENTS.md) holds the agents' rules that are specific to this project.
+accepted on its tests and on CI against real LibreOffice builds on Linux and Windows. Changes are
+independently reviewed where another agent's perspective adds confidence; every release PR gets a
+review of all changes since the previous release. [AGENTS.md](AGENTS.md) holds the agents' rules
+for this project.
 
 ## Requirements
 
@@ -34,8 +41,23 @@ desktops. [AGENTS.md](AGENTS.md) holds the agents' rules that are specific to th
 - LibreOffice's Python support. Builds from libreoffice.org include it. On Linux distributions it
   can be a separate package, such as `python3-uno` on Debian and Ubuntu or `libreoffice-pyuno` on
   Fedora and openSUSE.
-- Windows and Linux are tested. macOS, Qt/KDE desktops, Flatpak, and Snap are expected to work but
-  have not been verified yet.
+
+<!-- #region environments -->
+
+| Environment                                                                       | Status                                 |
+| --------------------------------------------------------------------------------- | -------------------------------------- |
+| Linux x86-64, libreoffice.org 26.2.1.2, 26.2.6.3, and 26.8.1.1: headless and gtk3 | Verified in CI for every change        |
+| Windows x86-64, libreoffice.org 26.8.1.1: headless                                | Verified in CI for every change        |
+| Other 26.2 and 26.8 releases, and later versions, from libreoffice.org            | Expected to work, not verified         |
+| Distribution packages, other interfaces such as kf6 or gtk4, Wayland, macOS       | Expected to work, not verified         |
+| Flatpak, Snap, Arm builds, and the Windows interface in a visible window          | Expected to work, not verified         |
+| LibreOffice 26.2.0 and earlier                                                    | Unsupported: installation is refused   |
+| LibreOffice without Python support                                                | Unsupported: the extension cannot run  |
+
+<!-- #endregion environments -->
+
+The gtk3 checks run under X11 in a virtual display. If Sheet Manager does not work somewhere it is
+expected to, please [report it](CONTRIBUTING.md#report-a-defect).
 
 ## Install and update
 
@@ -59,11 +81,17 @@ for the release procedure and version rules.
 
 ## Known issues
 
-- In LibreOffice 26.8.0 and 26.8.1, Duplicate Sheet and Move or Copy Sheet copy formulas with
-  relative sheet references incorrectly
-  ([tdf#173608](https://bugs.documentfoundation.org/show_bug.cgi?id=173608)); 26.8.2 fixes it.
-  These commands are LibreOffice's own and behave the same whether started from the tab bar or from
-  Sheet Manager.
+- The move buttons are not implemented yet. Tab-only selection changes reach the list at the next
+  sheet switch; the list refreshes after other sheet changes.
+- After Ctrl+S from the list, keyboard focus moves to the sheet (#23).
+- A change that may replace a sheet clears the list's selection conservatively. Large lists are
+  rebuilt after changes, which can delay the active-sheet marker (#22).
+- The sheet tab menu runs LibreOffice's own Duplicate Sheet and Move or Copy
+  Sheet. In LibreOffice 26.8.0 and 26.8.1 these commands copy formulas with relative sheet
+  references incorrectly ([tdf#173608](https://bugs.documentfoundation.org/show_bug.cgi?id=173608)),
+  whether they are started from the tab bar or from the menu. LibreOffice's fix is due in 26.8.2.
+- Defects in LibreOffice that affect Sheet Manager, and how each is handled, are listed in
+  [#33](https://github.com/viell-dev/slop-calc-sheet-manager/issues/33).
 
 ## Contributing, security, and licence
 

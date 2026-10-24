@@ -45,6 +45,8 @@ def show_refusal(context: Any, document: Any, observed: Snapshot, targets: list[
             return tr("This document is read-only.")
         if document.isProtected():
             return tr("The document's sheet structure is protected.")
+        if document.getPropertyValue("RecordChanges"):
+            return tr("Sheets cannot be shown while changes are being recorded.")
         undo = document.getUndoManager()
         capacity = undo_steps(context)
         if not document.getPropertyValue("IsUndoEnabled") or undo.isLocked() or capacity <= 0:

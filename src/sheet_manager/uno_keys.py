@@ -71,9 +71,11 @@ class ListKeyHandler(unohelper.Base, XKeyHandler):
         self._consumed: dict[int, bool] = {}
 
     def keyPressed(self, event):
+        owned = False
         try:
             if not self._list.owns_keys():
                 return False
+            owned = True
             # PyUNO passes a UNO char as uno.Char; its value is the one-character string.
             char = getattr(event.KeyChar, "value", event.KeyChar)
             route = route_key(event.KeyCode, event.Modifiers, char)
@@ -95,7 +97,9 @@ class ListKeyHandler(unohelper.Base, XKeyHandler):
             return route.consumed
         except Exception:
             report("the key handler")
-            return False
+            if owned:
+                self._consumed[event.KeyCode] = True
+            return owned
 
     def keyReleased(self, event):
         # Consume the release of a press that was consumed, wherever the focus is now.

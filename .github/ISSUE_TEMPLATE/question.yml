@@ -1,0 +1,27 @@
+name: Question
+description: Ask how Sheet Manager works or how to use it
+labels: ["Type: Question"]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        If an AI agent wrote or submitted this, say so at the start of your question: which agent,
+        for whom, and whether a person reviewed it.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before asking
+      options:
+        - label: I read the README and searched the open and closed issues.
+          required: true
+        - label: >-
+            I follow the project's [code of
+            conduct](https://github.com/viell-dev/slop-calc-sheet-manager/blob/main/CODE_OF_CONDUCT.md).
+          required: true
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What you want to know, with the Sheet Manager and LibreOffice versions if it matters.
+    validations:
+      required: true

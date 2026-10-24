@@ -6,6 +6,7 @@ import io
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -112,8 +113,14 @@ def previous_builds() -> list[PublishedBuild]:
     return [PublishedBuild(**record) for record in records]
 
 
-def write_site(output: Path, builds: list[PublishedBuild]) -> None:
-    validate_history(builds, previous_builds())
+def write_site(output: Path, builds: list[PublishedBuild], *, check_history: bool = True) -> None:
+    """Write the feeds and release history; refuse a history that drops or changes a build.
+
+    Only `pages --offline` skips the check, to give pull request builds a feed site without
+    depending on live release data; it writes empty feeds and is never deployed.
+    """
+    if check_history:
+        validate_history(builds, previous_builds())
     updates = output / "updates"
     updates.mkdir(parents=True, exist_ok=True)
     for stable in (True, False):
@@ -123,16 +130,49 @@ def write_site(output: Path, builds: list[PublishedBuild]) -> None:
     (output / "releases.json").write_text(
         json.dumps([asdict(item) for item in builds], indent=2) + "\n", encoding="utf-8"
     )
-    (output / "index.html").write_text(
+    # The site's root belongs to the user guide; see combine_site.
+    (updates / "index.html").write_text(
         '<!doctype html><html lang="en"><meta charset="utf-8">'
         "<title>Sheet Manager updates</title><h1>Sheet Manager updates</h1>"
-        '<p><a href="updates/stable.xml">Stable feed</a> · '
-        '<a href="updates/prerelease.xml">All published builds</a></p>'
+        '<p><a href="stable.xml">Stable feed</a> · '
+        '<a href="prerelease.xml">All published builds</a></p>'
         f'<p><a href="https://github.com/{REPOSITORY}/releases">Downloads and release notes</a></p>'
+        '<p><a href="../">User guide</a></p>'
         "</html>\n",
         encoding="utf-8",
     )
     (output / ".nojekyll").touch()
+
+
+FEED_FILES = ("updates/stable.xml", "updates/prerelease.xml", "updates/index.html", "releases.json")
+GUIDE_FILES = ("index.html", "404.html")
+
+
+def combine_site(guide: Path, site: Path) -> list[str]:
+    """Copy the built user guide into the generated feed site, refusing to replace any file.
+
+    Both share one GitHub Pages deployment. A guide file at a feed path would replace an update
+    feed or the release history, so any overlap stops the build. Return the copied paths.
+    """
+    for name in FEED_FILES:
+        if not (site / name).is_file():
+            raise ValueError(f"The feed site lacks {name}")
+    for name in GUIDE_FILES:
+        if not (guide / name).is_file():
+            raise ValueError(f"The user guide lacks {name}")
+    files = sorted(path for path in guide.rglob("*") if path.is_file())
+    relative = [path.relative_to(guide).as_posix() for path in files]
+    reserved = {name.split("/")[0] for name in FEED_FILES} | {".nojekyll"}
+    overlaps = [
+        name for name in relative if name.split("/")[0] in reserved or (site / name).exists()
+    ]
+    if overlaps:
+        raise ValueError(f"The user guide would replace feed site files: {overlaps}")
+    for source, name in zip(files, relative, strict=True):
+        target = site / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+    return relative
 
 
 def require_ci(commit: str, *, publishing: bool, timeout: float = 1200) -> str:
@@ -194,17 +234,32 @@ def prepare(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["release", "pages"])
+    parser.add_argument("command", choices=["release", "pages", "combine"])
+    parser.add_argument("--guide", type=Path, help="combine: the built user guide")
+    parser.add_argument(
+        "--offline", action="store_true", help="pages: write empty feeds without reading GitHub"
+    )
     parser.add_argument("--version")
     parser.add_argument("--prerelease", action="store_true")
     parser.add_argument("--target", default="")
     parser.add_argument("--publish", action="store_true", help="Default is a read-only dry run")
     parser.add_argument("--output", type=Path, default=ROOT / "dist/release")
     args = parser.parse_args()
+    if args.offline and args.command != "pages":
+        parser.error("--offline applies only to pages")
     if args.command == "pages":
+        if args.offline:
+            write_site(args.output, [], check_history=False)
+            return
         write_site(
             args.output, published_builds(paginated(f"repos/{REPOSITORY}/releases?per_page=100"))
         )
+        return
+    if args.command == "combine":
+        if args.guide is None:
+            parser.error("combine requires --guide")
+        copied = combine_site(args.guide, args.output)
+        print(f"Combined {len(copied)} user guide files with the update feeds in {args.output}")
         return
     if not args.version:
         parser.error("release requires --version")

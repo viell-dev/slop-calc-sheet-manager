@@ -1,6 +1,6 @@
 """Test clean-up that neither hides a failure nor waits on a stalled office. No UNO dependency.
 
-On Windows the tests close Calc documents, and run some steps, through callbacks on
+The tests close Calc documents on Windows, and run UI steps, through callbacks on
 LibreOffice's main thread (`main_thread.py`). When such a callback does not finish in time, the
 main thread is stuck and its outcome is unknown (#50): no further callback is tried, the session
 fails, and the runner stops its office instead of asking it to terminate, which would wait for
@@ -118,6 +118,7 @@ def run_checks(
     checks: Iterable[tuple[str, Callable[[], object]]],
     documents: list[Any],
     close: Callable[[Any], None],
+    label: str = "check",
 ) -> dict[str, object]:
     """Run named checks in order, then close the documents they left open.
 
@@ -130,7 +131,7 @@ def run_checks(
         for name, check in checks:
             if _stalled:
                 break  # No check runs against a stuck office; the clean-up below raises.
-            print("sheet list check:", name, flush=True)
+            print(f"{label}:", name, flush=True)
             results[name] = check() or True
     except BaseException as failure:
         close_leftovers(documents, close, failure)

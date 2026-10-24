@@ -5,6 +5,10 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Clean up partial list initialization and failed menu setup, consume owned keys after a handler
+  error, and refuse Show Sheet while changes are being recorded. Type-ahead now cycles through
+  sheets when their first letter is repeated. The guide and verification map cover the list,
+  and optional desktop observations no longer act as a routine release gate.
 - Added the sheet list to the panel: every sheet in document order with its tab colour and its
   active, hidden, protected, and scenario state. A click goes to a sheet; Ctrl+click and
   Shift+click select several without changing the active sheet. Selected sheets can be dragged,
@@ -65,6 +69,30 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   and whether a person reviewed it.
 - Required the painted gtk3 checks for merging again, after 180 painted sessions on `main` ran
   without a failure ([#32](https://github.com/viell-dev/slop-calc-sheet-manager/issues/32)).
+- Added issue forms for bug reports, improvements, feature requests, and questions. The bug form
+  asks for LibreOffice's copied version information, how LibreOffice was installed, and a workbook
+  made for the report. The README now says which LibreOffice versions and environments are
+  verified, expected to work, or unsupported
+  ([#56](https://github.com/viell-dev/slop-calc-sheet-manager/issues/56)).
+- Made the integration checks fail visibly instead of passing or hanging:
+  - They keep LibreOffice's crash dumps, and fail a session whose office crashed even though it
+    exited with status 0 on Windows
+    ([#48](https://github.com/viell-dev/slop-calc-sheet-manager/issues/48)).
+  - On Windows they close test workbooks on LibreOffice's main thread
+    ([#47](https://github.com/viell-dev/slop-calc-sheet-manager/issues/47)).
+  - They stop an office whose callback or terminate request stalls
+    ([#50](https://github.com/viell-dev/slop-calc-sheet-manager/issues/50),
+    [#40](https://github.com/viell-dev/slop-calc-sheet-manager/issues/40)).
+  - They repeat the painted resize check's setup when the new window is maximized late
+    ([#9](https://github.com/viell-dev/slop-calc-sheet-manager/issues/9)).
+- Added a user guide at <https://viell-dev.github.io/slop-calc-sheet-manager/>, published with the
+  update feeds. It covers installation, updates, removal, use, compatibility, troubleshooting, and
+  reporting a problem, and says which version it describes. The page listing the feeds moved to
+  `updates/`; the feed addresses are unchanged
+  ([#56](https://github.com/viell-dev/slop-calc-sheet-manager/issues/56)).
+- Checked that LibreOffice still converts files headlessly with the extension installed, and that
+  removing the extension leaves no deck, panel, or installed copy behind. `docs/verification.md`
+  maps each promise to the checks that verify it.
 
 ## 0.0.1 - Development baseline (unpublished)
 

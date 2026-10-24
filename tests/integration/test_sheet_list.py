@@ -832,4 +832,5 @@ def exercise(context, desktop, directory, output, *, headless):
         ),
         _CREATED,
         lambda document: close_document(context, document),
+        label="sheet list check",
     )

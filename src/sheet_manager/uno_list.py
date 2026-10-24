@@ -296,12 +296,29 @@ class _Document(unohelper.Base, XModifyListener, XActivationEventListener):
 
 class SheetList:
     def __init__(self, context, frame, parent_window):
+        self._disposed = False
+        self._main = MainThread(context)
+        self._refresh_timer: Later | None = None
+        self._scroll = 0
+        self._keys_registered = False
+        self._cleanup = contextlib.ExitStack()
+        try:
+            self._initialize(context, frame, parent_window)
+        except BaseException:
+            self.dispose()
+            raise
+
+    def _release_with(self, work) -> None:
+        self._cleanup.callback(_guarded, "disposing the sheet list", work)
+
+    def _initialize(self, context, frame, parent_window):
         self.context = context
         self.frame = frame
         self.controller = frame.getController()
         self.document = self.controller.getModel()
         # Attached before the first snapshot, so that no structural change goes unnoticed.
         self._monitor = StructureMonitor(self.document)
+        self._release_with(self._monitor.dispose)
         self._proven = self._monitor.generation  # The generation the picks were proved at.
         self.toolkit = parent_window.getToolkit()
         self.rows: list[SheetRow] = []
@@ -319,9 +336,7 @@ class SheetList:
         # before one can tell.
         self._generation = 0
         self._user_picks = False  # Whether the picks came from the user rather than from Calc.
-        self._disposed = False
         self._busy = False
-        self._main = MainThread(context)
         self._menu = SheetMenu(
             context,
             frame,
@@ -331,8 +346,6 @@ class SheetList:
             lambda: self.post(self._command_refused, "refusing a stale command"),
         )
         self._keys = ListKeyHandler(self, Shortcuts(context, self.document))
-        self._keys_registered = False
-        self._refresh_timer: Later | None = None
         self._changed_at = 0.0  # The last document change.
         self._stale_since: float | None = None  # The first change not yet shown.
         self._refresh_cost = 0.0  # How long the last refresh took.
@@ -362,6 +375,7 @@ class SheetList:
         model.HideInactiveSelection = False  # The list's selection stays visible in the sheet.
         model.Border = 0  # The sidebar draws the frame; this also makes the tree a direct child.
         self.tree = manager.createInstanceWithContext("com.sun.star.awt.tree.TreeControl", context)
+        self._release_with(self.tree.dispose)
         self.tree.setModel(model)
         self.tree.createPeer(self.toolkit, parent_window)
         self.peer = self.tree.getPeer()
@@ -380,12 +394,24 @@ class SheetList:
         self.tree.addPaintListener(self._listeners["paint"])
         self._gestures = self.toolkit.getDragGestureRecognizer(self.peer)
         self._gestures.addDragGestureListener(self._listeners["gesture"])
+        self._release_with(
+            lambda: self._gestures.removeDragGestureListener(self._listeners["gesture"])
+        )
         self._drag_source = self.toolkit.getDragSource(self.peer)
         self._drop_target = self.toolkit.getDropTarget(self.peer)
         self._drop_target.addDropTargetListener(self._listeners["target"])
+        self._release_with(
+            lambda: self._drop_target.removeDropTargetListener(self._listeners["target"])
+        )
         self._drop_target.setActive(True)
+        self._release_with(lambda: self._drop_target.setActive(False))
         self.document.addModifyListener(self._listeners["document"])
+        self._release_with(lambda: self.document.removeModifyListener(self._listeners["document"]))
         self.controller.addActivationEventListener(self._listeners["document"])
+        self._release_with(
+            lambda: self.controller.removeActivationEventListener(self._listeners["document"])
+        )
+        self._release_with(lambda: self.focus_changed(False))
         self.refresh()
         self.follow_calc_selection()
 
@@ -410,18 +436,7 @@ class SheetList:
         self._scroll = 0
         if self._refresh_timer is not None:
             self._refresh_timer.cancel()
-        self.focus_changed(False)
-        for remove in (
-            lambda: self.document.removeModifyListener(self._listeners["document"]),
-            self._monitor.dispose,
-            lambda: self.controller.removeActivationEventListener(self._listeners["document"]),
-            lambda: self._drop_target.setActive(False),
-            lambda: self._drop_target.removeDropTargetListener(self._listeners["target"]),
-            lambda: self._gestures.removeDragGestureListener(self._listeners["gesture"]),
-        ):
-            with contextlib.suppress(Exception):  # The document or toolkit may be gone.
-                remove()
-        self.tree.dispose()
+        self._cleanup.close()
 
     # Rows and identity
 
@@ -1005,13 +1020,13 @@ class SheetList:
         refs = self._current_picks()
         if not refs:
             return
+        generation, structure = self._generation, self._proven
         observed = snapshot(self.document)
         names = {sheet.name for sheet in observed.sheets}
         if not all(ref.name in names and _current(ref) for ref in refs):
             self.refresh()  # A pick changed since this check began: open nothing.
             return
         picked = [ref.name for ref in refs]
-        generation, structure = self._generation, self._monitor.generation
 
         def unchanged() -> bool:
             return self._monitor.check() == structure and self._generation == generation

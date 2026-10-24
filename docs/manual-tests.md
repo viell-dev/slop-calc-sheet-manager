@@ -1,10 +1,13 @@
-# Manual tests
+# Optional desktop observations
 
 Automated tests cover the sheet list with real mouse and keyboard input only on Linux, under a
 virtual X display with the gtk3 and gen interfaces. On Windows they can send only LibreOffice's
 own synthetic events, which bypass the key handler and cannot start a native drag. These checks
-cover what automation cannot see: real keys and drags on Windows, Wayland desktops, and how the
-list looks. Run them on each release candidate, on Windows and on the owner's Linux desktop.
+cover observations outside the automated evidence: real keys and drags on Windows, input in an
+explicit Wayland session, and the list's appearance. These are optional checks, not an owner
+checklist or a routine release gate. A release PR assesses any material evidence limit and makes
+a narrowly scoped request only when the observation is unavailable to agents and blocks that
+release. An X11 result does not establish Wayland input behaviour.
 
 ## Prepare
 

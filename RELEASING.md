@@ -45,11 +45,18 @@ range and stable patch limit.
    released into a nonempty `## VERSION - YYYY-MM-DD` section in `CHANGELOG.md`, retaining an
    `Unreleased` section above it. The exact section body becomes the release notes; write for
    users, without an agent callout or footer. Update compatibility and installation documentation
-   if needed. Do not change the extension identifier.
+   if needed. Do not change the extension identifier. In the user guide, remove the **Unreleased**
+   markers for what this release contains. For the first release, also rewrite the statements that
+   no release exists, which
+   `git grep -n -i -E "no (release|build|download)|published yet|until then" -- docs README.md`
+   finds.
 2. Run `python tools/check.py` and the relevant LibreOffice integration checks described in
-   [CONTRIBUTING.md](CONTRIBUTING.md). Have the candidate tested on real desktops with the batched
-   checklist in [AGENTS.md](AGENTS.md#testing-with-the-owner). Complete independent review, then
-   merge the preparation PR and wait for **CI** on its exact `main` commit to succeed.
+   [CONTRIBUTING.md](CONTRIBUTING.md). Readiness rests on those checks and on CI; no release waits
+   on a manual checklist. If an observation that no check can make matters for this release, ask
+   for it as [AGENTS.md](AGENTS.md#requests-to-the-owner) describes, and say in the preparation PR
+   whether it blocks the release. Complete the release review that
+   [AGENTS.md](AGENTS.md#review) requires, then merge the preparation PR and wait for **CI** on its
+   exact `main` commit to succeed.
 3. In Actions, select **Release → Run workflow**, choose `main`, enter the exact version, select
    `prerelease` for a candidate, and leave `dry_run` checked. For a next-major candidate supply
    its `target`; next-minor candidates derive it automatically. Inspect the resulting artifact:
@@ -88,7 +95,7 @@ and only then publishes. This ordering supports GitHub's immutable releases. An 
 published version, or draft is refused. Publication is serialized so two workflow runs cannot
 reserve the same version or overtake one another.
 
-After publication, the workflow calls **Update feeds**. Check the release's assets and checksum,
+After publication, the workflow calls **Pages**. Check the release's assets and checksum,
 the Pages deployment, and both live feeds. Stable builds appear in both feeds. Candidates appear
 only in the prerelease feed. Installed copies always point to the stable feed; installing a
 candidate does not opt a user into future candidates.
@@ -100,7 +107,7 @@ against a rebuild of the tagged commit, and publishing it. Never use `--clobber`
 asset. If its content is wrong or uncertain, abandon the draft/tag and prepare a higher version.
 An older stalled draft may be completed even after a higher version has been published: feeds
 sort by version, so the recovered build enters history without replacing the newest offer.
-If publication succeeded but Pages failed, rerun **Update feeds** on `main`; do not republish.
+If publication succeeded but Pages failed, rerun **Pages** on `main`; do not republish.
 
 The tag/draft/upload/publish sequence has mock coverage but has not been executed live. The first
 `0.0.90` candidate publication will be its first live test. Keep this recovery procedure open
@@ -110,7 +117,7 @@ version.
 ## Feed storage and safeguards
 
 GitHub Releases are the source of truth, rather than release-bot commits to protected `main`.
-**Update feeds** downloads each published release's versioned OXT and checksum, verifies them,
+**Pages** downloads each published release's versioned OXT and checksum, verifies them,
 and reads its identifier, version, and minimum LibreOffice version from the packaged metadata.
 It ignores drafts and refuses missing assets or mismatched tags/checksums. Published releases
 with noncanonical version tags also stop generation; this repository reserves GitHub Releases
@@ -136,10 +143,25 @@ Generation and deployment share the `update-feeds` concurrency lock, so queued r
 release data. Both the release workflow's caller job and the standalone Pages workflow hold it
 across the complete build and deployment; locking deployment alone would allow stale builds.
 
+The same deployment serves the user guide.
+
+- **Building.** **Pages** builds the guide with VitePress from `main`. It passes the guide the
+  release history it has just generated, so that the guide's notice names the latest release.
+- **Combining.** Pages then copies the guide into the generated site, and refuses to replace any
+  file there: the guide may not write `releases.json` or anything under `updates/`.
+- **Pull requests.** CI's **Documentation** job builds and combines the guide on every pull
+  request, against empty feeds generated offline (`pages --offline`), so the live release history
+  cannot block an unrelated pull request. Pages checks the live history when it deploys.
+- **Recording the deployment.** The notice at the top of each page, and the run's summary, name
+  the commit the site was built from.
+- **One workflow.** No other workflow deploys Pages, so a guide deployment and a feed update
+  cannot overwrite each other.
+
 GitHub Pages must use **GitHub Actions** as its source. Set the `github-pages` environment's custom
 deployment policies to branch `main` and tags `[0-9]*`, so manual release events can deploy too.
 Other branches and PR refs cannot deploy. Pages uses tooling from `main`. A push to `main`, a
-manual dispatch, and a daily schedule at 03:23 UTC can rebuild feeds. The release
+manual dispatch, and a daily schedule at 03:23 UTC can rebuild the feeds and the guide. None of
+these publishes a build: they only regenerate feeds from releases already published. The release
 workflow calls it directly because events created with `GITHUB_TOKEN` do not trigger another
 workflow's `release` event. The event trigger also handles a manually completed draft.
 
@@ -159,5 +181,7 @@ provider parses descriptions without evaluating dependencies; the UI's
 performs that step inside a modal VCL dialog. Automated tests therefore cover the real feed
 parser and deployment dependency checker separately. They do not claim to exercise the update
 dialog, its offered-update state, download/install clicks, restart behaviour, or automatic check
-scheduling. Check the Extension Manager's visible update behaviour on real desktops before the
-first release.
+scheduling. [Issue #57](https://github.com/viell-dev/slop-calc-sheet-manager/issues/57) adds a
+painted check of the update dialog. Before the first published build, either close it, or record
+in the release pull request why the remaining limit is acceptable and which substitute evidence
+covers it, such as a single recorded run of the dialog in the Linux lab.

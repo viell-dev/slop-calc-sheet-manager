@@ -156,6 +156,7 @@ def test_a_session_without_stalls_asks_its_office_to_terminate(tmp_path: Path) -
         result = end_office(desktop, process, log_path, stalled=[])
     assert desktop.terminate_requests == 1
     assert result["office_stalled_callbacks"] == []
+    assert result["office_terminate_returned"] is True
     assert_clean_shutdown(result)
 
 
@@ -183,3 +184,30 @@ def test_stopping_the_launcher_stops_its_children_on_windows() -> None:
             break
         time.sleep(0.2)
     assert child not in listing.split(), listing
+
+
+class BlockedDesktop:
+    """A terminate request held by a dialog that nobody answers (#40)."""
+
+    def __init__(self) -> None:
+        self.terminate_requests = 0
+
+    def terminate(self) -> None:
+        self.terminate_requests += 1
+        time.sleep(60)
+
+
+def test_a_terminate_request_held_by_a_dialog_stops_the_office(tmp_path: Path) -> None:
+    log_path, desktop = tmp_path / "soffice.log", BlockedDesktop()
+    with log_path.open("w", encoding="utf-8") as log:
+        process = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(60)"], stdout=log, text=True
+        )
+        started = time.monotonic()
+        result = end_office(desktop, process, log_path, stalled=[], grace=0.5)
+    assert desktop.terminate_requests == 1
+    assert process.poll() is not None and time.monotonic() - started < 30
+    assert result["office_terminate_returned"] is False
+    assert result["office_forced_shutdown"] is True
+    with pytest.raises(AssertionError):
+        assert_clean_shutdown(result)

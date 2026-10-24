@@ -101,7 +101,7 @@ class TypeAhead:
         self._last: float | None = None
 
     def feed(self, char: str, now: float) -> str:
-        if self._last is None or now - self._last > self.timeout:
+        if self._last is None or now - self._last > self.timeout or self.prefix == char:
             self.prefix = ""
         self._last = now
         self.prefix += char

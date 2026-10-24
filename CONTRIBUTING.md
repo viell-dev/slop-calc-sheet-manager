@@ -13,17 +13,29 @@ note.
 ## Report a defect
 
 Search the open and closed [issues](https://github.com/viell-dev/slop-calc-sheet-manager/issues)
-first, then open one with:
+first, then open one with the
+[bug report form](https://github.com/viell-dev/slop-calc-sheet-manager/issues/new?template=bug.yml).
+It asks for:
 
-- the Sheet Manager version, from Tools ▸ Extension Manager;
-- the LibreOffice version and user interface, from Help ▸ About (the "VCL" line, such as `win`,
-  `gtk3`, or `kf6`), and the operating system;
+- the Sheet Manager version, from Tools ▸ Extension Manager, or the commit you built;
+- LibreOffice's version information: in Help ▸ About, select **Copy Version Information**. It
+  includes the operating system and the user interface (the "VCL" line, such as `win`, `gtk3`, or
+  `kf6`);
+- how LibreOffice was installed, such as from libreoffice.org or as a distribution package;
 - the exact steps, from opening the workbook to the problem;
 - what happened and what you expected;
 - a workbook that shows it, made for the report: never attach a real workbook or a screenshot of
   one with private content.
 
-Report vulnerabilities privately, as [SECURITY.md](SECURITY.md) describes.
+Suggest an improvement to existing behaviour or a new capability with the other forms, and ask how
+something works with the question form.
+[#33](https://github.com/viell-dev/slop-calc-sheet-manager/issues/33) lists known defects in
+LibreOffice that affect Sheet Manager. Report vulnerabilities privately, as
+[SECURITY.md](SECURITY.md) describes.
+
+Maintainers label each issue with one `Type:` label, at most one `Status:` label, and `Needs: Owner`
+or `Needs: Human` when a particular person has to act. The labels and their meanings are in
+[`.github/labels.json`](.github/labels.json).
 
 ## Set up
 
@@ -91,6 +103,10 @@ different zlib versions cannot change the result. Add new shipped modules to the
 
 ## Tests
 
+[docs/verification.md](docs/verification.md) maps each promise the extension makes to the checks
+that verify it, where they run, and what they do not show. Update it in the same pull request as a
+change to a promise or to its checks.
+
 Unit tests need no LibreOffice and run as part of the checks. To run them alone:
 
 ```powershell
@@ -105,7 +121,7 @@ Release tests cover version ordering, candidate policy, changelog extraction, an
 The integration runner also sends generated loopback HTTP feeds through LibreOffice's update
 parser and checks candidate compatibility through its deployment API. The update dialog itself
 has no public headless offered-update API; see [RELEASING.md](RELEASING.md#verification-boundary)
-for the tested boundary and the remaining desktop check. Release dry runs and publication follow
+for the tested boundary and the remaining gap. Release dry runs and publication follow
 [RELEASING.md](RELEASING.md).
 
 The sheet list's selection model has a property test: random sequences of picks, refreshes,
@@ -176,6 +192,22 @@ Every workbook is synthetic and loaded visibly, even when the office process its
 It retries only startup, up to three times, to tolerate a Windows crash just after connecting. It
 never attaches to an existing office or uses the normal LibreOffice profile.
 
+Once per run that includes a headless session, with the extension installed and all suites
+enabled, the runner also checks the extension's lifecycle in a profile of its own:
+
+1. It installs the OXT with `unopkg`.
+2. It converts a synthetic CSV file with `soffice --headless --convert-to ods`, with the extension
+   installed.
+3. It confirms the deck and the panel factory in a new office.
+4. It removes the extension.
+5. It confirms that a new office has neither. It also confirms that no installed copy is left
+   outside LibreOffice's own staging area, `user/extensions/tmp`. A copy is found by its
+   description naming the extension's identifier, whatever its file name, and the same search must
+   find the copy before removal.
+
+Its logs are in `lifecycle/` in the runner's output directory, `test-results/<lane>/` for the
+Linux lanes.
+
 On Windows, build and test the installed LibreOffice with its bundled Python:
 
 ```powershell
@@ -239,8 +271,9 @@ release, and check that the Menu key's Hide hides the newer pick. They pick Brav
 and give its name to another sheet, directly or after inserting one so that the count is kept,
 replace it while it is held, or run the insert-delete-rename batch on LibreOffice's main thread
 inside `lockControllers`, `addActionLock`, or `disableSetModified`, or with undo recording off
-inside either lock and an empty undo history, and check that the picks are dropped, that the user
-is told, and that the Menu key then hides nothing. They hold a drag of Bravo while that
+inside either lock and an empty undo history, and check that the picks are dropped and that the
+Menu key then hides nothing. The deletion and name-reuse cases also assert the notice. They hold a
+drag of Bravo while that
 unrecorded batch runs and check that the drop moves nothing, press Enter or the Menu key while
 the batch's outer lock is still held and check that neither activates nor hides the replacement,
 and save with Ctrl+S from the list and from a cell and check that the picks stay. While a
@@ -248,7 +281,7 @@ far sheet's colour keeps changing, so that the list waits to refresh, they click
 just before, and Ctrl+click after a plain click, and check that nothing acts on the old rows.
 Results and screenshots are in `test-results/<lane>/ui-gtk3/` and `ui-gen/`. LibreOffice's
 synthetic input on Windows bypasses key handlers and cannot start a native drag; those checks are
-on the [manual checklist](docs/manual-tests.md), with a synthetic workbook from
+in the [optional desktop observations](docs/manual-tests.md), with a synthetic workbook from
 `python tools/manual_workbook.py`.
 
 Logs, actual office/Python versions, package inventory, and results are in `test-results/` and in
@@ -262,13 +295,19 @@ attempt that is retried are kept and listed as `office_startup_crash_dumps` with
 session. On Windows the tests close Calc documents on LibreOffice's main thread, as its user
 interface does: closing one from the test's own thread crashed LibreOffice when a toolbar update
 was pending
-([#47](https://github.com/viell-dev/slop-calc-sheet-manager/issues/47)). If such a close, or other
-work run on the main thread, does not finish within 60 seconds, the session fails, no further close
-is tried, and the runner stops its own office instead of asking it to terminate
-([#50](https://github.com/viell-dev/slop-calc-sheet-manager/issues/50)). The intermittent gtk3
-abort of
-[issue #8](https://github.com/viell-dev/slop-calc-sheet-manager/issues/8) was a LibreOffice crash
-when a test closed Writer within milliseconds of opening it
+([#47](https://github.com/viell-dev/slop-calc-sheet-manager/issues/47)). If such a close does not
+finish within 60 seconds, the session fails, no further close is tried, and the runner stops its
+own office instead of asking it to terminate
+([#50](https://github.com/viell-dev/slop-calc-sheet-manager/issues/50)). A terminate request that
+does not return within 30 seconds, for example because a painted office asks whether to save a
+workbook that a failed check left open, also ends in a forced shutdown and a failed session,
+rather than a run that hangs until the job's time limit
+([#40](https://github.com/viell-dev/slop-calc-sheet-manager/issues/40)). The painted resize check
+repeats its initial geometry request when the new window is maximized after it, and records every
+request and measurement in `resize-initial-*.json`
+([#9](https://github.com/viell-dev/slop-calc-sheet-manager/issues/9)). The intermittent gtk3
+abort of [issue #8](https://github.com/viell-dev/slop-calc-sheet-manager/issues/8) was a
+LibreOffice crash when a test closed Writer within milliseconds of opening it
 ([#30](https://github.com/viell-dev/slop-calc-sheet-manager/issues/30)); the runner now waits a
 second before closing Writer.
 Windows CI verifies a pinned MSI before silently installing it; this installation script is for
@@ -326,6 +365,35 @@ same Node, and a unit test fails until they match. That test accepts setup-node 
 keys or `uses`. Moving to a new major version of Python or Node is a deliberate change made by
 hand.
 
+## Documentation
+
+The user guide is in `docs/` and is built with VitePress, whose exact version `package.json` pins.
+It is published on [GitHub Pages](https://viell-dev.github.io/slop-calc-sheet-manager/) together
+with the update feeds. To work on it, select the Node.js version in `.nvmrc` (`nvm use` or
+`fnm use`), then run:
+
+```sh
+npm ci
+npm run docs:dev
+```
+
+`npm run docs:build` builds it as CI does; a broken link between pages fails the build. Some
+Windows security policies block the native module that VitePress's bundler loads. Then build in a
+container, from the repository root in PowerShell 7, and find the site in `test-results/docs/`:
+
+```powershell
+New-Item -ItemType Directory -Force test-results/docs | Out-Null
+docker run --rm --env "SHEET_MANAGER_DOCS_COMMIT=$(git rev-parse HEAD)" `
+  --mount "type=bind,source=${PWD},target=/src,readonly" `
+  --mount "type=bind,source=${PWD}/test-results/docs,target=/out" node:24.21.0-bookworm-slim `
+  bash -c 'cp -r /src /build && cd /build && rm -rf node_modules && npm ci && npm run docs:build && cp -r docs/.vitepress/dist/. /out/'
+```
+
+Write for users of the extension. A user-visible change updates the guide in the same pull
+request. Until the change is released, mark it **Unreleased**. Every page is listed in the sidebar
+in `docs/.vitepress/config.mts`, and `tests/unit/test_consistency.py` checks the sidebar and the
+facts that the README, the guide, and the extension's metadata share.
+
 ## Pull requests
 
 Every change to `main` goes through a pull request with passing checks and is merged with a merge
@@ -333,8 +401,10 @@ commit. Contributions are made under the [Mozilla Public License 2.0](LICENSE).
 
 - Describe the problem, the resulting behaviour, and the decisions made and why, for a reader who
   will not read the diff. Link the issue.
-- Add a "Verification" section: the commands run, the inputs tried beyond the tests, and the
-  platforms and LibreOffice versions checked.
+- Add a "Verification" section: the commands run, the inputs tried beyond the tests, the
+  platforms and LibreOffice versions checked, and any behaviour you broke on purpose to show that
+  a check catches it. Maintainers add how the change was reviewed, as
+  [AGENTS.md](AGENTS.md#review) describes.
 - Update every document, test, and setting that describes what you changed, in the same pull
   request, and add the change to the `Unreleased` section of [CHANGELOG.md](CHANGELOG.md).
 - Keep changes scoped, and state remaining limits.

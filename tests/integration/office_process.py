@@ -4,6 +4,7 @@ import os
 import re
 import shutil
 import subprocess
+import threading
 from contextlib import suppress
 from pathlib import Path
 from typing import Any
@@ -102,6 +103,25 @@ def finish_process(
     }
 
 
+def request_termination(desktop: Any, timeout: float) -> bool:
+    """Ask the office to terminate over UNO; return whether the request returned in time.
+
+    `terminate()` does not return while the office shows a dialog, such as "Save Document?" for
+    a document that a failed check left modified in a painted session (#40). The request
+    therefore runs on its own thread, which is left behind if it does not return; stopping the
+    office ends it.
+    """
+    returned = threading.Event()
+
+    def request() -> None:
+        with suppress(Exception):  # The bridge is normally disposed during successful termination.
+            desktop.terminate()
+        returned.set()
+
+    threading.Thread(target=request, name="terminate-office", daemon=True).start()
+    return returned.wait(timeout)
+
+
 def end_office(
     desktop: Any,
     process: subprocess.Popen[str],
@@ -109,21 +129,25 @@ def end_office(
     *,
     stalled: list[str],
     backtrace_path: Path | None = None,
+    grace: float = 30,
 ) -> dict[str, object]:
     """End this session's office and record how it ended.
 
-    Normally the office is asked to terminate over UNO and given 30 seconds before it is stopped.
-    After a stalled main-thread callback (`teardown`), that request could wait for the stuck
-    thread without bound (#40, #50), so the office is stopped at once instead; the session then
-    fails, with the stall and the forced shutdown in its results.
+    Normally the office is asked to terminate over UNO and given `grace` seconds to return from
+    that request and then to exit, after which it is stopped. A request that does not return,
+    such as one held by a dialog (#40), leaves the office running, so it is stopped too: the
+    session fails with a forced shutdown instead of hanging until the job's time limit.
+
+    After a stalled main-thread callback (`teardown`), the request could wait for the stuck
+    thread without bound (#50), so it is not sent and the office is stopped at once; the session
+    then fails, with the stall and the forced shutdown in its results.
     """
-    if not stalled:
-        with suppress(Exception):  # The bridge is normally disposed during successful termination.
-            desktop.terminate()
+    returned = not stalled and request_termination(desktop, grace)
     ended = finish_process(
-        process, log_path, timeout=0 if stalled else 30, backtrace_path=backtrace_path
+        process, log_path, timeout=grace if returned else 0, backtrace_path=backtrace_path
     )
     ended["office_stalled_callbacks"] = list(stalled)
+    ended["office_terminate_returned"] = returned
     return ended
 
 

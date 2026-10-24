@@ -35,10 +35,14 @@ class StructureMonitor(
         self._sheets = document.getSheets()
         self._undo = document.getUndoManager()
         self.events = StructureEvents(count=self._count(), history=self._history())
-        document.addModifyListener(self)
-        self._undo.addUndoManagerListener(self)
-        document.addDocumentEventListener(self)
         self._attached = True
+        try:
+            document.addModifyListener(self)
+            self._undo.addUndoManagerListener(self)
+            document.addDocumentEventListener(self)
+        except BaseException:
+            self.dispose()
+            raise
 
     @property
     def generation(self) -> int:

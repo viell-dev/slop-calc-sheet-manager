@@ -119,6 +119,16 @@ def test_type_ahead_collects_quick_characters() -> None:
     assert typing.feed("x", 12.0) == "x"
 
 
+def test_repeating_a_letter_cycles_until_a_different_letter_extends_it() -> None:
+    typing = TypeAhead(timeout=1.0)
+    names = ["Beta", "Bravo", "Berry"]
+    cursor = None
+    for expected in (0, 1, 2, 0):
+        cursor = find_prefix(names, typing.feed("b", 10.0), cursor)
+        assert cursor == expected
+    assert find_prefix(names, typing.feed("r", 10.1), cursor) == 1
+
+
 def test_find_prefix() -> None:
     names = ["Alpha", "beta", "Bravo", "Charlie", "able"]
     assert find_prefix(names, "b", None) == 1

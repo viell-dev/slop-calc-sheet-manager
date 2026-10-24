@@ -33,8 +33,8 @@ LEFT, RIGHT, WHEEL_UP, WHEEL_DOWN = 1, 3, 4, 5
 
 class XInput:
     def __init__(self):
-        if not os.environ.get("DISPLAY"):
-            raise RuntimeError("XTEST input needs the private Xvfb DISPLAY")
+        if os.environ.get("SHEET_MANAGER_PRIVATE_DISPLAY") != "1" or not os.environ.get("DISPLAY"):
+            raise RuntimeError("XTEST input needs the private Xvfb launcher's explicit opt-in")
         self._display = _x11.XOpenDisplay(None)
         if not self._display:
             raise RuntimeError("Cannot open the X display")

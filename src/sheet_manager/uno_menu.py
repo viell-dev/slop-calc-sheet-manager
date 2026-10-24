@@ -161,21 +161,41 @@ class SheetMenu:
 
         guard = _MenuGuard(verify, self._report_refusal)
         self._frame.registerDispatchProviderInterceptor(guard)
-        popup = self._popup()
-        # The arguments SfxDispatcher passes for the tab bar; the controller fills and runs it.
-        controller = self._context.ServiceManager.createInstanceWithArgumentsAndContext(
-            "com.sun.star.comp.framework.ResourceMenuController",
-            (prop("Value", "sheettab"), prop("Frame", self._frame), prop("IsContextMenu", True)),
-            self._context,
-        )
+        controller = None
+        executing = False
         try:
+            popup = self._popup()
+            # SfxDispatcher's tab-bar arguments; the controller fills and runs the menu.
+            controller = self._context.ServiceManager.createInstanceWithArgumentsAndContext(
+                "com.sun.star.comp.framework.ResourceMenuController",
+                (
+                    prop("Value", "sheettab"),
+                    prop("Frame", self._frame),
+                    prop("IsContextMenu", True),
+                ),
+                self._context,
+            )
             controller.setPopupMenu(popup)
+            executing = True
             popup.execute(peer, Rectangle(x, y, 1, 1), 0)
         finally:
-            controller.dispose()
-            # The chosen command was posted while the menu closed; release the interceptor
-            # after it, so that no other window's dispatches go through it.
-            self._post(lambda: self._frame.releaseDispatchProviderInterceptor(guard))
+            try:
+                if controller is not None:
+                    controller.dispose()
+            finally:
+
+                def release():
+                    self._frame.releaseDispatchProviderInterceptor(guard)
+
+                if executing:
+                    # The chosen command is posted while the menu closes; release after it.
+                    try:
+                        self._post(release)
+                    except BaseException:
+                        release()
+                        raise
+                else:
+                    release()
 
     def _safe(self, peer, x, y, observed, picked):
         targets = hidden_targets(observed, picked)

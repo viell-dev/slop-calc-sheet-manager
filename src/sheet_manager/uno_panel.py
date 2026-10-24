@@ -1,5 +1,6 @@
 """UNO sidebar adapter: the panel factory and the panel that holds the sheet list."""
 
+from contextlib import suppress
 from typing import cast
 
 import uno
@@ -58,6 +59,10 @@ class SheetPanel(
             self.list = SheetList(context, self.Frame, self.Window)
             self.list.set_bounds(bounds.Width, bounds.Height)
         except Exception:
+            if self.list is not None:
+                with suppress(Exception):
+                    self.list.dispose()
+                self.list = None
             # An empty panel is better than a sidebar that fails to open.
             report("creating the sheet list")
         self._parent.addWindowListener(self)
