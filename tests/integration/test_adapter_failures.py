@@ -13,7 +13,7 @@ from sheet_manager.uno_list import SheetList
 from sheet_manager.uno_menu import SheetMenu
 from sheet_manager.uno_reorder import snapshot
 from sheet_manager.uno_show import show_sheets
-from sheet_manager.uno_structure import StructureMonitor
+from sheet_manager.uno_structure import StructureMonitor, monitor_for
 
 
 class Tracked:
@@ -47,6 +47,9 @@ def check_failed_list(context, document):
     controller.getModel = lambda: model
     frame: Any = Tracked(document.getCurrentController().getFrame())
     frame.getController = lambda: controller
+    # The shared document monitor deliberately outlives a failed or disposed list view.
+    monitor = monitor_for(model)
+    model_before, undo_before = set(model.attached), set(undo.attached)
     disposed = []
 
     class FailingList(SheetList):
@@ -62,12 +65,15 @@ def check_failed_list(context, document):
         assert "injected first refresh" in str(error), error
     else:
         raise AssertionError("The initialization failure did not propagate")
-    assert not model.attached and not undo.attached and not controller.attached, (
+    assert (
+        model.attached == model_before and undo.attached == undo_before and not controller.attached
+    ), (
         model.attached,
         undo.attached,
         controller.attached,
     )
     assert disposed and disposed[0]._disposed
+    assert monitor_for(model) is monitor
 
     def fail_registration(listener):
         raise RuntimeError("injected document-event registration failure")
@@ -79,7 +85,7 @@ def check_failed_list(context, document):
         assert "injected document-event" in str(error), error
     else:
         raise AssertionError("The monitor registration failure did not propagate")
-    assert not model.attached and not undo.attached
+    assert model.attached == model_before and undo.attached == undo_before
 
 
 def check_failed_menu(context, document):

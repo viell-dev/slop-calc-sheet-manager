@@ -5,6 +5,10 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- The reorder adapter now refuses snapshots held across a sheet replacement, even when sheet names
+  and retained handle names still match. Snapshots and list views share a document-owned structural
+  monitor, and Undo or Redo requires a fresh snapshot
+  ([#19](https://github.com/viell-dev/slop-calc-sheet-manager/issues/19)).
 - Clean up partial list initialization and failed menu setup, consume owned keys after a handler
   error, and refuse Show Sheet while changes are being recorded. Type-ahead now cycles through
   sheets when their first letter is repeated. The guide and verification map cover the list,

@@ -261,8 +261,13 @@ reconsider. The owner may report a defect themselves, in their own words.
   everything the list writes to the tree, restores, or acts on comes from refs. Retained handles
   are not identities: when a sheet is deleted, its handle turns to the previous sheet and can
   report the deleted sheet's name again after a rename (measured; `docs/reordering.md`). So each
-  list has a `uno_structure.StructureMonitor`: it listens to the document's modify, undo, and
-  document events, reads the sheet count and the document's undo and lock state at every modify
+  document has a shared `uno_structure.StructureMonitor`: list views and reorder snapshots use
+  `monitor_for` to obtain it. It attaches before snapshot reads and lives until document disposal;
+  disposing a list never detaches it. Snapshots carry its identity and generation, and
+  `is_current`, `preflight`, and `apply_order` check both. The adapter owns `own_move()` through
+  controller unlock; callers do not wrap it. Undo and Redo invalidate held snapshots even when
+  the original order returns, so recovery tests take fresh ones. The monitor listens to modify,
+  undo, and document events, reads the sheet count and the document's undo and lock state at every modify
   and undo notification, and moves a generation (`structure.StructureEvents`) whenever a sheet
   may have been inserted or deleted. It moves when the count changes; when undo recording is
   off or locked, the controllers or actions are locked, or modify notifications are off at a

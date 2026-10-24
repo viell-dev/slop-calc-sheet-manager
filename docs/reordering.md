@@ -17,18 +17,21 @@ result = apply_order(context, document, observed, plan)
 # Refresh the list and present result.message, including warnings on done.
 ```
 
-`snapshot` retains sheet handles and the document identity. Use the snapshot that produced the
-displayed list, rather than taking a new one to apply an old UI selection. A rename, insertion,
-deletion, reorder, or scenario change invalidates it. Retained handles are not stable sheet
+`snapshot` retains sheet handles, the document identity, and a structural monitor's generation.
+Use the snapshot that produced the displayed list, rather than taking a new one to apply an old UI
+selection. A rename, insertion, deletion, reorder, or scenario change invalidates it. Retained
+handles are not stable sheet
 identities. Measured with LibreOffice 26.2.1.2 and 26.8.1.1: a handle follows its sheet through
 renames, moves, and insertions, and when its sheet is deleted it turns to the previous sheet (to
 the next one when the first sheet is deleted) and follows that sheet from then on. A deleted
 sheet's handle therefore reports a live name, and after a rename even its own old one. Inserting
 a sheet before Bravo, deleting Bravo, and renaming the new sheet to Bravo leaves every name, every
-position, and every handle's reported name as they were: `is_current` accepts such a snapshot
-although its Bravo handle now denotes the new sheet. Callers that keep a snapshot while the user
-works must also notice insertions and deletions as they happen. `sheet_manager.uno_structure`
-does that for the sheet list: it reads the sheet count and the document's undo and lock state at
+position, and every handle's reported name as they were, although its Bravo handle now denotes
+the new sheet. Names and handles alone cannot reject that snapshot.
+`sheet_manager.uno_structure` supplies one monitor per document, shared by all snapshots and list
+views. It attaches before the first snapshot reads sheets, lives until document disposal, and
+removes itself from the cache when disposed. Closing a list view does not detach it or invalidate
+other views' snapshots. It reads the sheet count and the document's undo and lock state at
 every modify and undo notification, follows the save events, and moves a generation whenever a
 sheet may have been inserted or deleted (`sheet_manager.structure` lists the rules). Measured
 with both versions:
@@ -59,10 +62,15 @@ notifications both off (measured: nothing is reported then), or whose only repor
 save window. The one other known way past the rules is a sequence built to report like typed
 input: a recorded edit inside an undo context, then, in the same main-thread call, unrecorded
 structural edits inside a lock with recording turned back on before the unlock. A program doing
-either could hide or delete any sheet directly. This layer does not use the monitor yet:
-`snapshot`, `preflight`, and `apply_order` still rely on `is_current` alone, which the sequence
-above passes. Wiring the generation into them is tracked in
-[#19](https://github.com/viell-dev/slop-calc-sheet-manager/issues/19).
+either could hide or delete any sheet directly.
+
+`is_current`, `preflight`, and `apply_order` reject a snapshot whose monitor or generation no
+longer matches, even when all names, positions, and retained handle names still match
+([#19](https://github.com/viell-dev/slop-calc-sheet-manager/issues/19)). Undo, Redo, and conservative
+invalidation after unrecorded changes require a fresh snapshot, even if the original order has
+returned. A held lock or unreadable safety state also refuses the operation. The adapter manages
+the monitor's `own_move()` guard itself through controller unlock, so its own recorded moves do
+not invalidate other list views' identity proof. Callers need no additional monitor or guard.
 `preflight` is useful for enablement; `apply_order` always repeats it immediately before mutation.
 Catch `ValueError` from planning and expose its reason when the selection or target is invalid.
 

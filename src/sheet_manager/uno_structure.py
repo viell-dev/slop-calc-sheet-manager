@@ -1,7 +1,7 @@
 """Feeds `structure.StructureEvents` from one document's modify, undo, and document events.
 
-The sheet list keeps one monitor per list. The reorder layer (`uno_reorder`) is meant to share
-this module so that a snapshot can record the generation it was taken at (#19).
+The sheet list and reorder snapshots share one monitor per document. Its listeners live until
+the document is disposed, independently of any list view or snapshot.
 
 The modify and undo listener methods read the sheet count and the document's state while
 LibreOffice is still notifying: whether undo recording is enabled (the `IsUndoEnabled`
@@ -19,6 +19,7 @@ and the document event listener reads nothing.
 import contextlib
 from collections.abc import Generator
 from typing import Any
+from weakref import WeakValueDictionary
 
 import unohelper
 from com.sun.star.document import XDocumentEventListener, XUndoManagerListener
@@ -26,14 +27,27 @@ from com.sun.star.util import XModifyListener
 
 from sheet_manager.structure import History, Quiet, StructureEvents
 
+_MONITORS: WeakValueDictionary[str, "StructureMonitor"] = WeakValueDictionary()
+
+
+def monitor_for(document: Any) -> "StructureMonitor":
+    """Get the document-owned monitor before retaining any sheet handles, on the UI thread."""
+    key = str(document.RuntimeUID)
+    monitor = _MONITORS.get(key)
+    if monitor is None:
+        monitor = StructureMonitor(document)
+        _MONITORS[key] = monitor
+    return monitor
+
 
 class StructureMonitor(
     unohelper.Base, XModifyListener, XUndoManagerListener, XDocumentEventListener
 ):
     def __init__(self, document: Any):
-        self._document = document
-        self._sheets = document.getSheets()
-        self._undo = document.getUndoManager()
+        self._document_id = str(document.RuntimeUID)
+        self._document: Any = document
+        self._sheets: Any = document.getSheets()
+        self._undo: Any = document.getUndoManager()
         self.events = StructureEvents(count=self._count(), history=self._history())
         self._attached = True
         try:
@@ -50,6 +64,8 @@ class StructureMonitor(
 
     def check(self) -> int:
         """Bring the generation up to date before acting on handles; return it."""
+        if not self._attached:
+            raise RuntimeError("The sheet structure monitor has been disposed")
         return self.events.check(self._count(), self._history(), self._quiet())
 
     @contextlib.contextmanager
@@ -77,6 +93,13 @@ class StructureMonitor(
         ):
             with contextlib.suppress(Exception):  # The document may be gone already.
                 remove()
+        self._forget()
+
+    def _forget(self) -> None:
+        if _MONITORS.get(self._document_id) is self:
+            del _MONITORS[self._document_id]
+        # A held snapshot must not retain a closed document or silently regain continuity.
+        self._document = self._sheets = self._undo = None
 
     def _count(self) -> int | None:
         try:
@@ -156,3 +179,4 @@ class StructureMonitor(
 
     def disposing(self, Source):
         self._attached = False
+        self._forget()
