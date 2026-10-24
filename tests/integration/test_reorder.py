@@ -347,6 +347,7 @@ def assert_scenarios(context, desktop):
                 assert document.UndoManager.AllUndoActionTitles == ()
                 continue
             for step in range(1, len(plan.moves) + 1):
+                observed = snapshot(document)
                 wrapped = FaultyDocument(document, FaultySheets(document.Sheets, step))
                 result = apply_order(context, wrapped, observed, plan)
                 assert result.status == "failed-restored", result
