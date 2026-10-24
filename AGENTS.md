@@ -276,10 +276,11 @@ reconsider. The owner may report a defect themselves, in their own words.
   recorded action, also inside `lockControllers`, `addActionLock`, `disableSetModified`, and
   undo contexts, where modify notifications are batched or missing. Every action checks the
   generation again when it runs (`check()`). Picks, presses, drags, and an open menu carry the
-  generation they were proved at; when it moves, the list drops every ref and any held press and
-  tells the user in an infobar, which only the user closes, since removing one moves the focus
-  to the sheet. As a second line, every refresh checks that its handles map one to one onto the
-  sheets with at most one rename (`structure_kept`). Otherwise refs stay while their handles
+  generation they were proved at. Actions refuse refs proved at a different generation; when a
+  refresh observes that change, it drops every ref and voids any held press. It shows an infobar only
+  when a user-made pick is cleared. Only the user closes that bar, since removing it moves the
+  focus to the sheet. As a second line, every refresh checks that its handles map one to one onto
+  the sheets with at most one rename (`structure_kept`). Otherwise refs stay while their handles
   report their names, so a renamed pick goes and a moved one stays (#28). Over-clearing is the
   accepted cost: undo and redo, document property changes, and other changes LibreOffice does
   not record for undo clear the picks too. Threat model, decided by the maintainer: everything

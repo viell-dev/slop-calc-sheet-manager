@@ -18,20 +18,24 @@ If Sheet Manager does not work in an environment where it is expected to, please
 
 - **Movement buttons are not implemented.** Use drag and drop for now.
 - **Selection in Calc's tab bar.** Ctrl+clicking tabs without switching the active sheet is
-  reflected in the list at the next sheet switch (#5).
+  reflected in the list at the next sheet switch
+  ([#5](https://github.com/viell-dev/slop-calc-sheet-manager/issues/5)).
 - **Grouped tabs.** Opening the sheet tab menu groups Calc's selected tabs. A cell edit then
   affects every grouped sheet. Click a single row or tab before editing one sheet.
-- **Save focus.** Ctrl+S from the list saves through Calc and moves focus to the sheet (#23).
+- **Save focus.** Ctrl+S from the list saves through Calc and moves focus to the sheet
+  ([#23](https://github.com/viell-dev/slop-calc-sheet-manager/issues/23)).
 - **Conservative selection clearing.** Inserting or deleting sheets, undoing or redoing, and
   modifications whose continuity cannot be established can clear the list's selection. A notice
-  appears when a user-made selection is cleared. A refresh also starts the next Shift range at
+  explains conservative clearing of a user-made selection. A refresh also starts the next Shift range at
   the keyboard cursor because Calc's tree control cannot restore its previous range anchor.
 - **Large lists.** The list rebuilds after changes. During rapid sheet switches the active-sheet
-  marker can lag; timing measurements and the remaining work are in #22.
+  marker can lag; timing measurements and the remaining work are in
+  [#22](https://github.com/viell-dev/slop-calc-sheet-manager/issues/22).
 - **Macros that suppress notifications.** The list cannot detect structural edits for which
   LibreOffice reports nothing, or a deliberately constructed edit indistinguishable from ordinary
   typed input. The [reordering interface](../reordering.md) describes the tested boundary. The
-  reorder adapter's separate stale-snapshot gap remains tracked in #19.
+  reorder adapter's separate stale-snapshot gap remains tracked in
+  [#19](https://github.com/viell-dev/slop-calc-sheet-manager/issues/19).
 - **A LibreOffice defect in two commands.** The sheet tab menu runs
   LibreOffice's own Duplicate Sheet and Move or Copy Sheet. In LibreOffice 26.8.0 and 26.8.1 these
   commands copy formulas with relative sheet references incorrectly

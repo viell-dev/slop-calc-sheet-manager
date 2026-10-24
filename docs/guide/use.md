@@ -76,7 +76,7 @@ as well as shown by colour or position; actual screen-reader experience is not v
 LibreOffice's sheet handles can change which sheet they refer to after a deletion. The list clears
 its selection when it cannot establish that the picked sheets are still the same ones. This
 includes inserting or deleting sheets, undo and redo, and some macro or unrecorded changes.
-A notice explains when it clears a user-made selection. Pick the sheets again before acting.
+A notice explains conservative clearing of a user-made selection. Pick the sheets again before acting.
 
 The tree is rebuilt after changes, so the next Shift navigation starts a fresh range at the
 keyboard cursor. Large lists can take longer to refresh. See [Known issues](./known-issues.md) for
