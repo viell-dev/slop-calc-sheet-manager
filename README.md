@@ -14,9 +14,9 @@ updates, removal, use, known issues, troubleshooting, and reporting a problem.
 ## Status
 
 Under development; there is no release yet. **Unreleased:** the development version lists the
-workbook's sheets, supports selection and drag and drop, handles keyboard navigation, and opens
-Calc's sheet tab menu. Each extension move is one undo step. The remaining synchronization work
-and movement buttons are tracked in #5 and #35. The first release, 0.1.0, is planned to offer:
+workbook's sheets, supports selection, drag and drop, and four move buttons with keyboard shortcuts,
+handles keyboard navigation, and opens Calc's sheet tab menu. Each extension move is one undo step.
+The remaining synchronization work is tracked in #5. The first release, 0.1.0, is planned to offer:
 
 - every sheet in document order, kept in sync with changes from anywhere, with the active sheet,
   hidden sheets, tab colours, and protection shown;
@@ -81,8 +81,8 @@ for the release procedure and version rules.
 
 ## Known issues
 
-- The move buttons are not implemented yet. Tab-only selection changes reach the list at the next
-  sheet switch; the list refreshes after other sheet changes.
+- Tab-only selection changes reach the list at the next sheet switch; the list refreshes after
+  other sheet changes.
 - After Ctrl+S from the list, keyboard focus moves to the sheet (#23).
 - A change that may replace a sheet clears the list's selection conservatively. Large lists are
   rebuilt after changes, which can delay the active-sheet marker (#22).

@@ -356,8 +356,14 @@ reconsider. The owner may report a defect themselves, in their own words.
   through `AsyncCallback`. Start threads only through `uno_calc.start_thread`, never with
   `threading`: `Thread.start` waits for the new thread, whose first steps can wait for
   LibreOffice's main lock that listeners and the main thread hold, and Calc then hangs (#55).
-- Keys: a toolkit `XKeyHandler` is registered only while the tree has focus and checks
-  `hasFocus()` again for every key. Navigation keys go to the tree (the sidebar swallows what the
+- `uno_moves.py` owns four native buttons above the list, sized from the native minimums. Labels
+  provide accessible names; tooltips include disabled reasons. The list captures the observed
+  snapshot, refs and proof before posting a move request. Enablement shares the adapter's common
+  permission and plan checks without rescanning every sheet for each button; execution still
+  uses full `apply_order` preflight. Alt+Shift+Home/Up/Down/End are local to the panel; Alt+Down
+  remains Calc's Data Select command. Button activation returns focus to the tree.
+- Keys: a toolkit `XKeyHandler` is registered while the tree or a move button has focus and checks
+  focus again for every key. Navigation keys go to the tree (the sidebar swallows what the
   tree ignores); Enter, typed characters, and the menu keys are handled by the list; other
   shortcuts are resolved through the document, Calc, and global shortcut configurations and
   dispatched to the panel's frame; Tab, F6, F10, Esc, modifier-only keys, and unbound Alt mnemonics

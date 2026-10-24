@@ -11,7 +11,7 @@ import unohelper
 from com.sun.star.awt import KeyEvent, XKeyHandler
 from com.sun.star.container import NoSuchElementException
 
-from sheet_manager.keys import KeyRoute, route_key, unbound_route
+from sheet_manager.keys import KeyRoute, button_route, move_action, route_key, unbound_route
 from sheet_manager.uno_calc import report
 
 CALC_MODULE = "com.sun.star.sheet.SpreadsheetDocument"
@@ -79,6 +79,8 @@ class ListKeyHandler(unohelper.Base, XKeyHandler):
             # PyUNO passes a UNO char as uno.Char; its value is the one-character string.
             char = getattr(event.KeyChar, "value", event.KeyChar)
             route = route_key(event.KeyCode, event.Modifiers, char)
+            if not self._list.owns_tree_keys():
+                route = button_route(route, event.KeyCode, event.Modifiers)
             if route is KeyRoute.TREE:
                 self._list.tree_key(event.KeyCode, event.Modifiers)
             elif route is KeyRoute.SHORTCUT:
@@ -93,6 +95,8 @@ class ListKeyHandler(unohelper.Base, XKeyHandler):
                 self._list.post(lambda: self._list.type_ahead(char), "type-ahead")
             elif route is KeyRoute.MENU:
                 self._list.post(self._list.open_menu_for_keyboard, "the sheet tab menu")
+            elif route is KeyRoute.MOVE:
+                self._list.queue_move(move_action(event.KeyCode, event.Modifiers))
             self._consumed[event.KeyCode] = route.consumed
             return route.consumed
         except Exception:

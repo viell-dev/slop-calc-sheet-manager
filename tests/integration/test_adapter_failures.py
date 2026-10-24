@@ -132,7 +132,9 @@ def check_key_failure():
     def fail_command(command):
         raise RuntimeError("injected shortcut failure")
 
-    owner = SimpleNamespace(owns_keys=lambda: True, run_command=fail_command)
+    owner = SimpleNamespace(
+        owns_keys=lambda: True, owns_tree_keys=lambda: True, run_command=fail_command
+    )
     shortcuts = cast(Any, SimpleNamespace(command=lambda code, modifiers: ".uno:Save"))
     handler = ListKeyHandler(owner, shortcuts)
     event = KeyEvent()

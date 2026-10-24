@@ -33,9 +33,15 @@ Drag a selected row to the gap where the selected sheets should go. A line shows
 point. The selected sheets keep their relative order, even when they started apart. Hold the
 pointer near an edge to scroll, or press Esc to cancel. Dropping in place changes nothing.
 
+Or use the **Top**, **Up**, **Down**, and **Bottom** buttons above the list. Top and Bottom gather
+the selected sheets, in their original order, at that end. Up and Down move each separate run of
+selected sheets one place; a run already at the edge stays there. The moved sheets stay selected,
+so pressing Up or Down again moves the same sheets further.
+
 A move is one **Move Sheets** undo step. Use Ctrl+Z to undo it. The active sheet and Calc's tab
 selection are preserved. A stale selection or a move that cannot be fully undone is refused with
-an explanation. Movement buttons are planned but not implemented yet.
+an explanation. Unavailable buttons are disabled; hover over one for the reason, such as a
+protected workbook structure, recorded changes, disabled undo, no selection, or an edge.
 
 ## Open the sheet tab menu
 
@@ -50,7 +56,9 @@ it is open.
 
 ## Keyboard
 
-Use Tab or LibreOffice's F6 focus cycle to reach and leave the list. While it has focus:
+Use Tab or LibreOffice's F6 focus cycle to reach and leave the list and its buttons. Tab moves
+through the native buttons; Space or Enter presses a focused button. After a move, focus returns
+to the list. While the list has focus:
 
 | Key | Effect |
 | --- | --- |
@@ -61,10 +69,15 @@ Use Tab or LibreOffice's F6 focus cycle to reach and leave the list. While it ha
 | Ctrl+A | Select every row |
 | Letters and other printable characters | Search sheet names |
 | Enter | Go to the selected visible sheet |
+| Alt+Shift+Home, Up, Down, End | Move the selection to the top, up, down, or to the bottom |
 | Menu or Shift+F10 | Open the sheet tab menu |
 | Ctrl+S, Ctrl+Z, Ctrl+Page Down | Run Calc's save, undo, or next-sheet command |
 
-Space and Shift+Space do nothing. Tab, F6, F10, Esc, and unbound Alt menu mnemonics retain
+The four move shortcuts also work while a move button has focus. They apply only inside Sheet
+Manager, without changing Calc's shortcut configuration. Plain Alt+Down retains Calc's Data Select
+command, and Ctrl+Shift with navigation retains the list's selection behavior.
+
+Space and Shift+Space do nothing in the list. Tab, F6, F10, Esc, and unbound Alt menu mnemonics retain
 LibreOffice's behaviour. Keys used by the list do not type into cells. Other documents keep their
 own keyboard handling. After Ctrl+S, focus moves to the sheet; use the focus cycle to return.
 

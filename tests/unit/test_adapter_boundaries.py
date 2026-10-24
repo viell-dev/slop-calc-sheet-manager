@@ -59,6 +59,37 @@ def test_menu_keeps_the_pick_proof_before_reading_a_fresh_snapshot() -> None:
     assert allowed == [False], "A newer monitor generation must not become the menu's proof"
 
 
+def test_move_request_keeps_its_snapshot_refs_and_proof_while_queued() -> None:
+    queued: list[Any] = []
+    seen: list[tuple[Any, ...]] = []
+    original_snapshot, original_ref = object(), object()
+
+    def post(callback: Any, where: str) -> None:
+        queued.append(callback)
+
+    def move(*args: Any) -> None:
+        seen.append(args)
+
+    owner = SimpleNamespace(
+        _disposed=False,
+        _busy=False,
+        _input=0,
+        _observed=original_snapshot,
+        _selection=SimpleNamespace(picked=[original_ref]),
+        _proven=7,
+        post=post,
+        _move_selection=move,
+    )
+    request = method(
+        "src/sheet_manager/uno_list.py", "SheetList", "queue_move", {"ACTIONS": ("top",)}
+    )
+    request(owner, "top")
+    owner._observed, owner._selection.picked, owner._proven = object(), [object()], 8
+    queued[0]()
+    assert seen == [("top", original_snapshot, (original_ref,), 7)]
+    assert owner._input == 1
+
+
 @pytest.mark.parametrize("display", ["", ":0"])
 def test_input_refuses_a_display_without_the_private_launcher_opt_in(display: str) -> None:
     opened: list[object] = []

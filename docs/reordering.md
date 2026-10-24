@@ -74,6 +74,11 @@ not invalidate other list views' identity proof. Callers need no additional moni
 `preflight` is useful for enablement; `apply_order` always repeats it immediately before mutation.
 Catch `ValueError` from planning and expose its reason when the selection or target is invalid.
 
+For control enablement, `move_availability` reads the common document permissions once, and
+`plan_availability` adds each plan's no-op and undo-capacity checks. These are hints, without the
+full sheet scan or identity proof. Execution always calls `apply_order` with the snapshot and
+selection captured for the user's request; its full preflight remains authoritative.
+
 `plan_move(sheets, selected, action, gap=None)` accepts `"drop"`, `"top"`, `"up"`, `"down"`, and
 `"bottom"`. `target_order` computes just the target; `plan_order(sheets, target)` supports arbitrary
 future reorder commands with the same validation. `Plan` includes `before`, `target`, and

@@ -16,6 +16,9 @@ what the first release is planned to do.
   applies the whole change as one undo step. It checks permissions first, and recovers and
   verifies if a change fails part-way. It is tested against real LibreOffice on workbooks of up to
   1,000 sheets. Drag any selection to an insertion line; the list scrolls near its edges.
+- **Move buttons (Unreleased).** Top, Up, Down, and Bottom act on the list's selection, in one
+  undo step, with Alt+Shift+Home/Up/Down/End shortcuts. Unavailable buttons explain why in their
+  tooltips, and a move keeps the sheets selected for the next press.
 - **Release and update infrastructure**, with no published build yet. The update feeds are empty.
 
 ## Planned for 0.1.0
@@ -32,12 +35,11 @@ The first release is planned to offer:
 - complete keyboard operation;
 - one undo step per change, and respect for protected and read-only documents.
 
-The sheet list, keyboard handling, menu, and drag and drop are implemented but unreleased. Work
-remaining for the first release is tracked on GitHub:
+The sheet list, keyboard handling, menu, drag and drop, and move buttons are implemented but
+unreleased. Work remaining for the first release is tracked on GitHub:
 
 - completing synchronization and grouped-tabs feedback:
-  [#5](https://github.com/viell-dev/slop-calc-sheet-manager/issues/5);
-- the move buttons: [#35](https://github.com/viell-dev/slop-calc-sheet-manager/issues/35).
+  [#5](https://github.com/viell-dev/slop-calc-sheet-manager/issues/5).
 
 ## How releases will work
 

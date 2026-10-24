@@ -112,6 +112,16 @@ def preflight(context: Any, document: Any, observed: Snapshot, plan: Plan) -> Av
         # Validate against the canonical (cached) plan, including indices and scenario blocks.
         if plan_order(observed.sheets, plan.target) != plan:
             return Availability(False, tr("The move plan is invalid. Refresh it and try again."))
+        return plan_availability(move_availability(context, document), plan)
+    except Exception as error:
+        return Availability(
+            False, tr("Sheet Manager could not verify that this move is safe."), str(error)
+        )
+
+
+def move_availability(context: Any, document: Any) -> Availability:
+    """Shared document permissions for enablement; execution still needs full preflight."""
+    try:
         if document.isReadonly():
             return Availability(False, tr("This document is read-only."))
         if document.isProtected():
@@ -122,10 +132,6 @@ def preflight(context: Any, document: Any, observed: Snapshot, plan: Plan) -> Av
         capacity = _undo_steps(context)
         if not document.getPropertyValue("IsUndoEnabled") or undo.isLocked() or capacity <= 0:
             return Availability(False, tr("Enable undo before moving sheets."))
-        if capacity == 1 and len(plan.moves) > 1:
-            return Availability(
-                False, tr("Increase undo history to at least two steps before moving these sheets.")
-            )
         # An open context is listed in the stack, but cannot be undone until
         # closed. An empty top-level stack instead has no titles at all.
         if undo.getAllUndoActionTitles() and not undo.isUndoPossible():
@@ -133,13 +139,24 @@ def preflight(context: Any, document: Any, observed: Snapshot, plan: Plan) -> Av
         controller = document.getCurrentController()
         if controller is None or not controller.getFrame().isActive():
             return Availability(False, tr("Activate this document's window before moving sheets."))
-        if not plan.moves:
-            return Availability(False, tr("The sheets are already in that position."))
         return Availability(True, undo_steps=capacity)
     except Exception as error:
         return Availability(
             False, tr("Sheet Manager could not verify that this move is safe."), str(error)
         )
+
+
+def plan_availability(permission: Availability, plan: Plan) -> Availability:
+    """Add plan-specific enablement without rereading the document or configuration."""
+    if not permission.allowed:
+        return permission
+    if permission.undo_steps == 1 and len(plan.moves) > 1:
+        return Availability(
+            False, tr("Increase undo history to at least two steps before moving these sheets.")
+        )
+    if not plan.moves:
+        return Availability(False, tr("The sheets are already in that position."))
+    return permission
 
 
 def _selected_names(context: Any, controller: Any, names: tuple[str, ...]) -> tuple[str, ...]:
