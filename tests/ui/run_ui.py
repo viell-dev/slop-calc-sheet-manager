@@ -443,6 +443,7 @@ def check_move_focus_and_queued_navigation(book):
     assert book.undo_titles() == ["Move Sheets"]
     book.document.UndoManager.undo()
     wait_until(lambda: book.order() == before, "one undo of the queued move")
+    wait_until(lambda: view.names(book.tree) == before, "the list after the queued move's undo")
     book.click(2)
     for _ in range(4):
         book.lab.input.tap("Tab", pause=0.15)
