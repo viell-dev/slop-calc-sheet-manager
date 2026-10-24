@@ -5,12 +5,35 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Clean up partial list initialization and failed menu setup, consume owned keys after a handler
+  error, and refuse Show Sheet while changes are being recorded. Type-ahead now cycles through
+  sheets when their first letter is repeated. The guide and verification map cover the list,
+  and optional desktop observations no longer act as a routine release gate.
+- Added the sheet list to the panel: every sheet in document order with its tab colour and its
+  active, hidden, protected, and scenario state. A click goes to a sheet; Ctrl+click and
+  Shift+click select several without changing the active sheet. Selected sheets can be dragged,
+  with an insertion line and auto-scroll, to a new place through the reorder layer, in one undo
+  step; Esc cancels. Keys typed in the list stay out of the sheet while Calc's shortcuts keep
+  working, and the sheet tab menu opens by right click, Menu key, or Shift+F10 for exactly the
+  selected sheets ([#2](https://github.com/viell-dev/slop-calc-sheet-manager/issues/2)). A
+  renamed sheet leaves the selection, and when sheets may have been added or removed, also by a
+  macro that turns off undo or batches its changes, the list clears its selection and says so,
+  rather than act on a sheet that was not selected
+  ([#28](https://github.com/viell-dev/slop-calc-sheet-manager/issues/28)); a click ends any
+  grouping of Calc's tabs ([#25](https://github.com/viell-dev/slop-calc-sheet-manager/issues/25));
+  Calc no longer hangs when the list schedules a refresh during a change
+  ([#55](https://github.com/viell-dev/slop-calc-sheet-manager/issues/55));
+  showing hidden sheets needs undo and is undone on failure
+  ([#27](https://github.com/viell-dev/slop-calc-sheet-manager/issues/27)); refreshing keeps the
+  keyboard position ([#29](https://github.com/viell-dev/slop-calc-sheet-manager/issues/29)).
+- Added real-input UI tests with gtk3 and gen, headless sheet list checks, and a manual checklist
+  with a synthetic workbook for what automation cannot reach.
 - Added checked release publication with versioned OXT/checksum assets, a read-only dry run, and
   stable/prerelease update feeds on GitHub Pages. Installed copies use the stable feed. No build
   has been published yet ([#6](https://github.com/viell-dev/slop-calc-sheet-manager/issues/6)).
 - Added the reorder operation layer for drag/drop and Top, Up, Down, and Bottom: minimum-call
   planning, scenario blocks, permission checks, one undo step, and verified failure recovery.
-  The sidebar controls will use this interface when the list panel is integrated.
+  The sheet list's drag and drop uses it.
   Planning stays responsive in large workbooks; recovery preserves the user's previous action at a full
   undo stack, and view-restoration failures warn without undoing a verified move. Both success and
   rollback restore the view before unlocking controllers to avoid an intermediate repaint. Balanced groups

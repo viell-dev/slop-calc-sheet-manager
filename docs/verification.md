@@ -33,8 +33,7 @@ The jobs use official libreoffice.org builds pinned in `ci/libreoffice.json`.
 
 ## The reorder layer
 
-The reorder layer is on `main` but no control reaches it yet: the sheet list that will call it is
-in [#21](https://github.com/viell-dev/slop-calc-sheet-manager/pull/21). Its contract is in
+The sheet list calls the reorder layer for drag and drop. Its contract is in
 [reordering.md](./reordering.md).
 
 | Promise                                                                                         | Evidence                                                                                                                                                                                                                               | Runs                     | Limits                                                                                                                                       |
@@ -45,17 +44,23 @@ in [#21](https://github.com/viell-dev/slop-calc-sheet-manager/pull/21). Its cont
 | Protected, read-only, and change-tracked documents, and stale handles, are refused before any change | `assert_permissions` and the stale-handle checks in `test_reorder.py`                                                                                                                                                                 | Every CI integration job | Retained sheet handles are not stable identities: [#19](https://github.com/viell-dev/slop-calc-sheet-manager/issues/19) records a delete, insert, and rename sequence that passes every check. |
 | Large workbooks stay usable                                                                      | Planning under five seconds at 10,000 sheets; complete moves and undo timed on synthetic 200- and 1,000-sheet workbooks with formulas, named ranges, and charts, with the references checked before and after undo                    | CI Checks; every CI integration job | The timings are recorded in `reorder-performance-*.json` as measurements, not limits.                                                   |
 
-## Not implemented on `main`
+## The sheet list (Unreleased)
 
-The sheet list, its selection and grouped-tabs handling, the sheet tab menu, keyboard operation,
-and synchronization are planned for 0.1.0. Their checks are on #21's branch and are not mapped here
-until that work lands. When it does, add rows for:
+| Promise | Evidence | Runs | Limits |
+| --- | --- | --- | --- |
+| Rows show tab order, active sheet, visibility, protection, scenarios, and tab colour | `test_sheet_list.py:check_states_and_refresh`; `test_sheet_list.py` unit tests | Every CI integration job; Checks | The native tree rebuilds after changes (#22). |
+| Picks never transfer to replacement sheets within the documented notification boundary | `test_selection.py` randomized sessions and deliberately broken controls; `test_sheet_list.py:check_identity`; real-input `picks_dropped_when_sheets_change`, `press_then_change`, `newer_pick_survives_voided_press`, `actions_refused_while_lock_held`, and stale-drop checks | Checks; every integration job; six gtk3/gen UI sessions in CI | Entirely silenced structural changes and deliberately indistinguishable edit sequences cannot be detected; see `structure.py` and `reordering.md`. Conservative invalidation can clear picks after ordinary unrecorded changes. |
+| A click ends grouped editing; Ctrl/Shift picks do not activate sheets; stale or hidden rows do not activate replacements | `check_selection_and_menu`, `check_stale_clicks`, `check_activation_fallback`; real-input `plain_click_ends_group`, `click_hidden_before_refresh`, `newer_selection_kept` | Integration and UI jobs | Tab-only native selections synchronize at the next sheet switch (#5). |
+| Native menu dispatch uses exactly the picked sheets and rechecks before running | Integration robot selection/menu checks; real-input right-click, keyboard, hidden-only, stale-menu and held-lock checks | Headless Linux and Windows; gtk3/gen UI sessions | Synthetic input cannot reach gtk3 native menus. Built-in commands retain Calc's semantics, including grouped tabs. |
+| Drag and drop keeps order and active sheet, scrolls near edges, cancels, and undoes in one step | `run_ui.py` above/below midpoint, in-place/Esc, autoscroll, stale-drop and undo checks; reorder integration suite | Six gtk3/gen UI sessions; all reorder jobs | Real native drags are not automated on Windows or Wayland. |
+| Keys stay out of cells while the list owns focus; other documents remain usable | `test_keys.py`; real-input `keys_stay_in_list`, `shortcuts_reach_calc`, `cursor_across_refresh`, `other_document` | Checks and UI jobs | Ctrl+S moves focus to the sheet (#23); the tree cannot restore a Shift anchor after refresh. Screen-reader experience is not verified. |
+| Show is one undo step, refuses unsafe state, and verifies recovery | `test_sheet_list.py:check_show`; `test_adapter_failures.py:check_recorded_show`; real-input hidden-only menu | Every integration job and UI sessions | Show refuses more sheets than the configured undo capacity. |
+| Partial initialization and failed menu setup leave no live registrations; owned key-handler errors cannot reach cells | `test_adapter_failures.py`, forwarding real UNO registration calls and injecting failures; owned-key routing probe | Every integration job | Faults are injected in test adapters, not in the shipped factory. |
+| The panel disposes when its document closes, and other document windows remain usable | Panel disposal integration assertions; real-input `other_document` | Every integration and UI job | Key-handler removal is not observed directly by these checks. Qt/KDE, macOS, visible Windows input and Wayland remain unverified. |
 
-- sheet identity across refreshes;
-- grouped-selection safety;
-- native menu dispatch;
-- the list's lifecycle across document switches;
-- keyboard handling.
+Movement buttons and the remaining synchronization/grouped-tabs feedback are not implemented (#35,
+#5). `test_sheet_list.py:measure_large_workbook` records list opening and following at 1,000 sheets;
+these are measurements, not performance gates.
 
 ## The checks themselves
 

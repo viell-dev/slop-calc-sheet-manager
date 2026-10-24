@@ -83,7 +83,7 @@ export default defineConfigWithTheme<ThemeConfig>({
         items: [
           { text: "Status and plans", link: "/guide/status" },
           { text: "Install, update, and remove", link: "/guide/install" },
-          { text: "Use the deck", link: "/guide/use" },
+          { text: "Use the sheet list", link: "/guide/use" },
           { text: "Compatibility and known issues", link: "/guide/known-issues" },
           { text: "Troubleshooting", link: "/guide/troubleshooting" },
           { text: "Report a problem", link: "/guide/report" },
@@ -94,6 +94,7 @@ export default defineConfigWithTheme<ThemeConfig>({
         items: [
           { text: "About this site", link: "/development/" },
           { text: "Verification map", link: "/verification" },
+          { text: "Optional desktop observations", link: "/manual-tests" },
           { text: "Reordering interface", link: "/reordering" },
         ],
       },

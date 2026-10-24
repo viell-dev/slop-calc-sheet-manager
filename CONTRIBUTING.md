@@ -124,17 +124,34 @@ has no public headless offered-update API; see [RELEASING.md](RELEASING.md#verif
 for the tested boundary and the remaining gap. Release dry runs and publication follow
 [RELEASING.md](RELEASING.md).
 
+The sheet list's selection model has a property test: random sequences of picks, refreshes,
+insertions, deletions, renames, moves, same-name replacements, a deleted sheet's name passed to
+another sheet, undo, the list's own moves, and ordinary edits and saves, checking that nothing
+the list holds ever resolves to a sheet it was not picked as. Its workbook reproduces how
+LibreOffice's retained handles behave (a deleted sheet's handle turns to the previous sheet) and
+how LibreOffice reports changes, each with the document's state at that moment: undo
+notifications for every recorded action, modify notifications per change, once when a lock
+ends, or none under `disableSetModified`, only modify notifications while undo recording is off,
+undo contexts grouped into one undo step, and saves between their save events, with a refresh
+inside some of them; some batches keep their lock held across later steps, while the list acts.
+Companion tests show that per-handle name checks alone, and the sheet
+count without the state, fail there, that ordinary edits, saves, and the list's own moves keep
+the picks, and document the two out-of-scope cases (`sheet_manager.structure`): with undo
+recording and modify notifications both off nothing is reported, and a sequence built to report
+like typed input passes.
+
 The reorder suite exhausts all permutations through seven sheets and all scenario partitions and
 block orders through seven. It checks the minimum call count against an independent
 longest-common-subsequence oracle. The panel-facing contract is in
 [docs/reordering.md](docs/reordering.md).
 
 The runner also discovers `tests/integration/test_*.py` modules with an
-`exercise(context, desktop, directory, output)` entry point. These suites import the built OXT's
-modules through zipimport, so allowlist omissions fail integration. Keep feature suites additive
-and keep failure injection in test-only forwarding adapters. Reorder checks cover active-sheet
-and native selection preservation, one undo and redo, permission refusals, stale handles, hidden
-sheets, scenario ownership, failures after each real mutation, and a silently ineffective undo.
+`exercise(context, desktop, directory, output)` entry point, and passes `headless=` too when the
+entry point takes that keyword. These suites import the built OXT's modules through zipimport, so
+allowlist omissions fail integration. Keep feature suites additive and keep failure injection in
+test-only forwarding adapters. Reorder checks cover active-sheet and native selection preservation,
+one undo and redo, permission refusals, stale handles, hidden sheets, scenario ownership, failures
+after each real mutation, and a silently ineffective undo.
 The failure suite also runs with two configured undo steps, forcing nested groups, and checks zero
 and one-step settings. Full-stack tests put both native and extension moves above 99 inputs and
 fail before mutation, checking that recovery never undoes either preceding move. View-restoration
@@ -162,10 +179,18 @@ The generator uses a separate private profile and saves only its newly created s
 The integration runner installs the built OXT into a fresh temporary profile, connects over a
 unique local UNO pipe, and checks the factory, tab-control peer, exact panel resizing and disposal,
 read-only Calc documents, Writer exclusion, and SVG decoding. Painted gtk3 sessions also press
-real Shift, Ctrl, and Alt keys with `xdotool` while the panel is shown. Every workbook is synthetic
-and loaded visibly, even when the office process itself is headless. It retries only startup, up to
-three times, to tolerate a Windows crash just after connecting. It never attaches to an existing
-office or uses the normal LibreOffice profile.
+real Shift, Ctrl, and Alt keys with `xdotool` while the panel is shown. The sheet list's feature
+suite checks its rows and their states, refreshing after sheet changes, following the active sheet,
+dropping replaced or renamed sheets from the selection, clicks and the sheet tab menu through
+LibreOffice's synthetic input, clicks that meet rows not yet refreshed, picks dropped after
+structural edits (also batched on the main thread, with undo recording off inside a lock, and
+the out-of-scope silenced case recorded as such), a click while such a batch's outer lock is
+still held, restoring the view when Calc sends an activation elsewhere, and Show's undo and
+recovery rules. Synthetic input cannot reach gtk3's native menus, so painted sessions skip the
+menu steps, which the real-input UI tests cover.
+Every workbook is synthetic and loaded visibly, even when the office process itself is headless.
+It retries only startup, up to three times, to tolerate a Windows crash just after connecting. It
+never attaches to an existing office or uses the normal LibreOffice profile.
 
 Once per run that includes a headless session, with the extension installed and all suites
 enabled, the runner also checks the extension's lifecycle in a profile of its own:
@@ -224,6 +249,41 @@ Image changes retain older `sheet-manager-ci:<version>-<fingerprint>` tags local
 `docker image ls sheet-manager-ci` and remove obsolete tags explicitly with `docker image rm <tag>`
 (including old unfingerprinted `sheet-manager-ci:<version>` tags, which are no longer reused).
 
+Real mouse, wheel, and keyboard input needs a display, so the UI tests run only in Docker, with
+separate gtk3 and gen sessions under Xvfb, driving XTEST:
+
+```text
+python tools/linux_integration.py minimum --ui
+python tools/linux_integration.py current-26.8 --ui
+```
+
+They click, Ctrl+click, and Shift+click rows, drag two separate sheets above and below a row's
+midpoint and check the order and the single undo step, cancel a drag with Esc, auto-scroll and
+wheel-scroll the list, type into the focused list and check that no cell changes, use Ctrl+Page
+Down, Ctrl+Z, and Ctrl+S from the list, open the sheet tab menu by right click, Menu key, and
+Shift+F10, check that a plain click after the menu leaves one selected tab so that typing edits
+one sheet, keep the keyboard position across a refresh, refuse a drop after a sheet was replaced
+during the drag, and switch documents. They release a press after its sheet was replaced or moved
+and check that no activation follows and that the release selects nothing new; after the
+replacement, the Menu key then does nothing. They hold a press while the list gets a newer pick,
+by following Calc to another sheet or by typing its first letter, move the pressed sheet away,
+release, and check that the Menu key's Hide hides the newer pick. They pick Bravo, then delete it
+and give its name to another sheet, directly or after inserting one so that the count is kept,
+replace it while it is held, or run the insert-delete-rename batch on LibreOffice's main thread
+inside `lockControllers`, `addActionLock`, or `disableSetModified`, or with undo recording off
+inside either lock and an empty undo history, and check that the picks are dropped and that the
+Menu key then hides nothing. The deletion and name-reuse cases also assert the notice. They hold a
+drag of Bravo while that
+unrecorded batch runs and check that the drop moves nothing, press Enter or the Menu key while
+the batch's outer lock is still held and check that neither activates nor hides the replacement,
+and save with Ctrl+S from the list and from a cell and check that the picks stay. While a
+far sheet's colour keeps changing, so that the list waits to refresh, they click a sheet hidden
+just before, and Ctrl+click after a plain click, and check that nothing acts on the old rows.
+Results and screenshots are in `test-results/<lane>/ui-gtk3/` and `ui-gen/`. LibreOffice's
+synthetic input on Windows bypasses key handlers and cannot start a native drag; those checks are
+in the [optional desktop observations](docs/manual-tests.md), with a synthetic workbook from
+`python tools/manual_workbook.py`.
+
 Logs, actual office/Python versions, package inventory, and results are in `test-results/` and in
 CI artifacts. The runner records the exit status of each office session and rejects nonzero exits,
 forced shutdowns after a 30-second grace period, fatal-error messages, and LibreOffice's own crash
@@ -254,8 +314,9 @@ Windows CI verifies a pinned MSI before silently installing it; this installatio
 disposable CI runners, not a contributor's existing installation.
 
 `Linux (LibreOffice …)` jobs run the headless checks and `Linux gtk3 (LibreOffice …)` jobs the
-painted checks under Xvfb; both are required for merging. Every job fails on any test or shutdown
-failure and uploads its artifacts; no error message is treated as an allowed crash.
+painted checks and the real-input UI tests under Xvfb; both are required for merging. Every job
+fails on any test or shutdown failure and uploads its artifacts; no error message is treated as an
+allowed crash.
 
 ### Soak painted sessions
 

@@ -49,6 +49,24 @@ def snapshot(document: Any) -> Snapshot:
     )
 
 
+def is_current(document: Any, observed: Snapshot) -> bool:
+    """Whether the document still has exactly the observed sheets, by order and handle names.
+
+    Retained handle names detect tested same-name replacements; see docs/reordering.md.
+    """
+    if str(document.RuntimeUID) != observed.document_id:
+        return False
+    return snapshot(document).sheets == observed.sheets and all(
+        handle.getName() == sheet.name
+        for handle, sheet in zip(observed.handles, observed.sheets, strict=True)
+    )
+
+
+def undo_steps(context: Any) -> int:
+    """The configured undo capacity, read without changing it."""
+    return _undo_steps(context)
+
+
 def _undo_steps(context: Any) -> int:
     provider = context.ServiceManager.createInstanceWithContext(
         "com.sun.star.configuration.ConfigurationProvider", context
@@ -71,13 +89,7 @@ def preflight(context: Any, document: Any, observed: Snapshot, plan: Plan) -> Av
     observed order and retained sheet handles, not just the selected names.
     """
     try:
-        if str(document.RuntimeUID) != observed.document_id or plan.before != observed.sheets:
-            return Availability(False, tr("The sheet list has changed. Refresh it and try again."))
-        fresh = snapshot(document)
-        if fresh.sheets != observed.sheets or any(
-            handle.getName() != sheet.name
-            for handle, sheet in zip(observed.handles, observed.sheets, strict=True)
-        ):
+        if plan.before != observed.sheets or not is_current(document, observed):
             return Availability(False, tr("The sheet list has changed. Refresh it and try again."))
         # Validate against the canonical (cached) plan, including indices and scenario blocks.
         if plan_order(observed.sheets, plan.target) != plan:

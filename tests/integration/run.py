@@ -6,6 +6,7 @@ Choose headless, gtk3, or both with --sessions; gtk3 saves a screenshot.
 
 import argparse
 import importlib.util
+import inspect
 import json
 import os
 import re
@@ -75,6 +76,7 @@ def office_session(
     headless,
     backtrace=False,
     startup_attempts=3,
+    vcl="gtk3",
     profile_directory=None,
 ):
     # `profile_directory` reuses an existing private profile, such as one prepared with unopkg;
@@ -95,7 +97,7 @@ def office_session(
         runtime = directory / "runtime"
         runtime.mkdir(mode=0o700)
         environment["XDG_RUNTIME_DIR"] = str(runtime)
-        environment["SAL_USE_VCLPLUGIN"] = "svp" if headless else "gtk3"
+        environment["SAL_USE_VCLPLUGIN"] = "svp" if headless else vcl
         environment["GDK_BACKEND"] = "x11"
         if headless:
             environment.pop("DISPLAY", None)
@@ -717,7 +719,15 @@ def main():
                                 assert spec is not None and spec.loader is not None
                                 suite = importlib.util.module_from_spec(spec)
                                 spec.loader.exec_module(suite)
-                                suite_result = suite.exercise(context, desktop, directory, output)
+                                # A suite may take the session kind, for steps that need it.
+                                options = (
+                                    {"headless": headless}
+                                    if "headless" in inspect.signature(suite.exercise).parameters
+                                    else {}
+                                )
+                                suite_result = suite.exercise(
+                                    context, desktop, directory, output, **options
+                                )
                                 result[suite_path.stem] = suite_result
                                 if "performance" in suite_result:
                                     mode = "headless" if headless else "gtk3"

@@ -16,7 +16,7 @@ There is no release yet. When there is, download the `.oxt` file from
 [GitHub Releases](https://github.com/viell-dev/slop-calc-sheet-manager/releases) and install it as
 described below.
 
-Until then, you can build the development version yourself. It shows only an empty deck, so this is
+Until then, you can build the development version yourself. Its sheet list is unreleased, so this is
 mainly useful for testing.
 
 1. Get the source with Git:

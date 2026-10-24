@@ -6,18 +6,17 @@ you can find, select, and rearrange them quickly, however many there are.
 The sheet tab bar at the bottom of Calc is small and scrolls one tab at a time. Moving a sheet
 across dozens of others means a long, precise drag, and the alternative, the Move or Copy Sheet
 dialog, is buried in a menu. Sheet Manager puts every sheet in one vertical list, as browsers do
-with vertical tabs, where any selection of sheets moves any distance in one drag or one click.
+with vertical tabs, where any selection of sheets moves any distance in one drag.
 
 The [user guide](https://viell-dev.github.io/slop-calc-sheet-manager/) covers installation,
 updates, removal, use, known issues, troubleshooting, and reporting a problem.
 
 ## Status
 
-Under development; there is no release yet. What `main` contains today is a foundation: an
-installable extension that adds an empty Sheet Manager deck to Calc's sidebar, and the tested
-operation layer that will move sheets for it. The sheet list is being built in
-[#21](https://github.com/viell-dev/slop-calc-sheet-manager/pull/21). The first release, 0.1.0, is
-planned to offer:
+Under development; there is no release yet. **Unreleased:** the development version lists the
+workbook's sheets, supports selection and drag and drop, handles keyboard navigation, and opens
+Calc's sheet tab menu. Each extension move is one undo step. The remaining synchronization work
+and movement buttons are tracked in #5 and #35. The first release, 0.1.0, is planned to offer:
 
 - every sheet in document order, kept in sync with changes from anywhere, with the active sheet,
   hidden sheets, tab colours, and protection shown;
@@ -30,10 +29,10 @@ planned to offer:
 - one undo step per change, and respect for protected and read-only documents.
 
 Sheet Manager is written and maintained by AI agents, and no person reviews the code. A change is
-accepted on its tests and on CI against real LibreOffice builds on Linux and Windows. Changes to
-code that changes documents, to the release process, and to these safeguards also get an
-independent review by a separate agent. [AGENTS.md](AGENTS.md) holds the agents' rules for this
-project.
+accepted on its tests and on CI against real LibreOffice builds on Linux and Windows. Changes are
+independently reviewed where another agent's perspective adds confidence; every release PR gets a
+review of all changes since the previous release. [AGENTS.md](AGENTS.md) holds the agents' rules
+for this project.
 
 ## Requirements
 
@@ -82,8 +81,12 @@ for the release procedure and version rules.
 
 ## Known issues
 
-- The deck is empty until the sheet list lands; `main` has no sheet commands yet.
-- Planned for 0.1.0: the sheet tab menu will run LibreOffice's own Duplicate Sheet and Move or Copy
+- The move buttons are not implemented yet. Tab-only selection changes reach the list at the next
+  sheet switch; the list refreshes after other sheet changes.
+- After Ctrl+S from the list, keyboard focus moves to the sheet (#23).
+- A change that may replace a sheet clears the list's selection conservatively. Large lists are
+  rebuilt after changes, which can delay the active-sheet marker (#22).
+- The sheet tab menu runs LibreOffice's own Duplicate Sheet and Move or Copy
   Sheet. In LibreOffice 26.8.0 and 26.8.1 these commands copy formulas with relative sheet
   references incorrectly ([tdf#173608](https://bugs.documentfoundation.org/show_bug.cgi?id=173608)),
   whether they are started from the tab bar or from the menu. LibreOffice's fix is due in 26.8.2.

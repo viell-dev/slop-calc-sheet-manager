@@ -1,7 +1,7 @@
 """Test clean-up that neither hides a failure nor waits on a stalled office. No UNO dependency.
 
-On Windows the tests close Calc documents through callbacks on LibreOffice's main thread
-(`main_thread.py`). When such a callback does not finish in time, the
+The tests close Calc documents on Windows, and run UI steps, through callbacks on
+LibreOffice's main thread (`main_thread.py`). When such a callback does not finish in time, the
 main thread is stuck and its outcome is unknown (#50): no further callback is tried, the session
 fails, and the runner stops its office instead of asking it to terminate, which would wait for
 the stuck thread too (#40). An earlier failure stays the one raised, with the timeout as a note,
