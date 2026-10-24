@@ -1,4 +1,4 @@
-"""Validate, build, and optionally publish one immutable GitHub release."""
+"""Validate, build, and optionally publish one GitHub release."""
 
 import argparse
 import hashlib

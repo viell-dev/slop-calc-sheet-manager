@@ -463,7 +463,9 @@ reconsider. The owner may report a defect themselves, in their own words.
 - Follow [RELEASING.md](RELEASING.md) for candidate numbering below the final version, patch numbers
   below `.90`, changelog sections, dry runs, publication and recovery. Publication requires a
   successful CI push run on the exact `main` commit. Upload assets to the draft before publishing
-  because releases are immutable. The stable feed excludes candidates; the prerelease feed
+  and verify that the complete assets are present. Keep GitHub release immutability disabled
+  during early development; do not enable it without the owner's direction.
+  The stable feed excludes candidates; the prerelease feed
   retains every build. Never reclassify a published candidate or delete deployed feed history.
 
 ## Ongoing maintenance

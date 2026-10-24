@@ -86,7 +86,7 @@ jobs:
           if-no-files-found: error
 
   publish:
-    name: Publish immutable release
+    name: Publish release
     needs: validate
     if: >-
       github.event_name == 'workflow_dispatch' && !inputs.dry_run &&

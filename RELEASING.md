@@ -91,7 +91,8 @@ Only the publishing job receives `contents: write`; no stored secret is needed.
 
 The workflow creates the numeric tag at that commit, creates a **draft** GitHub release with the
 changelog section and prerelease flag, uploads the OXT and checksum, verifies both are present,
-and only then publishes. This ordering supports GitHub's immutable releases. An existing tag,
+and only then publishes. GitHub release immutability is disabled during early development.
+Keep it disabled unless the owner directs otherwise. An existing tag,
 published version, or draft is refused. Publication is serialized so two workflow runs cannot
 reserve the same version or overtake one another.
 
