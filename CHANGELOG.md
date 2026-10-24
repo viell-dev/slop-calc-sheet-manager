@@ -5,6 +5,9 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Cursor restoration now follows the native tree's focused row rather than predicting its position
+  from key callbacks, including navigation outside the selection and across a list rebuild
+  ([#69](https://github.com/viell-dev/slop-calc-sheet-manager/issues/69)).
 - Move-button enablement no longer consumes a pending ordinary edit notification, which could
   clear the list's picks at the next refresh
   ([#66](https://github.com/viell-dev/slop-calc-sheet-manager/issues/66)).

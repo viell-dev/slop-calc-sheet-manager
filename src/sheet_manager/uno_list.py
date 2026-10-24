@@ -23,6 +23,7 @@ from typing import Any, cast
 
 import uno
 import unohelper
+from com.sun.star.accessibility import XAccessibleEventListener
 from com.sun.star.awt import XFocusListener, XMouseListener, XPaintListener
 from com.sun.star.datatransfer import DataFlavor, UnsupportedFlavorException, XTransferable
 from com.sun.star.datatransfer.dnd import (
@@ -34,16 +35,7 @@ from com.sun.star.sheet import XActivationEventListener
 from com.sun.star.util import XModifyListener
 
 from sheet_manager.i18n import tr
-from sheet_manager.keys import (
-    MOVING,
-    PAGEDOWN,
-    PAGEUP,
-    TypeAhead,
-    anchor_after,
-    cursor_after,
-    find_prefix,
-    range_end,
-)
+from sheet_manager.keys import TypeAhead, find_prefix
 from sheet_manager.reorder import Action, plan_move
 from sheet_manager.selection import Ref, Selection, structure_kept
 from sheet_manager.sheet_list import RowGeometry, SheetRow, ordered, row_label
@@ -92,6 +84,10 @@ REFRESH_DELAY = 0.2  # Quiet time after a change before the list reads the sheet
 REFRESH_COST_FACTOR = 4  # Wait at least this many times as long as the last refresh took.
 REFRESH_MAX_WAIT = 2.0  # During continuous changes, refresh at least this often (scaled too).
 SCROLL_INTERVAL = 0.1
+CURSOR_CHANGED = cast(
+    int,
+    uno.getConstantByName("com.sun.star.accessibility.AccessibleEventId.ACTIVE_DESCENDANT_CHANGED"),
+)
 
 
 NOTICE = "dev.viell.sheetmanager.selection-cleared"  # The infobar telling of a cleared pick.
@@ -214,6 +210,18 @@ class _Focus(unohelper.Base, XFocusListener):
         pass
 
 
+class _Cursor(unohelper.Base, XAccessibleEventListener):
+    def __init__(self, owner):
+        self._owner = owner
+
+    def notifyEvent(self, event):
+        if event.EventId == CURSOR_CHANGED and event.NewValue is not None:
+            _guarded("following the native tree cursor", self._owner.cursor_changed, event.NewValue)
+
+    def disposing(self, event):
+        pass
+
+
 class _Paint(unohelper.Base, XPaintListener):
     def __init__(self, owner):
         self._owner = owner
@@ -310,6 +318,7 @@ class SheetList:
         self._refresh_timer: Later | None = None
         self._scroll = 0
         self._keys_registered = False
+        self._restoring_cursor = False
         self._cleanup = contextlib.ExitStack()
         self._moves: MoveButtons | None = None
         try:
@@ -334,9 +343,9 @@ class SheetList:
         self._observed: Snapshot | None = None
         self._handles: dict[str, Any] = {}
         self._nodes: list[object] = []
-        # The list's own picks, keyboard cursor, and Shift anchor, as sheet identities
-        # (selection.py): the tree knows its rows only by name and has no cursor API. `_shown`
-        # is the selection the list last wrote to the tree or took from it.
+        # The list's own picks and keyboard cursor, as sheet identities (selection.py).
+        # Native focus events provide the cursor; `_shown` is the selection the list last
+        # wrote to the tree or took from it. The native control owns its Shift anchor.
         self._selection = Selection(_current)
         self._shown: tuple[str, ...] = ()
         # A sheet that may have been inserted or deleted since the picks were proved makes
@@ -392,6 +401,7 @@ class SheetList:
         self._listeners = {
             "mouse": _Mouse(self),
             "focus": _Focus(self),
+            "cursor": _Cursor(self),
             "paint": _Paint(self),
             "gesture": _Gesture(self),
             "source": _Source(self),
@@ -403,6 +413,11 @@ class SheetList:
         self.tree.addMouseListener(self._listeners["mouse"])
         self.tree.addFocusListener(self._listeners["focus"])
         self.tree.addPaintListener(self._listeners["paint"])
+        self._cursor_context = self.peer.getProperty("XAccessible").getAccessibleContext()
+        self._cursor_context.addAccessibleEventListener(self._listeners["cursor"])
+        self._release_with(
+            lambda: self._cursor_context.removeAccessibleEventListener(self._listeners["cursor"])
+        )
         self._gestures = self.toolkit.getDragGestureRecognizer(self.peer)
         self._gestures.addDragGestureListener(self._listeners["gesture"])
         self._release_with(
@@ -469,15 +484,6 @@ class SheetList:
     @_cursor.setter
     def _cursor(self, name: str | None) -> None:
         self._selection.cursor = self._ref(name)
-
-    @property
-    def _anchor(self) -> str | None:
-        anchor = self._selection.anchor
-        return anchor.name if anchor is not None else None
-
-    @_anchor.setter
-    def _anchor(self, name: str | None) -> None:
-        self._selection.anchor = self._ref(name)
 
     def _ref(self, name: str | None) -> Ref | None:
         """The sheet the row `name` shows now, reusing the list's ref for it if still current."""
@@ -594,16 +600,22 @@ class SheetList:
             node.setNodeGraphicURL(swatch_url(self.context, row.color))
             root.appendChild(node)
             nodes.append(node)
-        self.tree.getModel().DataModel = model
-        self._nodes, self.rows = nodes, rows
-        self._shown = ()
-        self._selection.anchor = None
-        names = self.names()
-        if top in names and nodes:
-            # Scroll to the end first, so that showing the old top row puts it at the top.
-            self.tree.makeNodeVisible(nodes[-1])
-            self.tree.makeNodeVisible(nodes[names.index(top)])
-        self._apply_selection()
+        restoring = self._restoring_cursor
+        self._restoring_cursor = True
+        try:
+            # Replacing the model focuses intermediate rows before the old cursor comes back.
+            self.tree.getModel().DataModel = model
+            self._nodes, self.rows = nodes, rows
+            self._shown = ()
+            self._selection.anchor = None
+            names = self.names()
+            if top in names and nodes:
+                # Scroll to the end first, so that showing the old top row puts it at the top.
+                self.tree.makeNodeVisible(nodes[-1])
+                self.tree.makeNodeVisible(nodes[names.index(top)])
+            self._apply_selection()
+        finally:
+            self._restoring_cursor = restoring
 
     def _select(self, names: list[str], cursor: str | None = None) -> None:
         """Pick these rows as they show now and put the keyboard cursor on `cursor`."""
@@ -680,10 +692,6 @@ class SheetList:
         nodes = selection if isinstance(selection, tuple) else (selection,)
         return ordered(self.names(), {node.DataValue for node in nodes})
 
-    def _selected_indices(self) -> list[int]:
-        picked = set(self.selected_names())
-        return [index for index, row in enumerate(self.rows) if row.name in picked]
-
     def _focus_row(self, index: int, scroll: bool = True) -> None:
         """Pick only this row, as it shows now, and move the keyboard cursor to it."""
         ref = self._ref(self.rows[index].name)
@@ -697,7 +705,7 @@ class SheetList:
     def _move_tree_cursor(self, index: int, scroll: bool = True) -> None:
         """Select only this row in the tree, which moves its keyboard cursor there too.
 
-        The tree control has no cursor API, but in single selection mode selecting a row also
+        The tree control has no cursor setter, but in single selection mode selecting a row also
         moves the cursor, so arrow keys continue from the row selected here.
         """
         model = self.tree.getModel()
@@ -710,35 +718,24 @@ class SheetList:
             self.tree.makeNodeVisible(self._nodes[index])
 
     def tree_key(self, code: int, modifiers: int) -> None:
-        """Track the tree's cursor for a key that the tree is about to handle itself."""
+        """Take the selection after native handling; callbacks do not predict cursor movement."""
         self._input += 1
-        names = self.names()
-        cursor = names.index(self._cursor) if self._cursor in names else None
-        anchor = names.index(self._anchor) if self._anchor in names else None
-        anchor = anchor_after(code, modifiers, cursor, anchor)
-        self._anchor = names[anchor] if anchor is not None else None
-        moved = cursor_after(code, cursor, len(names))
-        if moved is not None:
-            self._cursor = names[moved]
-        elif code in (PAGEUP, PAGEDOWN):
-            shift = bool(modifiers & SHIFT)
-            self.post(lambda: self._cursor_from_selection(shift), "following the cursor")
-        elif code in MOVING:
-            self._cursor = None
         # The tree handles the key after this returns; take the selection it then shows.
         self.post(self._take_tree_selection, "following the selection")
 
-    def _cursor_from_selection(self, shift: bool) -> None:
-        """After Page Up or Page Down the selection shows where the cursor went."""
-        self._take_tree_selection()
-        selected = self._selected_indices()
-        names = self.names()
-        if not shift:
-            self._cursor = names[selected[0]] if len(selected) == 1 else None
-        elif self._anchor in names and names.index(self._anchor) in selected:
-            self._cursor = names[range_end(selected, names.index(self._anchor))]
-        else:
-            self._cursor = None
+    def cursor_changed(self, accessible: Any) -> None:
+        """Record the row the native tree focused, even when it is outside the selection.
+
+        These events are synchronous. The two getters return the entry's context and cached
+        sibling index, without changing UI state (verified in LibreOffice 26.2.1 and 26.8).
+        The hidden root is omitted, so the index maps directly onto the currently shown rows.
+        """
+        if self._disposed or self._restoring_cursor:
+            return
+        index = accessible.getAccessibleContext().getAccessibleIndexInParent()
+        if 0 <= index < len(self.rows):
+            name = self.rows[index].name
+            self._selection.cursor = Ref(name, self._handles[name], index)
 
     def follow_calc_selection(self) -> None:
         try:
@@ -1084,20 +1081,11 @@ class SheetList:
             self._press = None
             if row is not None and self.rows[row].name not in self.selected_names():
                 self._focus_row(row)
-                self._anchor = None
         elif event.Buttons & LEFT:
             name = self.rows[row].name if row is not None else None
             handle = self._handles.get(name) if name is not None else None
             self._take_tree_selection()  # The tree has already applied the press.
             self._press = _Press(row, event.Modifiers, name, handle, self._monitor.generation)
-            if row is not None:
-                # The tree has already handled the press: its cursor is on this row. Shift
-                # keeps or starts the range at the old cursor; other clicks end it.
-                if event.Modifiers & SHIFT:
-                    self._anchor = self._anchor or self._cursor
-                else:
-                    self._anchor = None
-                self._cursor = self.rows[row].name
 
     def mouse_released(self, event) -> None:
         if event.Buttons & RIGHT:

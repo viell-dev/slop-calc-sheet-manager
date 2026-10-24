@@ -850,6 +850,37 @@ def check_cursor_across_refresh(book):
     return evidence
 
 
+def check_native_cursor_positions(book):
+    """Native focus events cover edge and page navigation independently of the picks."""
+    foxtrot = book.document.getSheets().getByName(NAMES[5])
+
+    def rebuild():
+        graphic = book.nodes()[5].getNodeGraphicURL()
+        foxtrot.TabColor = 0x668833 if foxtrot.TabColor == 0x3FAF46 else 0x3FAF46
+        wait_until(lambda: book.nodes()[5].getNodeGraphicURL() != graphic, "the new list model")
+
+    evidence = {}
+    for key, index in (("End", -1), ("Home", 0)):
+        book.click(1)
+        book.lab.input.tap(key, ("Control_L",), pause=0.3)
+        assert book.selection() == [NAMES[1]]
+        rebuild()
+        book.lab.input.tap("space", ("Control_L",), pause=0.4)
+        wanted = [name for name in NAMES if name in (NAMES[1], NAMES[index])]
+        assert book.selection() == wanted
+        evidence[key] = wanted
+    book.click(1)
+    book.lab.input.tap("Next", pause=0.4)
+    page = book.selection()
+    assert len(page) == 1 and page != [NAMES[1]], page
+    rebuild()
+    book.lab.input.tap("space", ("Control_L",), pause=0.4)
+    assert book.selection() == []
+    evidence["PageDown"] = page
+    foxtrot.TabColor = -1
+    return evidence
+
+
 def check_drop_after_replacement(book):
     """A drop is refused when a sheet was replaced during the drag (#28)."""
     book.click(2)
@@ -1305,6 +1336,7 @@ def run_checks(lab, output):
         ("plain_click_ends_group", lambda: check_plain_click_ends_group(book)),
         ("single_tap_after_client_pause", lambda: check_single_tap_after_client_pause(book)),
         ("cursor_across_refresh", lambda: check_cursor_across_refresh(book)),
+        ("native_cursor_positions", lambda: check_native_cursor_positions(book)),
         ("drop_after_replacement", lambda: check_drop_after_replacement(book)),
         ("press_then_change", lambda: check_press_then_change(book)),
         ("newer_pick_survives_voided_press", lambda: check_newer_pick_survives_voided_press(book)),

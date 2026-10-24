@@ -8,6 +8,7 @@ from unittest.mock import Mock
 
 import pytest
 
+from sheet_manager.selection import Ref
 from sheet_manager.structure import Quiet, StructureEvents
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -179,6 +180,111 @@ def test_move_enablement_does_not_consume_an_edits_pending_modify_notification()
     monitor.generation = 1
     update(owner)
     assert not states[-1]["up"].allowed
+
+
+def test_native_cursor_wins_over_repeated_key_callbacks() -> None:
+    names = ["Alfa", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot"]
+    handles = {name: object() for name in names}
+    queued: list[Any] = []
+
+    def post(callback: Any, where: str) -> None:
+        queued.append(callback)
+
+    owner = SimpleNamespace(
+        _disposed=False,
+        _restoring_cursor=False,
+        _input=0,
+        _selection=SimpleNamespace(cursor=Ref("Bravo", handles["Bravo"], 1)),
+        _handles=handles,
+        rows=[SimpleNamespace(name=name) for name in names],
+        _take_tree_selection=lambda: None,
+        post=post,
+    )
+    key = method("src/sheet_manager/uno_list.py", "SheetList", "tree_key", {})
+    changed = method(
+        "src/sheet_manager/uno_list.py", "SheetList", "cursor_changed", {"Any": Any, "Ref": Ref}
+    )
+    for index in (2, 3):
+        before = owner._selection.cursor
+        key(owner, 1024, 2)
+        key(owner, 1024, 2)  # Two toolkit deliveries, but one native cursor movement.
+        assert owner._selection.cursor is before
+
+        def native_index(position: int = index) -> int:
+            return position
+
+        accessible = SimpleNamespace(
+            getAccessibleContext=lambda: SimpleNamespace(getAccessibleIndexInParent=native_index)
+        )
+        changed(owner, accessible)
+    assert owner._selection.cursor.name == "Delta"
+    assert owner._selection.cursor.token is handles["Delta"]
+    assert len(queued) == 4
+
+
+@pytest.mark.parametrize(
+    "disposed,restoring,index,expected,queried",
+    [
+        (True, False, 0, "Bravo", False),
+        (False, True, 0, "Bravo", False),
+        (False, False, -1, "Bravo", True),
+        (False, False, 2, "Bravo", True),
+        (False, False, 0, "Alfa", True),
+    ],
+)
+def test_native_cursor_uses_only_current_rows_outside_restoration(
+    disposed: bool, restoring: bool, index: int, expected: str, queried: bool
+) -> None:
+    calls: list[bool] = []
+    handle = object()
+
+    def context() -> Any:
+        calls.append(True)
+        return SimpleNamespace(getAccessibleIndexInParent=lambda: index)
+
+    owner = SimpleNamespace(
+        _disposed=disposed,
+        _restoring_cursor=restoring,
+        _selection=SimpleNamespace(cursor=Ref("Bravo", object(), 1)),
+        _handles={"Alfa": handle, "Bravo": object()},
+        rows=[SimpleNamespace(name="Alfa"), SimpleNamespace(name="Bravo")],
+    )
+    changed = method(
+        "src/sheet_manager/uno_list.py", "SheetList", "cursor_changed", {"Any": Any, "Ref": Ref}
+    )
+    changed(owner, SimpleNamespace(getAccessibleContext=context))
+    assert owner._selection.cursor.name == expected
+    assert bool(calls) == queried
+    if expected == "Alfa":
+        assert owner._selection.cursor.token is handle
+
+
+def test_failed_rebuild_releases_the_cursor_restoration_guard() -> None:
+    model = Mock()
+
+    def names() -> list[str]:
+        return []
+
+    owner = SimpleNamespace(
+        _restoring_cursor=False,
+        _first_visible_name=lambda: None,
+        context=SimpleNamespace(
+            ServiceManager=SimpleNamespace(createInstanceWithContext=Mock(return_value=model))
+        ),
+        tree=SimpleNamespace(getModel=lambda: SimpleNamespace()),
+        _selection=SimpleNamespace(anchor=None),
+        names=names,
+    )
+
+    def fail_restore() -> None:
+        assert owner._restoring_cursor
+        raise RuntimeError("injected cursor restoration failure")
+
+    owner._apply_selection = fail_restore
+    rebuild = method("src/sheet_manager/uno_list.py", "SheetList", "_rebuild", {"SheetRow": Any})
+    with pytest.raises(RuntimeError, match="cursor restoration failure"):
+        rebuild(owner, [])
+    assert not owner._restoring_cursor
 
 
 @pytest.mark.parametrize(

@@ -349,10 +349,15 @@ reconsider. The owner may report a defect themselves, in their own words.
 - The list is a borderless `TreeControl` (so that it is a direct child of the panel window) with
   a hidden root. With a hidden root, the tree peer mishandles every data-model change event and
   re-parents all rows under the root, so never change nodes in place: build a new data model and
-  restore selection, scroll position, and keyboard cursor. The tree exposes no cursor, so the list
-  tracks it from clicks and the keys it passes to the tree (`keys.cursor_after`); a rebuild cannot
-  restore the tree's Shift anchor, so the next Shift move starts a range at the cursor. Listener
-  callbacks can arrive on other threads or during a change; they only record state or post work
+  restore selection, scroll position, and keyboard cursor. The list observes the native cursor via
+  `ACTIVE_DESCENDANT_CHANGED` on the peer's accessible tree context. The event's row context has a
+  cached sibling index that maps directly to the flat rows; the callback reads only that index and
+  records a ref from the shown handles. Delivery is synchronous in supported LibreOffice versions.
+  Ignore intermediate focus events during model replacement/restoration, and remove the listener
+  on failed setup and disposal. Never predict cursor movement from toolkit callback counts: a
+  native input event can be forwarded more than once. A rebuild cannot restore the tree's Shift
+  anchor, so the next Shift move starts a range at the cursor. Listener callbacks can arrive on
+  other threads or during a change; they only record state or post work
   through `AsyncCallback`. Start threads only through `uno_calc.start_thread`, never with
   `threading`: `Thread.start` waits for the new thread, whose first steps can wait for
   LibreOffice's main lock that listeners and the main thread hold, and Calc then hangs (#55).

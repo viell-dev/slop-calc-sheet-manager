@@ -158,6 +158,10 @@ list view keeps other views and held snapshots protected until the document clos
 `test_move_buttons.py` checks native button names, robot clicks, refusal tooltips, and one Undo
 per press. The real-input UI suite exercises every button and Alt move shortcut, separated
 picks, repeated moves, edges, and permission refusals.
+Cursor checks cover Ctrl navigation outside the picks, Home/End, page navigation, and rebuilding
+the list. The list observes native accessible focus events rather than counting toolkit key
+callbacks. Boundary regressions cover repeated deliveries, ignored intermediate restoration
+events and failure cleanup; the native failure adapter also checks cursor-listener removal.
 The failure suite also runs with two configured undo steps, forcing nested groups, and checks zero
 and one-step settings. Full-stack tests put both native and extension moves above 99 inputs and
 fail before mutation, checking that recovery never undoes either preceding move. View-restoration
