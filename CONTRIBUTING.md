@@ -400,7 +400,8 @@ npm run docs:dev
 `npm run docs:build` builds it as CI does; a broken link between pages fails the build.
 `python tools/check_release_page.py` also builds empty and synthetic release histories, checking
 channel separation, version order, and the rendered OXT/checksum links in the required docs job.
-It writes only temporary build output under `test-results/` and never publishes a build.
+Its disposable build output uses the operating system's temporary directory; it never publishes
+a build.
 Some Windows security policies block the native module that VitePress's bundler loads. Then build in a
 container, from the repository root in PowerShell 7, and find the site in `test-results/docs/`:
 

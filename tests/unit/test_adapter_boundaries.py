@@ -1,7 +1,5 @@
 """Deterministic races and display guards; real UNO behaviour is checked in integration."""
 
-import ast
-from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import Mock
@@ -10,18 +8,7 @@ import pytest
 
 from sheet_manager.selection import Ref, Selection
 from sheet_manager.structure import Quiet, StructureEvents
-
-ROOT = Path(__file__).resolve().parents[2]
-
-
-def method(path: str, owner: str, name: str, namespace: dict[str, Any]) -> Any:
-    tree = ast.parse((ROOT / path).read_text(encoding="utf-8"))
-    cls = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == owner)
-    node = next(
-        node for node in cls.body if isinstance(node, ast.FunctionDef) and node.name == name
-    )
-    exec(compile(ast.Module(body=[node], type_ignores=[]), path, "exec"), namespace)
-    return namespace[name]
+from tests.unit.source_methods import method
 
 
 def test_menu_keeps_the_pick_proof_before_reading_a_fresh_snapshot() -> None:
@@ -275,7 +262,6 @@ def test_failed_rebuild_releases_the_cursor_restoration_guard() -> None:
             ServiceManager=SimpleNamespace(createInstanceWithContext=Mock(return_value=model))
         ),
         tree=SimpleNamespace(getModel=lambda: SimpleNamespace()),
-        _selection=SimpleNamespace(anchor=None),
         names=names,
     )
 

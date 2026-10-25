@@ -42,8 +42,7 @@ def main() -> None:
     node = shutil.which("node")
     if node is None:
         raise SystemExit("Select the Node.js version in .nvmrc before checking the docs")
-    (ROOT / "test-results").mkdir(exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="release-page-", dir=ROOT / "test-results") as scratch:
+    with tempfile.TemporaryDirectory(prefix="sheet-manager-release-page-") as scratch:
         directory = Path(scratch)
         history = directory / "releases.json"
         fixture = [

@@ -638,7 +638,6 @@ class SheetList:
             self.tree.getModel().DataModel = model
             self._nodes, self.rows = nodes, rows
             self._shown = ()
-            self._selection.anchor = None
             names = self.names()
             if top in names and nodes:
                 # Scroll to the end first, so that showing the old top row puts it at the top.
