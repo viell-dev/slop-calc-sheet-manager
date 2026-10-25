@@ -72,7 +72,9 @@ For release-workflow development, a PR that changes `.github/workflows/release.y
 `.github/workflows/pages.yml`, `tools/github_release.py`, or `tools/release_data.py` also runs
 this same dry run on its head commit, using the metadata version and inferring the candidate
 flag from its patch number. Its artifact is the branch dry run; it waits for the PR's successful
-CI run instead of `main`'s, so this check normally finishes after CI. If that metadata version is
+CI run instead of `main`'s, so this check normally finishes after CI. It waits up to 50 minutes,
+covering the native matrix's 45-minute job limit plus startup time; the dry-run job allows
+60 minutes for setup and asset validation as well. If that metadata version is
 already published, the PR check emits a notice and skips release planning after static/unit
 checks and validation of live published assets, history, and current feeds. In that case its
 artifact contains only the current feed preview, with no prospective release plan. Existing
