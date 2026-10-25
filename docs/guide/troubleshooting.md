@@ -37,6 +37,6 @@ is empty:
 
 - **Check for Updates** offers only stable releases newer than the installed one, and only those
   your LibreOffice version can run.
-- Release candidates are never offered automatically. Download them from
+- Test builds are never offered automatically. Download them from
   [Releases and test builds](./releases.md#test-builds). Installing one does not subscribe you to
-  later candidates; the stable feed will offer the final release when it is available.
+  later test builds; the stable feed will offer the final release when it is available.

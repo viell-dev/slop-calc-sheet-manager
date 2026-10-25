@@ -68,6 +68,7 @@ def test_minimum_version_agrees_everywhere() -> None:
     version = minimum()
     assert f"LibreOffice **{version} or later**" in text(ROOT / "README.md")
     assert f"**LibreOffice {version} or later.**" in text(DOCS / "guide" / "install.md")
+    assert f"LibreOffice {version} or later" in text(ROOT / "extension" / "description-en.txt")
     pins = lanes()
     assert pins["minimum"]["version"].startswith(version + ".")
     oldest = [int(part) for part in version.split(".")]
@@ -75,7 +76,7 @@ def test_minimum_version_agrees_everywhere() -> None:
     assert refused < oldest, "The refusal lane must test a version below the minimum"
     # Every page that states a lower bound or a refused range must state these versions.
     refused_text = ".".join(str(part) for part in refused)
-    pages = [ROOT / "README.md", *DOCS.rglob("*.md")]
+    pages = [ROOT / "README.md", ROOT / "extension" / "description-en.txt", *DOCS.rglob("*.md")]
     for page in (page for page in pages if "node_modules" not in page.parts):
         content = text(page)
         for stated in re.findall(r"(\d+\.\d+\.\d+) or later", content):
@@ -86,7 +87,7 @@ def test_minimum_version_agrees_everywhere() -> None:
             assert stated == refused_text, (page.name, stated)
 
 
-def test_current_package_examples_match_the_manifest_version() -> None:
+def test_current_build_and_package_examples_match_the_manifest_version() -> None:
     node = description().find("d:version", NAMESPACES)
     assert node is not None
     version = node.attrib["value"]
@@ -94,6 +95,14 @@ def test_current_package_examples_match_the_manifest_version() -> None:
         examples = re.findall(r"sheet-manager-(\d+\.\d+\.\d+)\.oxt", text(page))
         assert examples, f"No current package example in {page.name}"
         assert all(example == version for example in examples), (page.name, examples, version)
+    for page in (
+        ROOT / "README.md",
+        ROOT / "RELEASING.md",
+        DOCS / "guide" / "status.md",
+        DOCS / "guide" / "use.md",
+    ):
+        builds = re.findall(r"`(\d+\.\d+\.\d+)` (?:test build|release)", text(page))
+        assert builds == [version], (page.name, builds, version)
 
 
 def test_environment_table_names_the_tested_builds() -> None:
