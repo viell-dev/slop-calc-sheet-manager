@@ -65,8 +65,10 @@ The sheet list calls the reorder layer for drag and drop. Its contract is in
 | The panel disposes when its document closes, and other document windows remain usable | Panel disposal integration assertions; real-input `other_document` | Every integration and UI job | Key-handler removal is not observed directly by these checks. Qt/KDE, macOS, visible Windows input and Wayland remain unverified. |
 
 `test_sheet_list.py:measure_large_workbook` records list opening and following at 1,000 sheets;
-these are measurements, not performance gates. Tab-only following keeps the existing model;
-property changes can still require a full rebuild, whose cost is tracked in #22.
+activation timing waits for both selection and the painted active marker before starting the
+separate tab-only measurement. These are measurements, not performance gates. Tab-only following
+keeps the existing model; property changes can still require a full rebuild, whose cost is tracked
+in #22.
 
 ## The checks themselves
 

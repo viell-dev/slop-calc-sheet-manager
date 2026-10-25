@@ -44,7 +44,7 @@ from sheet_list_view import (
 from teardown import Configured, run_checks
 
 from sheet_manager import keys, uno_list
-from sheet_manager.sheet_list import SheetRow, row_label, tab_color
+from sheet_manager.sheet_list import ACTIVE_MARK, SheetRow, row_label, tab_color
 from sheet_manager.uno_calc import select_tabs
 from sheet_manager.uno_reorder import snapshot
 from sheet_manager.uno_show import show_sheets
@@ -816,6 +816,18 @@ def measure_large_workbook(context, desktop, count):
     controller.setActiveSheet(target)
     order = list(document.getSheets().getElementNames())
     poll(lambda: selection(tree, order) == [target.getName()], "a large list to follow", 120)
+
+    def activation_painted():
+        parent = root(tree)
+        return (
+            parent is not None
+            and parent.getChildCount() == count
+            and parent.getChildAt(count // 2).getDisplayValue() == ACTIVE_MARK + target.getName()
+        )
+
+    # The lightweight observer can follow the selection before the preceding activation's
+    # rate-limited row repaint. Finish that repaint before isolating tab-only model retention.
+    poll(activation_painted, "the active marker before tab-only timing", 120)
     followed = time.monotonic() - started
     before = root(tree)
     assert before is not None
