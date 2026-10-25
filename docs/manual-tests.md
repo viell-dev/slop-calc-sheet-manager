@@ -119,4 +119,5 @@ instead. Take screenshots only of this workbook.
     by keyboard, then cancel and use Tab or Shift+Tab to leave the list.
     Expected: shortcuts match the context actions, a successful move returns focus to the list,
     and list keys do not type into cells. Both Tab directions return focus to Calc. Unavailable
-    move actions are disabled and have explanatory help text.
+    move actions cannot run. Native rendering may hide disabled actions and their help text;
+    use Down to highlight the first available entry in the gen backend.

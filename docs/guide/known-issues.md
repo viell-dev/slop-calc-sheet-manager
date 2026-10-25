@@ -27,6 +27,11 @@ If Sheet Manager does not work in an environment where it is expected to, please
   ([#81](https://github.com/viell-dev/slop-calc-sheet-manager/issues/81)).
 - **Save focus.** Ctrl+S from the list saves through Calc and moves focus to the sheet
   ([#23](https://github.com/viell-dev/slop-calc-sheet-manager/issues/23)).
+- **Unavailable menu actions.** Native popup rendering can hide disabled move actions and their
+  help text. In the gen backend, use Down to highlight the first available entry; Home can leave
+  no entry highlighted when the leading actions are unavailable. Alt move shortcuts still apply
+  the same permission and edge checks
+  ([#84](https://github.com/viell-dev/slop-calc-sheet-manager/issues/84)).
 - **Conservative selection clearing.** Inserting or deleting sheets, undoing or redoing, and
   modifications whose continuity cannot be established can clear the list's selection. A notice
   explains conservative clearing of a user-made selection. Ordinary refreshes retain the list's

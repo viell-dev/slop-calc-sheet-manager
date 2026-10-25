@@ -367,7 +367,14 @@ def check_move_controls(book, shortcuts):
         book.click(2)
         book.click(5, modifiers=("Control_L",))
         picked = [NAMES[2], NAMES[5]]
-        wait_until(lambda p=picked: book.selection() == p, "two separate rows selected")
+        try:
+            wait_until(lambda p=picked: book.selection() == p, "two separate rows selected")
+        except AssertionError as error:
+            error.add_note(
+                f"Before {action}: order={book.order()!r}, rows={view.names(book.tree)!r}, "
+                f"picks={book.selection()!r}, focused={book.tree.hasFocus()!r}"
+            )
+            raise
         before, history, active, tabs = (
             book.order(),
             book.undo_titles(),
@@ -397,9 +404,11 @@ def check_move_edges_and_refusal(book):
     before, history = book.order(), book.undo_titles()
     book.lab.input.tap("Menu", pause=0.4)
     book.lab.screenshot("move-edge-disabled")
-    book.lab.input.tap("Home")  # Top and Up are disabled: Down is the first enabled action.
+    # gen's Home leaves no highlight when the leading disabled entries are hidden.
+    # Down selects the first enabled action on both backends.
+    book.lab.input.tap("Down")
     book.lab.input.tap("Return", pause=0.4)
-    wait_until(lambda: book.order().index(NAMES[0]) == 1, "edge menu to offer Down first")
+    wait_until(lambda: book.order().index(NAMES[0]) == 1, "the first enabled edge action")
     book.move_action("down")
     wait_until(lambda: book.order().index(NAMES[0]) == 2, "repeated menu movement")
     assert book.undo_titles() == ["Move Sheets", "Move Sheets", *history]

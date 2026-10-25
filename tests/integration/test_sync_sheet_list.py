@@ -228,7 +228,14 @@ def check_reload(context, desktop, directory):
     # Late load notifications can clear picks while renewing structural proof. They must not
     # repopulate picks, but the new panel must observe later input and the replacement model.
     Robot(context).click(tree, row_point(tree, 0))
-    poll(lambda: selection(tree, NAMES) == ["Alfa"], "an explicit pick after reload")
+    try:
+        poll(lambda: selection(tree, NAMES) == ["Alfa"], "an explicit pick after reload")
+    except AssertionError as error:
+        error.add_note(
+            f"Reloaded rows={names(tree)!r}, picks={selection(tree, NAMES)!r}, "
+            f"status={status(panel)!r}, focused={tree.hasFocus()!r}"
+        )
+        raise
     select_tabs(context, frame, [0, 3])
     poll(lambda: selection(tree, NAMES) == ["Alfa", "Delta"], "the replacement observer")
     replacement.getSheets().getByName("Bravo").setName("AfterReload")

@@ -58,7 +58,9 @@ so pressing Up or Down again moves the same sheets further.
 A move is one **Move Sheets** undo step. Use Ctrl+Z to undo it. The active sheet and Calc's tab
 selection are preserved. A stale selection or a move that cannot be fully undone is refused with
 an explanation. Unavailable menu actions are disabled, with a reason in their help text, such as a
-protected workbook structure, recorded changes, disabled undo, no selection, or an edge.
+protected workbook structure, recorded changes, disabled undo, no selection, or an edge. Native
+popup rendering can hide unavailable actions and their reasons; see the
+[known issue](./known-issues.md).
 
 ## Open the sheet tab menu
 

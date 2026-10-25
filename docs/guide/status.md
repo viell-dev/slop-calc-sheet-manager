@@ -19,7 +19,7 @@ the build this guide describes.
   verifies if a change fails part-way. It is tested against real LibreOffice on workbooks of up to
   1,000 sheets. Drag any selection to an insertion line; the list scrolls near its edges.
 - **Context actions.** Move to top, up, down, or bottom in one undo step, with
-  Alt+Home/Up/Down/End shortcuts and disabled reasons. Right-click targets the pointed row or
+  Alt+Home/Up/Down/End shortcuts and availability checks. Right-click targets the pointed row or
   existing picked set without changing picks. Calc's customized menu is under **Sheet actions**;
   temporary native grouping is restored on dismissal where safe. The menu also links to Help.
 - **Manual-install downloads and update feeds.** Each published build includes an OXT and checksum.
