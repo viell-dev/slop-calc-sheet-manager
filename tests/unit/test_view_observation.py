@@ -74,6 +74,7 @@ def observer() -> tuple[Any, Any]:
 def test_tab_only_change_follows_once_without_rebuilding_or_consuming_monitor_evidence() -> None:
     owner, live = observer()
     owner._observe_view()
+    owner._take_tree_selection.assert_called_once_with(paint=False, defer=True)
     owner._select.assert_not_called()
     live.indices = (0, 2)
     owner._observe_view()
@@ -165,6 +166,7 @@ def test_refresh_seeds_the_new_proof_before_a_subsequent_tab_change(kept: bool) 
         SOURCE, "SheetList", "_refresh", {"snapshot": snapshot, "read_rows": read_rows}
     )
     refresh(owner)
+    assert owner._take_tree_selection.call_args_list[0].kwargs == {"defer": True}
     assert owner._proven == owner._view_generation == 1
     assert owner._view_state == ("Alfa", frozenset({"Alfa"}))
     owner._select.assert_not_called()  # Seeding neither repopulates nor overwrites the picks.
