@@ -106,7 +106,9 @@ own keyboard handling. After Ctrl+S, focus moves to the sheet; use the focus cyc
 
 Rows use LibreOffice's native tree control and its accessible names. Hidden, protected, and
 scenario states are written in text; the current-sheet arrow and tab-colour square are visual
-indicators. Actual screen-reader experience is not verified by CI.
+indicators. Exposing the viewed sheet separately to assistive technology is tracked in
+[#83](https://github.com/viell-dev/slop-calc-sheet-manager/issues/83). Actual screen-reader
+experience is not verified by CI.
 
 ## When the list clears its selection
 

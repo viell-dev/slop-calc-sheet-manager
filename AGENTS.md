@@ -248,9 +248,9 @@ reconsider. The owner may report a defect themselves, in their own words.
   named ranges, and charts at 200/1,000 sheets and emit median complete-move/undo timings.
   `generate_workbooks.py` retains copies for inspection using the same synthetic generator.
 - `src/sheet_manager/` ships under `pythonpath/sheet_manager/`. Keep pure logic importable without
-  `uno` (`keys.py`, `sheet_list.py`, `swatch.py`, `reorder.py`); the `uno_*.py` modules adapt
-  it: `uno_panel.py` owns the UNO factory and panel, `uno_list.py` the tree control, its drag and
-  drop and refresh, `uno_keys.py` the key handler, `uno_menu.py` the sheet tab menu, `uno_show.py`
+  `uno` (`keys.py`, `sheet_list.py`, `selection.py`, `structure.py`, `reorder.py`); the `uno_*.py`
+  modules adapt it: `uno_panel.py` owns the UNO factory and panel, `uno_list.py` the tree control,
+  its drag and drop and refresh, `uno_keys.py` the key handler, `uno_menu.py` the sheet tab menu, `uno_show.py`
   the list's own Show operation, and `uno_calc.py` shared Calc helpers. Tests observe only public
   UNO: the `XPanel.getDialog()` window, its child tree control
   (`tests/integration/sheet_list_view.py`), and its `XEventListener`; keep test hooks out of the

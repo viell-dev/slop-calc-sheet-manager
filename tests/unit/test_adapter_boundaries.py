@@ -11,7 +11,8 @@ from sheet_manager.selection import Ref, Selection
 from tests.unit.source_methods import method
 
 
-def test_menu_keeps_the_pick_proof_before_reading_a_fresh_snapshot() -> None:
+@pytest.mark.parametrize("changed", ["structure", "activation"])
+def test_menu_keeps_intent_and_pick_proof_before_a_fresh_snapshot(changed: str) -> None:
     monitor = SimpleNamespace(generation=0)
     monitor.check = lambda: monitor.generation
     allowed: list[bool] = []
@@ -19,7 +20,10 @@ def test_menu_keeps_the_pick_proof_before_reading_a_fresh_snapshot() -> None:
     def snapshot(document: object) -> object:
         # A reported replacement during the snapshot still has the picked name, but the
         # selection has never been proved at the newer generation.
-        monitor.generation += 1
+        if changed == "structure":
+            monitor.generation += 1
+        else:
+            owner._activation_input += 1
         return SimpleNamespace(sheets=[SimpleNamespace(name="Bravo")])
 
     def show(*args: Any) -> None:
@@ -42,6 +46,7 @@ def test_menu_keeps_the_pick_proof_before_reading_a_fresh_snapshot() -> None:
         _current_picks=lambda: [SimpleNamespace(name="Bravo")],
         _generation=0,
         _proven=0,
+        _activation_input=0,
         _monitor=monitor,
         _menu=SimpleNamespace(show=show),
         _acknowledge_view=Mock(),
@@ -127,6 +132,77 @@ def test_modal_native_command_finishes_before_view_restoration(failure: bool) ->
     assert not restored and len(queued) == 1 and menu._dispatch_depth == 0
     queued[0]()
     assert restored == [True] and menu._completion is None
+
+
+@pytest.mark.parametrize("newer_context", [False, True])
+def test_superseded_context_only_clears_its_own_target(newer_context: bool) -> None:
+    target = object()
+    owner = SimpleNamespace(
+        _input=2,
+        _context_input=2 if newer_context else 1,
+        _context_target=target,
+    )
+    open_menu = method("src/sheet_manager/uno_list.py", "SheetList", "_open_menu", {"Ref": Ref})
+    open_menu(owner, 10, 20, seen=1)
+    assert owner._context_target is (target if newer_context else None)
+
+
+def test_right_release_keeps_the_press_intent_before_newer_keyboard_input() -> None:
+    owner = SimpleNamespace(_input=5, _context_input=3, _open_menu=Mock(), post=Mock())
+    release = method(
+        "src/sheet_manager/uno_list.py", "SheetList", "mouse_released", {"RIGHT": 2, "LEFT": 1}
+    )
+    release(owner, SimpleNamespace(Buttons=2, X=10, Y=20))
+    owner.post.call_args.args[0]()
+    owner._open_menu.assert_called_once_with(10, 20, seen=3)
+
+
+@pytest.mark.parametrize("closed", [False, True])
+def test_failed_menu_restore_refreshes_and_notifies_unless_the_view_closed(closed: bool) -> None:
+    class ClosedView(Exception):
+        pass
+
+    logged, shown = Mock(), Mock()
+    failure = ClosedView("closed") if closed else RuntimeError("restore refused")
+    owner = SimpleNamespace(
+        _disposed=False,
+        _view_stopped=False,
+        _activating=True,
+        _menu_context=True,
+        _context_target=object(),
+        _menu=SimpleNamespace(restore_view=Mock(side_effect=failure), command=None),
+        refresh=Mock(),
+        _selection=SimpleNamespace(revalidate=Mock()),
+        _apply_selection=Mock(),
+        _acknowledge_view=Mock(),
+        peer=object(),
+    )
+    finish = method(
+        "src/sheet_manager/uno_list.py",
+        "SheetList",
+        "_finish_menu",
+        {
+            "MenuView": Any,
+            "DisposedException": ClosedView,
+            "SELECT_COMMANDS": set(),
+            "report": logged,
+            "show_error": shown,
+            "tr": str,
+        },
+    )
+    finish(owner, object(), lambda: True)
+    assert not owner._activating and not owner._menu_context and owner._context_target is None
+    owner._acknowledge_view.assert_called_once()
+    if closed:
+        assert owner._view_stopped
+        owner.refresh.assert_not_called()
+        shown.assert_not_called()
+        logged.assert_not_called()
+    else:
+        owner.refresh.assert_called_once()
+        owner._apply_selection.assert_called_once()
+        assert "could not restore" in shown.call_args.args[2]
+        logged.assert_called_once()
 
 
 def test_move_request_keeps_its_snapshot_refs_and_proof_while_queued() -> None:

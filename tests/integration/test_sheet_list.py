@@ -618,6 +618,7 @@ class _ActivationOwner:
         self.frame = self.controller.getFrame()
         self.peer = None
         self._activating = False
+        self._activation_input = 0
         self._handles: dict[str, Any] = {}
         self._monitor = SimpleNamespace(generation=0, check=lambda: 0)
         self._proven = 0

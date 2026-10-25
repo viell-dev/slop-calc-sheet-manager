@@ -398,6 +398,7 @@ class SheetList:
         # it. A request to follow Calc's selection remembers the count when Calc reported the
         # switch; newer input in the list wins over it.
         self._input = 0
+        self._activation_input = 0  # A newer successful activation revokes old menu restoration.
         self._view_input = 0
         self._view_ack_pending = False
         self._view_state: tuple[str, frozenset[str]] | None = None
@@ -412,6 +413,7 @@ class SheetList:
         self._selection_scroll = False
         self._context_target: Ref | None = None
         self._context_generation = self._proven
+        self._context_input = 0
         self._menu_context = False
         self._page_rows = 10
         self._decoration_pending = False
@@ -933,6 +935,7 @@ class SheetList:
                 ),
             )
             return
+        self._activation_input += 1
         index = list(self.document.getSheets().getElementNames()).index(name)
         if selected_tabs(self.context, controller) != [index]:
             dispatch(
@@ -1302,6 +1305,7 @@ class SheetList:
             self._press = None
             self._context_target = self._ref(self.rows[row].name) if row is not None else None
             self._context_generation = self._monitor.generation
+            self._context_input = self._input
             self._queue_selection()
         elif event.Buttons & LEFT:
             self._context_target = None
@@ -1330,7 +1334,7 @@ class SheetList:
     def mouse_released(self, event) -> None:
         if event.Buttons & RIGHT:
             # Open on release on every platform, so that the release cannot pick an item.
-            x, y, seen = event.X, event.Y, self._input
+            x, y, seen = event.X, event.Y, self._context_input
             self.post(lambda: self._open_menu(x, y, seen=seen), "the sheet tab menu")
             return
         press, self._press = self._press, None
@@ -1395,6 +1399,8 @@ class SheetList:
         when the chosen command runs.
         """
         if seen is not None and seen != self._input:
+            if self._context_input == seen:
+                self._context_target = None  # Preserve a newer right-click's target, if any.
             return  # Newer input wins over an older context request still in the UI queue.
         if self._disposed or self._busy or self._menu_context or self._observed is None:
             self._context_target = None
@@ -1410,7 +1416,7 @@ class SheetList:
             )
         if not refs:
             return
-        generation, structure = self._generation, self._proven
+        generation, structure, activated = self._generation, self._proven, self._activation_input
         observed = snapshot(self.document)
         names = {sheet.name for sheet in observed.sheets}
         if not all(ref.name in names and _current(ref) for ref in refs):
@@ -1420,7 +1426,11 @@ class SheetList:
         picked = [ref.name for ref in refs]
 
         def unchanged() -> bool:
-            return self._monitor.check() == structure and self._generation == generation
+            return (
+                self._monitor.check() == structure
+                and self._generation == generation
+                and self._activation_input == activated
+            )
 
         if not unchanged():
             self._context_target = None
@@ -1469,10 +1479,21 @@ class SheetList:
                 show_error(self.peer, tr("Sheet Manager"), result.message)
 
     def _finish_menu(self, view: MenuView, unchanged) -> None:
+        message = ""
         try:
             if self._disposed:
                 return
-            self._menu.restore_view(view, unchanged)
+            try:
+                self._menu.restore_view(view, unchanged)
+            except DisposedException:
+                self._view_stopped = True  # The view closed while its native command ran.
+                return
+            except Exception:
+                report("restoring the view after the sheet menu")
+                message = tr(
+                    "The sheet menu could not restore the previous viewed sheet and selected "
+                    "Calc tabs. Check the sheet and tab selection before editing."
+                )
             self.refresh()
             if self._menu.command in SELECT_COMMANDS:
                 self.follow_calc_selection()
@@ -1484,6 +1505,8 @@ class SheetList:
             self._menu_context = False
             self._context_target = None
             self._acknowledge_view()
+        if message:
+            show_error(self.peer, tr("Sheet Manager"), message)
 
     def _command_refused(self) -> None:
         self.refresh()
