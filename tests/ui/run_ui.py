@@ -1274,7 +1274,8 @@ def check_actions_refused_while_lock_held(book):
             sheets.getByName(NAMES[1]).getCellRangeByName("A1").setString("original")
             undo.clear()
             time.sleep(1.5)
-            book.click(3)  # Delta becomes active.
+            book.double_click(3)
+            wait_until(lambda: book.active() == NAMES[3], "Delta active before the held batch")
             book.lab.input.tap("b", pause=0.5)  # Bravo is picked; Delta stays active.
             wait_until(lambda: book.selection() == [NAMES[1]], "typing to pick Bravo")
             time.sleep(1.5)
