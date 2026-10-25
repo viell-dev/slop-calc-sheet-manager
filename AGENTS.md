@@ -330,8 +330,9 @@ reconsider. The owner may report a defect themselves, in their own words.
   allowlists every packaged file and includes the root licence as `LICENSE.txt`.
 - `tools/release_data.py` owns version policy, changelog extraction, and feed XML.
   Versions are not full SemVer: LibreOffice orders suffixed candidates above their final
-  version. Keep the single numeric package/tag version unless that host constraint changes;
-  the `.90` candidate range is a project convention. User download links go to the human
+  version. Keep the single numeric package/tag version unless that host constraint changes.
+  Test status is an explicit release flag; never infer it from patch numbers or reserve a
+  patch range. User download links go to the human
   `guide/releases` page, not the XML feeds. Its tables use the same verified release history
   as the guide's version notice.
   `tools/github_release.py` validates GitHub history and exact-commit CI, builds/publishes releases,
@@ -470,8 +471,8 @@ reconsider. The owner may report a defect themselves, in their own words.
   its GitHub release and of the update feed it appears in.
 - Published files and tags are never replaced, and update feeds never move backwards: a bad release
   is fixed by a newer version.
-- Follow [RELEASING.md](RELEASING.md) for candidate numbering below the final version, patch numbers
-  below `.90`, changelog sections, dry runs, publication and recovery. Publication requires a
+- Follow [RELEASING.md](RELEASING.md) for numeric test builds below the final version, explicit
+  channel selection, changelog sections, dry runs, publication and recovery. Publication requires a
   successful CI push run on the exact `main` commit. Upload assets to the draft before publishing
   and verify that the complete assets are present. Keep GitHub release immutability disabled
   during early development; do not enable it without the owner's direction.

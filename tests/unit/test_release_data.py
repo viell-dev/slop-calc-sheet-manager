@@ -56,20 +56,30 @@ def test_noncanonical_versions_are_refused(version: str) -> None:
         version_parts(version)
 
 
-def test_candidate_titles_and_patch_boundaries() -> None:
-    assert release_title("0.0.90", True) == "0.1.0 release candidate 1 (0.0.90)"
-    assert release_title("0.0.91", True) == "0.1.0 release candidate 2 (0.0.91)"
-    assert release_title("0.8.90", True, "1.0.0") == "1.0.0 release candidate 1 (0.8.90)"
+def test_test_build_titles_and_target_boundaries() -> None:
+    assert release_title("0.0.2", True) == "0.1.0 test build (0.0.2)"
+    assert release_title("0.0.91", True) == "0.1.0 test build (0.0.91)"
+    assert release_title("0.8.90", True, "1.0.0") == "1.0.0 test build (0.8.90)"
     assert release_title("0.1.89", False) == "0.1.89"
     for version, prerelease, target in [
-        ("0.1.90", False, ""),
-        ("0.1.89", True, ""),
         ("0.0.90", True, "0.1.1"),
         ("0.0.90", True, "2.0.0"),
         ("0.1.0", False, "0.2.0"),
     ]:
         with pytest.raises(ValueError):
             release_title(version, prerelease, target)
+
+
+def test_patch_ninety_and_above_do_not_imply_a_test_build() -> None:
+    assert release_title("0.1.90", False) == "0.1.90"
+    assert release_title("0.1.100", False) == "0.1.100"
+    assert release_title("0.1.4", True) == "0.2.0 test build (0.1.4)"
+    stable = published("0.1.90", 18)
+    test = published("0.1.91", 19, prerelease=True)
+    validate_history([stable, test], [])
+    assert feed([stable, test], stable=True) == feed([stable], stable=True)
+    assert b'value="0.1.90"' in feed([stable, test], stable=True)
+    assert b'value="0.1.91"' not in feed([stable, test], stable=True)
 
 
 def test_new_build_must_exceed_every_channel_and_orphan_tag() -> None:

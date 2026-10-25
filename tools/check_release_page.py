@@ -49,9 +49,9 @@ def main() -> None:
         fixture = [
             {"version": number, "prerelease": candidate, "minimum": minimum, "published": date}
             for number, candidate, minimum, date in (
-                ("0.0.90", True, "26.2.1", "2026-10-20T00:00:00Z"),
-                ("0.1.0", False, "26.2.1", "2026-10-21T00:00:00Z"),
-                ("0.1.90", True, "26.8.1", "2026-10-22T00:00:00Z"),
+                ("0.0.2", True, "26.2.1", "2026-10-20T00:00:00Z"),
+                ("0.1.90", False, "26.2.1", "2026-10-21T00:00:00Z"),
+                ("0.1.91", True, "26.8.1", "2026-10-22T00:00:00Z"),
             )
         ]
         for name, builds in (("empty", []), ("published", fixture)):
@@ -78,7 +78,7 @@ def main() -> None:
                 assert "No test builds have been published yet." in html
                 assert not any(tables.links)
             else:
-                expected = [links("0.1.0"), links("0.1.90") + links("0.0.90")]
+                expected = [links("0.1.90"), links("0.1.91") + links("0.0.2")]
                 assert tables.links[:2] == expected, tables.links[:2]
                 assert "No test builds have been published yet." not in html
         print("Release page: empty state, channel separation, version order and asset links passed")

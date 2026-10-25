@@ -38,16 +38,14 @@ def version_parts(version: str) -> tuple[int, int, int]:
 
 
 def release_title(version: str, prerelease: bool, target: str = "") -> str:
-    major, minor, patch = version_parts(version)
+    major, minor, _ = version_parts(version)
     if prerelease:
-        if patch < 90:
-            raise ValueError("Release candidates use patch numbers starting at 90")
         target = target or f"{major}.{minor + 1}.0"
         if version_parts(target) not in {(major, minor + 1, 0), (major + 1, 0, 0)}:
             raise ValueError("Candidate target must be the next minor or next major .0 release")
-        return f"{target} release candidate {patch - 89} ({version})"
-    if patch >= 90 or target:
-        raise ValueError("Stable patch releases stay below .90 and have no candidate target")
+        return f"{target} test build ({version})"
+    if target:
+        raise ValueError("Stable releases have no candidate target")
     return version
 
 

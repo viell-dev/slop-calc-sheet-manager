@@ -12,7 +12,7 @@ import pytest
 
 from tools import github_release as cli
 from tools.build import build, version
-from tools.release_data import PublishedBuild, version_parts
+from tools.release_data import PublishedBuild
 
 
 def test_ci_gate_requires_exact_commit_and_main_push_for_publication(
@@ -76,16 +76,18 @@ def test_ci_gate_waits_for_a_native_matrix_longer_than_twenty_minutes(
     assert elapsed == 25 * 60
 
 
+@pytest.mark.parametrize("candidate", [False, True])
 def test_dry_run_builds_assets_and_prospective_feeds_without_api_writes(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    candidate: bool,
 ) -> None:
     monkeypatch.setattr(
         sys, "argv", ["release", "release", "--version", version(), "--output", str(tmp_path)]
     )
     monkeypatch.setenv("RELEASE_COMMIT", "a" * 40)
     monkeypatch.setenv("GITHUB_EVENT_NAME", "pull_request")
-    if version_parts(version())[2] >= 90:
+    if candidate:
         sys.argv.append("--prerelease")
     monkeypatch.setattr(cli.subprocess, "check_output", Mock(return_value="a" * 40))
     monkeypatch.setattr(cli, "paginated", Mock(return_value=[]))
@@ -102,6 +104,7 @@ def test_dry_run_builds_assets_and_prospective_feeds_without_api_writes(
     plan = json.loads((tmp_path / "release-plan.json").read_text())
     assert plan["release"]["target_commitish"] == "a" * 40
     assert plan["release"]["draft"] is True
+    assert plan["release"]["prerelease"] is candidate
     assert plan["release"]["body"] == (tmp_path / "release-notes.md").read_text()
     assert (tmp_path / "site/updates/stable.xml").exists()
     assert (tmp_path / "site/updates/prerelease.xml").exists()
@@ -115,7 +118,7 @@ def test_existing_draft_and_mismatched_metadata_stop_preparation(
         cli, "paginated", Mock(return_value=[{"tag_name": version(), "draft": True}])
     )
     with pytest.raises(ValueError, match="draft already exists"):
-        cli.prepare(version(), version_parts(version())[2] >= 90, "", tmp_path)
+        cli.prepare(version(), False, "", tmp_path)
     with pytest.raises(ValueError, match="description.xml contains"):
         cli.prepare("999.0.0", False, "", tmp_path)
     assert list(tmp_path.iterdir()) == []
@@ -133,19 +136,13 @@ def test_only_prs_skip_release_planning_for_an_already_published_metadata_versio
     monkeypatch.setattr(
         sys, "argv", ["release", "release", "--version", version(), "--output", str(tmp_path)]
     )
-    if version_parts(version())[2] >= 90:
-        sys.argv.append("--prerelease")
     monkeypatch.setenv("GITHUB_EVENT_NAME", event)
     monkeypatch.setenv("RELEASE_COMMIT", "a" * 40)
     monkeypatch.setattr(cli.subprocess, "check_output", Mock(return_value="a" * 40))
     monkeypatch.setattr(
         cli, "paginated", Mock(return_value=[{"tag_name": version(), "draft": draft}])
     )
-    builds = [
-        PublishedBuild(
-            version(), version_parts(version())[2] >= 90, "26.2.1", "2026-10-19T00:00:00Z"
-        )
-    ]
+    builds = [PublishedBuild(version(), False, "26.2.1", "2026-10-19T00:00:00Z")]
     monkeypatch.setattr(cli, "published_builds", Mock(return_value=builds))
     monkeypatch.setattr(cli, "previous_builds", Mock(return_value=builds))
 
@@ -194,7 +191,7 @@ def test_published_metadata_comes_from_checksummed_oxt_and_drafts_are_ignored(
     monkeypatch.setattr(cli, "download", Mock(side_effect=assets.__getitem__))
     release: dict[str, Any] = {
         "tag_name": version(),
-        "prerelease": version_parts(version())[2] >= 90,
+        "prerelease": False,
         "draft": False,
         "published_at": "2026-10-19T00:00:00Z",
         "assets": [{"name": url.rsplit("/", 1)[1], "browser_download_url": url} for url in assets],
@@ -314,17 +311,18 @@ def test_missing_history_only_bootstraps_before_any_version_was_reserved(
 
 
 @pytest.mark.parametrize("missing_asset", [False, True])
+@pytest.mark.parametrize("candidate", [False, True])
 def test_publication_attaches_both_assets_to_draft_before_publishing(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     missing_asset: bool,
+    candidate: bool,
 ) -> None:
     monkeypatch.setattr(
         sys,
         "argv",
         ["release", "release", "--version", version(), "--publish", "--output", str(tmp_path)],
     )
-    candidate = version_parts(version())[2] >= 90
     if candidate:
         sys.argv.append("--prerelease")
     monkeypatch.setenv("GITHUB_REF", "refs/heads/main")

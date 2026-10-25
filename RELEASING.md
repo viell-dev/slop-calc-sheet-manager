@@ -27,21 +27,23 @@ numeric tag. Completing an already-reserved draft follows the recovery procedure
 Never replace a published file, move a tag, delete a published release, or reclassify a prerelease
 as stable. Fix a bad build with a larger version.
 
-- Stable versions use patch numbers `0` through `89`: `0.1.0`, `0.1.1`, …, `0.1.89`.
-- Candidates for `X.Y.0` use the previous minor series starting at `.90`. For 0.1.0, use
-  `0.0.90`, `0.0.91`, …; for 0.2.0, use `0.1.90`, `0.1.91`, …. The candidate title is
-  `0.1.0 release candidate 1 (0.0.90)`, then `0.1.0 release candidate 2 (0.0.91)`.
-- Candidates for a major `X.0.0` use `.90` onward in the previous major's final minor series.
-  Set the workflow's optional `target` input to `X.0.0`; for example, if 0.8 is that last series,
-  `0.8.90` with target `1.0.0` is `1.0.0 release candidate 1 (0.8.90)`.
-- Once a series enters its candidate range, do not publish smaller patch releases in it. For
-  example, after `0.1.90`, `0.1.2` is too small; continue candidates or publish `0.2.0`. If more
-  stable fixes are needed before that transition, delay the candidate.
+- Stable patch numbers have no reserved range: `0.1.89`, `0.1.90`, `0.1.91` and `0.1.100` are
+  all valid stable versions. The workflow's `prerelease` input and GitHub's stored flag determine
+  the channel; no version digit implies test status.
+- Test builds for the next minor use the next unused numeric version in the preceding series.
+  For example, `0.0.2` and `0.0.3` can test `0.1.0`. Set `prerelease`; the title becomes
+  `0.1.0 test build (0.0.2)`. No candidate sequence number is inferred from the patch number.
+- Test builds for a major `X.0.0` use the current major's last minor series. Set the optional
+  `target` input to `X.0.0`; `0.8.91` with target `1.0.0` is `1.0.0 test build (0.8.91)`.
+- Every later publication, including a stable fix between test builds, takes a larger unused
+  version. For example, after stable `0.1.90` and test build `0.1.91` for `0.2.0`, a stable fix
+  can use `0.1.92`. The final `0.2.0` remains larger than all three. This preserves one increasing
+  installed-package version across channels without putting a ceiling on stable patches.
 
 LibreOffice does not use SemVer prerelease ordering. Its
 [`compareVersions` implementation in 26.8.1.1](https://github.com/LibreOffice/core/blob/libreoffice-26.8.1.1/desktop/source/deployment/misc/dp_version.cxx)
 splits on dots, removes leading zeroes, and compares each component by length and then text.
-Thus `0.0.90 < 0.0.91 < 0.1.0`, but **`0.1.0-beta.1 > 0.1.0`** and
+Thus `0.0.2 < 0.0.3 < 0.1.0`, but **`0.1.0-beta.1 > 0.1.0`** and
 **`0.1.0-rc.1 > 0.1.0`**, contrary to SemVer. LibreOffice uses this comparator for
 [update selection](https://github.com/LibreOffice/core/blob/libreoffice-26.8.1.1/desktop/source/deployment/misc/dp_update.cxx)
 and [manual replacement warnings](https://github.com/LibreOffice/core/blob/libreoffice-26.8.1.1/desktop/source/deployment/gui/dp_gui_extensioncmdqueue.cxx).
@@ -49,16 +51,16 @@ A final release would not be offered to someone running the suffixed candidate; 
 manually would be described as a downgrade. Removing the candidate first is possible, but is an
 unnecessary obstacle in the normal test-to-stable path.
 
-The `.90` threshold is our chosen convention, not a requirement imposed by LibreOffice. Keeping
-one version across the installed package, Git tag, release and asset names avoids a separate
-mapping between SemVer labels and native package numbers. Stable versions use major/minor/patch
-numbers; the reserved candidate range and its restrictions above make the overall scheme
-different from SemVer. Before 1.0, compatibility may change between feature releases.
+Keeping one version across the installed package, Git tag, release and asset names avoids a
+separate mapping between SemVer labels and native package numbers. Stable versions use
+major/minor/patch numbers, while test-build status is explicit metadata rather than a suffix or
+reserved numeric range. This differs from SemVer prerelease notation and precedence. Before 1.0,
+compatibility may change between feature releases.
 
 The pure comparator used by release checks and feed tests follows LibreOffice's rules, including
 zero and missing components. Release validation additionally refuses noncanonical strings and
-enforces the chosen candidate range and stable patch limit. Revisit this policy if LibreOffice
-supports SemVer prerelease precedence.
+checks test-build targets and increasing versions across both channels. Revisit this policy if
+LibreOffice supports SemVer prerelease precedence.
 
 ## Prepare and dry-run
 
@@ -91,9 +93,10 @@ release, or deployment. `dry_run` defaults to true.
 
 For release-workflow development, a PR that changes `.github/workflows/release.yml`,
 `.github/workflows/pages.yml`, `tools/github_release.py`, or `tools/release_data.py` also runs
-this same dry run on its head commit, using the metadata version and inferring the candidate
-flag from its patch number. Its artifact is the branch dry run; it waits for the PR's successful
-CI run instead of `main`'s, so this check normally finishes after CI. It waits up to 50 minutes,
+the dry run on its head commit using the metadata version. The artifact contains the stable
+preview and a separate `prerelease-preview/`, so both explicit channels are exercised without
+inferring one from the number. It waits for the PR's successful CI run instead of `main`'s, so
+this check normally finishes after CI. It waits up to 50 minutes,
 covering the native matrix's 45-minute job limit plus startup time; the dry-run job allows
 60 minutes for setup and asset validation as well. If that metadata version is
 already published, the PR check emits a notice and skips release planning after static/unit

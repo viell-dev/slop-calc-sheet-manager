@@ -14,7 +14,7 @@ on:
         required: true
         type: string
       prerelease:
-        description: Release candidate (patch number 90 or above)
+        description: Test build; set GitHub's Pre-release flag (never inferred from the version)
         default: false
         type: boolean
       target:
@@ -73,12 +73,15 @@ jobs:
           version="$REQUESTED_VERSION"
           if [[ -z "$version" ]]; then
             version=$(python -c 'import sys; sys.path.insert(0, "tools"); from build import version; print(version())')
-            if (( ${version##*.} >= 90 )); then PRERELEASE=true; fi
           fi
           args=(release --version "$version")
           if [[ "$PRERELEASE" == true ]]; then args+=(--prerelease); fi
           if [[ -n "$TARGET" ]]; then args+=(--target "$TARGET"); fi
           .venv/bin/python tools/github_release.py "${args[@]}"
+          if [[ "$GITHUB_EVENT_NAME" == pull_request ]]; then
+            .venv/bin/python tools/github_release.py release --version "$version" --prerelease \
+              --output dist/release/prerelease-preview
+          fi
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-dry-run-${{ env.RELEASE_COMMIT }}

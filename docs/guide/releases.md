@@ -35,20 +35,20 @@ be offered as an update to those test builds; manually installing it would be sh
 This is a host-application constraint, independent of GitHub and the extension directory.
 
 We keep the same version in the OXT, Git tag, release and asset names. Test builds use increasing
-numbers below the final release, reserving patch numbers from `.90` in the preceding series.
-For example:
+numbers below the final release, with their status recorded by GitHub's **Pre-release** flag.
+No patch numbers are reserved for testing. For example:
 
 | GitHub release title | OXT version and Git tag | Build type |
 | --- | --- | --- |
-| 0.1.0 release candidate 1 (0.0.90) | `0.0.90` | Pre-release |
-| 0.1.0 release candidate 2 (0.0.91) | `0.0.91` | Pre-release |
+| 0.1.0 test build (0.0.2) | `0.0.2` | Pre-release |
+| 0.1.0 test build (0.0.3) | `0.0.3` | Pre-release |
 | 0.1.0 | `0.1.0` | Stable |
 
-These are examples; the download lists above show what is actually published. The `.90` range
-is our convention, not a LibreOffice requirement. It reserves high patch numbers for candidates:
-after `0.1.90` starts testing `0.2.0`, a lower `0.1.2` would no longer be an upgrade. Stable patch
-releases therefore stay below `.90`, and entering the candidate range waits until that stable
-series needs no further fixes. Before 1.0, feature releases may change compatibility.
+These are examples; the download lists above show what is actually published. A stable series
+can continue through `0.1.89`, `0.1.90`, `0.1.91`, and higher. A test build is identified by its
+explicit flag, never by a magic number. If a test build uses the next number, a later stable fix
+takes the following unused number; versions keep increasing across both channels. Before 1.0,
+feature releases may change compatibility.
 
 Using SemVer tags with different numeric versions inside the OXT is possible, but would require
 a separate mapping and leave two version numbers to identify the same build. We keep one version

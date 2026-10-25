@@ -80,8 +80,9 @@ Installing one keeps stable updates enabled; later test builds are downloaded ma
 Versions are **not full SemVer** because LibreOffice itself treats `0.1.0-rc.1` as newer than
 `0.1.0`: the final would not be offered as an update, and manually installing it would be shown
 as a downgrade. This is independent of the extension directory. We use increasing numeric
-versions below the final instead, such as `0.0.90`, `0.0.91`, then `0.1.0`. The `.90` range is
-our convention, not a LibreOffice requirement. The
+versions below the final instead, such as `0.0.2`, `0.0.3`, then `0.1.0`. GitHub's explicit
+**Pre-release** flag identifies test builds; no patch numbers are reserved, so `0.1.90` can be
+an ordinary stable patch. The
 [version guide](https://viell-dev.github.io/slop-calc-sheet-manager/guide/releases#version-numbers)
 explains the model; [RELEASING.md](RELEASING.md) gives the maintainer rules and evidence.
 

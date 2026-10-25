@@ -7,7 +7,8 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 - Added a human release/download page with OXT and checksum links for stable and test builds,
   explained why LibreOffice's version ordering prevents direct SemVer prerelease suffixes, and
-  corrected outdated feature status in the guide
+  removed the arbitrary `.90` patch reservation in favour of an explicit release flag. Corrected
+  outdated feature status in the guide
   ([#73](https://github.com/viell-dev/slop-calc-sheet-manager/issues/73)).
 - The release dry run waits for the native CI matrix's full time budget before refusing a build
   whose exact-commit checks have not finished
