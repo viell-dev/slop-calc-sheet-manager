@@ -104,8 +104,9 @@ Alt menu mnemonics retain LibreOffice's behaviour. Keys used by the list do not 
 Other documents keep their
 own keyboard handling. After Ctrl+S, focus moves to the sheet; use the focus cycle to return.
 
-Rows use LibreOffice's native tree control and its accessible names. States are written in text
-as well as shown by colour or position; actual screen-reader experience is not verified by CI.
+Rows use LibreOffice's native tree control and its accessible names. Hidden, protected, and
+scenario states are written in text; the current-sheet arrow and tab-colour square are visual
+indicators. Actual screen-reader experience is not verified by CI.
 
 ## When the list clears its selection
 

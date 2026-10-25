@@ -246,15 +246,18 @@ def wait_until(function, what, timeout=10):
 
 
 def native_modal():
-    """GTK confirmation windows are not always exposed by UNO's top-window inventory."""
+    """Read native dialog identity: GTK can omit UNO exposure; gen omits the modal state hint."""
     active = subprocess.check_output(["xprop", "-root", "_NET_ACTIVE_WINDOW"], text=True)
     window = active.split()[-1]
     if window == "0x0":
         return False
     state = subprocess.check_output(
-        ["xprop", "-id", window, "_NET_WM_STATE", "_NET_WM_WINDOW_TYPE"], text=True
+        ["xprop", "-id", window, "_NET_WM_WINDOW_TYPE", "WM_TRANSIENT_FOR"], text=True
     )
-    return "_NET_WM_STATE_MODAL" in state and "_NET_WM_WINDOW_TYPE_DIALOG" in state
+    return (
+        "_NET_WM_WINDOW_TYPE_DIALOG" in state
+        and "WM_TRANSIENT_FOR(WINDOW): window id # 0x" in state
+    )
 
 
 def configure_desktop_opener(output):
@@ -721,7 +724,7 @@ def check_help_menu(book):
         lambda: path.exists() and len(path.read_text().splitlines()) > len(before),
         "the native desktop opener to receive Help",
     )
-    opened = path.read_text().splitlines()[len(before):]
+    opened = path.read_text().splitlines()[len(before) :]
     assert opened == ["https://viell-dev.github.io/slop-calc-sheet-manager/"], opened
     return {"native_desktop_uri": opened[0]}
 
