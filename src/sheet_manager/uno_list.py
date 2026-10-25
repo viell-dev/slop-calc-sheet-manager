@@ -203,10 +203,20 @@ class _Mouse(unohelper.Base, XMouseListener):
         self._owner = owner
 
     def mousePressed(self, event):
-        _guarded("a mouse press", self._owner.mouse_pressed, event)
+        self._handle("a mouse press", self._owner.mouse_pressed, event)
 
     def mouseReleased(self, event):
-        _guarded("a mouse release", self._owner.mouse_released, event)
+        self._handle("a mouse release", self._owner.mouse_released, event)
+
+    def _handle(self, where, function, event):
+        # Posting or reading UNO can let queued observation run before the handler returns.
+        self._owner._pointer_depth += 1
+        try:
+            _guarded(where, function, event)
+        finally:
+            self._owner._pointer_depth -= 1
+            if not self._owner._pointer_depth:
+                self._owner._queue_selection()
 
     def mouseEntered(self, event):
         pass
@@ -409,6 +419,7 @@ class SheetList:
         self._follow_input: int | None = None
         self._activating = False  # The list's own setActiveSheet call is running.
         self._press: _Press | None = None
+        self._pointer_depth = 0
         self._selection_write_pending = False
         self._selection_scroll = False
         self._context_target: Ref | None = None
@@ -563,7 +574,7 @@ class SheetList:
         pick whose sheet was replaced under the same name (#28).
         """
         if self._press is None:
-            self._take_tree_selection()  # Input that no handler has taken yet.
+            self._take_tree_selection(defer=True)  # Let queued owned input run first.
         previous = self._observed
         observed = snapshot(self.document)
         rows = read_rows(self.controller, observed)
@@ -703,10 +714,11 @@ class SheetList:
                 self.tree.addSelection(self._nodes[index])
         self.peer.invalidate(0)
 
-    def _take_tree_selection(self, paint: bool = True) -> bool:
-        """Take a selection the user made in the tree, as the rows showed it."""
+    def _take_tree_selection(self, paint: bool = True, *, defer: bool = False) -> bool:
+        """Take native picks, deferring observations until queued owned input has run."""
         if (
-            self._selection_write_pending
+            self._pointer_depth
+            or self._selection_write_pending
             or self._press is not None
             or self._context_target is not None
             or self._menu_context
@@ -714,6 +726,24 @@ class SheetList:
             return False
         names = self.selected_names()
         if tuple(names) != self._shown:
+            if defer:
+                seen, proof, generation = self._input, self._proven, self._generation
+                order = tuple(self.names())
+
+                def take() -> None:
+                    if (
+                        not self._disposed
+                        and self._input == seen
+                        and self._proven == self._monitor.generation == proof
+                        and self._generation == generation
+                        and tuple(self.names()) == order
+                    ):
+                        self._take_tree_selection()
+
+                # Native selection can change before its queued mouse listener arrives.
+                # Taking it now would apply the same Ctrl toggle again in that listener.
+                self.post(take, "taking native list selection after queued input")
+                return True
             self._selection.take(names, self._handles, self.names())
             self._selection.anchor = self._selection.cursor
             self._shown = tuple(names)
@@ -835,6 +865,9 @@ class SheetList:
             self.post(self._flush_selection, "showing the selection")
 
     def _flush_selection(self) -> None:
+        if self._pointer_depth:
+            self._selection_write_pending = False  # The listener posts again after its work.
+            return
         try:
             if self._monitor.check() != self._proven:
                 self.refresh()
@@ -857,6 +890,7 @@ class SheetList:
         """
         if (
             self._disposed
+            or self._pointer_depth
             or self._restoring_cursor
             or self._selection_write_pending
             or self._press is not None
@@ -1180,6 +1214,7 @@ class SheetList:
     def _observe_view(self, acknowledge: bool) -> None:
         if (
             self._busy
+            or self._pointer_depth
             or self._restoring_cursor
             or self._press is not None
             or self._drag is not None
@@ -1212,9 +1247,9 @@ class SheetList:
         state = active, frozenset(tabs)
         changed = self._view_state is not None and state != self._view_state
         newer_input = self._input != self._view_input or self._view_ack_pending
-        # Native input can precede its queued mouse listener. Take the picks without UI
-        # updates first, so that a poll cannot erase input that is already visible in the tree.
-        pending_picks = self._take_tree_selection(paint=False)
+        # Native input can precede its queued mouse listener. Do not follow Calc over it, or
+        # adopt the native toggle before the owned listener has handled that same input.
+        pending_picks = self._take_tree_selection(paint=False, defer=True)
         self._remember_view(active, tabs)
         if changed and not acknowledge and not newer_input and not pending_picks:
             self._select(list(tabs), active)

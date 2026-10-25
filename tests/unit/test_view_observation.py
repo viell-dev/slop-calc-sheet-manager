@@ -28,6 +28,7 @@ def observer() -> tuple[Any, Any]:
         _disposed=False,
         _view_stopped=False,
         _busy=False,
+        _pointer_depth=0,
         _restoring_cursor=False,
         _press=None,
         _drag=None,
@@ -174,7 +175,7 @@ def test_refresh_seeds_the_new_proof_before_a_subsequent_tab_change(kept: bool) 
 
 
 @pytest.mark.parametrize(
-    "guard", ["busy", "restore", "press", "drag", "menu", "controllers", "actions"]
+    "guard", ["busy", "pointer", "restore", "press", "drag", "menu", "controllers", "actions"]
 )
 def test_unsafe_or_transient_view_never_reads_selected_tabs_or_tree_picks(guard: str) -> None:
     owner, live = observer()
@@ -187,6 +188,7 @@ def test_unsafe_or_transient_view_never_reads_selected_tabs_or_tree_picks(guard:
     else:
         attribute = {
             "busy": "_busy",
+            "pointer": "_pointer_depth",
             "restore": "_restoring_cursor",
             "press": "_press",
             "drag": "_drag",

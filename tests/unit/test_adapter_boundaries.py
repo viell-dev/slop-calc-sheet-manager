@@ -358,6 +358,7 @@ def test_native_cursor_uses_only_current_rows_outside_restoration(
 
     owner = SimpleNamespace(
         _disposed=disposed,
+        _pointer_depth=0,
         _restoring_cursor=restoring,
         _selection_write_pending=False,
         _press=None,
@@ -423,6 +424,7 @@ def test_stale_accessible_rows_preserve_cursor_without_hiding_other_errors(
         _context_target=None,
         _menu_context=False,
         _selection=SimpleNamespace(cursor=original),
+        _pointer_depth=0,
         rows=[SimpleNamespace(name="Alfa")],
         _handles={"Alfa": handle},
     )
