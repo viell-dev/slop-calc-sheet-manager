@@ -6,11 +6,11 @@ Return, Escape, Insert, Delete, Backspace) whatever the modifiers, and passes ev
 to the document view, which types it into the current cell or runs its shortcut. Keys are
 therefore routed as follows:
 
-- navigation keys go to the tree, because whatever it ignores the sidebar swallows;
+- selection and navigation keys are consumed and handled by the list's own selection model;
 - keys the list handles itself (Enter, typed characters, the menu keys) are consumed;
 - other shortcuts are consumed and their Calc command is dispatched to the panel's own frame,
   because the sidebar swallows some of them (Ctrl+Page Down) before they reach Calc;
-- Tab steps within the panel and back to Calc are handled there; other focus travel, the menu bar,
+- Tab returns from the list to Calc; other focus travel, the menu bar,
   and Escape are left to LibreOffice;
 - everything else is consumed so that it cannot reach a cell.
 
@@ -34,7 +34,7 @@ TYPE_AHEAD_SECONDS = 1.0
 
 class KeyRoute(Enum):
     LIBREOFFICE = "libreoffice"  # Not consumed: focus travel, menu bar, Escape.
-    TREE = "tree"  # Not consumed: the tree handles it, the sidebar swallows what it ignores.
+    TREE = "tree"  # Consumed: the list owns selection keys and its range anchor.
     ACTIVATE = "activate"  # Consumed: go to the selected sheet.
     TYPE_AHEAD = "type-ahead"  # Consumed: select the next sheet whose name starts so.
     MENU = "menu"  # Consumed: open the sheet tab menu for the selection.
@@ -44,7 +44,7 @@ class KeyRoute(Enum):
 
     @property
     def consumed(self) -> bool:
-        return self not in (KeyRoute.LIBREOFFICE, KeyRoute.TREE)
+        return self is not KeyRoute.LIBREOFFICE
 
 
 def typed_character(char: str, modifiers: int) -> bool:
@@ -94,13 +94,6 @@ def move_action(code: int, modifiers: int) -> str | None:
     if modifiers != MOD2:
         return None
     return {HOME: "top", UP: "up", DOWN: "down", END: "bottom"}.get(code)
-
-
-def button_route(route: KeyRoute, code: int, modifiers: int) -> KeyRoute:
-    """Native buttons keep their activation/navigation keys; printable input stays out of cells."""
-    if route in (KeyRoute.TREE, KeyRoute.ACTIVATE) or code == SPACE and modifiers == 0:
-        return KeyRoute.LIBREOFFICE
-    return KeyRoute.IGNORE if route is KeyRoute.TYPE_AHEAD else route
 
 
 def unbound_route(modifiers: int) -> KeyRoute:

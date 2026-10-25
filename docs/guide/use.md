@@ -1,6 +1,6 @@
 # Use the sheet list
 
-These instructions describe the `0.0.2` test build for `0.1.0`. See
+These instructions describe the `0.0.3` test build for `0.1.0`. See
 [Install, update, and remove](./install.md) for setup and
 [Releases and test builds](./releases.md) for available downloads.
 
@@ -10,13 +10,16 @@ These instructions describe the `0.0.2` test build for `0.1.0`. See
 2. Show the sidebar with **View ▸ Sidebar**. In Calc, the shortcut is Ctrl+F5.
 3. Select **Sheet Manager** in the sidebar's tab bar, the column of icons along its edge.
 
-Each row is one sheet, in tab order. A square shows its tab colour; `▸` marks the active sheet.
+Each full-width row is one sheet, in tab order. A square shows its tab colour; a separate arrow
+in the left gutter marks the viewed sheet.
 Hidden, protected, and scenario sheets have those states written beside their names. The deck is
 also shown for read-only workbooks and follows the sidebar when it resizes, docks, or undocks.
 
 ## Find and select sheets
 
-- **Click** a visible row to go to its sheet and leave it as Calc's only selected tab.
+- **Click** anywhere across a row to select it without switching the viewed sheet.
+- **Double-click** a visible row, or select it and press **Enter**, to go to its sheet and leave
+  it as Calc's only selected tab.
 - **Ctrl+click** toggles a row in the list's selection. **Shift+click** selects a range. These
   selections leave the active sheet and Calc's selected tabs unchanged.
 - **Type** a sheet name's beginning to select a matching row. Repeating its first letter cycles
@@ -29,9 +32,9 @@ selection changes that leave the active sheet unchanged. While the panel is visi
 the tab selection about every quarter second. Your newer input in the list takes precedence;
 unchanged Calc tabs do not overwrite independent list picks.
 
-The status above the buttons names Calc's selected tabs. **Edits affect … Calc tabs** means those
-tabs are grouped for cell editing, even if the list's own picks differ. The tooltip contains the
-complete group when the names do not fit. Click one row or one Calc tab to end grouped editing.
+The footer appears only when several Calc tabs are grouped. **Edits affect … Calc tabs** names
+the sheets affected by cell editing, even if the list's own picks differ. Double-click a row,
+press Enter on a single selected row, or click one Calc tab to end grouped editing.
 
 Periodic tab observation pauses while the panel is collapsed, another sidebar deck is selected,
 the sidebar is closed, or the window is minimized. It resumes when the panel is visible, normally
@@ -42,34 +45,42 @@ cell edits do not rebuild its rows.
 ## Move a selection
 
 Drag a selected row to the gap where the selected sheets should go. A line shows the insertion
-point. The selected sheets keep their relative order, even when they started apart. Hold the
+point with a solid line and end markers. The selected sheets keep their relative order, even
+when they started apart. Hold the
 pointer near an edge to scroll, or press Esc to cancel. Dropping in place changes nothing.
 
-Or use the **Top**, **Up**, **Down**, and **Bottom** buttons above the list. Top and Bottom gather
+Or use the context menu's **Move to top**, **Move up**, **Move down**, and **Move to bottom** actions.
+Top and Bottom gather
 the selected sheets, in their original order, at that end. Up and Down move each separate run of
 selected sheets one place; a run already at the edge stays there. The moved sheets stay selected,
 so pressing Up or Down again moves the same sheets further.
 
 A move is one **Move Sheets** undo step. Use Ctrl+Z to undo it. The active sheet and Calc's tab
 selection are preserved. A stale selection or a move that cannot be fully undone is refused with
-an explanation. Unavailable buttons are disabled; hover over one for the reason, such as a
-protected workbook structure, recorded changes, disabled undo, no selection, or an edge.
+an explanation. Unavailable menu actions are disabled, with a reason in their help text, such as a
+protected workbook structure, recorded changes, disabled undo, no selection, or an edge. Native
+popup rendering can hide unavailable actions and their reasons; see the
+[known issue](./known-issues.md).
 
 ## Open the sheet tab menu
 
-Right-click a row, press the Menu key, or press Shift+F10. The menu is Calc's sheet tab menu,
-including your customizations, acting on the sheets selected in the list. When Calc cannot select
-exactly those sheets, a short menu offers Show Sheet where that is safe.
+Right-click a row to open its context menu without selecting it. If the row is already picked,
+actions target the picked set; otherwise they target just that row. Menu or Shift+F10 targets the
+list's picks. Move actions appear directly in this menu, and **Sheet actions** opens Calc's full
+sheet-tab menu, including your customizations. Hidden-only targets offer Show Sheet where safe.
 
-**Opening the native menu groups Calc's tabs. Cell edits then affect every grouped sheet.** Click
-one row or one sheet tab before editing a single sheet. Built-in commands retain Calc's own
-confirmation and undo behaviour. The menu refuses a command if its target sheets change while
-it is open.
+Calc's built-in commands require its native tabs to match the context targets, so opening that
+menu can temporarily change Calc's tab group and viewed sheet. The list's picks stay unchanged.
+On dismissal, the previous view and group are restored where their sheet identities and visibility
+can still be proved; deleting or hiding those sheets can prevent restoration. Built-in commands
+keep Calc's confirmation and undo behaviour. A changed target is refused before dispatch.
+
+**Sheet Manager Help** opens this guide. The header's native `?` uses an unavailable LibreOffice
+help topic; see [Known issues](./known-issues.md).
 
 ## Keyboard
 
-Use Tab or LibreOffice's F6 focus cycle to reach and leave the list and its buttons. Tab moves
-through the native buttons; Space or Enter presses a focused button. After a move, focus returns
+Use Tab or LibreOffice's F6 focus cycle to reach and leave the list. After a move, focus returns
 to the list. While the list has focus:
 
 | Key | Effect |
@@ -85,19 +96,21 @@ to the list. While the list has focus:
 | Menu or Shift+F10 | Open the sheet tab menu |
 | Ctrl+S, Ctrl+Z, Ctrl+Page Down | Run Calc's save, undo, or next-sheet command |
 
-The four move shortcuts also work while a move button has focus. They apply only inside Sheet
-Manager, without changing Calc's shortcut configuration. Alt+Down moves the picked sheets while a
-Sheet Manager control has focus. In a cell it retains Calc's Data Select command. Ctrl+Shift with
-navigation retains the list's selection behavior.
+The four move shortcuts apply only while the list has focus, without changing Calc's shortcut
+configuration. In a cell, Alt+Down retains Calc's Data Select command. Ctrl+Shift with navigation
+adds a range to the existing selection.
 
-Space and Shift+Space do nothing in the list. Tab steps through enabled move buttons. Tab after
-the last button, or Shift+Tab before the list, returns focus to Calc. F6, F10, Esc, and unbound
+Space and Shift+Space do nothing in the list. Tab or Shift+Tab returns focus to Calc.
+F6, F10, Esc, and unbound
 Alt menu mnemonics retain LibreOffice's behaviour. Keys used by the list do not type into cells.
 Other documents keep their
 own keyboard handling. After Ctrl+S, focus moves to the sheet; use the focus cycle to return.
 
-Rows use LibreOffice's native tree control and its accessible names. States are written in text
-as well as shown by colour or position; actual screen-reader experience is not verified by CI.
+Rows use LibreOffice's native tree control and its accessible names. Hidden, protected, and
+scenario states are written in text; the current-sheet arrow and tab-colour square are visual
+indicators. Exposing the viewed sheet separately to assistive technology is tracked in
+[#83](https://github.com/viell-dev/slop-calc-sheet-manager/issues/83). Actual screen-reader
+experience is not verified by CI.
 
 ## When the list clears its selection
 
@@ -106,6 +119,6 @@ its selection when it cannot establish that the picked sheets are still the same
 includes inserting or deleting sheets, undo and redo, and some macro or unrecorded changes.
 A notice explains conservative clearing of a user-made selection. Pick the sheets again before acting.
 
-The tree is rebuilt after changes, so the next Shift navigation starts a fresh range at the
-keyboard cursor. Large lists can take longer to refresh. See [Known issues](./known-issues.md) for
+The list keeps its range anchor through ordinary refreshes while that sheet identity remains
+valid. Large lists can take longer to refresh. See [Known issues](./known-issues.md) for
 refresh costs and the limits of detecting changes made by macros.

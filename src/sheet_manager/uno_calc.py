@@ -13,7 +13,6 @@ from com.sun.star.beans import PropertyValue
 from com.sun.star.util import URL
 
 from sheet_manager.sheet_list import SheetRow, tab_color
-from sheet_manager.swatch import swatch_png
 
 ERRORBOX = uno.Enum("com.sun.star.awt.MessageBoxType", "ERRORBOX")
 BUTTONS_OK = uno.getConstantByName("com.sun.star.awt.MessageBoxButtons.BUTTONS_OK")
@@ -167,27 +166,6 @@ def select_tabs(context, frame, indices: list[int]) -> None:
     typed = uno.Any("[]long", tuple(indices))  # pyright: ignore[reportAttributeAccessIssue]
     tables = prop("Tables", typed)
     dispatch(context, frame, ".uno:SelectTables", (tables, prop("SynchronMode", True)))
-
-
-_swatches: dict[int | None, str] = {}
-
-
-def swatch_url(context, color: int | None) -> str:
-    """A file URL for the colour's swatch, in LibreOffice's own temporary directory.
-
-    LibreOffice removes that directory when it exits, so the files do not outlive the process.
-    """
-    if color not in _swatches:
-        temporary = context.ServiceManager.createInstanceWithContext(
-            "com.sun.star.io.TempFile", context
-        )
-        temporary.RemoveFile = False
-        output = temporary.getOutputStream()
-        output.writeBytes(uno.ByteSequence(swatch_png(color)))
-        output.flush()
-        output.closeOutput()
-        _swatches[color] = temporary.Uri
-    return _swatches[color]
 
 
 def show_error(peer, title: str, message: str) -> None:

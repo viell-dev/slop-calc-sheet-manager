@@ -4,8 +4,6 @@ from dataclasses import dataclass
 
 from sheet_manager.i18n import tr
 
-ACTIVE_MARK = "▸ "  # Small right-pointing triangle, as in a "current item" marker.
-
 
 @dataclass(frozen=True)
 class SheetRow:
@@ -18,7 +16,7 @@ class SheetRow:
 
 
 def row_label(row: SheetRow) -> str:
-    """The text shown for a row: a marker for the active sheet and words for other states."""
+    """The sheet name and state words; the current-sheet marker is drawn separately."""
     states: list[str] = []
     if not row.visible:
         states.append(tr("hidden"))
@@ -26,7 +24,7 @@ def row_label(row: SheetRow) -> str:
         states.append(tr("protected"))
     if row.scenario:
         states.append(tr("scenario"))
-    label = (ACTIVE_MARK if row.active else "") + row.name
+    label = row.name
     return f"{label} ({', '.join(states)})" if states else label
 
 

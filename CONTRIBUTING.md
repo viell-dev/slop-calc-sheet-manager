@@ -95,7 +95,7 @@ Linux:
 
 To build without installing development tools, run `python tools/build.py` (or
 `& 'C:\Program Files\LibreOffice\program\python.exe' tools/build.py` on a Windows machine with
-only LibreOffice's Python). This writes `dist/sheet-manager-0.0.2.oxt` and its `.oxt.sha256` file.
+only LibreOffice's Python). This writes `dist/sheet-manager-0.0.3.oxt` and its `.oxt.sha256` file.
 The version comes only from `extension/description.xml`. Packaging uses explicit file lists,
 sorted ZIP members, fixed timestamps and permissions, LF text, and uncompressed members so that
 different zlib versions cannot change the result. Add new shipped modules to the allowlist in
@@ -155,12 +155,13 @@ after each real mutation, and a silently ineffective undo.
 `test_reorder_identity.py` checks adapter snapshots across kept-count sheet replacements, recorded
 and unrecorded batches, held locks, Undo, and shared-monitor disposal. It verifies that closing one
 list view keeps other views and held snapshots protected until the document closes.
-`test_move_buttons.py` checks native button names, robot clicks, refusal tooltips, and one Undo
-per press. The real-input UI suite exercises every button and Alt move shortcut, separated
+`test_move_menu.py` checks real UNO popup enablement, refusal reasons, robot menu actions, and one
+Undo per action. The real-input UI suite exercises every move action and Alt shortcut, separated
 picks, repeated moves, edges, and permission refusals.
 Cursor checks cover Ctrl navigation outside the picks, Home/End, page navigation, and rebuilding
-the list. The list observes native accessible focus events rather than counting toolkit key
-callbacks. Boundary regressions cover repeated deliveries, ignored intermediate restoration
+the list. Selection keys are consumed before native forwarding, share a retained range anchor,
+and accumulate logical intent before a coalesced UI write. Boundary regressions cover a paused
+UI queue, ignored intermediate restoration
 events and failure cleanup; the native failure adapter also checks cursor-listener removal.
 The failure suite also runs with two configured undo steps, forcing nested groups, and checks zero
 and one-step settings. Full-stack tests put both native and extension moves above 99 inputs and
@@ -181,7 +182,7 @@ To retain copies for inspection, run the generator with the tested office's bund
 
 ```powershell
 & "$lo\python.exe" tests/integration/generate_workbooks.py --program $lo `
-  --oxt dist/sheet-manager-0.0.2.oxt --output test-results/workbooks --sheets 200 1000
+  --oxt dist/sheet-manager-0.0.3.oxt --output test-results/workbooks --sheets 200 1000
 ```
 
 The generator uses a separate private profile and saves only its newly created synthetic workbooks.
@@ -228,7 +229,7 @@ On Windows, build and test the installed LibreOffice with its bundled Python:
 ```powershell
 $lo = 'C:\Program Files\LibreOffice\program'
 & "$lo\python.exe" tools/build.py
-& "$lo\python.exe" tests/integration/run.py --program $lo --oxt dist/sheet-manager-0.0.2.oxt
+& "$lo\python.exe" tests/integration/run.py --program $lo --oxt dist/sheet-manager-0.0.3.oxt
 ```
 
 On Linux, when using an official TDF installation at `/opt/libreoffice26.8`:
@@ -236,7 +237,7 @@ On Linux, when using an official TDF installation at `/opt/libreoffice26.8`:
 ```sh
 python3 tools/build.py
 /opt/libreoffice26.8/program/python tests/integration/run.py \
-  --program /opt/libreoffice26.8/program --oxt dist/sheet-manager-0.0.2.oxt
+  --program /opt/libreoffice26.8/program --oxt dist/sheet-manager-0.0.3.oxt
 ```
 
 Run the complete Linux matrix in Docker with these commands (PowerShell 7 and POSIX shells both
@@ -281,7 +282,7 @@ They click, Ctrl+click, and Shift+click rows, drag two separate sheets above and
 midpoint and check the order and the single undo step, cancel a drag with Esc, auto-scroll and
 wheel-scroll the list, type into the focused list and check that no cell changes, use Ctrl+Page
 Down, Ctrl+Z, and Ctrl+S from the list, open the sheet tab menu by right click, Menu key, and
-Shift+F10, check that a plain click after the menu leaves one selected tab so that typing edits
+Shift+F10, check that double-click activation leaves one selected tab so that typing edits
 one sheet, keep the keyboard position across a refresh, refuse a drop after a sheet was replaced
 during the drag, and switch documents. They release a press after its sheet was replaced or moved
 and check that no activation follows and that the release selects nothing new; after the
@@ -298,7 +299,7 @@ unrecorded batch runs and check that the drop moves nothing, press Enter or the 
 the batch's outer lock is still held and check that neither activates nor hides the replacement,
 and save with Ctrl+S from the list and from a cell and check that the picks stay. While a
 far sheet's colour keeps changing, so that the list waits to refresh, they click a sheet hidden
-just before, and Ctrl+click after a plain click, and check that nothing acts on the old rows.
+just before activation, and Ctrl+click after a double-click, and check that nothing acts on the old rows.
 Results and screenshots are in `test-results/<lane>/ui-gtk3/` and `ui-gen/`. LibreOffice's
 synthetic input on Windows bypasses key handlers and cannot start a native drag; those checks are
 in the [optional desktop observations](docs/manual-tests.md), with a synthetic workbook from

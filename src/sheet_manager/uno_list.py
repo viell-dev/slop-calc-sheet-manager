@@ -1,8 +1,8 @@
 """The sheet list: a flat TreeControl showing the document's sheets.
 
-A single click on a row goes to that sheet and leaves it as Calc's only selected tab; Ctrl+click
-and Shift+click only change the list's own selection. The selected sheets can be dragged to
-another place in the list through the reorder layer (``uno_reorder``). The list's selection
+A single click selects a row; a double click or Enter goes to that sheet and leaves it as Calc's
+only selected tab. Ctrl+click and Shift+click change the list's own selection. Picks can be dragged
+to another place in the list through the reorder layer (``uno_reorder``). The list's selection
 follows changes to this window's native tab selection, but the list groups Calc's tabs only to
 open the sheet tab menu (see ``uno_menu``). A status line distinguishes that group from list picks.
 
@@ -37,8 +37,19 @@ from com.sun.star.sheet import XActivationEventListener
 from com.sun.star.util import XModifyListener
 
 from sheet_manager.i18n import tr
-from sheet_manager.keys import TypeAhead, find_prefix
-from sheet_manager.reorder import Action, plan_move
+from sheet_manager.keys import (
+    DOWN,
+    END,
+    HOME,
+    PAGEDOWN,
+    PAGEUP,
+    SPACE,
+    UP,
+    A,
+    TypeAhead,
+    find_prefix,
+)
+from sheet_manager.reorder import plan_move
 from sheet_manager.selection import Ref, Selection, structure_kept
 from sheet_manager.sheet_list import RowGeometry, SheetRow, ordered, row_label
 from sheet_manager.uno_calc import (
@@ -53,21 +64,26 @@ from sheet_manager.uno_calc import (
     selected_tabs_method,
     show_error,
     start_thread,
-    swatch_url,
 )
 from sheet_manager.uno_keys import ListKeyHandler, Shortcuts
-from sheet_manager.uno_menu import SHOW, SheetMenu
-from sheet_manager.uno_moves import ACTIONS, MoveButtons
+from sheet_manager.uno_menu import (
+    ACTIONS,
+    HELP,
+    MOVE_IDS,
+    SELECT_COMMANDS,
+    SHOW,
+    MenuView,
+    SheetMenu,
+)
 from sheet_manager.uno_reorder import (
-    Availability,
     Snapshot,
     apply_order,
     is_current,
-    move_availability,
-    plan_availability,
     snapshot,
 )
+from sheet_manager.uno_rows import RowPaint
 from sheet_manager.uno_show import show_sheets
+from sheet_manager.uno_status import CalcStatus
 from sheet_manager.uno_structure import monitor_for
 
 MULTI = uno.Enum("com.sun.star.view.SelectionType", "MULTI")
@@ -141,6 +157,7 @@ class _Press:
     handle: Any  # and its handle at that moment: a refresh may put another sheet there.
     generation: int  # The structure generation when the button went down.
     voided: bool = False  # The list dropped its picks while it was held.
+    clicks: int = 1  # Native double-click count belongs to the press on some backends.
 
 
 @dataclass(frozen=True)
@@ -186,10 +203,20 @@ class _Mouse(unohelper.Base, XMouseListener):
         self._owner = owner
 
     def mousePressed(self, event):
-        _guarded("a mouse press", self._owner.mouse_pressed, event)
+        self._handle("a mouse press", self._owner.mouse_pressed, event)
 
     def mouseReleased(self, event):
-        _guarded("a mouse release", self._owner.mouse_released, event)
+        self._handle("a mouse release", self._owner.mouse_released, event)
+
+    def _handle(self, where, function, event):
+        # Posting or reading UNO can let queued observation run before the handler returns.
+        self._owner._pointer_depth += 1
+        try:
+            _guarded(where, function, event)
+        finally:
+            self._owner._pointer_depth -= 1
+            if not self._owner._pointer_depth:
+                self._owner._queue_selection()
 
     def mouseEntered(self, event):
         pass
@@ -232,7 +259,7 @@ class _Paint(unohelper.Base, XPaintListener):
         self._owner = owner
 
     def windowPaint(self, event):
-        _guarded("drawing the insertion line", self._owner.draw_insertion_line)
+        _guarded("drawing sheet rows", self._owner.paint_rows)
 
     def disposing(self, event):
         pass
@@ -328,7 +355,8 @@ class SheetList:
         self._keys_registered = False
         self._restoring_cursor = False
         self._cleanup = contextlib.ExitStack()
-        self._moves: MoveButtons | None = None
+        self._status: CalcStatus | None = None
+        self._bounds = (0, 0)
         try:
             self._initialize(context, frame, parent_window)
         except BaseException:
@@ -352,8 +380,8 @@ class SheetList:
         self._handles: dict[str, Any] = {}
         self._nodes: list[object] = []
         # The list's own picks and keyboard cursor, as sheet identities (selection.py).
-        # Native focus events provide the cursor; `_shown` is the selection the list last
-        # wrote to the tree or took from it. The native control owns its Shift anchor.
+        # `_shown` is the selection last written to the tree or adopted from accessibility.
+        # Owned pointer and keyboard gestures share a retained range anchor.
         self._selection = Selection(_current)
         self._shown: tuple[str, ...] = ()
         # A sheet that may have been inserted or deleted since the picks were proved makes
@@ -380,6 +408,7 @@ class SheetList:
         # it. A request to follow Calc's selection remembers the count when Calc reported the
         # switch; newer input in the list wins over it.
         self._input = 0
+        self._activation_input = 0  # A newer successful activation revokes old menu restoration.
         self._view_input = 0
         self._view_ack_pending = False
         self._view_state: tuple[str, frozenset[str]] | None = None
@@ -390,6 +419,15 @@ class SheetList:
         self._follow_input: int | None = None
         self._activating = False  # The list's own setActiveSheet call is running.
         self._press: _Press | None = None
+        self._pointer_depth = 0
+        self._selection_write_pending = False
+        self._selection_scroll = False
+        self._context_target: Ref | None = None
+        self._context_generation = self._proven
+        self._context_input = 0
+        self._menu_context = False
+        self._page_rows = 10
+        self._decoration_pending = False
         self._drag: _Drag | None = None
         self._gap: int | None = None
         self._pointer_y = 0
@@ -412,6 +450,9 @@ class SheetList:
         self.tree.setModel(model)
         self.tree.createPeer(self.toolkit, parent_window)
         self.peer = self.tree.getPeer()
+        self._row_paint = RowPaint(self.peer)
+        self._row_height = self._row_paint.row_height()
+        model.RowHeight = self._row_height
 
         self._listeners = {
             "mouse": _Mouse(self),
@@ -423,10 +464,8 @@ class SheetList:
             "target": _Target(self),
             "document": _Document(self),
         }
-        self._moves = MoveButtons(
-            context, parent_window, self.queue_move, self._listeners["focus"], self.note_input
-        )
-        self._release_with(self._moves.dispose)
+        self._status = CalcStatus(context, parent_window)
+        self._release_with(self._status.dispose)
         self.tree.addMouseListener(self._listeners["mouse"])
         self.tree.addFocusListener(self._listeners["focus"])
         self.tree.addPaintListener(self._listeners["paint"])
@@ -466,15 +505,17 @@ class SheetList:
             self._main.post(function, where)
 
     def set_bounds(self, width: int, height: int) -> None:
+        self._bounds = width, height
         if not self._disposed:
-            bar = self._moves.height if self._moves is not None else 0
-            if self._moves is not None:
-                self._moves.set_bounds(width)
-            self.tree.setPosSize(0, bar, width, max(height - bar, 0), POSSIZE)
+            footer = self._status.height if self._status is not None else 0
+            if self._status is not None:
+                self._status.set_bounds(width, height)
+            self.tree.setPosSize(4, 4, max(width - 8, 0), max(height - footer - 8, 0), POSSIZE)
+            self._page_rows = max(1, (height - footer - 8) // self._row_height - 1)
 
     @property
     def minimal_width(self) -> int:
-        return max(150, self._moves.minimum_width if self._moves is not None else 0)
+        return 150
 
     def panel_hidden(self) -> None:
         self.focus_changed(False)
@@ -533,7 +574,7 @@ class SheetList:
         pick whose sheet was replaced under the same name (#28).
         """
         if self._press is None:
-            self._take_tree_selection()  # Input that no handler has taken yet.
+            self._take_tree_selection(defer=True)  # Let queued owned input run first.
         previous = self._observed
         observed = snapshot(self.document)
         rows = read_rows(self.controller, observed)
@@ -552,7 +593,6 @@ class SheetList:
             self._rebuild(rows)
         elif dropped or tuple(self._selection.names()) != self._shown:
             self._apply_selection()
-        self._update_moves()
 
         if self._view_generation != generation or self._view_names != frozenset(self.names()):
             # Replacement or rename is not a request to pick the new sheet under an old name.
@@ -615,8 +655,8 @@ class SheetList:
         With a hidden root, the tree control mishandles every change event of the data model:
         changing one node's text re-parents all rows under a newly shown root. So the list
         never changes nodes in place; it builds a new model and restores the selection, the
-        scroll position, and the keyboard cursor. The tree's Shift anchor cannot be restored:
-        the next Shift move starts a new range at the cursor.
+        scroll position, and keyboard cursor. The range anchor belongs to the selection model
+        and survives while its sheet identity remains valid.
         """
         top = self._first_visible_name()
         model = self.context.ServiceManager.createInstanceWithContext(
@@ -628,7 +668,6 @@ class SheetList:
         for row in rows:
             node = model.createNode(row_label(row), False)
             node.DataValue = row.name
-            node.setNodeGraphicURL(swatch_url(self.context, row.color))
             root.appendChild(node)
             nodes.append(node)
         restoring = self._restoring_cursor
@@ -651,6 +690,7 @@ class SheetList:
         """Pick these rows as they show now and put the keyboard cursor on `cursor`."""
         self._selection.take(names, self._handles, self.names())
         self._selection.cursor = self._ref(cursor)
+        self._selection.anchor = self._selection.cursor
         self._apply_selection()
 
     def _apply_selection(self) -> None:
@@ -663,7 +703,6 @@ class SheetList:
         wanted = {ref.name for ref in self._selection.picked}
         indices = [index for index, name in enumerate(names) if name in wanted]
         self._shown = tuple(names[index] for index in indices)
-        self._update_moves()
         if cursor is None:
             self.tree.clearSelection()
             return
@@ -673,16 +712,44 @@ class SheetList:
         for index in indices:
             if names[index] != cursor.name:
                 self.tree.addSelection(self._nodes[index])
+        self.peer.invalidate(0)
 
-    def _take_tree_selection(self, update_moves: bool = True) -> bool:
-        """Take a selection the user made in the tree, as the rows showed it."""
+    def _take_tree_selection(self, paint: bool = True, *, defer: bool = False) -> bool:
+        """Take native picks, deferring observations until queued owned input has run."""
+        if (
+            self._pointer_depth
+            or self._selection_write_pending
+            or self._press is not None
+            or self._context_target is not None
+            or self._menu_context
+        ):
+            return False
         names = self.selected_names()
         if tuple(names) != self._shown:
+            if defer:
+                seen, proof, generation = self._input, self._proven, self._generation
+                order = tuple(self.names())
+
+                def take() -> None:
+                    if (
+                        not self._disposed
+                        and self._input == seen
+                        and self._proven == self._monitor.generation == proof
+                        and self._generation == generation
+                        and tuple(self.names()) == order
+                    ):
+                        self._take_tree_selection()
+
+                # Native selection can change before its queued mouse listener arrives.
+                # Taking it now would apply the same Ctrl toggle again in that listener.
+                self.post(take, "taking native list selection after queued input")
+                return True
             self._selection.take(names, self._handles, self.names())
+            self._selection.anchor = self._selection.cursor
             self._shown = tuple(names)
             self._user_picks = True
-            if update_moves:
-                self._update_moves()
+            if paint:
+                self.peer.invalidate(0)
             return True
         return False
 
@@ -705,7 +772,9 @@ class SheetList:
         if not self._nodes:
             return RowGeometry(0, 0, 0)
         rect = self.tree.getNodeRect(self._nodes[0])
-        return RowGeometry(rect.Y, rect.Height, len(self._nodes))
+        return RowGeometry(
+            rect.Y - (self._row_height - rect.Height) // 2, self._row_height, len(self._nodes)
+        )
 
     def _height(self) -> int:
         return self.peer.getOutputSize().Height
@@ -729,10 +798,10 @@ class SheetList:
         ref = self._ref(self.rows[index].name)
         self._selection.picked = [ref] if ref is not None else []
         self._selection.cursor = ref
+        self._selection.anchor = ref
         self._user_picks = True
         self._move_tree_cursor(index, scroll)
         self._shown = (self.rows[index].name,)
-        self._update_moves()
 
     def _move_tree_cursor(self, index: int, scroll: bool = True) -> None:
         """Select only this row in the tree, which moves its keyboard cursor there too.
@@ -750,11 +819,67 @@ class SheetList:
             self.tree.makeNodeVisible(self._nodes[index])
 
     def tree_key(self, code: int, modifiers: int) -> None:
-        """Take the selection after native handling; callbacks do not predict cursor movement."""
+        """Record owned selection keys synchronously, so held keys accumulate before painting."""
         self._input += 1
         self._note_view_input()
-        # The tree handles the key after this returns; take the selection it then shows.
-        self.post(self._take_tree_selection, "following the selection")
+        names = self.names()
+        if not names or self._monitor.generation != self._proven:
+            return
+        self._selection.revalidate()
+        cursor = self._selection.cursor
+        current = names.index(cursor.name) if cursor is not None and cursor.name in names else 0
+        if code == A and modifiers == MOD1:
+            self._selection.take(names, self._handles, names)
+            self._selection.cursor = cursor or self._ref(names[0])
+        elif code == SPACE:
+            self._selection.choose(names[current], self._handles, names, toggle=True)
+        else:
+            target = {
+                UP: current - 1,
+                DOWN: current + 1,
+                HOME: 0,
+                END: len(names) - 1,
+                PAGEUP: current - self._page_rows,
+                PAGEDOWN: current + self._page_rows,
+            }.get(code)
+            if target is None:
+                return
+            name = names[max(0, min(len(names) - 1, target))]
+            if modifiers & MOD1 and not modifiers & SHIFT:
+                self._selection.cursor = self._ref(name)
+            else:
+                self._selection.choose(
+                    name,
+                    self._handles,
+                    names,
+                    extend=bool(modifiers & SHIFT),
+                    toggle=bool(modifiers & MOD1),
+                )
+        self._user_picks = True
+        self._queue_selection(scroll=True)
+
+    def _queue_selection(self, scroll: bool = False) -> None:
+        self._selection_scroll = self._selection_scroll or scroll
+        if not self._selection_write_pending:
+            self._selection_write_pending = True
+            self.post(self._flush_selection, "showing the selection")
+
+    def _flush_selection(self) -> None:
+        if self._pointer_depth:
+            self._selection_write_pending = False  # The listener posts again after its work.
+            return
+        try:
+            if self._monitor.check() != self._proven:
+                self.refresh()
+            else:
+                self._selection.revalidate()
+                self._apply_selection()
+                cursor = self._selection.cursor
+                if self._selection_scroll and cursor is not None and cursor.name in self.names():
+                    self.tree.makeNodeVisible(self._nodes[self.names().index(cursor.name)])
+        finally:
+            self._selection_write_pending = False
+            self._selection_scroll = False
 
     def cursor_changed(self, accessible: Any) -> None:
         """Record the row the native tree focused, even when it is outside the selection.
@@ -763,7 +888,15 @@ class SheetList:
         sibling index, without changing UI state (verified in LibreOffice 26.2.1 and 26.8).
         The hidden root is omitted, so the index maps directly onto the currently shown rows.
         """
-        if self._disposed or self._restoring_cursor:
+        if (
+            self._disposed
+            or self._pointer_depth
+            or self._restoring_cursor
+            or self._selection_write_pending
+            or self._press is not None
+            or self._context_target is not None
+            or self._menu_context
+        ):
             return
         try:
             index = accessible.getAccessibleContext().getAccessibleIndexInParent()
@@ -836,6 +969,7 @@ class SheetList:
                 ),
             )
             return
+        self._activation_input += 1
         index = list(self.document.getSheets().getElementNames()).index(name)
         if selected_tabs(self.context, controller) != [index]:
             dispatch(
@@ -1074,16 +1208,18 @@ class SheetList:
         self._view_names = frozenset(self.names())
         self._view_generation = self._proven
         self._view_input = self._input
-        if self._moves is not None:
-            self._moves.show_tabs(tabs)
+        if self._status is not None and self._status.show_tabs(tabs):
+            self.set_bounds(*self._bounds)
 
     def _observe_view(self, acknowledge: bool) -> None:
         if (
             self._busy
+            or self._pointer_depth
             or self._restoring_cursor
             or self._press is not None
             or self._drag is not None
             or self._menu.is_open
+            or self._menu_context
         ):
             return
         if self.document.hasControllersLocked() or self.document.isActionLocked():
@@ -1111,15 +1247,13 @@ class SheetList:
         state = active, frozenset(tabs)
         changed = self._view_state is not None and state != self._view_state
         newer_input = self._input != self._view_input or self._view_ack_pending
-        # Native input can precede its queued mouse listener. Take the picks without UI
-        # updates first, so that a poll cannot erase input that is already visible in the tree.
-        pending_picks = self._take_tree_selection(update_moves=False)
+        # Native input can precede its queued mouse listener. Do not follow Calc over it, or
+        # adopt the native toggle before the owned listener has handled that same input.
+        pending_picks = self._take_tree_selection(paint=False, defer=True)
         self._remember_view(active, tabs)
         if changed and not acknowledge and not newer_input and not pending_picks:
             self._select(list(tabs), active)
             self._user_picks = False
-        elif pending_picks:
-            self._update_moves()
 
     # Keyboard
 
@@ -1132,78 +1266,22 @@ class SheetList:
             self.toolkit.removeKeyHandler(self._keys)
 
     def owns_keys(self) -> bool:
-        """Whether a Sheet Manager control has focus at this moment."""
-        return (
-            not self._disposed
-            and not self._menu.is_open
-            and (self.owns_tree_keys() or self._moves is not None and self._moves.has_focus())
-        )
+        return not self._disposed and not self._menu.is_open and self.owns_tree_keys()
 
     def owns_tree_keys(self) -> bool:
         return not self._disposed and bool(self.peer.hasFocus())
 
     def travel_focus(self, backwards: bool) -> bool:
-        """Tab through enabled panel controls, then return focus to Calc at either boundary."""
-        controls = [self.tree, *(self._moves.buttons.values() if self._moves is not None else ())]
-        current = next(
-            (index for index, control in enumerate(controls) if control.getPeer().hasFocus()), None
-        )
-        if current is None:
+        if not self.owns_keys():
             return False
-        step = -1 if backwards else 1
-        for index in range(current + step, -1 if backwards else len(controls), step):
-            control = controls[index]
-            if index == 0 or control.getModel().Enabled:
-                self.post(
-                    lambda target=control: self._focus_control(target),
-                    "moving focus within Sheet Manager",
-                )
-                return True
         self.post(lambda: self._focus_control(None), "leaving Sheet Manager")
         return True
 
     def _focus_control(self, control) -> None:
-        # A later click or document switch wins over this posted focus request.
-        if self._disposed or not self.frame.isActive() or not self.owns_keys():
-            return
-        if control is None:
+        if not self._disposed and self.frame.isActive() and self.owns_keys():
             self.frame.getComponentWindow().setFocus()
-        elif control is self.tree or control.getModel().Enabled:
-            control.setFocus()
-        else:
-            self.tree.setFocus()  # The target button became disabled while the request waited.
 
-    # Movement controls
-
-    def _update_moves(self) -> None:
-        if self._moves is None or self._disposed:
-            return
-        reason = ""
-        states = {}
-        if self._busy:
-            reason = tr("Wait for the current move to finish.")
-        elif self._observed is None or not self._selection.picked:
-            reason = tr("Select sheets to move.")
-        else:
-            permission = move_availability(self.context, self.document)
-            if not permission.allowed:
-                reason = permission.reason
-            # Enablement is only a hint. A full check consumes pending undo evidence and
-            # must not run between an edit's undo and modify notifications (#66).
-            elif self._monitor.generation != self._proven:
-                reason = tr("The sheet list has changed. Refresh it and try again.")
-            else:
-                for action in ACTIONS:
-                    try:
-                        plan = plan_move(
-                            self._observed.sheets, self._selection.names(), cast(Action, action)
-                        )
-                        states[action] = plan_availability(permission, plan)
-                    except ValueError as error:
-                        states[action] = Availability(False, str(error))
-        if reason:
-            states = {action: Availability(False, reason) for action in ACTIONS}
-        self._moves.update(states)
+    # Movement commands
 
     def queue_move(self, action: str) -> None:
         """Capture the shown selection now; queued work never adopts later picks or proof."""
@@ -1212,7 +1290,7 @@ class SheetList:
         if self._press is None:
             # Native navigation may already have changed the tree while its posted selection
             # callback is still queued. Read that selection without doing UI work here.
-            self._take_tree_selection(update_moves=False)
+            self._take_tree_selection(paint=False)
         self._input += 1
         self._note_view_input()
         observed, picks, proof = self._observed, tuple(self._selection.picked), self._proven
@@ -1241,7 +1319,6 @@ class SheetList:
             return
         self._busy = True
         try:
-            self._update_moves()
             result = apply_order(self.context, self.document, observed, plan)
         finally:
             self._busy = False
@@ -1258,24 +1335,42 @@ class SheetList:
     def mouse_pressed(self, event) -> None:
         self._input += 1
         self._note_view_input()
-        if event.PopupTrigger:
-            return
         row = self.geometry().row_at(event.Y)
         if event.Buttons & RIGHT:
             self._press = None
-            if row is not None and self.rows[row].name not in self.selected_names():
-                self._focus_row(row)
+            self._context_target = self._ref(self.rows[row].name) if row is not None else None
+            self._context_generation = self._monitor.generation
+            self._context_input = self._input
+            self._queue_selection()
         elif event.Buttons & LEFT:
+            self._context_target = None
             name = self.rows[row].name if row is not None else None
             handle = self._handles.get(name) if name is not None else None
-            self._take_tree_selection()  # The tree has already applied the press.
-            self._press = _Press(row, event.Modifiers, name, handle, self._monitor.generation)
+            self._press = _Press(
+                row,
+                event.Modifiers,
+                name,
+                handle,
+                self._monitor.generation,
+                clicks=event.ClickCount,
+            )
+            if name is not None:
+                self._selection.choose(
+                    name,
+                    self._handles,
+                    self.names(),
+                    extend=bool(event.Modifiers & SHIFT),
+                    toggle=bool(event.Modifiers & MOD1),
+                    preserve=not event.Modifiers & (SHIFT | MOD1),
+                )
+                self._user_picks = True
+                self._queue_selection()
 
     def mouse_released(self, event) -> None:
         if event.Buttons & RIGHT:
             # Open on release on every platform, so that the release cannot pick an item.
-            x, y = event.X, event.Y
-            self.post(lambda: self._open_menu(x, y), "the sheet tab menu")
+            x, y, seen = event.X, event.Y, self._context_input
+            self.post(lambda: self._open_menu(x, y, seen=seen), "the sheet tab menu")
             return
         press, self._press = self._press, None
         if not event.Buttons & LEFT or press is None or press.name is None:
@@ -1296,13 +1391,17 @@ class SheetList:
             )
             self._apply_selection()
             return
-        self._take_tree_selection()  # A release can change the tree's selection too.
         row = press.row
         if row is None or press.modifiers & (SHIFT | MOD1):
+            self._queue_selection()
             return
         if self.geometry().row_at(event.Y) != row:
+            self._queue_selection()
             return
-        self.activate(press.name, press.handle)
+        self._selection.choose(press.name, self._handles, self.names())
+        self._queue_selection()
+        if press.clicks == 2:
+            self.activate(press.name, press.handle)
 
     def _pressed_sheet_in_place(self, press: _Press) -> bool:
         """Whether the pressed row still shows the pressed sheet, under the same name."""
@@ -1322,40 +1421,127 @@ class SheetList:
         index = self.names().index(picked[0].name)
         self.tree.makeNodeVisible(self._nodes[index])
         geometry = self.geometry()
-        self._open_menu(geometry.row_height, geometry.gap_y(index) + geometry.row_height // 2)
+        self._open_menu(
+            geometry.row_height, geometry.gap_y(index) + geometry.row_height // 2, picked
+        )
 
-    def _open_menu(self, x: int, y: int) -> None:
+    def _open_menu(
+        self, x: int, y: int, refs: list[Ref] | None = None, seen: int | None = None
+    ) -> None:
         """Open the sheet tab menu for the list's picks, each checked to be its sheet still.
 
         The menu gets a fresh snapshot whose handles are those sheets; it checks them again
         when the chosen command runs.
         """
-        if self._disposed or self._busy or self._observed is None:
+        if seen is not None and seen != self._input:
+            if self._context_input == seen:
+                self._context_target = None  # Preserve a newer right-click's target, if any.
+            return  # Newer input wins over an older context request still in the UI queue.
+        if self._disposed or self._busy or self._menu_context or self._observed is None:
+            self._context_target = None
             return
-        refs = self._current_picks()
+        if refs is None:
+            target = self._context_target
+            if target is None or self._context_generation != self._monitor.check():
+                self._context_target = None
+                self._queue_selection()
+                return
+            refs = (
+                list(self._selection.picked) if target.name in self._selection.names() else [target]
+            )
         if not refs:
             return
-        generation, structure = self._generation, self._proven
+        generation, structure, activated = self._generation, self._proven, self._activation_input
         observed = snapshot(self.document)
         names = {sheet.name for sheet in observed.sheets}
         if not all(ref.name in names and _current(ref) for ref in refs):
+            self._context_target = None
             self.refresh()  # A pick changed since this check began: open nothing.
             return
         picked = [ref.name for ref in refs]
 
         def unchanged() -> bool:
-            return self._monitor.check() == structure and self._generation == generation
+            return (
+                self._monitor.check() == structure
+                and self._generation == generation
+                and self._activation_input == activated
+            )
 
-        chosen = self._menu.show(self.peer, x, y, observed, picked, unchanged)
-        self._acknowledge_view()
-        if chosen == SHOW:
+        if not unchanged():
+            self._context_target = None
+            self.refresh()
+            return
+        view = self._menu.capture_view(observed)
+        if view is None or not unchanged():
+            self._context_target = None
+            self.refresh()
+            return
+        self._menu_context = True
+        self._activating = True
+        chosen = None
+
+        def complete() -> None:
+            if self._menu.defer_completion(complete):
+                return
+            try:
+                self._menu_action(chosen, observed, refs, structure, unchanged)
+            finally:
+                self._finish_menu(view, unchanged)
+
+        try:
+            chosen = self._menu.show(self.peer, x, y, observed, picked, unchanged)
+        finally:
+            # Native commands and guard release are queued while the popup closes.
+            # Extension actions follow release so their own SelectTables dispatch is not
+            # mistaken for another native menu command.
+            self.post(complete, "completing the sheet menu")
+
+    def _menu_action(self, chosen, observed, refs, structure, unchanged) -> None:
+        if chosen in MOVE_IDS:
+            self._move_selection(MOVE_IDS[chosen], observed, refs, structure)
+        elif chosen == HELP:
+            shell = self.context.ServiceManager.createInstanceWithContext(
+                "com.sun.star.system.SystemShellExecute", self.context
+            )
+            shell.execute("https://viell-dev.github.io/slop-calc-sheet-manager/", "", 2)
+        elif chosen == SHOW:
             if not unchanged():
                 self._command_refused()
                 return
-            result = show_sheets(self.context, self.document, observed, picked)
+            result = show_sheets(self.context, self.document, observed, [ref.name for ref in refs])
             self.refresh()
             if result.status != "done":
                 show_error(self.peer, tr("Sheet Manager"), result.message)
+
+    def _finish_menu(self, view: MenuView, unchanged) -> None:
+        message = ""
+        try:
+            if self._disposed:
+                return
+            try:
+                self._menu.restore_view(view, unchanged)
+            except DisposedException:
+                self._view_stopped = True  # The view closed while its native command ran.
+                return
+            except Exception:
+                report("restoring the view after the sheet menu")
+                message = tr(
+                    "The sheet menu could not restore the previous viewed sheet and selected "
+                    "Calc tabs. Check the sheet and tab selection before editing."
+                )
+            self.refresh()
+            if self._menu.command in SELECT_COMMANDS:
+                self.follow_calc_selection()
+            else:
+                self._selection.revalidate()
+                self._apply_selection()
+        finally:
+            self._activating = False
+            self._menu_context = False
+            self._context_target = None
+            self._acknowledge_view()
+        if message:
+            show_error(self.peer, tr("Sheet Manager"), message)
 
     def _command_refused(self) -> None:
         self.refresh()
@@ -1440,21 +1626,24 @@ class SheetList:
             if not self._disposed:
                 self.peer.invalidate(0)
 
-    def draw_insertion_line(self) -> None:
-        if self._gap is None or self._disposed:
+    def paint_rows(self) -> None:
+        if self._disposed or self._restoring_cursor:
             return
-        y = self.geometry().gap_y(self._gap)
-        width = self.peer.getOutputSize().Width
-        color = self.peer.StyleSettings.HighlightColor
-        graphics = self.peer.createGraphics()
-        # The colours would otherwise stay set on the tree's device and outline its rows.
-        graphics.push()
+        self._row_paint.draw(
+            self.rows,
+            self.geometry(),
+            set(self._selection.names()),
+        )
+        if not self._decoration_pending:
+            self._decoration_pending = True
+            self.post(self._decorate_rows, "finishing sheet row borders")
+
+    def _decorate_rows(self) -> None:
         try:
-            graphics.setLineColor(color)
-            graphics.setFillColor(color)
-            graphics.drawRect(0, y - 1, width, 2)
+            if not self._disposed and not self._restoring_cursor:
+                self._row_paint.decorate(self.geometry(), self._gap)
         finally:
-            graphics.pop()
+            self._decoration_pending = False
 
     def _set_scroll(self, direction: int) -> None:
         self._scroll = direction

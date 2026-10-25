@@ -28,7 +28,6 @@ from sheet_manager.keys import (
     A,
     KeyRoute,
     TypeAhead,
-    button_route,
     find_prefix,
     move_action,
     route_key,
@@ -91,7 +90,7 @@ def test_route_key(code: int, modifiers: int, char: str, route: KeyRoute) -> Non
 
 def test_only_tree_and_libreoffice_routes_pass_keys_on() -> None:
     passed = {route for route in KeyRoute if not route.consumed}
-    assert passed == {KeyRoute.TREE, KeyRoute.LIBREOFFICE}
+    assert passed == {KeyRoute.LIBREOFFICE}
 
 
 def test_unbound_shortcuts() -> None:
@@ -113,14 +112,6 @@ def test_move_shortcuts_are_exact_and_preserve_calc_and_tree_combinations(
     for modifiers in (0, SHIFT, MOD1 | SHIFT, MOD2 | SHIFT, MOD1 | MOD2, MOD3 | MOD2):
         assert move_action(code, modifiers) is None
         assert route_key(code, modifiers) is not KeyRoute.MOVE
-
-
-def test_native_button_keys_and_printable_input() -> None:
-    for code in (RETURN, SPACE, UP, DOWN, HOME, END):
-        assert button_route(route_key(code, 0), code, 0) is KeyRoute.LIBREOFFICE
-    assert button_route(route_key(S, 0, "s"), S, 0) is KeyRoute.IGNORE
-    assert button_route(route_key(DOWN, MOD2), DOWN, MOD2) is KeyRoute.MOVE
-    assert button_route(route_key(S, MOD1), S, MOD1) is KeyRoute.SHORTCUT
 
 
 def test_typed_character() -> None:

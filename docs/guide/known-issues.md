@@ -16,15 +16,26 @@ If Sheet Manager does not work in an environment where it is expected to, please
 
 ## Known issues
 
-- **Grouped tabs.** Opening the sheet tab menu groups Calc's selected tabs. A cell edit then
-  affects every grouped sheet. The status above the list identifies those tabs separately from
-  the list's picks. Click a single row or tab before editing one sheet.
+- **Grouped tabs.** Cell edits affect every grouped Calc tab. The footer identifies the group
+  separately from the list's picks. Double-click a row, press Enter on a single selected row, or
+  click a Calc tab to end grouping. Context menus can temporarily group tabs for native commands;
+  restoration is refused if the original sheet identities or visibility can no longer be proved.
+- **Header Help.** The header's native `?` opens LibreOffice's local error page for the generated
+  `SIDEBAR_SHEETMANAGERDECK` help topic. No supported deck help-target setter is available. Use
+  **Sheet Manager Help** in the context menu for this guide. Header hover sizing is also controlled
+  by LibreOffice and its theme
+  ([#81](https://github.com/viell-dev/slop-calc-sheet-manager/issues/81)).
 - **Save focus.** Ctrl+S from the list saves through Calc and moves focus to the sheet
   ([#23](https://github.com/viell-dev/slop-calc-sheet-manager/issues/23)).
+- **Unavailable menu actions.** Native popup rendering can hide disabled move actions and their
+  help text. In the gen backend, use Down to highlight the first available entry; Home can leave
+  no entry highlighted when the leading actions are unavailable. Alt move shortcuts still apply
+  the same permission and edge checks
+  ([#84](https://github.com/viell-dev/slop-calc-sheet-manager/issues/84)).
 - **Conservative selection clearing.** Inserting or deleting sheets, undoing or redoing, and
   modifications whose continuity cannot be established can clear the list's selection. A notice
-  explains conservative clearing of a user-made selection. A refresh also starts the next Shift
-  range at the keyboard cursor because Calc's tree control cannot restore its previous range anchor.
+  explains conservative clearing of a user-made selection. Ordinary refreshes retain the list's
+  range anchor while its sheet identity remains valid.
 - **Large lists.** The list rebuilds after changes. During rapid sheet switches the active-sheet
   marker can lag; timing measurements and the remaining work are in
   [#22](https://github.com/viell-dev/slop-calc-sheet-manager/issues/22).

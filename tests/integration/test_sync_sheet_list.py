@@ -18,7 +18,6 @@ from sheet_list_view import (
 from teardown import run_checks
 from test_sheet_list import VCL_MOD1, Robot
 
-from sheet_manager.sheet_list import ACTIVE_MARK
 from sheet_manager.uno_calc import dispatch, prop, select_tabs
 
 NAMES = ["Alfa", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot"]
@@ -186,14 +185,14 @@ def check_views(context, desktop):
     # explicit user picks before testing subsequent changes in the two independent views.
     robot = Robot(context)
     robot.click(tree, row_point(tree, 0))
-    robot.click(other_tree, row_point(other_tree, 5))
+    robot.double_click(other_tree, row_point(other_tree, 5))
     select_tabs(context, first.getFrame(), [0, 2])
     select_tabs(context, second.getFrame(), [3, 5])
     poll(lambda: selection(tree, NAMES) == ["Alfa", "Charlie"], "the first view's group")
     poll(lambda: selection(other_tree, NAMES) == ["Delta", "Foxtrot"], "the second view's group")
     assert status(panel) == "Edits affect 2 Calc tabs: Alfa, Charlie"
     assert status(other_panel) == "Edits affect 2 Calc tabs: Delta, Foxtrot"
-    assert labels(tree)[0].startswith(ACTIVE_MARK) and labels(other_tree)[5].startswith(ACTIVE_MARK)
+    assert labels(tree)[0] == "Alfa" and labels(other_tree)[5] == "Foxtrot"
     document.getSheets().getByName("Bravo").setName("Renamed")
     order = list(document.getSheets().getElementNames())
     poll(lambda: names(tree) == order and names(other_tree) == order, "both windows' renamed rows")
@@ -229,7 +228,14 @@ def check_reload(context, desktop, directory):
     # Late load notifications can clear picks while renewing structural proof. They must not
     # repopulate picks, but the new panel must observe later input and the replacement model.
     Robot(context).click(tree, row_point(tree, 0))
-    poll(lambda: selection(tree, NAMES) == ["Alfa"], "an explicit pick after reload")
+    try:
+        poll(lambda: selection(tree, NAMES) == ["Alfa"], "an explicit pick after reload")
+    except AssertionError as error:
+        error.add_note(
+            f"Reloaded rows={names(tree)!r}, picks={selection(tree, NAMES)!r}, "
+            f"status={status(panel)!r}, focused={tree.hasFocus()!r}"
+        )
+        raise
     select_tabs(context, frame, [0, 3])
     poll(lambda: selection(tree, NAMES) == ["Alfa", "Delta"], "the replacement observer")
     replacement.getSheets().getByName("Bravo").setName("AfterReload")

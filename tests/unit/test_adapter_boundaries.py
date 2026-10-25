@@ -1,5 +1,6 @@
 """Deterministic races and display guards; real UNO behaviour is checked in integration."""
 
+from collections.abc import Callable
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import Mock
@@ -7,11 +8,11 @@ from unittest.mock import Mock
 import pytest
 
 from sheet_manager.selection import Ref, Selection
-from sheet_manager.structure import Quiet, StructureEvents
 from tests.unit.source_methods import method
 
 
-def test_menu_keeps_the_pick_proof_before_reading_a_fresh_snapshot() -> None:
+@pytest.mark.parametrize("changed", ["structure", "activation"])
+def test_menu_keeps_intent_and_pick_proof_before_a_fresh_snapshot(changed: str) -> None:
     monitor = SimpleNamespace(generation=0)
     monitor.check = lambda: monitor.generation
     allowed: list[bool] = []
@@ -19,7 +20,10 @@ def test_menu_keeps_the_pick_proof_before_reading_a_fresh_snapshot() -> None:
     def snapshot(document: object) -> object:
         # A reported replacement during the snapshot still has the picked name, but the
         # selection has never been proved at the newer generation.
-        monitor.generation += 1
+        if changed == "structure":
+            monitor.generation += 1
+        else:
+            owner._activation_input += 1
         return SimpleNamespace(sheets=[SimpleNamespace(name="Bravo")])
 
     def show(*args: Any) -> None:
@@ -28,16 +32,30 @@ def test_menu_keeps_the_pick_proof_before_reading_a_fresh_snapshot() -> None:
     def current(ref: object) -> bool:
         return True
 
+    def no_ref(name: str) -> None:
+        return None
+
+    def tabs(*args: object) -> list[int]:
+        return []
+
     owner = SimpleNamespace(
         _disposed=False,
         _busy=False,
         _observed=True,
+        _menu_context=False,
         _current_picks=lambda: [SimpleNamespace(name="Bravo")],
         _generation=0,
         _proven=0,
+        _activation_input=0,
         _monitor=monitor,
         _menu=SimpleNamespace(show=show),
         _acknowledge_view=Mock(),
+        refresh=Mock(),
+        _ref=no_ref,
+        names=lambda: ["Alfa", "Bravo"],
+        context=object(),
+        controller=SimpleNamespace(getActiveSheet=lambda: SimpleNamespace(getName=lambda: "Alfa")),
+        post=Mock(),
         document=object(),
         peer=object(),
     )
@@ -45,10 +63,146 @@ def test_menu_keeps_the_pick_proof_before_reading_a_fresh_snapshot() -> None:
         "src/sheet_manager/uno_list.py",
         "SheetList",
         "_open_menu",
-        {"snapshot": snapshot, "_current": current, "SHOW": 1},
+        {
+            "snapshot": snapshot,
+            "_current": current,
+            "SHOW": 1,
+            "Ref": Ref,
+            "selected_tabs": tabs,
+            "MOVE_IDS": {},
+            "HELP": 20006,
+        },
     )
-    open_menu(owner, 0, 0)
-    assert allowed == [False], "A newer monitor generation must not become the menu's proof"
+    open_menu(owner, 0, 0, [Ref("Bravo", object())])
+    assert allowed == [], "A stale proof must be refused before temporary native grouping"
+    owner.refresh.assert_called_once()
+
+
+@pytest.mark.parametrize("failure", [False, True])
+def test_modal_native_command_finishes_before_view_restoration(failure: bool) -> None:
+    queued: list[Any] = []
+    restored: list[bool] = []
+    menu = SimpleNamespace(
+        _dispatch_depth=0,
+        _completion=None,
+        command=None,
+        _post=queued.append,
+    )
+    begin = method("src/sheet_manager/uno_menu.py", "SheetMenu", "_begin_command", {})
+    end = method("src/sheet_manager/uno_menu.py", "SheetMenu", "_end_command", {})
+    defer = method(
+        "src/sheet_manager/uno_menu.py",
+        "SheetMenu",
+        "defer_completion",
+        {
+            "Callable": Callable,
+        },
+    )
+
+    def complete() -> None:
+        if not defer(menu, complete):
+            restored.append(True)
+
+    def native_dispatch(url: Any, arguments: object) -> None:
+        # A modal dialog pumps the queued completion while the command is still on the stack.
+        complete()
+        assert not restored
+        begin(menu, ".uno:SelectTables")  # A nested dispatch cannot change the command's intent.
+        end(menu)
+        assert menu.command == ".uno:Remove" and not queued
+        if failure:
+            raise RuntimeError("native command failed")
+
+    def starting(command: str) -> None:
+        begin(menu, command)
+
+    guard = SimpleNamespace(
+        _verify=lambda: True,
+        _refused=Mock(),
+        _begin=starting,
+        _end=lambda: end(menu),
+        _real=SimpleNamespace(dispatch=native_dispatch),
+    )
+    dispatch = method("src/sheet_manager/uno_menu.py", "_GuardedDispatch", "dispatch", {})
+    if failure:
+        with pytest.raises(RuntimeError, match="native command failed"):
+            dispatch(guard, SimpleNamespace(Complete=".uno:Remove"), ())
+    else:
+        dispatch(guard, SimpleNamespace(Complete=".uno:Remove"), ())
+    assert not restored and len(queued) == 1 and menu._dispatch_depth == 0
+    queued[0]()
+    assert restored == [True] and menu._completion is None
+
+
+@pytest.mark.parametrize("newer_context", [False, True])
+def test_superseded_context_only_clears_its_own_target(newer_context: bool) -> None:
+    target = object()
+    owner = SimpleNamespace(
+        _input=2,
+        _context_input=2 if newer_context else 1,
+        _context_target=target,
+    )
+    open_menu = method("src/sheet_manager/uno_list.py", "SheetList", "_open_menu", {"Ref": Ref})
+    open_menu(owner, 10, 20, seen=1)
+    assert owner._context_target is (target if newer_context else None)
+
+
+def test_right_release_keeps_the_press_intent_before_newer_keyboard_input() -> None:
+    owner = SimpleNamespace(_input=5, _context_input=3, _open_menu=Mock(), post=Mock())
+    release = method(
+        "src/sheet_manager/uno_list.py", "SheetList", "mouse_released", {"RIGHT": 2, "LEFT": 1}
+    )
+    release(owner, SimpleNamespace(Buttons=2, X=10, Y=20))
+    owner.post.call_args.args[0]()
+    owner._open_menu.assert_called_once_with(10, 20, seen=3)
+
+
+@pytest.mark.parametrize("closed", [False, True])
+def test_failed_menu_restore_refreshes_and_notifies_unless_the_view_closed(closed: bool) -> None:
+    class ClosedView(Exception):
+        pass
+
+    logged, shown = Mock(), Mock()
+    failure = ClosedView("closed") if closed else RuntimeError("restore refused")
+    owner = SimpleNamespace(
+        _disposed=False,
+        _view_stopped=False,
+        _activating=True,
+        _menu_context=True,
+        _context_target=object(),
+        _menu=SimpleNamespace(restore_view=Mock(side_effect=failure), command=None),
+        refresh=Mock(),
+        _selection=SimpleNamespace(revalidate=Mock()),
+        _apply_selection=Mock(),
+        _acknowledge_view=Mock(),
+        peer=object(),
+    )
+    finish = method(
+        "src/sheet_manager/uno_list.py",
+        "SheetList",
+        "_finish_menu",
+        {
+            "MenuView": Any,
+            "DisposedException": ClosedView,
+            "SELECT_COMMANDS": set(),
+            "report": logged,
+            "show_error": shown,
+            "tr": str,
+        },
+    )
+    finish(owner, object(), lambda: True)
+    assert not owner._activating and not owner._menu_context and owner._context_target is None
+    owner._acknowledge_view.assert_called_once()
+    if closed:
+        assert owner._view_stopped
+        owner.refresh.assert_not_called()
+        shown.assert_not_called()
+        logged.assert_not_called()
+    else:
+        owner.refresh.assert_called_once()
+        owner._apply_selection.assert_called_once()
+        assert "could not restore" in shown.call_args.args[2]
+        logged.assert_called_once()
 
 
 def test_move_request_keeps_its_snapshot_refs_and_proof_while_queued() -> None:
@@ -62,8 +216,8 @@ def test_move_request_keeps_its_snapshot_refs_and_proof_while_queued() -> None:
     def move(*args: Any) -> None:
         seen.append(args)
 
-    def take_selection(update_moves: bool) -> None:
-        assert not update_moves
+    def take_selection(paint: bool) -> None:
+        assert not paint
         owner._selection.picked = [original_ref]
 
     owner = SimpleNamespace(
@@ -89,11 +243,11 @@ def test_move_request_keeps_its_snapshot_refs_and_proof_while_queued() -> None:
     assert owner._input == 1
 
 
-def test_failed_move_control_update_releases_busy_and_refreshes() -> None:
+def test_failed_move_releases_busy_and_refreshes() -> None:
     refreshed: list[bool] = []
 
-    def fail_update() -> None:
-        raise RuntimeError("injected control update failure")
+    def fail_apply(*args: Any) -> None:
+        raise RuntimeError("injected move failure")
 
     def current(ref: object) -> bool:
         return True
@@ -105,111 +259,81 @@ def test_failed_move_control_update_releases_busy_and_refreshes() -> None:
         _disposed=False,
         _busy=False,
         _monitor=SimpleNamespace(check=lambda: 7),
-        _update_moves=fail_update,
+        context=object(),
+        document=object(),
         refresh=lambda: refreshed.append(True),
     )
     move = method(
         "src/sheet_manager/uno_list.py",
         "SheetList",
         "_move_selection",
-        {"_current": current, "plan_move": plan},
+        {"_current": current, "plan_move": plan, "apply_order": fail_apply},
     )
-    with pytest.raises(RuntimeError, match="control update failure"):
+    with pytest.raises(RuntimeError, match="move failure"):
         move(owner, "top", SimpleNamespace(sheets=()), (SimpleNamespace(name="Bravo"),), 7)
     assert not owner._busy and refreshed == [True]
 
 
-def test_move_enablement_does_not_consume_an_edits_pending_modify_notification() -> None:
-    events = StructureEvents(count=80, history=(0, None))
-    states: list[Any] = []
-    permission = SimpleNamespace(allowed=True)
+def test_owned_navigation_accumulates_while_the_ui_queue_is_paused() -> None:
+    from sheet_manager.keys import DOWN, END, HOME, PAGEDOWN, PAGEUP, SPACE, UP, A
 
-    def availability(allowed: bool, reason: str) -> SimpleNamespace:
-        return SimpleNamespace(allowed=allowed, reason=reason)
-
-    monitor = SimpleNamespace(
-        generation=0,
-        check=lambda: events.check(80, (1, "Tab Color"), Quiet.NONE),
-    )
-    owner = SimpleNamespace(
-        _moves=SimpleNamespace(update=states.append),
-        _disposed=False,
-        _busy=False,
-        _observed=SimpleNamespace(sheets=()),
-        _selection=SimpleNamespace(picked=["Bravo"], names=lambda: ["Bravo"]),
-        _monitor=monitor,
-        _proven=0,
-        context=object(),
-        document=object(),
-    )
-    update = method(
-        "src/sheet_manager/uno_list.py",
-        "SheetList",
-        "_update_moves",
-        {
-            "ACTIONS": ("up",),
-            "Availability": availability,
-            "move_availability": Mock(return_value=permission),
-            "plan_move": Mock(return_value=object()),
-            "plan_availability": Mock(return_value=permission),
-            "cast": cast,
-            "Action": str,
-            "tr": str,
-        },
-    )
-    # An ordinary edit reports its undo action before its modify notification. A hint
-    # requested between them must not make that notification look unrecorded (#66).
-    events.action_added(80, Quiet.NONE)
-    update(owner)
-    events.modified(80, Quiet.NONE)
-    assert events.generation == 0
-    assert states[-1]["up"].allowed
-
-    # Reported structural changes still disable the hint before execution's full preflight.
-    monitor.generation = 1
-    update(owner)
-    assert not states[-1]["up"].allowed
-
-
-def test_native_cursor_wins_over_repeated_key_callbacks() -> None:
-    names = ["Alfa", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot"]
+    names = ["Alfa", "Bravo", "Charlie", "Delta", "Echo"]
     handles = {name: object() for name in names}
+    selection = Selection(lambda ref: True)
+    selection.choose("Bravo", handles, names)
     queued: list[Any] = []
 
-    def post(callback: Any, where: str) -> None:
-        queued.append(callback)
+    def ref(name: str) -> Ref | None:
+        return selection.ref(name, handles, names)
+
+    def post(work: Any, where: str) -> None:
+        queued.append(work)
 
     owner = SimpleNamespace(
-        _disposed=False,
-        _restoring_cursor=False,
         _input=0,
-        _selection=SimpleNamespace(cursor=Ref("Bravo", handles["Bravo"], 1)),
+        _proven=0,
+        _monitor=SimpleNamespace(generation=0),
+        _selection=selection,
         _handles=handles,
-        rows=[SimpleNamespace(name=name) for name in names],
-        _take_tree_selection=lambda: None,
+        _page_rows=3,
+        _selection_write_pending=False,
+        _selection_scroll=False,
+        _flush_selection=lambda: None,
         _note_view_input=Mock(),
+        names=lambda: names,
+        _ref=ref,
         post=post,
     )
-    key = method("src/sheet_manager/uno_list.py", "SheetList", "tree_key", {})
-    changed = method(
-        "src/sheet_manager/uno_list.py", "SheetList", "cursor_changed", {"Any": Any, "Ref": Ref}
+    queue = method("src/sheet_manager/uno_list.py", "SheetList", "_queue_selection", {})
+
+    def queue_selection(scroll: bool = False) -> None:
+        queue(owner, scroll)
+
+    owner._queue_selection = queue_selection
+    key = method(
+        "src/sheet_manager/uno_list.py",
+        "SheetList",
+        "tree_key",
+        {
+            "A": A,
+            "DOWN": DOWN,
+            "UP": UP,
+            "HOME": HOME,
+            "END": END,
+            "PAGEUP": PAGEUP,
+            "PAGEDOWN": PAGEDOWN,
+            "SPACE": SPACE,
+            "MOD1": 2,
+            "SHIFT": 1,
+        },
     )
-    for index in (2, 3):
-        before = owner._selection.cursor
-        key(owner, 1024, 2)
-        key(owner, 1024, 2)  # Two toolkit deliveries, but one native cursor movement.
-        assert owner._selection.cursor is before
-
-        def native_index(position: int = index) -> int:
-            return position
-
-        accessible = SimpleNamespace(
-            getAccessibleContext=lambda: SimpleNamespace(getAccessibleIndexInParent=native_index)
-        )
-        changed(owner, accessible)
-    assert owner._selection.cursor.name == "Delta"
-    assert owner._selection.cursor.token is handles["Delta"]
-    assert len(queued) == 4
+    key(owner, DOWN, 2)
+    key(owner, DOWN, 2)
+    assert selection.names() == ["Bravo"]
+    assert selection.cursor is not None and selection.cursor.name == "Delta"
+    assert len(queued) == 1
+    key(owner, SPACE, 2)
+    assert selection.names() == ["Bravo", "Delta"]
 
 
 @pytest.mark.parametrize(
@@ -234,7 +358,12 @@ def test_native_cursor_uses_only_current_rows_outside_restoration(
 
     owner = SimpleNamespace(
         _disposed=disposed,
+        _pointer_depth=0,
         _restoring_cursor=restoring,
+        _selection_write_pending=False,
+        _press=None,
+        _context_target=None,
+        _menu_context=False,
         _selection=SimpleNamespace(cursor=Ref("Bravo", object(), 1)),
         _handles={"Alfa": handle, "Bravo": object()},
         rows=[SimpleNamespace(name="Alfa"), SimpleNamespace(name="Bravo")],
@@ -290,7 +419,12 @@ def test_stale_accessible_rows_preserve_cursor_without_hiding_other_errors(
     owner = SimpleNamespace(
         _disposed=False,
         _restoring_cursor=False,
+        _selection_write_pending=False,
+        _press=None,
+        _context_target=None,
+        _menu_context=False,
         _selection=SimpleNamespace(cursor=original),
+        _pointer_depth=0,
         rows=[SimpleNamespace(name="Alfa")],
         _handles={"Alfa": handle},
     )
@@ -358,22 +492,10 @@ def test_refused_release_restores_a_surviving_pick_instead_of_native_release_cur
 
 
 @pytest.mark.parametrize(
-    "active,owned,enabled,boundary,expected",
-    [
-        (False, True, True, False, []),
-        (True, False, True, False, []),
-        (True, True, True, False, ["button"]),
-        (True, True, False, False, ["tree"]),
-        (True, True, True, True, ["calc"]),
-    ],
+    "active,owned,expected", [(False, True, []), (True, False, []), (True, True, ["calc"])]
 )
-def test_posted_focus_respects_later_focus_and_disabled_targets(
-    active: bool, owned: bool, enabled: bool, boundary: bool, expected: list[str]
-) -> None:
+def test_posted_focus_respects_later_focus(active: bool, owned: bool, expected: list[str]) -> None:
     focused: list[str] = []
-    button = SimpleNamespace(
-        getModel=lambda: SimpleNamespace(Enabled=enabled), setFocus=lambda: focused.append("button")
-    )
     owner = SimpleNamespace(
         _disposed=False,
         frame=SimpleNamespace(
@@ -381,10 +503,9 @@ def test_posted_focus_respects_later_focus_and_disabled_targets(
             getComponentWindow=lambda: SimpleNamespace(setFocus=lambda: focused.append("calc")),
         ),
         owns_keys=lambda: owned,
-        tree=SimpleNamespace(setFocus=lambda: focused.append("tree")),
     )
     focus = method("src/sheet_manager/uno_list.py", "SheetList", "_focus_control", {})
-    focus(owner, None if boundary else button)
+    focus(owner, None)
     assert focused == expected
 
 

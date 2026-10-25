@@ -23,7 +23,7 @@ features:
       others means a long, precise drag, or a dialog buried in a menu.
   - title: What you can do
     details:
-      Lists sheets top to bottom in the sidebar, with selection, drag and drop, movement buttons,
+      Lists sheets top to bottom in the sidebar, with full-width selection, drag and drop, context actions,
       keyboard navigation, and Calc's sheet tab menu.
   - title: Where it is now
     details:

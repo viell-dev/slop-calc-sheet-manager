@@ -2,7 +2,7 @@
 
 UNO key listeners cannot consume a key, so the list registers a toolkit key handler while a
 panel control has focus. The handler sees every key in the application first; it acts only when
-the list's tree or a move button has focus at that moment, and routes keys as ``sheet_manager.keys``
+the list's tree has focus at that moment, and routes keys as ``sheet_manager.keys``
 describes. Shortcuts are resolved through the document's, Calc's, and the global shortcut
 configuration, in the order LibreOffice itself uses, and dispatched to the panel's frame.
 """
@@ -13,10 +13,8 @@ from com.sun.star.container import NoSuchElementException
 
 from sheet_manager.keys import (
     SHIFT,
-    SPACE,
     TAB,
     KeyRoute,
-    button_route,
     move_action,
     route_key,
     unbound_route,
@@ -94,10 +92,6 @@ class ListKeyHandler(unohelper.Base, XKeyHandler):
                 and self._list.travel_focus(event.Modifiers == SHIFT)
             ):
                 route = KeyRoute.IGNORE  # The panel posted its focus step.
-            if not self._list.owns_tree_keys():
-                if route is KeyRoute.ACTIVATE or event.KeyCode == SPACE and event.Modifiers == 0:
-                    self._list.note_input()
-                route = button_route(route, event.KeyCode, event.Modifiers)
             if route is KeyRoute.TREE:
                 self._list.tree_key(event.KeyCode, event.Modifiers)
             elif route is KeyRoute.SHORTCUT:
