@@ -13,6 +13,7 @@ from com.sun.star.container import NoSuchElementException
 
 from sheet_manager.keys import (
     SHIFT,
+    SPACE,
     TAB,
     KeyRoute,
     button_route,
@@ -94,6 +95,8 @@ class ListKeyHandler(unohelper.Base, XKeyHandler):
             ):
                 route = KeyRoute.IGNORE  # The panel posted its focus step.
             if not self._list.owns_tree_keys():
+                if route is KeyRoute.ACTIVATE or event.KeyCode == SPACE and event.Modifiers == 0:
+                    self._list.note_input()
                 route = button_route(route, event.KeyCode, event.Modifiers)
             if route is KeyRoute.TREE:
                 self._list.tree_key(event.KeyCode, event.Modifiers)
@@ -104,11 +107,11 @@ class ListKeyHandler(unohelper.Base, XKeyHandler):
                 else:
                     route = unbound_route(event.Modifiers)
             elif route is KeyRoute.ACTIVATE:
-                self._list.post(self._list.activate_selection, "activating a sheet")
+                self._list.queue_input(self._list.activate_selection, "activating a sheet")
             elif route is KeyRoute.TYPE_AHEAD:
-                self._list.post(lambda: self._list.type_ahead(char), "type-ahead")
+                self._list.queue_input(lambda: self._list.type_ahead(char), "type-ahead")
             elif route is KeyRoute.MENU:
-                self._list.post(self._list.open_menu_for_keyboard, "the sheet tab menu")
+                self._list.queue_input(self._list.open_menu_for_keyboard, "the sheet tab menu")
             elif route is KeyRoute.MOVE:
                 self._list.queue_move(move_action(event.KeyCode, event.Modifiers))
             self._consumed[event.KeyCode] = route.consumed

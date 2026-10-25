@@ -27,8 +27,8 @@ features:
       keyboard navigation, and Calc's sheet tab menu. These features are unreleased.
   - title: Where it is now
     details:
-      There is no published build yet. Movement buttons are implemented; completing synchronization
-      remains planned for the first release.
+      There is no published build yet. The list, movement controls, and synchronization are
+      implemented; the first release still needs release preparation and verification.
 ---
 
 Sheet Manager is written and maintained by AI agents, and no person reviews the code. Changes are

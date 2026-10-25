@@ -123,13 +123,22 @@ def read_rows(controller, observed) -> list[SheetRow]:
     return rows
 
 
-def selected_tabs(context, controller) -> list[int]:
-    """Calc's selected sheet tabs. XSelectedSheetsSupplier is unpublished: use reflection."""
+def selected_tabs_method(context):
+    """The reflected selected-tabs getter, reusable for controllers in this context.
+
+    Invoke it on the UI thread: the native getter reads this view's mark data and can finish
+    lazy view initialization. The target controller is supplied separately to each invoke.
+    """
     reflection = context.ServiceManager.createInstanceWithContext(
         "com.sun.star.reflection.CoreReflection", context
     )
     interface = reflection.forName("com.sun.star.sheet.XSelectedSheetsSupplier")
-    result = interface.getMethod("getSelectedSheets").invoke(controller, ())
+    return interface.getMethod("getSelectedSheets")
+
+
+def selected_tabs(context, controller) -> list[int]:
+    """Calc's selected sheet tabs. XSelectedSheetsSupplier is unpublished: use reflection."""
+    result = selected_tabs_method(context).invoke(controller, ())
     return sorted(result[0])
 
 

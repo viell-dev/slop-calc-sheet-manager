@@ -23,9 +23,20 @@ also shown for read-only workbooks and follows the sidebar when it resizes, dock
 - **Hidden sheets** can be selected but cannot become active. Open their menu and choose Show
   Sheet or Show Sheets to make them visible.
 
-The list follows Calc's selection when the active sheet changes. Selecting tabs without switching
-the active sheet reaches the list at the next sheet switch. The list refreshes after renames,
-insertions, deletions, moves, visibility, colour, and protection changes.
+The list follows changes to this window's active sheet and selected Calc tabs, including tab
+selection changes that leave the active sheet unchanged. While the panel is visible, it checks
+the tab selection about every quarter second. Your newer input in the list takes precedence;
+unchanged Calc tabs do not overwrite independent list picks.
+
+The status above the buttons names Calc's selected tabs. **Edits affect … Calc tabs** means those
+tabs are grouped for cell editing, even if the list's own picks differ. The tooltip contains the
+complete group when the names do not fit. Click one row or one Calc tab to end grouped editing.
+
+Periodic tab observation pauses while the panel is collapsed, another sidebar deck is selected,
+the sidebar is closed, or the window is minimized. It resumes when the panel is visible, normally
+within a second. Each window on a workbook follows its own Calc selection. The list also refreshes
+after renames, insertions, deletions, moves, visibility, colour, and protection changes; ordinary
+cell edits do not rebuild its rows.
 
 ## Move a selection
 
@@ -96,4 +107,4 @@ A notice explains conservative clearing of a user-made selection. Pick the sheet
 
 The tree is rebuilt after changes, so the next Shift navigation starts a fresh range at the
 keyboard cursor. Large lists can take longer to refresh. See [Known issues](./known-issues.md) for
-the remaining synchronization work and the limits of detecting changes made by macros.
+refresh costs and the limits of detecting changes made by macros.

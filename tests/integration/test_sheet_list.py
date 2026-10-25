@@ -35,6 +35,7 @@ from sheet_list_view import (
     open_list,
     poll,
     release,
+    root,
     row_point,
     selected_tabs,
     selection,
@@ -43,7 +44,8 @@ from sheet_list_view import (
 from teardown import Configured, run_checks
 
 from sheet_manager import keys, uno_list
-from sheet_manager.sheet_list import SheetRow, row_label, tab_color
+from sheet_manager.sheet_list import ACTIVE_MARK, SheetRow, row_label, tab_color
+from sheet_manager.uno_calc import select_tabs
 from sheet_manager.uno_reorder import snapshot
 from sheet_manager.uno_show import show_sheets
 
@@ -613,6 +615,9 @@ class _ActivationOwner:
     def refresh(self):
         pass
 
+    def _note_view_input(self):
+        pass  # This activation-only adapter has no list or periodic observer.
+
 
 def redirected_activation(context, desktop, hidden):
     """Activate Bravo while Alfa and Delta are grouped, hiding `hidden` just before the switch.
@@ -799,7 +804,7 @@ def check_show(context, desktop):
 
 
 def measure_large_workbook(context, desktop, count):
-    """Time the list's rebuild after an activation; recorded, not asserted (see #22)."""
+    """Record wall-clock following/rebuild costs, with correctness assertions (see #22)."""
     document = make_workbook(desktop, [f"Sheet {n:04}" for n in range(1, count + 1)])
     started = time.monotonic()
     _, tree = open_list(context, document)
@@ -811,9 +816,61 @@ def measure_large_workbook(context, desktop, count):
     controller.setActiveSheet(target)
     order = list(document.getSheets().getElementNames())
     poll(lambda: selection(tree, order) == [target.getName()], "a large list to follow", 120)
+
+    def activation_painted():
+        parent = root(tree)
+        return (
+            parent is not None
+            and parent.getChildCount() == count
+            and parent.getChildAt(count // 2).getDisplayValue() == ACTIVE_MARK + target.getName()
+        )
+
+    # The lightweight observer can follow the selection before the preceding activation's
+    # rate-limited row repaint. Finish that repaint before isolating tab-only model retention.
+    poll(activation_painted, "the active marker before tab-only timing", 120)
     followed = time.monotonic() - started
+    before = root(tree)
+    assert before is not None
+    started = time.monotonic()
+    select_tabs(context, controller.getFrame(), [count // 2, count - 1])
+    expected = [order[count // 2], order[-1]]
+    poll(lambda: selection(tree, order) == expected, "a large tab-only selection", 120)
+    tab_followed = time.monotonic() - started
+    assert root(tree) == before, "Tab-only following must retain the native model"
+    document.getSheets().getByIndex(0).getCellRangeByName("A1").setValue(42)
+    time.sleep(0.8)
+    assert root(tree) == before, "An ordinary edit must retain the native model"
+    repaints = []
+    first = document.getSheets().getByIndex(0)
+    for color in (0x2A6099, 0x993322, 0x228833):
+        previous = root(tree)
+        assert previous is not None
+        graphic = previous.getChildAt(0).getNodeGraphicURL()
+        started = time.monotonic()
+        first.TabColor = color
+        poll(
+            lambda previous=previous: root(tree) not in (None, previous),
+            "a large tab-colour repaint",
+            120,
+        )
+        repaints.append(round(time.monotonic() - started, 4))
+        current = root(tree)
+        assert current is not None
+        assert current.getChildCount() == count
+        assert current.getChildAt(0).DataValue == order[0]
+        assert current.getChildAt(count - 1).DataValue == order[-1]
+        assert current.getChildAt(0).getNodeGraphicURL() != graphic
     close_workbook(context, document)
-    return {"sheets": count, "open_seconds": round(opened, 2), "follow_seconds": round(followed, 2)}
+    return {
+        "sheets": count,
+        "open_seconds": round(opened, 2),
+        "follow_seconds": round(followed, 2),
+        "tab_only_seconds": round(tab_followed, 4),
+        "tab_only_same_model": True,
+        "cell_edit_same_model": True,
+        "tab_color_repaint_seconds": repaints,
+        "method": "100ms polling; wall times include debounce/backpressure; no performance gate",
+    }
 
 
 def exercise(context, desktop, directory, output, *, headless):

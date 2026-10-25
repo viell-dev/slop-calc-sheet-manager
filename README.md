@@ -16,7 +16,8 @@ updates, removal, use, known issues, troubleshooting, and reporting a problem.
 Under development; there is no release yet. **Unreleased:** the development version lists the
 workbook's sheets, supports selection, drag and drop, and four move buttons with keyboard shortcuts,
 handles keyboard navigation, and opens Calc's sheet tab menu. Each extension move is one undo step.
-The remaining synchronization work is tracked in #5. The first release, 0.1.0, is planned to offer:
+It follows this window's Calc tab selection and shows grouped-editing feedback separately from
+the list's own picks. The first release, 0.1.0, is planned to offer:
 
 - every sheet in document order, kept in sync with changes from anywhere, with the active sheet,
   hidden sheets, tab colours, and protection shown;
