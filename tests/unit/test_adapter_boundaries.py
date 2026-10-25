@@ -8,7 +8,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from sheet_manager.selection import Ref
+from sheet_manager.selection import Ref, Selection
 from sheet_manager.structure import Quiet, StructureEvents
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -334,6 +334,38 @@ def test_stale_accessible_rows_preserve_cursor_without_hiding_other_errors(
     )
     assert owner._selection.cursor.name == "Alfa"
     assert owner._selection.cursor.token is handle
+
+
+@pytest.mark.parametrize(
+    "names,expected",
+    [(("Bravo",), "Bravo"), (("Delta",), "Delta"), (("Alfa", "Bravo"), "Bravo"), ((), None)],
+)
+def test_refused_release_restores_a_surviving_pick_instead_of_native_release_cursor(
+    names: tuple[str, ...], expected: str | None
+) -> None:
+    selection = Selection(lambda ref: True)
+    selection.picked = [Ref(name, object()) for name in names]
+    selection.cursor = Ref("Charlie", object())  # Native deferred release changed the cursor.
+    before = tuple(selection.picked)
+    applied: list[Ref | None] = []
+    owner = SimpleNamespace(
+        _press=SimpleNamespace(row=1, name="Bravo", generation=0, voided=False),
+        _monitor=SimpleNamespace(check=lambda: 0),
+        _pressed_sheet_in_place=Mock(return_value=False),
+        _selection=selection,
+        _apply_selection=lambda: applied.append(selection.cursor),
+    )
+    released = method(
+        "src/sheet_manager/uno_list.py", "SheetList", "mouse_released", {"LEFT": 1, "RIGHT": 2}
+    )
+    released(owner, SimpleNamespace(Buttons=1))
+    cursor = cast(Ref | None, owner._selection.cursor)
+    assert tuple(selection.picked) == before
+    assert owner._press is None
+    assert (cursor.name if cursor is not None else None) == expected
+    assert applied == [cursor]
+    if cursor is not None:
+        assert any(cursor is ref for ref in before)
 
 
 @pytest.mark.parametrize(

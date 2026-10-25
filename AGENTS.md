@@ -363,6 +363,11 @@ reconsider. The owner may report a defect themselves, in their own words.
   through `AsyncCallback`. Start threads only through `uno_calc.start_thread`, never with
   `threading`: `Thread.start` waits for the new thread, whose first steps can wait for
   LibreOffice's main lock that listeners and the main thread hold, and Calc then hangs (#55).
+  A selected-row native release can move its cursor before the queued mouse listener. Refusing
+  that gesture must also restore a surviving picked cursor (prefer its original sheet), retaining
+  newer picks. An unpicked cursor moved during an invalid held gesture is deliberately not retained;
+  the known-issues guide records that limit. The supported toolkit/controller interfaces expose
+  no sidebar pre-release hook.
 - `uno_moves.py` owns four native buttons above the list, sized from the native minimums. Labels
   provide accessible names; tooltips include disabled reasons. The list captures the observed
   snapshot, refs and proof before posting a move request. Enablement shares the adapter's common

@@ -881,6 +881,30 @@ def check_native_cursor_positions(book):
     return evidence
 
 
+def check_selected_press_cursor(book):
+    """A refused already-selected press restores its picks and a picked keyboard cursor."""
+    evidence = {}
+    for newer in (False, True):
+        reset(book)
+        book.click(1)
+        start = book.point(1)
+        book.pointer.press(*start)
+        try:
+            book.document.getSheets().moveByName(NAMES[1], 6)
+            wait_until(lambda: view.names(book.tree) == book.order(), "the moved list")
+            if newer:
+                book.lab.input.tap("d", pause=0.5)
+                wait_until(lambda: book.selection() == [NAMES[3]], "the newer typed pick")
+        finally:
+            book.pointer.release()
+        wanted = [NAMES[3] if newer else NAMES[1]]
+        wait_until(lambda w=wanted: book.selection() == w, "picks after the refused release")
+        book.lab.input.tap("space", ("Control_L",), pause=0.4)
+        evidence[str(newer)] = {"picks_restored": wanted, "after_toggle": book.selection()}
+        assert book.selection() == [], evidence
+    return evidence
+
+
 def check_drop_after_replacement(book):
     """A drop is refused when a sheet was replaced during the drag (#28)."""
     book.click(2)
@@ -1337,6 +1361,7 @@ def run_checks(lab, output):
         ("single_tap_after_client_pause", lambda: check_single_tap_after_client_pause(book)),
         ("cursor_across_refresh", lambda: check_cursor_across_refresh(book)),
         ("native_cursor_positions", lambda: check_native_cursor_positions(book)),
+        ("selected_press_cursor", lambda: check_selected_press_cursor(book)),
         ("drop_after_replacement", lambda: check_drop_after_replacement(book)),
         ("press_then_change", lambda: check_press_then_change(book)),
         ("newer_pick_survives_voided_press", lambda: check_newer_pick_survives_voided_press(book)),

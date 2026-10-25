@@ -30,6 +30,10 @@ If Sheet Manager does not work in an environment where it is expected to, please
 - **Large lists.** The list rebuilds after changes. During rapid sheet switches the active-sheet
   marker can lag; timing measurements and the remaining work are in
   [#22](https://github.com/viell-dev/slop-calc-sheet-manager/issues/22).
+- **Refused held clicks.** If a held click is refused after the list changes, its picks are restored
+  and the keyboard cursor returns to a surviving picked row. An unpicked keyboard position made
+  during that hold is not preserved
+  ([#71](https://github.com/viell-dev/slop-calc-sheet-manager/issues/71)).
 - **Macros that suppress notifications.** The list cannot detect structural edits for which
   LibreOffice reports nothing, or a deliberately constructed edit indistinguishable from ordinary
   typed input. The reorder adapter uses the same structural monitor and has the same boundary.

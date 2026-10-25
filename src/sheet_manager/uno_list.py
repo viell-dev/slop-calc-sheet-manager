@@ -1110,6 +1110,12 @@ class SheetList:
             # each still the sheet it was picked as, including any newer pick made meanwhile,
             # by following Calc or by keyboard.
             self._selection.revalidate()
+            # The native selected-row release can move its cursor before this callback.
+            # A refused gesture restores a surviving picked cursor, never that late row.
+            picks = self._selection.picked
+            self._selection.cursor = next(
+                (ref for ref in picks if ref.name == press.name), picks[0] if picks else None
+            )
             self._apply_selection()
             return
         self._take_tree_selection()  # A release can change the tree's selection too.
