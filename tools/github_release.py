@@ -1,4 +1,4 @@
-"""Validate, build, and optionally publish one immutable GitHub release."""
+"""Validate, build, and optionally publish one GitHub release."""
 
 import argparse
 import hashlib
@@ -175,7 +175,8 @@ def combine_site(guide: Path, site: Path) -> list[str]:
     return relative
 
 
-def require_ci(commit: str, *, publishing: bool, timeout: float = 1200) -> str:
+def require_ci(commit: str, *, publishing: bool, timeout: float = 3000) -> str:
+    # Native CI jobs allow 45 minutes; include a small queue/startup margin.
     deadline = time.monotonic() + timeout
     while True:
         response = api(

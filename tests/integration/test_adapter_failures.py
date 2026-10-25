@@ -51,8 +51,15 @@ def check_failed_list(context, document):
     monitor = monitor_for(model)
     model_before, undo_before = set(model.attached), set(undo.attached)
     disposed = []
+    cursors = []
 
     class FailingList(SheetList):
+        def __setattr__(self, name, value):
+            if name == "_cursor_context":
+                value = Tracked(value)
+                cursors.append(value)
+            super().__setattr__(name, value)
+
         def refresh(self):
             # This is after every listener is attached. It must unwind even though the
             # SheetPanel assignment never receives the partly constructed list.
@@ -73,6 +80,7 @@ def check_failed_list(context, document):
         controller.attached,
     )
     assert disposed and disposed[0]._disposed
+    assert cursors and all(not cursor.attached for cursor in cursors)
     assert monitor_for(model) is monitor
 
     def fail_registration(listener):

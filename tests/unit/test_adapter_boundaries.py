@@ -8,6 +8,7 @@ from unittest.mock import Mock
 
 import pytest
 
+from sheet_manager.selection import Ref, Selection
 from sheet_manager.structure import Quiet, StructureEvents
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -179,6 +180,192 @@ def test_move_enablement_does_not_consume_an_edits_pending_modify_notification()
     monitor.generation = 1
     update(owner)
     assert not states[-1]["up"].allowed
+
+
+def test_native_cursor_wins_over_repeated_key_callbacks() -> None:
+    names = ["Alfa", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot"]
+    handles = {name: object() for name in names}
+    queued: list[Any] = []
+
+    def post(callback: Any, where: str) -> None:
+        queued.append(callback)
+
+    owner = SimpleNamespace(
+        _disposed=False,
+        _restoring_cursor=False,
+        _input=0,
+        _selection=SimpleNamespace(cursor=Ref("Bravo", handles["Bravo"], 1)),
+        _handles=handles,
+        rows=[SimpleNamespace(name=name) for name in names],
+        _take_tree_selection=lambda: None,
+        post=post,
+    )
+    key = method("src/sheet_manager/uno_list.py", "SheetList", "tree_key", {})
+    changed = method(
+        "src/sheet_manager/uno_list.py", "SheetList", "cursor_changed", {"Any": Any, "Ref": Ref}
+    )
+    for index in (2, 3):
+        before = owner._selection.cursor
+        key(owner, 1024, 2)
+        key(owner, 1024, 2)  # Two toolkit deliveries, but one native cursor movement.
+        assert owner._selection.cursor is before
+
+        def native_index(position: int = index) -> int:
+            return position
+
+        accessible = SimpleNamespace(
+            getAccessibleContext=lambda: SimpleNamespace(getAccessibleIndexInParent=native_index)
+        )
+        changed(owner, accessible)
+    assert owner._selection.cursor.name == "Delta"
+    assert owner._selection.cursor.token is handles["Delta"]
+    assert len(queued) == 4
+
+
+@pytest.mark.parametrize(
+    "disposed,restoring,index,expected,queried",
+    [
+        (True, False, 0, "Bravo", False),
+        (False, True, 0, "Bravo", False),
+        (False, False, -1, "Bravo", True),
+        (False, False, 2, "Bravo", True),
+        (False, False, 0, "Alfa", True),
+    ],
+)
+def test_native_cursor_uses_only_current_rows_outside_restoration(
+    disposed: bool, restoring: bool, index: int, expected: str, queried: bool
+) -> None:
+    calls: list[bool] = []
+    handle = object()
+
+    def context() -> Any:
+        calls.append(True)
+        return SimpleNamespace(getAccessibleIndexInParent=lambda: index)
+
+    owner = SimpleNamespace(
+        _disposed=disposed,
+        _restoring_cursor=restoring,
+        _selection=SimpleNamespace(cursor=Ref("Bravo", object(), 1)),
+        _handles={"Alfa": handle, "Bravo": object()},
+        rows=[SimpleNamespace(name="Alfa"), SimpleNamespace(name="Bravo")],
+    )
+    changed = method(
+        "src/sheet_manager/uno_list.py", "SheetList", "cursor_changed", {"Any": Any, "Ref": Ref}
+    )
+    changed(owner, SimpleNamespace(getAccessibleContext=context))
+    assert owner._selection.cursor.name == expected
+    assert bool(calls) == queried
+    if expected == "Alfa":
+        assert owner._selection.cursor.token is handle
+
+
+def test_failed_rebuild_releases_the_cursor_restoration_guard() -> None:
+    model = Mock()
+
+    def names() -> list[str]:
+        return []
+
+    owner = SimpleNamespace(
+        _restoring_cursor=False,
+        _first_visible_name=lambda: None,
+        context=SimpleNamespace(
+            ServiceManager=SimpleNamespace(createInstanceWithContext=Mock(return_value=model))
+        ),
+        tree=SimpleNamespace(getModel=lambda: SimpleNamespace()),
+        _selection=SimpleNamespace(anchor=None),
+        names=names,
+    )
+
+    def fail_restore() -> None:
+        assert owner._restoring_cursor
+        raise RuntimeError("injected cursor restoration failure")
+
+    owner._apply_selection = fail_restore
+    rebuild = method("src/sheet_manager/uno_list.py", "SheetList", "_rebuild", {"SheetRow": Any})
+    with pytest.raises(RuntimeError, match="cursor restoration failure"):
+        rebuild(owner, [])
+    assert not owner._restoring_cursor
+
+
+@pytest.mark.parametrize("stage", ["context", "index"])
+@pytest.mark.parametrize("disposed", [True, False])
+def test_stale_accessible_rows_preserve_cursor_without_hiding_other_errors(
+    stage: str, disposed: bool
+) -> None:
+    class DisposedRow(Exception):
+        pass
+
+    failure = DisposedRow if disposed else RuntimeError
+    original = Ref("Bravo", object(), 1)
+    handle = object()
+    owner = SimpleNamespace(
+        _disposed=False,
+        _restoring_cursor=False,
+        _selection=SimpleNamespace(cursor=original),
+        rows=[SimpleNamespace(name="Alfa")],
+        _handles={"Alfa": handle},
+    )
+
+    def index() -> int:
+        raise failure("stale accessible row")
+
+    def context() -> Any:
+        if stage == "context":
+            raise failure("stale accessible row")
+        return SimpleNamespace(getAccessibleIndexInParent=index)
+
+    changed = method(
+        "src/sheet_manager/uno_list.py",
+        "SheetList",
+        "cursor_changed",
+        {"Any": Any, "Ref": Ref, "DisposedException": DisposedRow},
+    )
+    if disposed:
+        changed(owner, SimpleNamespace(getAccessibleContext=context))
+    else:
+        with pytest.raises(RuntimeError, match="stale accessible row"):
+            changed(owner, SimpleNamespace(getAccessibleContext=context))
+    assert owner._selection.cursor is original
+    changed(
+        owner,
+        SimpleNamespace(
+            getAccessibleContext=lambda: SimpleNamespace(getAccessibleIndexInParent=lambda: 0)
+        ),
+    )
+    assert owner._selection.cursor.name == "Alfa"
+    assert owner._selection.cursor.token is handle
+
+
+@pytest.mark.parametrize(
+    "names,expected",
+    [(("Bravo",), "Bravo"), (("Delta",), "Delta"), (("Alfa", "Bravo"), "Bravo"), ((), None)],
+)
+def test_refused_release_restores_a_surviving_pick_instead_of_native_release_cursor(
+    names: tuple[str, ...], expected: str | None
+) -> None:
+    selection = Selection(lambda ref: True)
+    selection.picked = [Ref(name, object()) for name in names]
+    selection.cursor = Ref("Charlie", object())  # Native deferred release changed the cursor.
+    before = tuple(selection.picked)
+    applied: list[Ref | None] = []
+    owner = SimpleNamespace(
+        _press=SimpleNamespace(row=1, name="Bravo", generation=0, voided=False),
+        _monitor=SimpleNamespace(check=lambda: 0),
+        _pressed_sheet_in_place=Mock(return_value=False),
+        _selection=selection,
+        _apply_selection=lambda: applied.append(selection.cursor),
+    )
+    released = method(
+        "src/sheet_manager/uno_list.py", "SheetList", "mouse_released", {"LEFT": 1, "RIGHT": 2}
+    )
+    released(owner, SimpleNamespace(Buttons=1))
+    cursor = cast(Ref | None, owner._selection.cursor)
+    assert tuple(selection.picked) == before
+    assert owner._press is None
+    assert (cursor.name if cursor is not None else None) == expected
+    assert applied == [cursor]
+    if cursor is not None:
+        assert any(cursor is ref for ref in before)
 
 
 @pytest.mark.parametrize(

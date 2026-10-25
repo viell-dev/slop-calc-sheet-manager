@@ -46,6 +46,36 @@ def test_ci_gate_requires_exact_commit_and_main_push_for_publication(
         cli.require_ci("a" * 40, publishing=True, timeout=0)
 
 
+def test_ci_gate_waits_for_a_native_matrix_longer_than_twenty_minutes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    elapsed = 0.0
+
+    def sleep(seconds: float) -> None:
+        nonlocal elapsed
+        elapsed += seconds
+
+    def api(path: str) -> dict[str, object]:
+        assert f"head_sha={'a' * 40}" in path
+        completed = elapsed >= 25 * 60
+        return {
+            "workflow_runs": [
+                {
+                    "event": "pull_request",
+                    "status": "completed" if completed else "in_progress",
+                    "conclusion": "success" if completed else None,
+                    "html_url": "https://example.invalid/ci/long-native-matrix",
+                }
+            ]
+        }
+
+    monkeypatch.setattr(cli.time, "monotonic", lambda: elapsed)
+    monkeypatch.setattr(cli.time, "sleep", sleep)
+    monkeypatch.setattr(cli, "api", api)
+    assert cli.require_ci("a" * 40, publishing=False).endswith("/long-native-matrix")
+    assert elapsed == 25 * 60
+
+
 def test_dry_run_builds_assets_and_prospective_feeds_without_api_writes(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

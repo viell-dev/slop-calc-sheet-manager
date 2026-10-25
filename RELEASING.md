@@ -72,7 +72,9 @@ For release-workflow development, a PR that changes `.github/workflows/release.y
 `.github/workflows/pages.yml`, `tools/github_release.py`, or `tools/release_data.py` also runs
 this same dry run on its head commit, using the metadata version and inferring the candidate
 flag from its patch number. Its artifact is the branch dry run; it waits for the PR's successful
-CI run instead of `main`'s, so this check normally finishes after CI. If that metadata version is
+CI run instead of `main`'s, so this check normally finishes after CI. It waits up to 50 minutes,
+covering the native matrix's 45-minute job limit plus startup time; the dry-run job allows
+60 minutes for setup and asset validation as well. If that metadata version is
 already published, the PR check emits a notice and skips release planning after static/unit
 checks and validation of live published assets, history, and current feeds. In that case its
 artifact contains only the current feed preview, with no prospective release plan. Existing
@@ -91,7 +93,8 @@ Only the publishing job receives `contents: write`; no stored secret is needed.
 
 The workflow creates the numeric tag at that commit, creates a **draft** GitHub release with the
 changelog section and prerelease flag, uploads the OXT and checksum, verifies both are present,
-and only then publishes. This ordering supports GitHub's immutable releases. An existing tag,
+and only then publishes. GitHub release immutability is disabled during early development.
+Keep it disabled unless the owner directs otherwise. An existing tag,
 published version, or draft is refused. Publication is serialized so two workflow runs cannot
 reserve the same version or overtake one another.
 

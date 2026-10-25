@@ -36,7 +36,7 @@ jobs:
   validate:
     name: Release dry run
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 60
     permissions:
       contents: read
       actions: read
@@ -86,7 +86,7 @@ jobs:
           if-no-files-found: error
 
   publish:
-    name: Publish immutable release
+    name: Publish release
     needs: validate
     if: >-
       github.event_name == 'workflow_dispatch' && !inputs.dry_run &&
