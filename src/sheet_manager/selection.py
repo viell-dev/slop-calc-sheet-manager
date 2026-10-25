@@ -1,4 +1,4 @@
-"""The sheet list's own selection, keyboard cursor, and Shift anchor, held as sheet identities.
+"""The sheet list's own selection and keyboard cursor, held as sheet identities.
 
 The tree control knows its rows only by name, and a name can pass to another sheet: a sheet is
 deleted and a new one inserted under its name, or renamed and its name reused. So the list keeps
@@ -36,13 +36,12 @@ class Ref:
 
 
 class Selection:
-    """Picks in row order, the keyboard cursor, and the Shift anchor, as refs."""
+    """Picks in row order and the keyboard cursor, as refs."""
 
     def __init__(self, current: Callable[[Ref], bool]):
         self._current = current  # Whether the ref's token still denotes a sheet of that name.
         self.picked: list[Ref] = []
         self.cursor: Ref | None = None
-        self.anchor: Ref | None = None
 
     def names(self) -> list[str]:
         return [ref.name for ref in self.picked]
@@ -65,7 +64,7 @@ class Selection:
 
     def ref(self, name: str, tokens: Mapping[str, Any], order: list[str]) -> Ref | None:
         """A ref for the row now showing `name`, reusing a current one for the same sheet."""
-        for held in (*self.picked, self.cursor, self.anchor):
+        for held in (*self.picked, self.cursor):
             if held is not None and held.name == name and self._current(held):
                 return held
         if name not in tokens:
@@ -76,16 +75,15 @@ class Selection:
         """Drop every ref that no longer denotes its sheet under its name; True if any went."""
         picked = [ref for ref in self.picked if self._current(ref)]
         cursor = self.cursor if self.cursor is None or self._current(self.cursor) else None
-        anchor = self.anchor if self.anchor is None or self._current(self.anchor) else None
         dropped = len(picked) != len(self.picked)
-        dropped = dropped or cursor is not self.cursor or anchor is not self.anchor
-        self.picked, self.cursor, self.anchor = picked, cursor, anchor
+        dropped = dropped or cursor is not self.cursor
+        self.picked, self.cursor = picked, cursor
         return dropped
 
     def clear(self) -> bool:
         """Drop every ref; True if there was anything to drop."""
-        had = bool(self.picked) or self.cursor is not None or self.anchor is not None
-        self.picked, self.cursor, self.anchor = [], None, None
+        had = bool(self.picked) or self.cursor is not None
+        self.picked, self.cursor = [], None
         return had
 
 

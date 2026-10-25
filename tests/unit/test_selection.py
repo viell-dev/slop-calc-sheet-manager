@@ -1,4 +1,4 @@
-"""The sheet list's selection model: picks, cursor, and anchor stay with their sheets.
+"""The sheet list's selection model: picks and cursor stay with their sheets.
 
 The workbook here reproduces how LibreOffice behaves, as measured in 26.2 and 26.8
 (docs/reordering.md). A retained handle follows its sheet through renames, moves, and
@@ -482,15 +482,14 @@ def random_session(
             record(sheet_list.selection, made_for)
         else:
             name = rng.choice(sheet_list.rows)
-            target = "cursor" if rng.random() < 0.5 else "anchor"
             ref = sheet_list.selection.ref(name, sheet_list.tokens(), sheet_list.rows)
-            setattr(sheet_list.selection, target, ref)
+            sheet_list.selection.cursor = ref
             record(sheet_list.selection, made_for)
     return violations
 
 
 def held(selection: Selection) -> list[Ref]:
-    return [ref for ref in (*selection.picked, selection.cursor, selection.anchor) if ref]
+    return [ref for ref in (*selection.picked, selection.cursor) if ref]
 
 
 def record(selection: Selection, made_for: dict[int, tuple[Ref, int]]) -> None:

@@ -28,12 +28,9 @@ from sheet_manager.keys import (
     A,
     KeyRoute,
     TypeAhead,
-    anchor_after,
     button_route,
-    cursor_after,
     find_prefix,
     move_action,
-    range_end,
     route_key,
     typed_character,
     unbound_route,
@@ -162,34 +159,3 @@ def test_find_prefix() -> None:
     assert find_prefix(names, "z", 0) is None
     assert find_prefix([], "a", None) is None
     assert find_prefix(names, "", None) is None
-
-
-def test_cursor_after_flat_list_keys() -> None:
-    assert cursor_after(UP, 3, 6) == 2
-    assert cursor_after(UP, 0, 6) == 0
-    assert cursor_after(DOWN, 3, 6) == 4
-    assert cursor_after(DOWN, 5, 6) == 5
-    assert cursor_after(HOME, 3, 6) == 0
-    assert cursor_after(END, 3, 6) == 5
-    assert cursor_after(PAGEUP, 3, 6) is None  # Read from the selection afterwards.
-    assert cursor_after(PAGEDOWN, 3, 6) is None
-    assert cursor_after(SPACE, 3, 6) == 3
-    assert cursor_after(A, 3, 6) == 3
-    assert cursor_after(DOWN, None, 6) is None
-    assert cursor_after(DOWN, 0, 0) is None
-
-
-def test_anchor_follows_the_selection_engine() -> None:
-    assert anchor_after(DOWN, SHIFT, 3, None) == 3  # The first Shift move anchors at the cursor.
-    assert anchor_after(DOWN, SHIFT, 4, 3) == 3
-    assert anchor_after(PAGEDOWN, SHIFT, 4, 3) == 3
-    assert anchor_after(DOWN, 0, 4, 3) is None
-    assert anchor_after(DOWN, MOD1, 4, 3) is None
-    assert anchor_after(A, MOD1, 4, 3) is None
-    assert anchor_after(SPACE, MOD1, 4, 3) == 3
-
-
-def test_range_end() -> None:
-    assert range_end([2, 3, 4, 8], 2) == 4
-    assert range_end([2, 3, 4, 8], 4) == 2
-    assert range_end([5], 5) == 5

@@ -6,7 +6,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from tests.unit.test_adapter_boundaries import method
+from tests.unit.source_methods import method
 
 SOURCE = "src/sheet_manager/uno_list.py"
 

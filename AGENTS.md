@@ -255,8 +255,8 @@ reconsider. The owner may report a defect themselves, in their own words.
   UNO: the `XPanel.getDialog()` window, its child tree control
   (`tests/integration/sheet_list_view.py`), and its `XEventListener`; keep test hooks out of the
   production factory.
-- The list keeps the `uno_reorder.snapshot` that produced its rows. Its picks, keyboard cursor,
-  and Shift anchor live in `selection.py` as refs: the name a sheet had when the user's input made
+- The list keeps the `uno_reorder.snapshot` that produced its rows. Its picks and keyboard cursor
+  live in `selection.py` as refs: the name a sheet had when the user's input made
   the ref, and that sheet's retained handle. A ref is never made again from a name later, and
   everything the list writes to the tree, restores, or acts on comes from refs. Retained handles
   are not identities: when a sheet is deleted, its handle turns to the previous sheet and can

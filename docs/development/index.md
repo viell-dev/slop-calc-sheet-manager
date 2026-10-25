@@ -41,7 +41,8 @@ npm run docs:dev
 `npm run docs:build` builds the site as CI does, and fails on a broken link between pages.
 After installing the Node dependencies, `python tools/check_release_page.py` checks the rendered
 release page with empty and synthetic histories, including channel separation and asset links.
-Its temporary outputs stay under `test-results/`; it makes no publication changes.
+Its disposable outputs use the operating system's temporary directory; it makes no publication
+changes.
 
 VitePress 2 is still a prerelease. The repository pins an exact version, and every pull request
 builds the site with it.
