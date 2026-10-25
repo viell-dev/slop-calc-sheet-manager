@@ -42,6 +42,7 @@ class Selection:
         self._current = current  # Whether the ref's token still denotes a sheet of that name.
         self.picked: list[Ref] = []
         self.cursor: Ref | None = None
+        self.anchor: Ref | None = None
 
     def names(self) -> list[str]:
         return [ref.name for ref in self.picked]
@@ -64,26 +65,60 @@ class Selection:
 
     def ref(self, name: str, tokens: Mapping[str, Any], order: list[str]) -> Ref | None:
         """A ref for the row now showing `name`, reusing a current one for the same sheet."""
-        for held in (*self.picked, self.cursor):
+        for held in (*self.picked, self.cursor, self.anchor):
             if held is not None and held.name == name and self._current(held):
                 return held
         if name not in tokens:
             return None
         return Ref(name, tokens[name], order.index(name) if name in order else -1)
 
+    def choose(
+        self,
+        name: str,
+        tokens: Mapping[str, Any],
+        order: list[str],
+        *,
+        extend: bool = False,
+        toggle: bool = False,
+        preserve: bool = False,
+    ) -> None:
+        """Select a row or a range, keeping the range's starting sheet as an identity."""
+        target = self.ref(name, tokens, order)
+        if target is None:
+            return
+        if extend:
+            anchor = self.anchor or self.cursor or target
+            if not self._current(anchor) or anchor.name not in order:
+                anchor = target
+            self.anchor = anchor
+            first, last = sorted((order.index(anchor.name), order.index(name)))
+            names = set(order[first : last + 1])
+            if toggle:
+                names.update(self.names())
+        else:
+            self.anchor = target
+            names = set(self.names())
+            if toggle:
+                names.symmetric_difference_update((name,))
+            elif not preserve or name not in names:
+                names = {name}
+        self.take((item for item in order if item in names), tokens, order)
+        self.cursor = target
+
     def revalidate(self) -> bool:
         """Drop every ref that no longer denotes its sheet under its name; True if any went."""
         picked = [ref for ref in self.picked if self._current(ref)]
         cursor = self.cursor if self.cursor is None or self._current(self.cursor) else None
+        anchor = self.anchor if self.anchor is None or self._current(self.anchor) else None
         dropped = len(picked) != len(self.picked)
-        dropped = dropped or cursor is not self.cursor
-        self.picked, self.cursor = picked, cursor
+        dropped = dropped or cursor is not self.cursor or anchor is not self.anchor
+        self.picked, self.cursor, self.anchor = picked, cursor, anchor
         return dropped
 
     def clear(self) -> bool:
         """Drop every ref; True if there was anything to drop."""
-        had = bool(self.picked) or self.cursor is not None
-        self.picked, self.cursor = [], None
+        had = bool(self.picked) or self.cursor is not None or self.anchor is not None
+        self.picked, self.cursor, self.anchor = [], None, None
         return had
 
 

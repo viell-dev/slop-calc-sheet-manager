@@ -1,0 +1,5 @@
+#!/bin/sh
+# Private Xvfb fixture: record the URI handed to the desktop opener.
+set -eu
+[ "${SHEET_MANAGER_PRIVATE_DISPLAY:-}" = 1 ] || exit 1
+printf '%s\n' "$1" >> "$SHEET_MANAGER_URI_LOG"

@@ -7,6 +7,29 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 No changes recorded yet.
 
+## 0.0.3 - 2026-10-25
+
+Second test build for 0.1.0, focused on the sidebar's interaction and appearance.
+Requires LibreOffice 26.2.1 or later with Python support.
+
+- Click anywhere across a row to select it without switching sheets. Double-click or press
+  Enter to activate it. Ctrl/Shift selection and keyboard navigation keep an independent range
+  anchor through ordinary refreshes.
+- Rows have full-width highlights, dividers, and more vertical space. The current-sheet arrow
+  and tab-colour square sit separately to the left of the name. Dragging shows a stronger
+  three-pixel insertion line with end markers.
+- Move sheets from the context menu or with Alt+Home/Up/Down/End. The toolbar is removed, and the
+  grouped-editing warning appears in a footer only while multiple Calc tabs are grouped.
+- Right-click targets a row without selecting it. It uses the existing picked set when that row
+  is already picked. Calc's customized menu is under **Sheet actions**; temporary native tab
+  grouping is restored after dismissal where the original sheets can still be proved safe.
+- **Sheet Manager Help** opens the project guide. The header's native `?` still opens
+  LibreOffice's unavailable local help topic; this host limitation is documented in #81.
+
+Install the OXT manually over 0.0.2 and check its SHA-256 asset. Test builds remain manual
+downloads and keep stable updates enabled. Existing compatibility and conservative
+selection-clearing limits still apply; see the [known issues](https://viell-dev.github.io/slop-calc-sheet-manager/guide/known-issues).
+
 ## 0.0.2 - 2026-10-25
 
 First test build for 0.1.0. This build is intended for testing with synthetic or backed-up

@@ -1,7 +1,6 @@
 """Row labels and the geometry that maps pointer positions to rows and gaps."""
 
 from sheet_manager.sheet_list import (
-    ACTIVE_MARK,
     RowGeometry,
     SheetRow,
     ordered,
@@ -12,7 +11,7 @@ from sheet_manager.sheet_list import (
 
 def test_row_labels() -> None:
     assert row_label(SheetRow("Plan")) == "Plan"
-    assert row_label(SheetRow("Plan", active=True)) == ACTIVE_MARK + "Plan"
+    assert row_label(SheetRow("Plan", active=True)) == "Plan"
     assert row_label(SheetRow("Old", visible=False)) == "Old (hidden)"
     assert row_label(SheetRow("Key", visible=False, protected=True, scenario=True)) == (
         "Key (hidden, protected, scenario)"

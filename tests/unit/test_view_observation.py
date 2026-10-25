@@ -32,6 +32,7 @@ def observer() -> tuple[Any, Any]:
         _press=None,
         _drag=None,
         _menu=SimpleNamespace(is_open=False),
+        _menu_context=False,
         _input=0,
         _view_input=0,
         _view_ack_pending=False,
@@ -41,7 +42,9 @@ def observer() -> tuple[Any, Any]:
         _proven=0,
         _monitor=SimpleNamespace(generation=0),
         _stale_since=None,
-        _moves=SimpleNamespace(show_tabs=Mock()),
+        _status=SimpleNamespace(show_tabs=Mock(return_value=False)),
+        _bounds=(300, 600),
+        set_bounds=Mock(),
         names=lambda: list(live.shown),
         controller=SimpleNamespace(
             getActiveSheet=lambda: SimpleNamespace(getName=lambda: live.active)
@@ -53,7 +56,6 @@ def observer() -> tuple[Any, Any]:
         ),
         _tabs_method=SimpleNamespace(invoke=Mock(side_effect=invoke)),
         _take_tree_selection=Mock(return_value=False),
-        _update_moves=Mock(),
         _select=Mock(),
         document_modified=Mock(),
     )
@@ -77,7 +79,7 @@ def test_tab_only_change_follows_once_without_rebuilding_or_consuming_monitor_ev
     owner._select.assert_called_once_with(["Alfa", "Charlie"], "Alfa")
     owner._observe_view()
     assert owner._select.call_count == 1
-    owner._moves.show_tabs.assert_called_with(("Alfa", "Charlie"))
+    owner._status.show_tabs.assert_called_with(("Alfa", "Charlie"))
 
 
 @pytest.mark.parametrize("newer", ["input", "acknowledgement", "pending_tree_selection"])
@@ -116,7 +118,7 @@ def test_reordering_native_members_does_not_turn_independent_picks_into_calc_pic
     live.indices = (0, 2)
     owner._observe_view()
     owner._select.assert_not_called()
-    owner._moves.show_tabs.assert_called_once_with(("Charlie", "Alfa"))
+    owner._status.show_tabs.assert_called_once_with(("Charlie", "Alfa"))
 
 
 @pytest.mark.parametrize("change", ["rename", "new_generation"])
@@ -244,9 +246,7 @@ def test_listener_input_only_posts_one_acknowledgement_and_does_not_read_native_
     assert not owner._view_ack_pending
 
 
-@pytest.mark.parametrize(
-    "key", ["Return", "Menu", "type-ahead", "button Return", "button Space", "button Shift+Return"]
-)
+@pytest.mark.parametrize("key", ["Return", "Menu", "type-ahead"])
 def test_queued_key_intent_prevents_an_older_observation_from_replacing_its_picks(key: str) -> None:
     from sheet_manager.keys import (
         CONTEXTMENU,
@@ -256,7 +256,6 @@ def test_queued_key_intent_prevents_an_older_observation_from_replacing_its_pick
         TAB,
         A,
         KeyRoute,
-        button_route,
         route_key,
     )
 
@@ -286,7 +285,6 @@ def test_queued_key_intent_prevents_an_older_observation_from_replacing_its_pick
     owner.open_menu_for_keyboard = lambda: actions.append("Menu")
     owner.type_ahead = type_ahead
     owner.owns_keys = lambda: True
-    owner.owns_tree_keys = lambda: not key.startswith("button")
     handler = SimpleNamespace(_list=owner, _consumed={})
     pressed = method(
         "src/sheet_manager/uno_keys.py",
@@ -294,7 +292,6 @@ def test_queued_key_intent_prevents_an_older_observation_from_replacing_its_pick
         "keyPressed",
         {
             "route_key": route_key,
-            "button_route": button_route,
             "KeyRoute": KeyRoute,
             "TAB": TAB,
             "SHIFT": SHIFT,
@@ -305,39 +302,16 @@ def test_queued_key_intent_prevents_an_older_observation_from_replacing_its_pick
         "Return": (RETURN, "\r"),
         "Menu": (CONTEXTMENU, ""),
         "type-ahead": (A, "a"),
-        "button Return": (RETURN, "\r"),
-        "button Space": (SPACE, " "),
-        "button Shift+Return": (RETURN, "\r"),
     }[key]
     event = SimpleNamespace(KeyCode=code, KeyChar=char, Modifiers=SHIFT if "Shift" in key else 0)
-    assert pressed(handler, event) == (not key.startswith("button"))
+    assert pressed(handler, event)
     assert owner._input == 1 and owner._view_ack_pending
     live.indices = (0, 2)
     owner._observe_view()  # Already queued ahead of the key's action.
     owner._select.assert_not_called()
     assert not actions
-    if not key.startswith("button"):
-        queued[-1]()
-        assert actions == [key]
-
-
-@pytest.mark.parametrize("event", ["mousePressed", "mouseReleased"])
-def test_native_button_input_precedes_its_asynchronous_action(event: str) -> None:
-    owner, live = observer()
-    owner.post = Mock()
-    owner._acknowledge_view = Mock()
-    note = method(SOURCE, "SheetList", "_note_view_input", {})
-    owner._note_view_input = lambda: note(owner)
-    stamp = method(SOURCE, "SheetList", "note_input", {})
-    buttons = SimpleNamespace(_note_input=lambda: stamp(owner))
-    mouse = method("src/sheet_manager/uno_moves.py", "MoveButtons", event, {})
-    mouse(buttons, SimpleNamespace(Buttons=4))
-    assert owner._input == 0
-    mouse(buttons, SimpleNamespace(Buttons=1))
-    assert owner._input == 1 and owner._view_ack_pending
-    live.indices = (0, 2)
-    owner._observe_view()
-    owner._select.assert_not_called()
+    queued[-1]()
+    assert actions == [key]
 
 
 def test_visibility_guards_native_deck_access_after_sidebar_removal() -> None:

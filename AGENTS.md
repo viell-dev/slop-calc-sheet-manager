@@ -303,7 +303,7 @@ reconsider. The owner may report a defect themselves, in their own words.
   interceptor on the frame checks at dispatch time that the generation did not move, that the
   picked sheets are unchanged, and that they are exactly Calc's selected tabs.
   `uno_show.show_sheets` applies the reorder layer's undo rules: refuse without undo or beyond
-  the undo limit, one group, undo only its own group on failure, verify. A plain click or Enter
+  the undo limit, one group, undo only its own group on failure, verify. A double click or Enter
   makes the sheet Calc's only selected tab and reads that back: `setActiveSheet` keeps an
   existing group when the sheet belongs to it.
 - Refreshing reads every sheet and rebuilds the tree on the main thread, so `uno_list.py` limits
@@ -355,16 +355,24 @@ reconsider. The owner may report a defect themselves, in their own words.
 - The list is a borderless `TreeControl` (so that it is a direct child of the panel window) with
   a hidden root. With a hidden root, the tree peer mishandles every data-model change event and
   re-parents all rows under the root, so never change nodes in place: build a new data model and
-  restore selection, scroll position, and keyboard cursor. The list observes the native cursor via
+  restore selection, scroll position, and keyboard cursor. `uno_rows.py` paints full-width
+  backgrounds and separate gutter markers before native labels, then posts coalesced borders
+  after them because the label backgrounds can cover dividers. Keep native text/accessibility,
+  wheel input, and multi-sheet drag support; compound controls do not provide the same drag path.
+  Row geometry uses the configured row height, not `getNodeRect().Height`, which bounds the text.
+  The list observes unowned native cursor changes via
   `ACTIVE_DESCENDANT_CHANGED` on the peer's accessible tree context. The event's row context has a
   cached sibling index that maps directly to the flat rows; the callback reads only that index and
   records a ref from the shown handles. Delivery is synchronous in supported LibreOffice versions.
   Ignore intermediate focus events during model replacement/restoration, and remove the listener
   on failed setup and disposal. A disposed event row supplies no new position: catch only
   `DisposedException` from its getters and retain the last valid cursor; report other errors.
-  Never predict cursor movement from toolkit callback counts: a
-  native input event can be forwarded more than once. A rebuild cannot restore the tree's Shift
-  anchor, so the next Shift move starts a range at the cursor. Listener callbacks can arrive on
+  Selection keys are now consumed before native handling; forwarding a key can deliver it more
+  than once. Do not return unconsumed after updating the owned cursor. Pointer and keyboard
+  ranges share `Selection.anchor`, a retained ref that survives ordinary rebuilds and is dropped
+  by the same identity rules as the cursor. Record consumed key intent synchronously, coalesce
+  the UI write, and ignore native focus/selection while that write or a pointer gesture is pending.
+  Listener callbacks can arrive on
   other threads or during a change; they only record state or post work
   through `AsyncCallback`. Start threads only through `uno_calc.start_thread`, never with
   `threading`: `Thread.start` waits for the new thread, whose first steps can wait for
@@ -374,22 +382,26 @@ reconsider. The owner may report a defect themselves, in their own words.
   newer picks. An unpicked cursor moved during an invalid held gesture is deliberately not retained;
   the known-issues guide records that limit. The supported toolkit/controller interfaces expose
   no sidebar pre-release hook.
-- `uno_moves.py` owns four native buttons above the list, sized from the native minimums. Labels
-  provide accessible names; tooltips include disabled reasons. The list captures the observed
-  snapshot, refs and proof before posting a move request. Enablement shares the adapter's common
-  permission and plan checks without rescanning every sheet for each button; execution still
-  uses full `apply_order` preflight. Enablement reads the reported monitor generation, never
-  `check()`: that consumes pending undo evidence, which a modify notification may still need.
-  Alt+Home/Up/Down/End are local to the panel; Alt+Down
-  is reserved for moving sheets while the panel has focus; Calc's cell shortcut stays unchanged.
-  Button activation returns focus to the tree.
+- `uno_menu.py` owns context targeting, native tab grouping/restoration, and move enablement.
+  Right-click retains a transient row ref without changing picks. Extension move actions are in
+  an outer popup; Calc's customized menu is a child under Sheet actions, so its resource
+  controller cannot hide the added items. Capture the observed snapshot, refs, and proof before
+  posting a move. Use the common permission/plan checks and full `apply_order` preflight.
+  Run extension actions only after the native dispatch guard is released, then restore the saved
+  view against fresh indices, retained identities, proof, and original visibility. A queued
+  completion can run inside a native modal dialog: defer it until guarded dispatch returns,
+  including exceptions, before restoring view/group or running extension work. Explicit
+  native Select All/Deselect All commands retain their selection result. Alt+Home/Up/Down/End
+  remain local to the focused list, and a move returns focus to the tree.
+  The native header generates its own unavailable help ID (#81); the outer menu links to the
+  guide without intercepting global help or modifying the installed help system.
 - Calc sends no reliable notification for same-active tab selections. Each list caches the
   reflected `getSelectedSheets` method and samples its retained controller on the UI thread every
   0.25 seconds. Never run that getter in a timer worker or toolkit listener. Compare logical name
   membership, establish a fresh baseline after namespace/proof changes, and never consume pending
   modify evidence through the structural monitor's `check()` merely to observe tabs.
   List input acknowledges preceding native state at the listener boundary; queued Enter, menu,
-  type-ahead, and native button activation must not let an older sample replace their picks.
+  type-ahead, and move requests must not let an older sample replace their picks.
   Skip observation during a held tree press, drag, menu, move, restoration, or document lock.
   Hidden panels check visibility once a second without reading native tabs. Test sidebar
   visibility before calling `deck.isActive()` (the native method dereferences its controller),
@@ -399,17 +411,17 @@ reconsider. The owner may report a defect themselves, in their own words.
   deck layout. Check deck activity before fresh panel discovery and treat `NoSuchElementException`
   as a temporarily unavailable context. Actual native panel disposal disposes the list too.
   A token rejects a cancelled timer already posted to the UI queue, preventing duplicate chains.
-  The fixed-height native status above the buttons reports Calc's group separately from list
-  picks; changing the group must not move the tree under a held pointer.
-  Tab/Shift+Tab steps through enabled controls within the panel, then focuses the frame's
-  component window at either boundary. Native sidebar traversal alone does not reach these child
-  peers or leave them reliably. Posted focus requests refuse when focus or the active frame moved.
-- Keys: a toolkit `XKeyHandler` is registered while the tree or a move button has focus and checks
-  focus again for every key. Navigation keys go to the tree (the sidebar swallows what the
-  tree ignores); Enter, typed characters, and the menu keys are handled by the list; other
+  `uno_status.py` shows a footer only for a group of multiple Calc tabs, separately from list
+  picks. Its height changes below the tree, preserving the row origin under a held pointer.
+  Tab/Shift+Tab focuses the frame's component window. Native sidebar traversal alone does not
+  reach these child peers or leave them reliably. Posted focus requests refuse when focus or
+  the active frame moved.
+- Keys: a toolkit `XKeyHandler` is registered while the tree has focus and checks focus again
+  for every key. Selection/navigation, Enter, typed characters, and menu keys are consumed and
+  handled by the list; other
   shortcuts are resolved through the document, Calc, and global shortcut configurations and
   dispatched to the panel's frame; modified Tab combinations, F6, F10, Esc, modifier-only keys,
-  and unbound Alt mnemonics pass. Native buttons retain Space/Enter activation and navigation;
+  and unbound Alt mnemonics pass;
   everything else is consumed so it cannot reach a cell (`keys.py` documents the routing).
 - `tests/integration/run.py` runs with the tested office's bundled Python, installs into a new
   temporary profile, starts only its own process with a unique pipe, and disposes it afterwards.

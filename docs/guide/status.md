@@ -1,6 +1,6 @@
 # Status and plans
 
-The `0.0.2` test build targets the first feature release, `0.1.0`. The
+The `0.0.3` test build targets the first feature release, `0.1.0`. The
 [release page](./releases.md) lists currently published downloads; the notice above identifies
 the build this guide describes.
 
@@ -10,17 +10,18 @@ the build this guide describes.
   refuse it. It can be removed cleanly. It names the project's update feed, so that
   LibreOffice's Extension Manager can offer updates once builds are published.
 - **A sheet list in Calc's sidebar.** It shows every sheet in tab order, with the
-  active sheet, tab colours, hidden sheets, protection, and scenarios identified. Click to switch,
-  Ctrl+click or Shift+click to select, and use the keyboard or Calc's sheet tab menu. It refreshes
+  viewed sheet, tab colours, hidden sheets, protection, and scenarios identified. Click a full-width
+  row to select, double-click or Enter to switch, and Ctrl/Shift to select several. It refreshes
   after changes and follows this window's selected tabs even when its active sheet stays the same.
-  A separate status line identifies Calc's grouped tabs, which can differ from the list's picks.
+  A footer identifies grouped Calc tabs only while several are grouped; these can differ from picks.
 - **Drag and drop.** It reaches a new order with the fewest moves and
   applies the whole change as one undo step. It checks permissions first, and recovers and
   verifies if a change fails part-way. It is tested against real LibreOffice on workbooks of up to
   1,000 sheets. Drag any selection to an insertion line; the list scrolls near its edges.
-- **Move buttons.** Top, Up, Down, and Bottom act on the list's selection, in one
-  undo step, with Alt+Home/Up/Down/End shortcuts. Unavailable buttons explain why in their
-  tooltips, and a move keeps the sheets selected for the next press.
+- **Context actions.** Move to top, up, down, or bottom in one undo step, with
+  Alt+Home/Up/Down/End shortcuts and disabled reasons. Right-click targets the pointed row or
+  existing picked set without changing picks. Calc's customized menu is under **Sheet actions**;
+  temporary native grouping is restored on dismissal where safe. The menu also links to Help.
 - **Manual-install downloads and update feeds.** Each published build includes an OXT and checksum.
   Installed copies use the stable feed; later test builds are downloaded manually.
 

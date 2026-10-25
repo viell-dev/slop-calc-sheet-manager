@@ -28,9 +28,11 @@ instead. Take screenshots only of this workbook.
 1. **List.** Look at the list.
    Expected: 60 rows in the order of the tab bar. Alfa, Bravo, and Charlie show red, green, and
    blue squares. Hotel and India read "(hidden)", Kilo reads "(protected)", and the active sheet
-   starts with "▸".
+   has a separate arrow in its left gutter. Highlights and dividers span the row width.
 2. **Click.** Click the row "Echo".
-   Expected: Calc shows Echo; "▸" moves to Echo.
+   Expected: Echo is selected across the row and Calc stays on its previous sheet. Repeat at
+   the left edge and trailing whitespace. Double-click Echo: Calc shows it and the gutter arrow
+   moves there.
 3. **Selection without activation.** Ctrl+click "Golf", then Shift+click "Juliett".
    Expected: the list selects Golf to Juliett; Calc still shows Echo and only Echo's tab is
    selected in the tab bar.
@@ -69,14 +71,15 @@ instead. Take screenshots only of this workbook.
     Expected: Ctrl+Z removes the text; Ctrl+S saves without a dialog and the document's modified
     indicator in the status bar clears.
 15. **Menu by right click.** Click "Charlie", Ctrl+click "Echo", and right-click "Echo".
-    Expected: the same menu as right-clicking a sheet tab, including any customization of it, and
-    the tab bar now shows Charlie and Echo selected. Choose Hide Sheet: exactly Charlie and Echo
-    are hidden. Press Ctrl+Z.
+    Expected: move actions appear directly and Calc's customized menu is under Sheet actions.
+    List picks stay unchanged. Choose Sheet actions ▸ Hide Sheet: exactly Charlie and Echo are
+    hidden. Press Ctrl+Z. Right-click an unpicked row and cancel: the previous picks, viewed sheet,
+    and Calc tab group return. Sheet Manager Help opens the guide.
 16. **Menu by keyboard.** Click "Golf" and press the Menu key; press Esc. Then press Shift+F10.
     Expected: the same menu opens each time, positioned at the Golf row.
-17. **A click ends the menu's grouping.** Click "Charlie", Ctrl+click "Echo", press the Menu key,
-    and press Esc. Then click "Charlie", click a cell of the sheet, type `x`, and press Enter.
-    Expected: after the click the tab bar shows only Charlie selected, and the `x` appears only on
+17. **Activation ends grouped editing.** Group Charlie and Echo using Calc's tab bar. Double-click
+    "Charlie" in the list, click a cell of the sheet, type `x`, and press Enter.
+    Expected: the tab bar shows only Charlie selected, and the `x` appears only on
     Charlie, not on Echo. Delete the `x` afterwards.
 18. **Keyboard position survives changes.** Open Window ▸ New Window. In the first window click
     "Bravo" and press Ctrl+Down twice. In the second window colour another sheet's tab with
@@ -84,8 +87,8 @@ instead. Take screenshots only of this workbook.
     Expected: Bravo and Delta are selected: the keyboard position stayed on Delta. Close the
     second window.
 19. **Hidden sheets only.** Click "Hotel" (hidden), then right-click it.
-    Expected: Calc's active sheet does not change; a short menu offers only Show Sheet, which shows
-    Hotel as one undo step.
+    Expected: Calc's active sheet does not change; Show Sheet shows Hotel as one undo step.
+    The menu also offers guarded movement and Help.
 20. **Other windows.** Open a second workbook, type in its cells, and use its shortcuts; then
     return to the first workbook and click a row of its list.
     Expected: the second workbook behaves exactly as without the extension; the first list still

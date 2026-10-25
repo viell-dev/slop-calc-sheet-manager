@@ -31,7 +31,7 @@ from teardown import stalled_callbacks  # noqa: E402
 from xinput import RIGHT, Pointer, XInput  # noqa: E402
 
 from sheet_manager.reorder import Action, Sheet, target_order  # noqa: E402
-from sheet_manager.sheet_list import ACTIVE_MARK  # noqa: E402
+from sheet_manager.uno_calc import select_tabs  # noqa: E402
 
 NATO = [
     "Alfa",
@@ -123,7 +123,7 @@ class Workbook:
 
     def first_visible(self):
         rect = view.row_rect(self.tree, 0, scroll=False)
-        return -rect.Y // rect.Height
+        return max(0, -(rect.Y - 3) // self.tree.getProperty("RowHeight"))
 
     # What the document says
 
@@ -147,13 +147,21 @@ class Workbook:
         """Click the active sheet's row: the list gets the focus, nothing else changes."""
         self.click(self.order().index(self.active()))
 
-    def move_button(self, label):
-        button = view.move_buttons(self.panel)[label]
-        rectangle, tree = button.getPosSize(), self.tree.getPosSize()
-        self.pointer.click(
-            rectangle.X - tree.X + rectangle.Width // 2,
-            rectangle.Y - tree.Y + rectangle.Height // 2,
-        )
+    def double_click(self, index):
+        point = self.point(index)
+        self.pointer.click(*point, pause=0.02)
+        self.pointer.click(*point)
+
+    def move_action(self, action):
+        """Open the real menu and select one of its enabled move actions."""
+        picked = self.selection()
+        self.lab.input.tap("Menu", pause=0.4)
+        self.lab.input.tap("Home")
+        # These callers choose non-edge rows; all four actions are enabled.
+        for _ in range(("top", "up", "down", "bottom").index(action)):
+            self.lab.input.tap("Down")
+        self.lab.input.tap("Return", pause=0.5)
+        wait_until(lambda: self.selection() == picked, "menu picks restored")
 
     def choose(self, command):
         """Choose a menu entry with the keyboard; generated mnemonics differ between plugins."""
@@ -161,6 +169,9 @@ class Workbook:
             lambda: view.enabled_menu_items(self.lab.context, self.frame, PROGRAM) or None,
             "the menu's command states",
         )
+        self.lab.input.tap("End")
+        self.lab.input.tap("Up")
+        self.lab.input.tap("Right", pause=0.2)
         self.lab.input.tap("Home")
         for _ in range(items.index(command)):
             self.lab.input.tap("Down")
@@ -234,20 +245,46 @@ def wait_until(function, what, timeout=10):
     return wait_for(function, what, timeout=timeout)
 
 
+def native_modal():
+    """GTK confirmation windows are not always exposed by UNO's top-window inventory."""
+    active = subprocess.check_output(["xprop", "-root", "_NET_ACTIVE_WINDOW"], text=True)
+    window = active.split()[-1]
+    if window == "0x0":
+        return False
+    state = subprocess.check_output(
+        ["xprop", "-id", window, "_NET_WM_STATE", "_NET_WM_WINDOW_TYPE"], text=True
+    )
+    return "_NET_WM_STATE_MODAL" in state and "_NET_WM_WINDOW_TYPE_DIALOG" in state
+
+
+def configure_desktop_opener(output):
+    # The office inherits these only inside the private test process/profile.
+    os.environ["PATH"] = str(HERE) + os.pathsep + os.environ["PATH"]
+    os.environ["SHEET_MANAGER_URI_LOG"] = str(output / "opened-uris.txt")
+
+
 # Checks. Each returns evidence and raises AssertionError on failure.
 
 
 def check_click_activates(book):
-    book.click(4)
-    wait_until(lambda: book.active() == NAMES[4], "the clicked sheet to become active")
-    assert book.selection() == [NAMES[4]], book.selection()
-    assert book.labels()[4].startswith(ACTIVE_MARK), book.labels()[4]
-    return {"active": book.active(), "selection": book.selection(), "label": book.labels()[4]}
+    before = book.active(), book.calc_tabs()
+    evidence = []
+    for index, x in ((1, 5), (2, 20), (3, 50), (4, book.tree.getOutputSize().Width - 24)):
+        rect = view.row_rect(book.tree, index)
+        book.pointer.click(x, rect.Y + rect.Height // 2)
+        wait_until(lambda i=index: book.selection() == [NAMES[i]], "full-row selection")
+        assert (book.active(), book.calc_tabs()) == before
+        evidence.append({"x": x, "picks": book.selection()})
+    book.double_click(4)
+    wait_until(lambda: book.active() == NAMES[4], "double-click activation")
+    assert book.selection() == [NAMES[4]]
+    assert book.labels()[4] == NAMES[4]
+    return {"single_clicks": evidence, "double_click_active": book.active()}
 
 
 def check_ctrl_shift_selection(book):
-    book.click(1)
-    wait_until(lambda: book.active() == NAMES[1], "a plain click to activate")
+    book.double_click(1)
+    wait_until(lambda: book.active() == NAMES[1], "double-click activation")
     book.click(3, modifiers=("Control_L",))
     wait_until(lambda: len(book.selection()) == 2, "Ctrl+click to add a row")
     ctrl = book.selection()
@@ -283,6 +320,8 @@ def drag(book, source, target, fraction, *, hold=0.0, cancel=False, shot=None):
 
 
 def check_drag_two_sheets(book, fraction, gap):
+    select_tabs(book.lab.context, book.frame, [0, 2, 3])
+    wait_until(lambda: book.calc_tabs() == NAMES[:1] + NAMES[2:4], "a native Calc group")
     book.click(2)
     book.click(5, modifiers=("Control_L",))
     wait_until(lambda: book.selection() == [NAMES[2], NAMES[5]], "two separate rows selected")
@@ -306,7 +345,7 @@ def check_drag_two_sheets(book, fraction, gap):
     }
     assert after == expected, evidence
     assert len(undo_after) == len(undo_before) + 1 and undo_after[0] == "Move Sheets", evidence
-    assert book.active() == active and book.calc_tabs() == tabs, evidence
+    assert book.active() == active and set(book.calc_tabs()) == set(tabs), evidence
     wait_until(lambda: book.selection() == [NAMES[2], NAMES[5]], "the moved rows to stay selected")
     book.document.getUndoManager().undo()
     wait_until(lambda: book.order() == before, "one undo to restore the order")
@@ -316,11 +355,11 @@ def check_drag_two_sheets(book, fraction, gap):
 
 def check_move_controls(book, shortcuts):
     evidence = {}
-    for action, label, key in (
-        ("top", "Top", "Home"),
-        ("up", "Up", "Up"),
-        ("down", "Down", "Down"),
-        ("bottom", "Bottom", "End"),
+    for action, key in (
+        ("top", "Home"),
+        ("up", "Up"),
+        ("down", "Down"),
+        ("bottom", "End"),
     ):
         book.click(2)
         book.click(5, modifiers=("Control_L",))
@@ -333,17 +372,15 @@ def check_move_controls(book, shortcuts):
             book.calc_tabs(),
         )
         expected = list(target_order([Sheet(n) for n in before], picked, cast(Action, action)))
-        button = view.move_buttons(book.panel)[label]
-        wait_until(button.isEnabled, "the move control enabled")
         if shortcuts:
             book.lab.input.tap(key, modifiers=("Alt_L",), pause=0.3)
         else:
-            book.move_button(label)
+            book.move_action(action)
         wait_until(lambda e=expected: book.order() == e, "the requested move")
         wait_until(lambda e=expected: view.names(book.tree) == e, "the moved list order")
         wait_until(lambda p=picked: book.selection() == p, "the picked sheets to stay picked")
         assert book.undo_titles() == ["Move Sheets", *history]
-        assert book.active() == active and book.calc_tabs() == tabs
+        assert book.active() == active and set(book.calc_tabs()) == set(tabs)
         assert book.tree.hasFocus(), "Moving must leave keyboard focus in the list"
         evidence[action] = {"one_undo": True, "picks_kept": book.selection(), "view_kept": True}
         book.document.getUndoManager().undo()
@@ -354,120 +391,62 @@ def check_move_controls(book, shortcuts):
 
 def check_move_edges_and_refusal(book):
     book.click(0)
-    buttons = view.move_buttons(book.panel)
-    book.lab.input.tap("space", modifiers=("Control_L",), pause=0.3)
-    wait_until(lambda: all(not b.isEnabled() for b in buttons.values()), "no selection controls")
-    assert all("Select sheets" in b.getProperty("HelpText") for b in buttons.values())
-    book.click(0)
-    wait_until(
-        lambda: not buttons["Top"].isEnabled() and not buttons["Up"].isEnabled(), "edge controls"
-    )
-    assert "already in that position" in buttons["Top"].getProperty("HelpText")
     before, history = book.order(), book.undo_titles()
-    book.move_button("Top")  # A native disabled button must not dispatch.
-    assert book.order() == before and book.undo_titles() == history
-    for index in (1, 2):
-        book.move_button("Down")
-        wait_until(lambda i=index: book.order().index(NAMES[0]) == i, "a repeated Down press")
-        wait_until(lambda: book.selection() == [NAMES[0]], "the same sheet after repeated movement")
+    book.lab.input.tap("Menu", pause=0.4)
+    book.lab.screenshot("move-edge-disabled")
+    book.lab.input.tap("Home")  # Top and Up are disabled: Down is the first enabled action.
+    book.lab.input.tap("Return", pause=0.4)
+    wait_until(lambda: book.order().index(NAMES[0]) == 1, "edge menu to offer Down first")
+    book.move_action("down")
+    wait_until(lambda: book.order().index(NAMES[0]) == 2, "repeated menu movement")
     assert book.undo_titles() == ["Move Sheets", "Move Sheets", *history]
     book.document.getUndoManager().undo()
-    assert book.order().index(NAMES[0]) == 1
     book.document.getUndoManager().undo()
-    assert book.order() == before
-    book.document.protect("synthetic")
-    try:
-        book.click(2)
-        wait_until(lambda: all(not b.isEnabled() for b in buttons.values()), "protected controls")
-        assert all("protected" in b.getProperty("HelpText") for b in buttons.values())
-        history = book.undo_titles()
-        book.move_button("Bottom")
-        assert book.order() == before and book.undo_titles() == history
-        book.tree.setFocus()
-        book.lab.input.tap("End", modifiers=("Alt_L",), pause=0.8)
-        book.lab.screenshot("move-refused-protected")
-        book.lab.input.tap("Escape", pause=0.4)
-        assert book.order() == before and book.undo_titles() == history
-    finally:
-        book.document.unprotect("synthetic")
-    book.document.RecordChanges = True
-    try:
-        book.click(2)
-        wait_until(
-            lambda: all(not b.isEnabled() for b in buttons.values()), "recorded changes controls"
-        )
-        assert all("recorded" in b.getProperty("HelpText") for b in buttons.values())
-    finally:
-        book.document.RecordChanges = False
-    return {
-        "no_selection_disabled": True,
-        "edges_disabled": True,
-        "repeated_moves": True,
-        "protected_refusal": True,
-        "recorded_changes_disabled": True,
-    }
+    wait_until(lambda: book.order() == before, "two undo steps")
+    evidence = {"edge_actions_disabled": True, "repeated_moves": True}
+    for setting in ("protected", "recorded"):
+        if setting == "protected":
+            book.document.protect("synthetic")
+        else:
+            book.document.RecordChanges = True
+        try:
+            book.click(2)
+            book.lab.input.tap("Menu", pause=0.4)
+            book.lab.screenshot("move-disabled-" + setting)
+            book.lab.input.tap("Escape", pause=0.4)
+            history = book.undo_titles()
+            book.tree.setFocus()
+            book.lab.input.tap("End", modifiers=("Alt_L",), pause=0.6)
+            book.lab.input.tap("Escape", pause=0.4)
+            assert book.order() == before and book.undo_titles() == history
+            evidence[setting + "_refused"] = True
+        finally:
+            if setting == "protected":
+                book.document.unprotect("synthetic")
+            else:
+                book.document.RecordChanges = False
+    return evidence
 
 
 def check_move_focus_and_queued_navigation(book):
     book.click(2)
-    buttons = view.move_buttons(book.panel)
-    keep = book.document.Sheets.getByIndex(0).getCellRangeByName("A1").String
     before = book.order()
-    book.lab.input.tap("Tab", pause=0.3)
-    wait_until(buttons["Top"].hasFocus, "Tab to reach the Top button")
-    book.lab.input.tap("q", pause=0.2)
-    assert buttons["Top"].hasFocus()
-    assert book.document.Sheets.getByIndex(0).getCellRangeByName("A1").String == keep
-    book.lab.input.tap("space", pause=0.3)
-    expected = list(target_order([Sheet(n) for n in before], [NAMES[2]], "top"))
-    wait_until(lambda: book.order() == expected, "Space to press Top")
-    assert book.tree.hasFocus()
-    book.document.UndoManager.undo()
-    wait_until(lambda: view.names(book.tree) == before, "the original order")
-    book.click(2)
-    for _ in range(3):
-        book.lab.input.tap("Tab", pause=0.15)
-    wait_until(buttons["Down"].hasFocus, "Tab to reach Down")
-    book.lab.input.tap("Return", pause=0.3)
-    expected = list(target_order([Sheet(n) for n in before], [NAMES[2]], "down"))
-    wait_until(lambda: book.order() == expected, "Enter to press Down")
-    book.document.UndoManager.undo()
-    wait_until(lambda: view.names(book.tree) == before, "the original order")
-    book.click(2)
-    # No pause lets native navigation run ahead of its posted selection callback.
     book.lab.input.tap("Down", pause=0)
     book.lab.input.tap("Up", modifiers=("Alt_L",), pause=0.3)
     expected = list(target_order([Sheet(n) for n in before], [NAMES[3]], "up"))
-    wait_until(lambda: book.order() == expected, "the move to use the newly navigated row")
-    assert book.selection() == [NAMES[3]]
-    assert book.undo_titles() == ["Move Sheets"]
+    wait_until(lambda: book.order() == expected, "movement to use the newly navigated row")
+    assert book.selection() == [NAMES[3]] and book.undo_titles() == ["Move Sheets"]
     book.document.UndoManager.undo()
-    wait_until(lambda: book.order() == before, "one undo of the queued move")
-    wait_until(lambda: view.names(book.tree) == before, "the list after the queued move's undo")
-    book.click(2)
-    for _ in range(4):
-        book.lab.input.tap("Tab", pause=0.15)
-    wait_until(buttons["Bottom"].hasFocus, "Tab to reach the last button")
-    book.lab.input.tap("Tab", pause=0.3)
-
-    def outside():
-        return not book.tree.hasFocus() and not any(b.hasFocus() for b in buttons.values())
-
-    wait_until(outside, "Tab at the last button to leave the panel")
-    history = book.undo_titles()
-    book.lab.input.tap("Down", modifiers=("Alt_L",), pause=0.4)
-    book.lab.input.tap("Escape", pause=0.2)
-    assert book.order() == before and book.undo_titles() == history
-    book.tree.setFocus()
-    book.lab.input.tap("Tab", modifiers=("Shift_L",), pause=0.3)
-    wait_until(outside, "Shift+Tab at the first control to leave the panel")
-    return {
-        "native_button_keyboard": True,
-        "no_cell_input": True,
-        "queued_navigation": True,
-        "tab_boundaries": True,
-        "outside_panel_shortcut_scope": True,
-    }
+    wait_until(lambda: view.names(book.tree) == before, "one undo of the queued move")
+    for modifiers in ((), ("Shift_L",)):
+        book.tree.setFocus()
+        book.lab.input.tap("Tab", modifiers=modifiers, pause=0.3)
+        wait_until(lambda: not book.tree.hasFocus(), "Tab to leave the panel")
+        history = book.undo_titles()
+        book.lab.input.tap("Down", modifiers=("Alt_L",), pause=0.3)
+        book.lab.input.tap("Escape", pause=0.2)
+        assert book.order() == before and book.undo_titles() == history
+    return {"queued_navigation": True, "tab_boundaries": True, "outside_shortcut_scope": True}
 
 
 def check_drop_in_place_and_escape(book):
@@ -623,12 +602,10 @@ def reset(book):
             sheets.moveByName(name, index)
         sheets.getByIndex(index).IsVisible = True
     book.controller.setActiveSheet(sheets.getByIndex(0))
+    select_tabs(book.lab.context, book.frame, [0])
     book.document.getUndoManager().clear()
     wait_until(
-        lambda: (
-            [label.split(" (")[0] for label in book.labels()]
-            == [(ACTIVE_MARK if index == 0 else "") + name for index, name in enumerate(NAMES)]
-        ),
+        lambda: [label.split(" (")[0] for label in book.labels()] == NAMES,
         "the list to show the original workbook",
     )
 
@@ -677,6 +654,76 @@ def check_menu_keyboard(book):
             book, [NAMES[index]], lambda k=key: book.lab.input.tap(k[0], k[1])
         )
     return evidence
+
+
+def check_context_preserves_view_and_picks(book):
+    book.document.Sheets.getByName(NAMES[6]).getCellRangeByName("A1").String = "menu target"
+    select_tabs(book.lab.context, book.frame, [0, 2])
+    wait_until(lambda: book.selection() == [NAMES[0], NAMES[2]], "native grouped tabs")
+    book.click(1)
+    book.click(3, modifiers=("Control_L",))
+    before = book.active(), book.selection(), frozenset(book.calc_tabs())
+
+    def state():
+        return book.active(), book.selection(), frozenset(book.calc_tabs())
+
+    for index in (1, 6):
+        book.pointer.click(*book.point(index), button=RIGHT, pause=0.5)
+        assert book.selection() == before[1], "Context targeting changed the list's picks"
+        book.lab.input.tap("Escape", pause=0.5)
+        wait_until(lambda: state() == before, "cancel to restore the original view and picks")
+        book.lab.input.tap("space", modifiers=("Control_L",), pause=0.3)
+        assert book.selection() == [NAMES[1]], "Right-click changed the keyboard cursor"
+        book.lab.input.tap("space", modifiers=("Control_L",), pause=0.3)
+        assert book.selection() == before[1]
+    book.pointer.click(*book.point(6), button=RIGHT, pause=0.4)
+    book.choose(".uno:Remove")
+    wait_until(native_modal, "native delete confirmation")
+    assert book.calc_tabs() == [NAMES[6]], "Restoration ran inside the native confirmation"
+    assert book.selection() == before[1]
+    book.lab.screenshot("context-delete-confirmation")
+    book.lab.input.tap("Escape", pause=0.5)
+    wait_until(
+        lambda: state() == before, "cancelled native command to restore the original context"
+    )
+    order = book.order()
+    book.pointer.click(*book.point(6), button=RIGHT, pause=0.4)
+    book.lab.input.tap("Home")
+    for _ in range(3):
+        book.lab.input.tap("Down")
+    book.lab.input.tap("Return", pause=0.5)
+    wait_until(lambda: book.order()[-1] == NAMES[6], "context move of the unpicked row")
+    wait_until(lambda: state() == before, "context move to keep independent picks and view")
+    book.document.UndoManager.undo()
+    wait_until(lambda: book.order() == order, "one undo of the context move")
+    book.click(1)
+    book.pointer.click(*book.point(6), button=RIGHT, pause=0.4)
+    book.choose(".uno:TableSelectAll")
+    wait_until(lambda: book.calc_tabs() == order, "explicit native Select All Sheets")
+    wait_until(lambda: book.selection() == order, "following the explicit selection command")
+    return {
+        "picked_and_unpicked_cancel": True,
+        "unpicked_move": True,
+        "one_undo": True,
+        "explicit_native_selection": True,
+        "modal_command_context_kept": True,
+    }
+
+
+def check_help_menu(book):
+    path = book.lab.output / "opened-uris.txt"
+    before = path.read_text().splitlines() if path.exists() else []
+    book.focus_list()
+    book.lab.input.tap("Menu", pause=0.4)
+    book.lab.input.tap("End")
+    book.lab.input.tap("Return", pause=0.5)
+    wait_until(
+        lambda: path.exists() and len(path.read_text().splitlines()) > len(before),
+        "the native desktop opener to receive Help",
+    )
+    opened = path.read_text().splitlines()[len(before):]
+    assert opened == ["https://viell-dev.github.io/slop-calc-sheet-manager/"], opened
+    return {"native_desktop_uri": opened[0]}
 
 
 def check_menu_hidden_only(book):
@@ -750,15 +797,17 @@ def replace(document, name):
 
 
 def check_plain_click_ends_group(book):
-    """After the menu grouped two tabs, a plain click leaves one; typing edits one sheet (#25)."""
+    """Activation leaves one selected tab; subsequent typing edits only that sheet (#25)."""
     book.click(1)
     book.click(3, modifiers=("Control_L",))
     wait_until(lambda: book.selection() == [NAMES[1], NAMES[3]], "Bravo and Delta selected")
     book.lab.input.tap("Menu", pause=0.8)
     wait_until(lambda: book.calc_tabs() == [NAMES[1], NAMES[3]], "the menu to group the tabs")
     book.lab.input.tap("Escape", pause=0.5)
-    book.click(1)
-    wait_until(lambda: book.calc_tabs() == [NAMES[1]], "a plain click to leave one selected tab")
+    # Cancelling restored the original group. Establish a native group explicitly.
+    select_tabs(book.lab.context, book.frame, [1, 3])
+    book.double_click(1)
+    wait_until(lambda: book.calc_tabs() == [NAMES[1]], "activation to leave one selected tab")
 
     def cursor():
         address = book.controller.getSelection().getRangeAddress()
@@ -825,14 +874,16 @@ def check_cursor_across_refresh(book):
     foxtrot = book.document.getSheets().getByName(NAMES[5])
 
     def graphic():
-        return book.nodes()[5].getNodeGraphicURL()
+        return view.root(book.tree)
 
     evidence = {}
     for keysym, modifiers in (("space", ("Control_L",)), ("Down", ("Shift_L",))):
         outcomes = []
         for refreshed in (False, True):
-            foxtrot.TabColor = -1
-            wait_until(lambda: graphic() == book.nodes()[0].getNodeGraphicURL(), "no colour")
+            if foxtrot.TabColor != -1:
+                before_model = graphic()
+                foxtrot.TabColor = -1
+                wait_until(lambda m=before_model: graphic() not in (None, m), "no colour")
             book.click(1)
             book.lab.input.tap("Down", ("Control_L",))
             book.lab.input.tap("Down", ("Control_L",), pause=0.4)
@@ -855,9 +906,9 @@ def check_native_cursor_positions(book):
     foxtrot = book.document.getSheets().getByName(NAMES[5])
 
     def rebuild():
-        graphic = book.nodes()[5].getNodeGraphicURL()
+        graphic = view.root(book.tree)
         foxtrot.TabColor = 0x668833 if foxtrot.TabColor == 0x3FAF46 else 0x3FAF46
-        wait_until(lambda: book.nodes()[5].getNodeGraphicURL() != graphic, "the new list model")
+        wait_until(lambda: view.root(book.tree) not in (None, graphic), "the new list model")
 
     evidence = {}
     for key, index in (("End", -1), ("Home", 0)):
@@ -1069,7 +1120,7 @@ def check_picks_dropped_when_sheets_change(book):
             book.pointer.release()
         else:
             time.sleep(1.5)  # A refresh after the last way's undo would drop the pick.
-            book.click(3)  # Delta becomes active.
+            book.double_click(3)  # Delta becomes active.
             book.lab.input.tap("b", pause=0.5)  # Bravo is picked; Delta stays active.
             wait_until(lambda: book.selection() == [NAMES[1]], "typing to pick Bravo")
             time.sleep(1.5)
@@ -1270,6 +1321,7 @@ def check_click_hidden_before_refresh(book):
     with refresh_waiting(book):
         book.document.getSheets().getByName(target).IsVisible = False
         stale = "(hidden)" not in book.labels()[3]
+        book.pointer.click(*point, pause=0.02)
         book.pointer.click(*point, pause=0.8)
     wait_until(lambda: "(hidden)" in book.labels()[3], "the list to show the sheet hidden")
     time.sleep(0.5)
@@ -1288,12 +1340,14 @@ def check_click_hidden_before_refresh(book):
 def check_newer_selection_kept(book):
     """A delayed refresh keeps a Ctrl+click made after a plain click (#44)."""
     first, second = book.point(1), book.point(3)
+    model = view.root(book.tree)
     with refresh_waiting(book):
+        book.pointer.click(*first, pause=0.02)
         book.pointer.click(*first, pause=0.05)
         book.pointer.click(*second, modifiers=("Control_L",), pause=0.3)
-        stale = not book.labels()[1].startswith(ACTIVE_MARK)
+        stale = view.root(book.tree) == model
         before_refresh = book.selection()
-    wait_until(lambda: book.labels()[1].startswith(ACTIVE_MARK), "the marker to move to Bravo")
+    wait_until(lambda: view.root(book.tree) not in (None, model), "the activated row to repaint")
     time.sleep(1)
     evidence = {
         "marker_not_yet_moved": stale,
@@ -1318,14 +1372,14 @@ def check_other_document(lab, book):
         lab.input.tap("Return", pause=0.6)
         typed = other.document.getSheets().getByIndex(0).getCellRangeByName("C3").getString()
         other_list_works = True
-        other.click(1)
+        other.double_click(1)
         wait_until(lambda: other.active() == "Two", "the second document's list to activate")
     finally:
         other.close()
     book.frame.activate()
     book.window.toFront()
     time.sleep(1)
-    book.click(3)
+    book.double_click(3)
     wait_until(lambda: book.active() == NAMES[3], "the first document's list to still work")
     lab.input.tap("q", pause=0.4)
     evidence = {
@@ -1338,8 +1392,6 @@ def check_other_document(lab, book):
 
 
 def check_tab_selection_sync(book):
-    from sheet_manager.uno_calc import select_tabs
-
     book.click(0)
     before = view.root(book.tree)
     started = time.monotonic()
@@ -1408,7 +1460,7 @@ def run_checks(lab, output):
     book = Workbook(lab, "synthetic", NAMES)
     lab.screenshot("panel")
     checks = [
-        ("move_buttons", lambda: check_move_controls(book, False)),
+        ("move_menu", lambda: check_move_controls(book, False)),
         ("move_shortcuts", lambda: check_move_controls(book, True)),
         ("move_edges_and_refusal", lambda: check_move_edges_and_refusal(book)),
         ("move_focus_and_queued_navigation", lambda: check_move_focus_and_queued_navigation(book)),
@@ -1424,6 +1476,8 @@ def run_checks(lab, output):
         ("shortcuts_reach_calc", lambda: check_shortcuts(book)),
         ("menu_right_click", lambda: check_menu_right_click(book)),
         ("menu_keyboard", lambda: check_menu_keyboard(book)),
+        ("context_preserves_view_and_picks", lambda: check_context_preserves_view_and_picks(book)),
+        ("help_menu", lambda: check_help_menu(book)),
         ("menu_hidden_only", lambda: check_menu_hidden_only(book)),
         ("plain_click_ends_group", lambda: check_plain_click_ends_group(book)),
         ("single_tap_after_client_pause", lambda: check_single_tap_after_client_pause(book)),
@@ -1480,6 +1534,7 @@ def main():
     for vcl in arguments.vcl or ["gtk3", "gen"]:
         output = (arguments.output / f"ui-{vcl}").resolve()
         output.mkdir(parents=True, exist_ok=True)
+        configure_desktop_opener(output)
         result: dict[str, object] = {"vcl": vcl}
         summary[vcl] = result
         try:

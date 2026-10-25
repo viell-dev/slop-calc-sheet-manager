@@ -30,7 +30,6 @@ from sheet_list_view import (
     held_batch,
     labels,
     names,
-    nodes,
     on_main_thread,
     open_list,
     poll,
@@ -44,7 +43,7 @@ from sheet_list_view import (
 from teardown import Configured, run_checks
 
 from sheet_manager import keys, uno_list
-from sheet_manager.sheet_list import ACTIVE_MARK, SheetRow, row_label, tab_color
+from sheet_manager.sheet_list import SheetRow, row_label, tab_color
 from sheet_manager.uno_calc import select_tabs
 from sheet_manager.uno_reorder import snapshot
 from sheet_manager.uno_show import show_sheets
@@ -95,6 +94,14 @@ class Robot:
         self.toolkit.mouseMove(self._event(window, point, 0, 0))
         self.toolkit.mousePress(self._event(window, point, VCL_LEFT, 0))
 
+    def double_click(self, window, point, pause=0.6):
+        self.click(window, point, pause=0)
+        event = self._event(window, point, VCL_LEFT, 0)
+        event.ClickCount = 2
+        self.toolkit.mousePress(event)
+        self.toolkit.mouseRelease(event)
+        time.sleep(pause)
+
     def release(self, window, point):
         self.toolkit.mouseRelease(self._event(window, point, VCL_LEFT, 0))
 
@@ -115,6 +122,9 @@ class Robot:
 
     def choose(self, window, items, command):
         """Choose an entry of the open built-in menu by position."""
+        self.key(window, keys.END)
+        self.key(window, keys.UP)
+        self.key(window, keys.RIGHT)
         self.key(window, keys.HOME)
         for _ in range(items.index(command)):
             self.key(window, keys.DOWN)
@@ -236,8 +246,8 @@ def check_states_and_refresh(context, desktop):
     _, tree = open_list(context, document)
     expected = expected_labels(document)
     poll(lambda: labels(tree) == expected, f"the labels {expected}")
-    graphics = {node.DataValue: node.getNodeGraphicURL() for node in nodes(tree)}
-    assert graphics["East"] and graphics["East"] != graphics["North"], graphics
+    # Tab colours and the current marker are painted in the gutter; the text stays plain.
+    assert sheets.getByName("East").TabColor != sheets.getByName("North").TabColor
     sheets.insertNewByName("Added", sheets.getCount())
     poll(lambda: names(tree)[-1:] == ["Added"], "an inserted sheet to appear")
     sheets.getByName("Added").setName("Renamed")
@@ -251,7 +261,7 @@ def check_states_and_refresh(context, desktop):
     poll(lambda: labels(tree) == expected_labels(document), "the active marker to move")
     seen = labels(tree)
     close_workbook(context, document)
-    return {"labels": seen, "graphics_differ": True}
+    return {"labels": seen, "plain_labels": True}
 
 
 def tabs_of(context, document):
@@ -275,7 +285,10 @@ def check_selection_and_menu(context, desktop, menus):
 
     say("click, Ctrl+click, Shift+click, hidden row")
     robot.click(tree, row_point(tree, 2))
-    poll(lambda: controller.getActiveSheet().getName() == "Three", "a click to activate")
+    poll(lambda: selection(tree, sheet_names) == ["Three"], "a click to select")
+    assert controller.getActiveSheet().getName() != "Three"
+    robot.double_click(tree, row_point(tree, 2))
+    poll(lambda: controller.getActiveSheet().getName() == "Three", "double-click activation")
     robot.click(tree, row_point(tree, 4), modifiers=VCL_MOD1)
     poll(lambda: selection(tree, sheet_names) == ["Three", "Five"], "Ctrl+click")
     robot.click(tree, row_point(tree, 0), modifiers=VCL_SHIFT)
@@ -311,15 +324,15 @@ def check_selection_and_menu(context, desktop, menus):
     poll(lambda: hidden() == ["Six"], "undo to show the sheets again")
     poll(lambda: labels(tree) == expected_labels(document), "the list to show them again")
 
-    say("a plain click after the menu leaves exactly one selected tab (#25)")
+    say("activation after the menu leaves exactly one selected tab (#25)")
     robot.click(tree, row_point(tree, 1))
     robot.click(tree, row_point(tree, 3), modifiers=VCL_MOD1)
     robot.click(tree, row_point(tree, 3), buttons=VCL_RIGHT)
     poll(lambda: tabs() == ["Two", "Four"], "the menu to group the tabs")
     robot.key(tree, keys.ESCAPE)
     time.sleep(0.5)
-    robot.click(tree, row_point(tree, 1))
-    poll(lambda: tabs() == ["Two"], "a plain click to leave one selected tab")
+    robot.double_click(tree, row_point(tree, 1))
+    poll(lambda: tabs() == ["Two"], "activation to leave one selected tab")
     after_click = tabs()
     close_workbook(context, document)
     return {
@@ -463,7 +476,7 @@ def check_stale_clicks(context, desktop):
     def pick_bravo_and_delta():
         """Pick Bravo and Delta with Delta active, once no refresh is pending any more."""
         time.sleep(1.5)  # A refresh after the last step's undo would drop the picks.
-        robot.click(tree, row_point(tree, 3))  # Delta becomes active.
+        robot.double_click(tree, row_point(tree, 3))  # Delta becomes active.
         robot.click(tree, row_point(tree, 1), modifiers=VCL_MOD1)
         poll(lambda: selection(tree, SIX) == ["Bravo", "Delta"], "Bravo and Delta picked")
         time.sleep(1.5)
@@ -571,7 +584,7 @@ def check_stale_clicks(context, desktop):
     settled()
     point = row_point(tree, 3)
     sheets.getByName("Delta").IsVisible = False
-    robot.click(tree, point, pause=0)  # Queued before the list's refresh.
+    robot.double_click(tree, point, pause=0)  # Queued before the list's refresh.
     poll(lambda: "(hidden)" in labels(tree)[3], "the list to show Delta hidden")
     time.sleep(1)
     results["click_hidden_before_refresh"] = unchanged("hide, click")
@@ -581,7 +594,7 @@ def check_stale_clicks(context, desktop):
     settled()
     first, second = row_point(tree, 1), row_point(tree, 3)
     sheets.getByName("Foxtrot").TabColor = 0x2A6099  # Queues an ordinary delayed refresh.
-    robot.click(tree, first, pause=0)
+    robot.double_click(tree, first, pause=0)
     robot.click(tree, second, modifiers=VCL_MOD1, pause=0)
     poll(lambda: active() == "Bravo", "the plain click to go to Bravo")
     settled()  # The delayed refresh has run: Bravo carries the active marker.
@@ -813,6 +826,7 @@ def measure_large_workbook(context, desktop, count):
     controller = document.getCurrentController()
     target = document.getSheets().getByIndex(count // 2)
     started = time.monotonic()
+    inactive_model = root(tree)
     controller.setActiveSheet(target)
     order = list(document.getSheets().getElementNames())
     poll(lambda: selection(tree, order) == [target.getName()], "a large list to follow", 120)
@@ -821,8 +835,9 @@ def measure_large_workbook(context, desktop, count):
         parent = root(tree)
         return (
             parent is not None
+            and parent != inactive_model
             and parent.getChildCount() == count
-            and parent.getChildAt(count // 2).getDisplayValue() == ACTIVE_MARK + target.getName()
+            and parent.getChildAt(count // 2).getDisplayValue() == target.getName()
         )
 
     # The lightweight observer can follow the selection before the preceding activation's
@@ -845,7 +860,6 @@ def measure_large_workbook(context, desktop, count):
     for color in (0x2A6099, 0x993322, 0x228833):
         previous = root(tree)
         assert previous is not None
-        graphic = previous.getChildAt(0).getNodeGraphicURL()
         started = time.monotonic()
         first.TabColor = color
         poll(
@@ -859,7 +873,6 @@ def measure_large_workbook(context, desktop, count):
         assert current.getChildCount() == count
         assert current.getChildAt(0).DataValue == order[0]
         assert current.getChildAt(count - 1).DataValue == order[-1]
-        assert current.getChildAt(0).getNodeGraphicURL() != graphic
     close_workbook(context, document)
     return {
         "sheets": count,

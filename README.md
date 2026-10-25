@@ -13,21 +13,23 @@ updates, removal, use, known issues, troubleshooting, and reporting a problem.
 
 ## Status
 
-The `0.0.2` test build targets the first feature release, `0.1.0`, and is intended for testing.
+The `0.0.3` test build targets the first feature release, `0.1.0`, and is intended for testing.
 See [Releases and test builds](https://viell-dev.github.io/slop-calc-sheet-manager/guide/releases)
 for currently published downloads. It lists the workbook's sheets, supports selection, drag and
-drop, and four move buttons with keyboard shortcuts,
+drop, and move actions with keyboard shortcuts,
 handles keyboard navigation, and opens Calc's sheet tab menu. Each extension move is one undo step.
 It follows this window's Calc tab selection and shows grouped-editing feedback separately from
 the list's own picks. Its features include:
 
 - every sheet in document order, kept in sync with changes from anywhere, with the active sheet,
   hidden sheets, tab colours, and protection shown;
-- click to go to a sheet, and Ctrl+click and Shift+click to select several, as on the tab bar;
+- full-width rows: click to select, double-click or Enter to go to a sheet, and Ctrl/Shift to
+  select several;
 - drag and drop of one or more selected sheets, with an insertion line and scrolling near the
   edges;
-- buttons to move the selection to the top, up, down, or to the bottom;
-- the sheet tab bar's own context menu, including your customizations of it;
+- context-menu actions to move sheets to the top, up, down, or to the bottom;
+- the sheet tab bar's own customized menu under **Sheet actions**, with temporary context
+  targeting that preserves independent list picks and restores the previous view where safe;
 - complete keyboard operation;
 - one undo step per change, and respect for protected and read-only documents.
 
@@ -95,6 +97,8 @@ explains the model; [RELEASING.md](RELEASING.md) gives the maintainer rules and 
 - After Ctrl+S from the list, keyboard focus moves to the sheet (#23).
 - A change that may replace a sheet clears the list's selection conservatively. Large lists are
   rebuilt after changes, which can delay the active-sheet marker (#22).
+- The sidebar header's `?` opens LibreOffice's unavailable help topic for this extension. Use
+  **Sheet Manager Help** in the context menu for the project guide (#81).
 - The sheet tab menu runs LibreOffice's own Duplicate Sheet and Move or Copy
   Sheet. In LibreOffice 26.8.0 and 26.8.1 these commands copy formulas with relative sheet
   references incorrectly ([tdf#173608](https://bugs.documentfoundation.org/show_bug.cgi?id=173608)),
