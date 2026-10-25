@@ -32,7 +32,8 @@ If it still does not appear, [report it](./report.md) with LibreOffice's version
 
 ## No update is offered
 
-There is no release yet, so the update feeds are empty. Once releases exist:
+An empty update result can be expected. If only test builds have been published, the stable feed
+is empty:
 
 - **Check for Updates** offers only stable releases newer than the installed one, and only those
   your LibreOffice version can run.

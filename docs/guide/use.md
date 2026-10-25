@@ -1,7 +1,8 @@
 # Use the sheet list
 
-**Unreleased:** these instructions describe the development version. There is no published build
-yet. See [Install, update, and remove](./install.md) to build it yourself.
+These instructions describe the `0.0.2` test build for `0.1.0`. See
+[Install, update, and remove](./install.md) for setup and
+[Releases and test builds](./releases.md) for available downloads.
 
 ## Open it
 

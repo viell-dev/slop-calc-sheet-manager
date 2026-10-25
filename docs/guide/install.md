@@ -12,19 +12,8 @@ See [Compatibility and known issues](./known-issues.md) for the environments tha
 
 ## Install
 
-There is no release yet. When there is, download the `.oxt` file from
-[GitHub Releases](https://github.com/viell-dev/slop-calc-sheet-manager/releases) and install it as
-described below.
-
-Until then, you can build the development version yourself. Its sheet list is unreleased, so this is
-mainly useful for testing.
-
-1. Get the source with Git:
-   `git clone https://github.com/viell-dev/slop-calc-sheet-manager.git`.
-2. In the `slop-calc-sheet-manager` folder, run `python tools/build.py` with Python 3.12 or later.
-   On Windows, LibreOffice's own Python works too:
-   `& 'C:\Program Files\LibreOffice\program\python.exe' tools/build.py`.
-3. The package is `dist/sheet-manager-<version>.oxt`, named after the version it was built as.
+Download an available `.oxt` from [Releases and test builds](./releases.md). Test builds are marked
+**Pre-release** on GitHub; check their notes and the [known issues](./known-issues.md) before use.
 
 To install a package:
 
@@ -34,6 +23,17 @@ To install a package:
 4. Open a workbook in Calc. Open the sidebar with **View ▸ Sidebar** (Ctrl+F5), then select
    **Sheet Manager** in the sidebar's tab bar.
 
+### Build from source
+
+For development or testing, you can build the package yourself:
+
+1. Get the source with Git:
+   `git clone https://github.com/viell-dev/slop-calc-sheet-manager.git`.
+2. In the `slop-calc-sheet-manager` folder, run `python tools/build.py` with Python 3.12 or later.
+   On Windows, LibreOffice's own Python works too:
+   `& 'C:\Program Files\LibreOffice\program\python.exe' tools/build.py`.
+3. The package is `dist/sheet-manager-<version>.oxt`, named after the version it was built as.
+
 ## Check a download
 
 Each release also has an `.oxt.sha256` file with the package's SHA-256 checksum. To check a
@@ -42,15 +42,15 @@ download, compare the checksum of the `.oxt` file with that file's content.
 - On Linux, in the download folder:
 
   ```sh
-  sha256sum -c sheet-manager-0.1.0.oxt.sha256
+  sha256sum -c sheet-manager-0.0.2.oxt.sha256
   ```
 
   It prints `OK` for a matching file.
 - On Windows, in PowerShell:
 
   ```powershell
-  (Get-FileHash .\sheet-manager-0.1.0.oxt -Algorithm SHA256).Hash
-  Get-Content .\sheet-manager-0.1.0.oxt.sha256
+  (Get-FileHash .\sheet-manager-0.0.2.oxt -Algorithm SHA256).Hash
+  Get-Content .\sheet-manager-0.0.2.oxt.sha256
   ```
 
   The two values must be the same. PowerShell prints the checksum in capitals.
@@ -63,7 +63,7 @@ releases, and offers only those your LibreOffice version can run.
 
 - **When it asks.** Sheet Manager makes no network requests of its own, and opening a workbook does
   not check for updates.
-- **Today.** No build is published, so no update is offered yet.
+- **Before a stable release.** If only test builds are published, the stable feed offers no update.
 - **Test builds.** Download their `.oxt` packages from
   [Releases and test builds](./releases.md#test-builds). They are marked **Pre-release** on GitHub.
   Installing one keeps you on the stable feed, so the final release is offered when it appears;
