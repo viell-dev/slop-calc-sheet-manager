@@ -5,6 +5,38 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+No changes recorded yet.
+
+## 0.0.2 - 2026-10-25
+
+First test build for 0.1.0. This build is intended for testing with synthetic or backed-up
+workbooks. It requires LibreOffice 26.2.1 or later with Python support.
+
+- Find every sheet in a vertical sidebar list, with tab colours and active, hidden, protected,
+  and scenario states identified.
+- Click to activate a sheet, use Ctrl/Shift selection independently of Calc's grouped tabs, and
+  navigate or search by typing with the keyboard.
+- Move selected sheets by drag and drop or Top, Up, Down, and Bottom buttons, with Alt shortcuts,
+  insertion feedback, and edge scrolling. Each extension move is one undo step.
+- Follow changes from Calc tabs, menus, macros, other windows, undo and redo. A separate status
+  identifies the Calc tabs affected by grouped cell editing.
+- Use Calc's own sheet-tab menu for the picked sheets. Hidden-sheet Show and reorder operations
+  check permissions, reject stale targets, and verify recovery after a failed operation.
+- Install manually from the OXT asset and check its SHA-256 file. Test builds are marked
+  **Pre-release**; installed copies keep stable updates enabled and later test builds are manual
+  downloads.
+
+Known limits include conservative selection clearing after uncertain structural changes,
+full-tree property refresh costs on large workbooks, Ctrl+S moving focus to the sheet, and
+native range/cursor limits after a rebuild or a refused held gesture. See
+[Compatibility and known issues](https://viell-dev.github.io/slop-calc-sheet-manager/guide/known-issues)
+and the [user guide](https://viell-dev.github.io/slop-calc-sheet-manager/) before use.
+
+## Development history before 0.0.2
+
+These notes record implementation and verification work before the first test build; they are
+historical development notes, not earlier published releases.
+
 - The list follows this window's selected Calc tabs even when the active sheet does not change.
   A status line identifies grouped Calc tabs separately from independent list picks. Observation
   pauses while the panel is hidden and resumes on reopening, preserving newer list input and

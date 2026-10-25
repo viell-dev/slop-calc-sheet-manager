@@ -13,11 +13,13 @@ updates, removal, use, known issues, troubleshooting, and reporting a problem.
 
 ## Status
 
-Under development; there is no release yet. **Unreleased:** the development version lists the
-workbook's sheets, supports selection, drag and drop, and four move buttons with keyboard shortcuts,
+The `0.0.2` test build targets the first feature release, `0.1.0`, and is intended for testing.
+See [Releases and test builds](https://viell-dev.github.io/slop-calc-sheet-manager/guide/releases)
+for currently published downloads. It lists the workbook's sheets, supports selection, drag and
+drop, and four move buttons with keyboard shortcuts,
 handles keyboard navigation, and opens Calc's sheet tab menu. Each extension move is one undo step.
 It follows this window's Calc tab selection and shows grouped-editing feedback separately from
-the list's own picks. The first release, 0.1.0, is planned to offer:
+the list's own picks. Its features include:
 
 - every sheet in document order, kept in sync with changes from anywhere, with the active sheet,
   hidden sheets, tab colours, and protection shown;
@@ -62,8 +64,8 @@ expected to, please [report it](CONTRIBUTING.md#report-a-defect).
 
 ## Install and update
 
-No download is published yet. When releases are available, download the `.oxt` from
-[GitHub Releases](https://github.com/viell-dev/slop-calc-sheet-manager/releases), open it in
+Download an available `.oxt` package from
+[Releases and test builds](https://viell-dev.github.io/slop-calc-sheet-manager/guide/releases), open it in
 LibreOffice, and follow Tools ▸ Extension Manager's installation prompts. Restart LibreOffice if
 asked, then open a Calc workbook and select the Sheet Manager deck in the sidebar. Each release
 also includes an `.oxt.sha256` file for checking the download's SHA-256 hash.
@@ -89,8 +91,7 @@ explains the model; [RELEASING.md](RELEASING.md) gives the maintainer rules and 
 
 ## Known issues
 
-- Tab-only selection changes reach the list at the next sheet switch; the list refreshes after
-  other sheet changes.
+- Changes made outside the list are observed periodically, so they can appear after a short delay.
 - After Ctrl+S from the list, keyboard focus moves to the sheet (#23).
 - A change that may replace a sheet clears the list's selection conservatively. Large lists are
   rebuilt after changes, which can delay the active-sheet marker (#22).

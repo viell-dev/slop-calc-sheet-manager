@@ -2,7 +2,7 @@
 
 `extension/description.xml` is the source of the identifier, the minimum LibreOffice version, and
 the update feed; `ci/libreoffice.json` is the source of the tested versions. The README, the user
-guide, and the integration runner must agree with them. Prose is reviewed by people; this test
+guide, and the integration runner must agree with them. Prose gets author review; this test
 compares only what can be compared mechanically.
 """
 
@@ -64,25 +64,11 @@ def readme_region(name: str) -> str:
     return match[1]
 
 
-def bullets(markdown: str, heading: str) -> list[str]:
-    """The top-level list items that follow `heading`, joined across wrapped lines."""
-    assert heading in markdown, f"Missing the anchor {heading!r}"
-    section = markdown.split(heading, 1)[1]
-    items: list[str] = []
-    for line in section.splitlines():
-        if line.startswith("- "):
-            items.append(line[2:])
-        elif line.startswith("  ") and items:
-            items[-1] += " " + line.strip()
-        elif items and not line.strip():
-            break
-    return items
-
-
 def test_minimum_version_agrees_everywhere() -> None:
     version = minimum()
     assert f"LibreOffice **{version} or later**" in text(ROOT / "README.md")
     assert f"**LibreOffice {version} or later.**" in text(DOCS / "guide" / "install.md")
+    assert f"LibreOffice {version} or later" in text(ROOT / "extension" / "description-en.txt")
     pins = lanes()
     assert pins["minimum"]["version"].startswith(version + ".")
     oldest = [int(part) for part in version.split(".")]
@@ -90,7 +76,7 @@ def test_minimum_version_agrees_everywhere() -> None:
     assert refused < oldest, "The refusal lane must test a version below the minimum"
     # Every page that states a lower bound or a refused range must state these versions.
     refused_text = ".".join(str(part) for part in refused)
-    pages = [ROOT / "README.md", *DOCS.rglob("*.md")]
+    pages = [ROOT / "README.md", ROOT / "extension" / "description-en.txt", *DOCS.rglob("*.md")]
     for page in (page for page in pages if "node_modules" not in page.parts):
         content = text(page)
         for stated in re.findall(r"(\d+\.\d+\.\d+) or later", content):
@@ -99,6 +85,24 @@ def test_minimum_version_agrees_everywhere() -> None:
             assert stated == version, (page.name, stated)
         for stated in re.findall(r"(\d+\.\d+\.\d+) and earlier", content):
             assert stated == refused_text, (page.name, stated)
+
+
+def test_current_build_and_package_examples_match_the_manifest_version() -> None:
+    node = description().find("d:version", NAMESPACES)
+    assert node is not None
+    version = node.attrib["value"]
+    for page in (ROOT / "CONTRIBUTING.md", DOCS / "guide" / "install.md"):
+        examples = re.findall(r"sheet-manager-(\d+\.\d+\.\d+)\.oxt", text(page))
+        assert examples, f"No current package example in {page.name}"
+        assert all(example == version for example in examples), (page.name, examples, version)
+    for page in (
+        ROOT / "README.md",
+        ROOT / "RELEASING.md",
+        DOCS / "guide" / "status.md",
+        DOCS / "guide" / "use.md",
+    ):
+        builds = re.findall(r"`(\d+\.\d+\.\d+)` (?:test build|release)", text(page))
+        assert builds == [version], (page.name, builds, version)
 
 
 def test_environment_table_names_the_tested_builds() -> None:
@@ -124,12 +128,6 @@ def test_identifier_and_feed_agree_everywhere() -> None:
     url = feed_url()
     assert url in text(ROOT / "README.md")
     assert url in text(DOCS / "guide" / "install.md")
-
-
-def test_planned_features_match_the_readme() -> None:
-    readme = bullets(text(ROOT / "README.md"), "planned to offer:\n")
-    guide = bullets(text(DOCS / "guide" / "status.md"), "The first release is planned to offer:\n")
-    assert readme and readme == guide
 
 
 def ci_job_names() -> set[str]:

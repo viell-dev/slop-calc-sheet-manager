@@ -1,4 +1,6 @@
-{{Sheet Manager adds a sidebar deck to LibreOffice Calc. This development build contains an empty panel; sheet management controls are still under development.}}
+{{Sheet Manager lists a Calc workbook's sheets in a vertical sidebar. Find and select sheets, move them by dragging or with buttons and keyboard shortcuts, and use Calc's sheet-tab menu. Each extension move is one undo step.}}
+
+{{This is a test build for 0.1.0. Try it with synthetic or backed-up workbooks and check the known issues in the user guide: https://viell-dev.github.io/slop-calc-sheet-manager/guide/known-issues}}
 
 {{Requires LibreOffice 26.2.1 or later with Python support.}}
 {{Licence: MPL-2.0 (Mozilla Public License 2.0). The complete licence is included as LICENSE.txt.}}

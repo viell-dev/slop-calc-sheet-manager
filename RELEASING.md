@@ -6,10 +6,10 @@ owner's standing approval. Readiness includes the checks below and the independe
 the owner's sign-in; prepare the listing text, screenshots, compatibility information, and files
 before asking them to sign in. Do not put that account's credentials in CI.
 
-There is no published build yet. The `0.0.1` changelog section is an unpublished development
-baseline for exercising the release dry run, not a decision to ship it. The first feature release
-remains 0.1.0. Let the initial Pages deployment publish empty feeds before reserving the first
-version tag.
+The `0.0.2` test build targets the first feature release, `0.1.0`. Current published builds are
+listed on [Releases and test builds](https://viell-dev.github.io/slop-calc-sheet-manager/guide/releases).
+The `0.0.1` changelog section is an unpublished development baseline, not a release. Before the
+first publication, let Pages deploy empty feeds before reserving a version tag.
 
 ## Versions and titles
 
@@ -136,10 +136,9 @@ An older stalled draft may be completed even after a higher version has been pub
 sort by version, so the recovered build enters history without replacing the newest offer.
 If publication succeeded but Pages failed, rerun **Pages** on `main`; do not republish.
 
-The tag/draft/upload/publish sequence has mock coverage but has not been executed live. The first
-publication, whether stable or candidate, will be its first live test. Keep this recovery
-procedure open during that run; if the reserved tag or draft content is uncertain, abandon it
-and use a higher version.
+The tag/draft/upload/publish sequence has mock coverage; each actual publication still needs the
+live verification above. Keep this recovery procedure open during publication. If the reserved
+tag or draft content is uncertain, abandon it and use a higher version.
 
 ## Feed storage and safeguards
 
