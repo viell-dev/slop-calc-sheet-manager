@@ -64,11 +64,12 @@ releases, and offers only those your LibreOffice version can run.
 - **When it asks.** Sheet Manager makes no network requests of its own, and opening a workbook does
   not check for updates.
 - **Today.** No build is published, so no update is offered yet.
-- **Test builds.** Release candidates are marked **Pre-release** on GitHub Releases and listed in
-  the [prerelease feed](https://viell-dev.github.io/slop-calc-sheet-manager/updates/prerelease.xml).
-  They have version numbers below the release they test: for example, `0.0.90` tests `0.1.0`.
-  Installing one keeps you on the stable feed, so the final release is offered to you when it
-  appears.
+- **Test builds.** Download their `.oxt` packages from
+  [Releases and test builds](./releases.md#test-builds). They are marked **Pre-release** on GitHub.
+  Installing one keeps you on the stable feed, so the final release is offered when it appears;
+  later test builds are downloaded manually. Their numeric versions sort below that final
+  release in LibreOffice. See [Version numbers](./releases.md#version-numbers) for why SemVer
+  suffixes such as `-rc.1` cannot be used directly.
 
 ## Remove
 

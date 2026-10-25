@@ -72,12 +72,19 @@ checks the [stable feed](https://viell-dev.github.io/slop-calc-sheet-manager/upd
 through LibreOffice's own update mechanism; it does not make network requests when opening a
 workbook. Updates requiring a newer LibreOffice cannot be installed on an older version.
 
-Testers can download releases marked **Pre-release** directly. Their plain numeric version is
-lower than the final release they test: for example, `0.0.90` tests `0.1.0`. Installing one keeps
-stable updates enabled; it does not subscribe to later candidates. Find those on GitHub Releases
-or in the [prerelease feed](https://viell-dev.github.io/slop-calc-sheet-manager/updates/prerelease.xml),
-which lists every published build, including stable releases. See [RELEASING.md](RELEASING.md)
-for the release procedure and version rules.
+Every published build, including test builds marked **Pre-release**, has a GitHub release with
+an `.oxt` manual-install package and its checksum. Find test downloads on
+[Releases and test builds](https://viell-dev.github.io/slop-calc-sheet-manager/guide/releases#test-builds).
+Installing one keeps stable updates enabled; later test builds are downloaded manually.
+
+Versions are **not full SemVer** because LibreOffice itself treats `0.1.0-rc.1` as newer than
+`0.1.0`: the final would not be offered as an update, and manually installing it would be shown
+as a downgrade. This is independent of the extension directory. We use increasing numeric
+versions below the final instead, such as `0.0.2`, `0.0.3`, then `0.1.0`. GitHub's explicit
+**Pre-release** flag identifies test builds; no patch numbers are reserved, so `0.1.90` can be
+an ordinary stable patch. The
+[version guide](https://viell-dev.github.io/slop-calc-sheet-manager/guide/releases#version-numbers)
+explains the model; [RELEASING.md](RELEASING.md) gives the maintainer rules and evidence.
 
 ## Known issues
 

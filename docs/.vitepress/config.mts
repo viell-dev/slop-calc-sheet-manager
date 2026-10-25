@@ -22,9 +22,9 @@ function releases(): PublishedBuild[] {
   return JSON.parse(readFileSync(path, "utf8")) as PublishedBuild[];
 }
 
-function newest(builds: PublishedBuild[], prerelease: boolean): PublishedBuild | null {
+function ordered(builds: PublishedBuild[]): PublishedBuild[] {
   const order = (build: PublishedBuild) => build.version.split(".").map(Number);
-  const candidates = builds.filter((build) => build.prerelease === prerelease);
+  const candidates = [...builds];
   candidates.sort((a, b) => {
     const [x, y] = [order(a), order(b)];
     for (let index = 0; index < Math.max(x.length, y.length); index += 1) {
@@ -35,11 +35,15 @@ function newest(builds: PublishedBuild[], prerelease: boolean): PublishedBuild |
     }
     return 0;
   });
-  return candidates[0] ?? null;
+  return candidates;
 }
 
 export interface ThemeConfig extends DefaultTheme.Config {
-  release: { stable: PublishedBuild | null; prerelease: PublishedBuild | null };
+  release: {
+    stable: PublishedBuild | null;
+    prerelease: PublishedBuild | null;
+    builds: PublishedBuild[];
+  };
   commit: string;
   repository: string;
 }
@@ -54,7 +58,7 @@ function sourceCommit(): string {
   }
 }
 
-const builds = releases();
+const builds = ordered(releases());
 const commit = sourceCommit();
 
 export default defineConfigWithTheme<ThemeConfig>({
@@ -67,15 +71,16 @@ export default defineConfigWithTheme<ThemeConfig>({
   lastUpdated: false,
   themeConfig: {
     release: {
-      stable: newest(builds, false),
-      prerelease: newest(builds, true),
+      stable: builds.find((build) => !build.prerelease) ?? null,
+      prerelease: builds.find((build) => build.prerelease) ?? null,
+      builds,
     },
     commit,
     repository,
     nav: [
       { text: "Guide", link: "/guide/status" },
       { text: "Development", link: "/development/" },
-      { text: "Releases", link: `${repository}/releases` },
+      { text: "Releases", link: "/guide/releases" },
     ],
     sidebar: [
       {
@@ -83,6 +88,7 @@ export default defineConfigWithTheme<ThemeConfig>({
         items: [
           { text: "Status and plans", link: "/guide/status" },
           { text: "Install, update, and remove", link: "/guide/install" },
+          { text: "Releases and test builds", link: "/guide/releases" },
           { text: "Use the sheet list", link: "/guide/use" },
           { text: "Compatibility and known issues", link: "/guide/known-issues" },
           { text: "Troubleshooting", link: "/guide/troubleshooting" },

@@ -37,4 +37,5 @@ There is no release yet, so the update feeds are empty. Once releases exist:
 - **Check for Updates** offers only stable releases newer than the installed one, and only those
   your LibreOffice version can run.
 - Release candidates are never offered automatically. Download them from
-  [GitHub Releases](https://github.com/viell-dev/slop-calc-sheet-manager/releases).
+  [Releases and test builds](./releases.md#test-builds). Installing one does not subscribe you to
+  later candidates; the stable feed will offer the final release when it is available.
