@@ -66,6 +66,8 @@ jobs:
         run: npm run docs:build
       - name: Combine the guide with the feeds as Pages does
         run: python tools/github_release.py combine --guide docs/.vitepress/dist --output _site
+      - name: Check rendered release downloads with empty and synthetic history
+        run: python tools/check_release_page.py
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: pages-site

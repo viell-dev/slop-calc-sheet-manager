@@ -329,6 +329,11 @@ reconsider. The owner may report a defect themselves, in their own words.
   that factory; `Sidebar.xcu` registers the Calc-only deck and panel. `tools/build.py` explicitly
   allowlists every packaged file and includes the root licence as `LICENSE.txt`.
 - `tools/release_data.py` owns version policy, changelog extraction, and feed XML.
+  Versions are not full SemVer: LibreOffice orders suffixed candidates above their final
+  version. Keep the single numeric package/tag version unless that host constraint changes;
+  the `.90` candidate range is a project convention. User download links go to the human
+  `guide/releases` page, not the XML feeds. Its tables use the same verified release history
+  as the guide's version notice.
   `tools/github_release.py` validates GitHub history and exact-commit CI, builds/publishes releases,
   and generates Pages from published OXT metadata. `release.yml` validates PR workflow changes
   without writes and publishes only by dispatch on `main`; `pages.yml` is also callable by it.

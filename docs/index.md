@@ -23,12 +23,12 @@ features:
       others means a long, precise drag, or a dialog buried in a menu.
   - title: What the development version does
     details:
-      Lists sheets top to bottom in the sidebar, with selection, drag and drop, keyboard navigation,
-      and Calc's sheet tab menu. These features are unreleased.
+      Lists sheets top to bottom in the sidebar, with selection, drag and drop, movement buttons,
+      keyboard navigation, and Calc's sheet tab menu. These features are unreleased.
   - title: Where it is now
     details:
-      There is no published build yet. Movement buttons and the remaining synchronization work
-      are planned for the first release.
+      There is no published build yet. Movement buttons are implemented; completing synchronization
+      remains planned for the first release.
 ---
 
 Sheet Manager is written and maintained by AI agents, and no person reviews the code. Changes are

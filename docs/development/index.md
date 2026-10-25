@@ -25,7 +25,7 @@ together with the extension's update feeds.
 - [RELEASING.md](https://github.com/viell-dev/slop-calc-sheet-manager/blob/main/RELEASING.md):
   versions, release candidates, publication, and the update feeds.
 - [Verification map](../verification.md): each promise, the checks that show it, and their limits.
-- [Reordering interface](../reordering.md): the contract between the planned sheet list and the
+- [Reordering interface](../reordering.md): the contract between the sheet list and the
   operation that moves sheets.
 
 ## Building the guide
@@ -39,6 +39,9 @@ npm run docs:dev
 ```
 
 `npm run docs:build` builds the site as CI does, and fails on a broken link between pages.
+After installing the Node dependencies, `python tools/check_release_page.py` checks the rendered
+release page with empty and synthetic histories, including channel separation and asset links.
+Its temporary outputs stay under `test-results/`; it makes no publication changes.
 
 VitePress 2 is still a prerelease. The repository pins an exact version, and every pull request
 builds the site with it.

@@ -134,7 +134,8 @@ def write_site(output: Path, builds: list[PublishedBuild], *, check_history: boo
     (updates / "index.html").write_text(
         '<!doctype html><html lang="en"><meta charset="utf-8">'
         "<title>Sheet Manager updates</title><h1>Sheet Manager updates</h1>"
-        '<p><a href="stable.xml">Stable feed</a> · '
+        '<p><a href="../guide/releases.html">Download stable and test builds</a></p>'
+        '<p>Machine-readable XML: <a href="stable.xml">Stable feed</a> · '
         '<a href="prerelease.xml">All published builds</a></p>'
         f'<p><a href="https://github.com/{REPOSITORY}/releases">Downloads and release notes</a></p>'
         '<p><a href="../">User guide</a></p>'

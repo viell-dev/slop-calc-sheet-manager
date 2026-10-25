@@ -11,8 +11,9 @@ release. An X11 result does not establish Wayland input behaviour.
 
 ## Prepare
 
-1. Install the release candidate's `.oxt` with Tools ▸ Extension Manager ▸ Add, then restart
-   LibreOffice.
+1. Download the build to be tested from [Releases and test builds](./guide/releases.md), or build
+   the development package as [Install](./guide/install.md#install) describes. Install its `.oxt`
+   with Tools ▸ Extension Manager ▸ Add, then restart LibreOffice.
 2. Create the synthetic workbook: `python tools/manual_workbook.py` writes
    `dist/sheet-manager-manual-tests.fods`. Open it, then save it with File ▸ Save As as
    `manual-tests.ods` in a scratch folder, so that saving later needs no format question.

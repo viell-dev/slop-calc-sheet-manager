@@ -46,8 +46,9 @@ unreleased. Work remaining for the first release is tracked on GitHub:
 - **Downloads.** Each release is an `.oxt` file with a checksum, published on
   [GitHub Releases](https://github.com/viell-dev/slop-calc-sheet-manager/releases).
 - **Version numbers.** Releases have plain numbers such as `0.1.0`.
-- **Test builds.** Release candidates have their own lower numbers: `0.0.90` tests `0.1.0`.
-  They are marked **Pre-release** and are never offered as updates to people who installed a
-  stable release.
+- **Test builds.** Every test build has a GitHub release marked **Pre-release**, with an OXT and
+  checksum for manual installation. They are never offered automatically. Their numeric
+  versions work around LibreOffice's incompatible prerelease ordering; see
+  [Releases and test builds](./releases.md#version-numbers).
 
 See [Install, update, and remove](./install.md).

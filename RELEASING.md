@@ -13,6 +13,13 @@ version tag.
 
 ## Versions and titles
 
+This is a LibreOffice-compatible numeric versioning policy, **not full Semantic Versioning**.
+The constraint comes from the installed extension's version comparison, not from GitHub or
+extensions.libreoffice.org. GitHub can host SemVer tags, and a directory listing may contain only
+stable builds, but neither changes how LibreOffice compares a manually installed test OXT with
+the next stable OXT. Every published build, stable or test, gets a GitHub release with its OXT
+and checksum; the extension directory is an optional discovery channel.
+
 `extension/description.xml` is the only source of the extension version. Use exactly three plain
 dotted numbers, without a `v` prefix, leading zeroes, suffixes, or build metadata. When reserving
 a new version, it must exceed every published build, stable or prerelease, and every reserved
@@ -34,10 +41,24 @@ as stable. Fix a bad build with a larger version.
 LibreOffice does not use SemVer prerelease ordering. Its
 [`compareVersions` implementation in 26.8.1.1](https://github.com/LibreOffice/core/blob/libreoffice-26.8.1.1/desktop/source/deployment/misc/dp_version.cxx)
 splits on dots, removes leading zeroes, and compares each component by length and then text.
-Thus `0.0.90 < 0.0.91 < 0.1.0`, but **`0.1.0-rc.1 > 0.1.0`**. The pure comparator used by release
-checks and the feed tests follows those rules, including zero and missing components. Release
-validation additionally refuses all noncanonical version strings and enforces the candidate
-range and stable patch limit.
+Thus `0.0.90 < 0.0.91 < 0.1.0`, but **`0.1.0-beta.1 > 0.1.0`** and
+**`0.1.0-rc.1 > 0.1.0`**, contrary to SemVer. LibreOffice uses this comparator for
+[update selection](https://github.com/LibreOffice/core/blob/libreoffice-26.8.1.1/desktop/source/deployment/misc/dp_update.cxx)
+and [manual replacement warnings](https://github.com/LibreOffice/core/blob/libreoffice-26.8.1.1/desktop/source/deployment/gui/dp_gui_extensioncmdqueue.cxx).
+A final release would not be offered to someone running the suffixed candidate; installing it
+manually would be described as a downgrade. Removing the candidate first is possible, but is an
+unnecessary obstacle in the normal test-to-stable path.
+
+The `.90` threshold is our chosen convention, not a requirement imposed by LibreOffice. Keeping
+one version across the installed package, Git tag, release and asset names avoids a separate
+mapping between SemVer labels and native package numbers. Stable versions use major/minor/patch
+numbers; the reserved candidate range and its restrictions above make the overall scheme
+different from SemVer. Before 1.0, compatibility may change between feature releases.
+
+The pure comparator used by release checks and feed tests follows LibreOffice's rules, including
+zero and missing components. Release validation additionally refuses noncanonical strings and
+enforces the chosen candidate range and stable patch limit. Revisit this policy if LibreOffice
+supports SemVer prerelease precedence.
 
 ## Prepare and dry-run
 
@@ -113,9 +134,9 @@ sort by version, so the recovered build enters history without replacing the new
 If publication succeeded but Pages failed, rerun **Pages** on `main`; do not republish.
 
 The tag/draft/upload/publish sequence has mock coverage but has not been executed live. The first
-`0.0.90` candidate publication will be its first live test. Keep this recovery procedure open
-during that run; if the reserved tag or draft content is uncertain, abandon it and use a higher
-version.
+publication, whether stable or candidate, will be its first live test. Keep this recovery
+procedure open during that run; if the reserved tag or draft content is uncertain, abandon it
+and use a higher version.
 
 ## Feed storage and safeguards
 
