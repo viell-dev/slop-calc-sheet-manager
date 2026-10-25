@@ -11,7 +11,8 @@ what the first release is planned to do.
 - **A sheet list in Calc's sidebar (Unreleased).** It shows every sheet in tab order, with the
   active sheet, tab colours, hidden sheets, protection, and scenarios identified. Click to switch,
   Ctrl+click or Shift+click to select, and use the keyboard or Calc's sheet tab menu. It refreshes
-  after changes; tab-only selection changes reach it at the next sheet switch.
+  after changes and follows this window's selected tabs even when its active sheet stays the same.
+  A separate status line identifies Calc's grouped tabs, which can differ from the list's picks.
 - **Drag and drop (Unreleased).** It reaches a new order with the fewest moves and
   applies the whole change as one undo step. It checks permissions first, and recovers and
   verifies if a change fails part-way. It is tested against real LibreOffice on workbooks of up to
@@ -35,11 +36,10 @@ The first release is planned to offer:
 - complete keyboard operation;
 - one undo step per change, and respect for protected and read-only documents.
 
-The sheet list, keyboard handling, menu, drag and drop, and move buttons are implemented but
-unreleased. Work remaining for the first release is tracked on GitHub:
-
-- completing synchronization and grouped-tabs feedback:
-  [#5](https://github.com/viell-dev/slop-calc-sheet-manager/issues/5).
+The sheet list, synchronization, keyboard handling, menu, drag and drop, and move buttons are
+implemented but unreleased. The first release still needs the preparation and exact-commit
+verification described in the
+[release procedure](https://github.com/viell-dev/slop-calc-sheet-manager/blob/main/RELEASING.md).
 
 ## How releases will work
 

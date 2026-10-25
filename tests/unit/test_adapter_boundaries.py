@@ -50,6 +50,7 @@ def test_menu_keeps_the_pick_proof_before_reading_a_fresh_snapshot() -> None:
         _proven=0,
         _monitor=monitor,
         _menu=SimpleNamespace(show=show),
+        _acknowledge_view=Mock(),
         document=object(),
         peer=object(),
     )
@@ -89,6 +90,7 @@ def test_move_request_keeps_its_snapshot_refs_and_proof_while_queued() -> None:
         _proven=7,
         post=post,
         _move_selection=move,
+        _note_view_input=Mock(),
     )
     request = method(
         "src/sheet_manager/uno_list.py", "SheetList", "queue_move", {"ACTIONS": ("top",)}
@@ -198,6 +200,7 @@ def test_native_cursor_wins_over_repeated_key_callbacks() -> None:
         _handles=handles,
         rows=[SimpleNamespace(name=name) for name in names],
         _take_tree_selection=lambda: None,
+        _note_view_input=Mock(),
         post=post,
     )
     key = method("src/sheet_manager/uno_list.py", "SheetList", "tree_key", {})

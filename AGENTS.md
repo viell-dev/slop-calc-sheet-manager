@@ -383,6 +383,24 @@ reconsider. The owner may report a defect themselves, in their own words.
   Alt+Home/Up/Down/End are local to the panel; Alt+Down
   is reserved for moving sheets while the panel has focus; Calc's cell shortcut stays unchanged.
   Button activation returns focus to the tree.
+- Calc sends no reliable notification for same-active tab selections. Each list caches the
+  reflected `getSelectedSheets` method and samples its retained controller on the UI thread every
+  0.25 seconds. Never run that getter in a timer worker or toolkit listener. Compare logical name
+  membership, establish a fresh baseline after namespace/proof changes, and never consume pending
+  modify evidence through the structural monitor's `check()` merely to observe tabs.
+  List input acknowledges preceding native state at the listener boundary; queued Enter, menu,
+  type-ahead, and native button activation must not let an older sample replace their picks.
+  Skip observation during a held tree press, drag, menu, move, restoration, or document lock.
+  Hidden panels check visibility once a second without reading native tabs. Test sidebar
+  visibility before calling `deck.isActive()` (the native method dereferences its controller),
+  then deck activity and panel expansion; native child-window visibility misses GTK hiding.
+  Drop cached wrappers after sidebar closure and stop on disposal or controller replacement.
+  Retain a panel wrapper while collapsed/inactive: fresh `XPanel` discovery invokes native
+  deck layout. Check deck activity before fresh panel discovery and treat `NoSuchElementException`
+  as a temporarily unavailable context. Actual native panel disposal disposes the list too.
+  A token rejects a cancelled timer already posted to the UI queue, preventing duplicate chains.
+  The fixed-height native status above the buttons reports Calc's group separately from list
+  picks; changing the group must not move the tree under a held pointer.
   Tab/Shift+Tab steps through enabled controls within the panel, then focuses the frame's
   component window at either boundary. Native sidebar traversal alone does not reach these child
   peers or leave them reliably. Posted focus requests refuse when focus or the active frame moved.

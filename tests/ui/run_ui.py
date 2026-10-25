@@ -1337,6 +1337,73 @@ def check_other_document(lab, book):
     return evidence
 
 
+def check_tab_selection_sync(book):
+    from sheet_manager.uno_calc import select_tabs
+
+    book.click(0)
+    before = view.root(book.tree)
+    started = time.monotonic()
+    select_tabs(book.lab.context, book.frame, [0, 2])
+    wait_until(lambda: book.selection() == ["Alfa", "Charlie"], "a same-active tab change")
+    elapsed = time.monotonic() - started
+    assert book.active() == "Alfa"
+    assert view.root(book.tree) == before, "Selection-only following rebuilt the rows"
+    fields = [
+        child
+        for child in book.panel.getWindows()
+        if "com.sun.star.awt.XFixedText" in [kind.typeName for kind in child.getTypes()]
+    ]
+    assert len(fields) == 1
+    assert fields[0].getText() == "Edits affect 2 Calc tabs: Alfa, Charlie"
+    accessible = fields[0].getProperty("XAccessible").getAccessibleContext()
+    assert "Alfa" in accessible.getAccessibleName() and "Charlie" in accessible.getAccessibleName()
+    book.click(1, ("Control_L",))
+    wanted = ["Alfa", "Bravo", "Charlie"]
+    wait_until(lambda: book.selection() == wanted, "independent list picks")
+    time.sleep(0.6)
+    assert book.selection() == wanted and book.calc_tabs() == ["Alfa", "Charlie"]
+
+    # Exercise the actual tab bar too. Do not traverse a grid's enormous accessible table.
+    page_tab = uno.getConstantByName("com.sun.star.accessibility.AccessibleRole.PAGE_TAB")
+    skip = {
+        uno.getConstantByName("com.sun.star.accessibility.AccessibleRole." + name)
+        for name in ("TABLE", "MENU_BAR", "MENU", "TOOL_BAR")
+    }
+    pending = [book.window.getProperty("XAccessible").getAccessibleContext()]
+    target = None
+    for _ in range(400):
+        if not pending:
+            break
+        context = pending.pop(0)
+        role = context.getAccessibleRole()
+        if role == page_tab and context.getAccessibleName() == "Delta":
+            target = context
+            break
+        if role not in skip:
+            pending.extend(
+                context.getAccessibleChild(index).getAccessibleContext()
+                for index in range(min(context.getAccessibleChildCount(), 100))
+            )
+    assert target is not None, "The native Delta sheet tab was not accessible"
+    point, size = target.getLocationOnScreen(), target.getSize()
+    assert size.Width > 0 and size.Height > 0
+    previous_active = book.active()
+    book.lab.input.move(point.X + size.Width // 2, point.Y + size.Height // 2)
+    book.lab.input.key("Control_L", True)
+    book.lab.input.button(1, True)
+    book.lab.input.button(1, False)
+    book.lab.input.key("Control_L", False)
+    wait_until(lambda: "Delta" in book.calc_tabs(), "Ctrl+click on the native tab")
+    wait_until(lambda: book.selection() == book.calc_tabs(), "following real tab-bar input")
+    return {
+        "same_active_seconds": round(elapsed, 4),
+        "same_model": True,
+        "independent_picks": wanted,
+        "native_tab_click": {"before_active": previous_active, "active": book.active()},
+        "native_group": book.calc_tabs(),
+    }
+
+
 def run_checks(lab, output):
     book = Workbook(lab, "synthetic", NAMES)
     lab.screenshot("panel")
@@ -1347,6 +1414,7 @@ def run_checks(lab, output):
         ("move_focus_and_queued_navigation", lambda: check_move_focus_and_queued_navigation(book)),
         ("click_activates", lambda: check_click_activates(book)),
         ("ctrl_shift_selection", lambda: check_ctrl_shift_selection(book)),
+        ("tab_selection_sync", lambda: check_tab_selection_sync(book)),
         ("drag_two_sheets_above_midpoint", lambda: check_drag_two_sheets(book, 0.25, 12)),
         ("drag_two_sheets_below_midpoint", lambda: check_drag_two_sheets(book, 0.75, 13)),
         ("drop_in_place_and_escape", lambda: check_drop_in_place_and_escape(book)),

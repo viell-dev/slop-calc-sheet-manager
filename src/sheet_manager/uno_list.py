@@ -3,8 +3,8 @@
 A single click on a row goes to that sheet and leaves it as Calc's only selected tab; Ctrl+click
 and Shift+click only change the list's own selection. The selected sheets can be dragged to
 another place in the list through the reorder layer (``uno_reorder``). The list's selection
-follows Calc's whenever the active sheet changes, but the list groups Calc's tabs only to open
-the sheet tab menu (see ``uno_menu``).
+follows changes to this window's native tab selection, but the list groups Calc's tabs only to
+open the sheet tab menu (see ``uno_menu``). A status line distinguishes that group from list picks.
 
 The list keeps the reorder layer's snapshot of the sheets it shows. A selected row survives a
 refresh only while the sheet handle retained for it still has that row's name, so a sheet that
@@ -25,6 +25,7 @@ import uno
 import unohelper
 from com.sun.star.accessibility import XAccessibleEventListener
 from com.sun.star.awt import XFocusListener, XMouseListener, XPaintListener
+from com.sun.star.container import NoSuchElementException
 from com.sun.star.datatransfer import DataFlavor, UnsupportedFlavorException, XTransferable
 from com.sun.star.datatransfer.dnd import (
     XDragGestureListener,
@@ -49,6 +50,7 @@ from sheet_manager.uno_calc import (
     report,
     select_tabs,
     selected_tabs,
+    selected_tabs_method,
     show_error,
     start_thread,
     swatch_url,
@@ -85,6 +87,8 @@ REFRESH_DELAY = 0.2  # Quiet time after a change before the list reads the sheet
 REFRESH_COST_FACTOR = 4  # Wait at least this many times as long as the last refresh took.
 REFRESH_MAX_WAIT = 2.0  # During continuous changes, refresh at least this often (scaled too).
 SCROLL_INTERVAL = 0.1
+VIEW_INTERVAL = 0.25
+HIDDEN_VIEW_INTERVAL = 1.0
 CURSOR_CHANGED = cast(
     int,
     uno.getConstantByName("com.sun.star.accessibility.AccessibleEventId.ACTIVE_DESCENDANT_CHANGED"),
@@ -317,6 +321,9 @@ class SheetList:
         self._disposed = False
         self._main = MainThread(context)
         self._refresh_timer: Later | None = None
+        self._view_timer: Later | None = None
+        self._view_token: object | None = None
+        self._view_stopped = False
         self._scroll = 0
         self._keys_registered = False
         self._restoring_cursor = False
@@ -373,6 +380,13 @@ class SheetList:
         # it. A request to follow Calc's selection remembers the count when Calc reported the
         # switch; newer input in the list wins over it.
         self._input = 0
+        self._view_input = 0
+        self._view_ack_pending = False
+        self._view_state: tuple[str, frozenset[str]] | None = None
+        self._view_names: frozenset[str] = frozenset()
+        self._view_generation = self._proven
+        self._view_controls = None
+        self._tabs_method = selected_tabs_method(context)
         self._follow_input: int | None = None
         self._activating = False  # The list's own setActiveSheet call is running.
         self._press: _Press | None = None
@@ -409,7 +423,9 @@ class SheetList:
             "target": _Target(self),
             "document": _Document(self),
         }
-        self._moves = MoveButtons(context, parent_window, self.queue_move, self._listeners["focus"])
+        self._moves = MoveButtons(
+            context, parent_window, self.queue_move, self._listeners["focus"], self.note_input
+        )
         self._release_with(self._moves.dispose)
         self.tree.addMouseListener(self._listeners["mouse"])
         self.tree.addFocusListener(self._listeners["focus"])
@@ -441,6 +457,7 @@ class SheetList:
         self._release_with(lambda: self.focus_changed(False))
         self.refresh()
         self.follow_calc_selection()
+        self._schedule_view(VIEW_INTERVAL)
 
     # Life cycle and layout
 
@@ -470,6 +487,10 @@ class SheetList:
         self._scroll = 0
         if self._refresh_timer is not None:
             self._refresh_timer.cancel()
+        self._view_token = None
+        if self._view_timer is not None:
+            self._view_timer.cancel()
+        self._view_controls = None
         self._cleanup.close()
 
     # Rows and identity
@@ -532,6 +553,15 @@ class SheetList:
         elif dropped or tuple(self._selection.names()) != self._shown:
             self._apply_selection()
         self._update_moves()
+
+        if self._view_generation != generation or self._view_names != frozenset(self.names()):
+            # Replacement or rename is not a request to pick the new sheet under an old name.
+            self._view_state = None
+            self._view_input = self._input
+            if not self._view_stopped:
+                # Establish the new baseline before the refreshed rows become usable. A tab
+                # change after this return must not be mistaken for that first baseline.
+                self._observe_view(True)
 
     def _identities_kept(self, previous: Snapshot, observed: Snapshot, generation: int) -> bool:
         """Whether the handles of the last refresh still prove which sheet each one is.
@@ -645,7 +675,7 @@ class SheetList:
             if names[index] != cursor.name:
                 self.tree.addSelection(self._nodes[index])
 
-    def _take_tree_selection(self, update_moves: bool = True) -> None:
+    def _take_tree_selection(self, update_moves: bool = True) -> bool:
         """Take a selection the user made in the tree, as the rows showed it."""
         names = self.selected_names()
         if tuple(names) != self._shown:
@@ -654,6 +684,8 @@ class SheetList:
             self._user_picks = True
             if update_moves:
                 self._update_moves()
+            return True
+        return False
 
     def _current_picks(self) -> list[Ref]:
         """The list's picks as they stand now, each still the sheet it was picked as.
@@ -721,6 +753,7 @@ class SheetList:
     def tree_key(self, code: int, modifiers: int) -> None:
         """Take the selection after native handling; callbacks do not predict cursor movement."""
         self._input += 1
+        self._note_view_input()
         # The tree handles the key after this returns; take the selection it then shows.
         self.post(self._take_tree_selection, "following the selection")
 
@@ -753,6 +786,9 @@ class SheetList:
         names = self.names()
         self._select([names[index] for index in indices if 0 <= index < len(names)], active)
         self._user_picks = False
+        self._remember_view(
+            active, tuple(names[index] for index in indices if 0 <= index < len(names))
+        )
 
     def activate(self, name: str, handle: Any = None) -> None:
         """Go to the sheet and make it Calc's only selected tab, as a click on its tab does.
@@ -815,6 +851,7 @@ class SheetList:
                 tr("Sheet Manager"),
                 tr("Calc kept other sheets selected. Click the sheet's tab before editing cells."),
             )
+        self._note_view_input()
 
     def restore_view(self, previous: Any, name: str, tabs: list[int]) -> bool:
         """Make `previous` active and `tabs` Calc's selection again; read back both (#46).
@@ -840,7 +877,6 @@ class SheetList:
             self.activate(picked[0].name, picked[0].token)
 
     def type_ahead(self, char: str) -> None:
-        self._input += 1
         prefix = self._type_ahead.feed(char, time.monotonic())
         names = self.names()
         current = names.index(self._cursor) if self._cursor in names else None
@@ -945,6 +981,147 @@ class SheetList:
         if follow and next((row.name for row in self.rows if row.active), None) != before:
             self.follow_calc_selection()
 
+    # Calc's tab selection has no reliable change notification. Observe this controller on
+    # the UI thread, independently of property refreshes and the list's own picks.
+
+    def _view_visible(self) -> bool:
+        if self.frame.getController() != self.controller:
+            self._view_stopped = True  # Reload replaced this controller; its panel owns disposal.
+            self._view_controls = None
+            return False
+        if self.frame.getContainerWindow().IsMinimized:
+            return False
+        sidebar = self.controller.getSidebar()
+        if not sidebar.isVisible():
+            self._view_controls = None
+            return False
+        if self._view_controls is None:
+            try:
+                deck = sidebar.getDecks().getByName("SheetManagerDeck")
+                if not deck.isActive():
+                    return False
+                panel = deck.getPanels().getByName("SheetManagerPanel")
+            except NoSuchElementException:
+                return False  # A reopened sidebar's native context may not be ready yet.
+            self._view_controls = deck, panel
+        deck, panel = self._view_controls
+        # isActive dereferences the native sidebar controller: the visibility guard above
+        # must precede it. Parent-window visibility alone misses GTK container hiding.
+        # A fresh XPanel lookup lays out the native deck. Retain it while collapsed or
+        # inactive; actual panel disposal synchronously disposes this list and its cache.
+        return bool(deck.isActive() and panel.isExpanded())
+
+    def _schedule_view(self, seconds: float) -> None:
+        if self._disposed or self._view_stopped or self._view_timer is not None:
+            return
+        token = object()
+        self._view_token = token
+        self._view_timer = self._main.later(
+            seconds, lambda: self._view_tick(token), "observing Calc's selected tabs"
+        )
+
+    def _view_tick(self, token: object) -> None:
+        if self._disposed or token is not self._view_token:
+            return  # A cancelled callback may already be in the native queue.
+        self._view_timer, self._view_token = None, None
+        visible = False
+        try:
+            visible = self._view_visible()
+            if visible:
+                self._observe_view(False)
+        except DisposedException:
+            self._view_stopped = True
+        except Exception:
+            self._view_stopped = True  # Report once rather than start a repeating error loop.
+            raise
+        finally:
+            self._schedule_view(VIEW_INTERVAL if visible else HIDDEN_VIEW_INTERVAL)
+
+    def _note_view_input(self) -> None:
+        """Acknowledge preceding Calc state after this input, coalescing forwarded callbacks.
+
+        Do not invoke the native selected-tabs getter from a toolkit listener. The watermark
+        also protects a sample that runs before this acknowledgement reaches the UI queue.
+        """
+        if self._view_ack_pending:
+            return
+        self._view_ack_pending = True
+        self.post(self._acknowledge_view, "noting the list's newer input")
+
+    def note_input(self) -> None:
+        """Stamp native control input before its queued action can use the picks."""
+        self._input += 1
+        self._note_view_input()
+
+    def queue_input(self, function, where: str) -> None:
+        """Stamp a key's intent before an older observation can precede its queued action."""
+        self.note_input()
+        self.post(function, where)
+
+    def _acknowledge_view(self) -> None:
+        self._view_ack_pending = False
+        if not self._disposed and not self._view_stopped:
+            try:
+                if self._view_visible():
+                    self._observe_view(True)
+            except DisposedException:
+                self._view_stopped = True
+            except Exception:
+                self._view_stopped = True
+                raise
+
+    def _remember_view(self, active: str, tabs: tuple[str, ...]) -> None:
+        self._view_state = active, frozenset(tabs)
+        self._view_names = frozenset(self.names())
+        self._view_generation = self._proven
+        self._view_input = self._input
+        if self._moves is not None:
+            self._moves.show_tabs(tabs)
+
+    def _observe_view(self, acknowledge: bool) -> None:
+        if (
+            self._busy
+            or self._restoring_cursor
+            or self._press is not None
+            or self._drag is not None
+            or self._menu.is_open
+        ):
+            return
+        if self.document.hasControllersLocked() or self.document.isActionLocked():
+            return
+        generation = self._monitor.generation  # Never consume pending modify evidence (#66).
+        if generation != self._proven:
+            self._view_state = None
+            if self._stale_since is None:
+                self.document_modified()
+            return
+        names = tuple(self.document.getSheets().getElementNames())
+        if names != tuple(self.names()):
+            if self._stale_since is None:
+                self.document_modified()
+            return
+        active = str(self.controller.getActiveSheet().getName())
+        indices = self._tabs_method.invoke(self.controller, ())[0]
+        if any(index < 0 or index >= len(names) for index in indices):
+            return
+        tabs = tuple(names[index] for index in sorted(indices))
+        if self._monitor.generation != generation:
+            return
+        if self._view_generation != generation or self._view_names != frozenset(names):
+            self._view_state = None  # A new namespace/proof establishes a baseline, not new picks.
+        state = active, frozenset(tabs)
+        changed = self._view_state is not None and state != self._view_state
+        newer_input = self._input != self._view_input or self._view_ack_pending
+        # Native input can precede its queued mouse listener. Take the picks without UI
+        # updates first, so that a poll cannot erase input that is already visible in the tree.
+        pending_picks = self._take_tree_selection(update_moves=False)
+        self._remember_view(active, tabs)
+        if changed and not acknowledge and not newer_input and not pending_picks:
+            self._select(list(tabs), active)
+            self._user_picks = False
+        elif pending_picks:
+            self._update_moves()
+
     # Keyboard
 
     def focus_changed(self, gained: bool) -> None:
@@ -1038,6 +1215,7 @@ class SheetList:
             # callback is still queued. Read that selection without doing UI work here.
             self._take_tree_selection(update_moves=False)
         self._input += 1
+        self._note_view_input()
         observed, picks, proof = self._observed, tuple(self._selection.picked), self._proven
         self.post(lambda: self._move_selection(action, observed, picks, proof), "moving sheets")
 
@@ -1080,6 +1258,7 @@ class SheetList:
 
     def mouse_pressed(self, event) -> None:
         self._input += 1
+        self._note_view_input()
         if event.PopupTrigger:
             return
         row = self.geometry().row_at(event.Y)
@@ -1169,6 +1348,7 @@ class SheetList:
             return self._monitor.check() == structure and self._generation == generation
 
         chosen = self._menu.show(self.peer, x, y, observed, picked, unchanged)
+        self._acknowledge_view()
         if chosen == SHOW:
             if not unchanged():
                 self._command_refused()

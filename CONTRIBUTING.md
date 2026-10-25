@@ -198,6 +198,11 @@ the out-of-scope silenced case recorded as such), a click while such a batch's o
 still held, restoring the view when Calc sends an activation elsewhere, and Show's undo and
 recovery rules. Synthetic input cannot reach gtk3's native menus, so painted sessions skip the
 menu steps, which the real-input UI tests cover.
+`test_sync_sheet_list.py` checks same-active tab selection, independent list picks, logical
+membership across reordering, grouped-editing status, hidden-panel pause/resume, separate windows,
+document switching, and reload. Minimize needs a painted window; the other cases run headlessly
+too. `test_view_observation.py` makes queued-observation/input races and cancelled callbacks
+deterministic without pretending its adapters verify native visibility or selection behaviour.
 Every workbook is synthetic and loaded visibly, even when the office process itself is headless.
 It retries only startup, up to three times, to tolerate a Windows crash just after connecting. It
 never attaches to an existing office or uses the normal LibreOffice profile.

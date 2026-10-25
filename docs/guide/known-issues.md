@@ -16,11 +16,9 @@ If Sheet Manager does not work in an environment where it is expected to, please
 
 ## Known issues
 
-- **Selection in Calc's tab bar.** Ctrl+clicking tabs without switching the active sheet is
-  reflected in the list at the next sheet switch
-  ([#5](https://github.com/viell-dev/slop-calc-sheet-manager/issues/5)).
 - **Grouped tabs.** Opening the sheet tab menu groups Calc's selected tabs. A cell edit then
-  affects every grouped sheet. Click a single row or tab before editing one sheet.
+  affects every grouped sheet. The status above the list identifies those tabs separately from
+  the list's picks. Click a single row or tab before editing one sheet.
 - **Save focus.** Ctrl+S from the list saves through Calc and moves focus to the sheet
   ([#23](https://github.com/viell-dev/slop-calc-sheet-manager/issues/23)).
 - **Conservative selection clearing.** Inserting or deleting sheets, undoing or redoing, and

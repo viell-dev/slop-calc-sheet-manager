@@ -5,6 +5,10 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- The list follows this window's selected Calc tabs even when the active sheet does not change.
+  A status line identifies grouped Calc tabs separately from independent list picks. Observation
+  pauses while the panel is hidden and resumes on reopening, preserving newer list input and
+  stale-sheet safeguards ([#5](https://github.com/viell-dev/slop-calc-sheet-manager/issues/5)).
 - Added a human release/download page with OXT and checksum links for stable and test builds,
   explained why LibreOffice's version ordering prevents direct SemVer prerelease suffixes, and
   removed the arbitrary `.90` patch reservation in favour of an explicit release flag. Corrected
