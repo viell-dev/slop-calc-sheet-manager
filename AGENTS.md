@@ -360,7 +360,7 @@ reconsider. The owner may report a defect themselves, in their own words.
   after them because the label backgrounds can cover dividers. Keep native text/accessibility,
   wheel input, and multi-sheet drag support; compound controls do not provide the same drag path.
   Use native `getNodeRect()` Y/Height for row geometry: VCL can enlarge the requested RowHeight
-  for its font/DPI. In the supported tree peer this rectangle spans an entry, not just text.
+  for its font/DPI. Its Y/Height span the entry; its X/Width follow the label.
   Native hit testing supplies the content bounds, excluding scrollbars; the peer's output size
   includes them. Do not put fixed frame lines on the scrolling surface: VCL's pixel
   scrolling copies them into rows. Keep the screenshot-pixel wheel/thumb/native-height check.

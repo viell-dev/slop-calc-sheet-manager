@@ -39,6 +39,12 @@ def check(image_path: Path, metadata_path: Path) -> None:
         "expected_dividers": expected,
         "actual_shadow_pixels": actual,
     }
+    missing_left = [
+        y
+        for y in actual
+        if not any(image.getpixel((left + x, top + y)) == shadow for x in range(min(3, viewport)))
+    ]
+    assert not missing_left, {"dividers_missing_left_edge": missing_left}
     short = [
         y
         for y in actual

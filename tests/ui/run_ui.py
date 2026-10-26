@@ -543,6 +543,7 @@ def check_row_paint_scroll(book, horizontal=False, prefix="row-paint-"):
             "height": size.Height,
             "viewport": viewport,
             "content_height": content_height,
+            "last_label_width": rows[-1].Width,
             "shadow": tree.StyleSettings.ShadowColor,
             "rows": [{"Y": row.Y, "Height": row.Height} for row in rows],
         }
