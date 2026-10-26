@@ -65,8 +65,9 @@ def check_instructions(html: str, *, marked: bool) -> str:
     paragraphs.feed(html)
     for instruction in (
         "buttons above the list",
-        "Right-click a row",
-        "The four move shortcuts",
+        "Opening this menu leaves",
+        "When visible and hidden sheets",
+        "Move shortcuts also apply",
         "Tab and Shift+Tab traverse",
     ):
         matches = [
@@ -78,8 +79,24 @@ def check_instructions(html: str, *, marked: bool) -> str:
             f"Publication marker disagrees with history: {instruction}",
             markers,
         )
-    if "<Unreleased />" in (ROOT / "docs/guide/use.md").read_text(encoding="utf-8"):
-        assert 'data-since="pending"' in html, "Untargeted development work must stay Unreleased"
+    notice = [
+        (text, markers)
+        for text, markers in paragraphs.paragraphs
+        if "This explanation appears within the panel" in text
+    ]
+    assert len(notice) == 1 and notice[0][1] == ["pending"] and "Unreleased" in notice[0][0], (
+        "Untargeted selection notice must stay Unreleased independently of source markers",
+        notice,
+    )
+    for instruction in ("Right-click a row", "The four move shortcuts"):
+        published = [
+            (text, markers) for text, markers in paragraphs.paragraphs if instruction in text
+        ]
+        assert len(published) == 1 and not published[0][1], (
+            "Already-published 0.0.3 behavior must not be labelled unreleased",
+            instruction,
+            published,
+        )
     assert "These instructions describe the" not in html, "Guide version must come from history"
     return " ".join("".join(paragraphs.content).split())
 

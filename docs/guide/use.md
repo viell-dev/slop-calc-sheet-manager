@@ -70,14 +70,18 @@ popup rendering can hide unavailable actions and their reasons; see the
 
 ## Open the sheet tab menu
 
-Right-click a row to open its context menu without selecting it. <Unreleased since="0.0.4" /> If the
-row is already picked, actions target the picked set; otherwise they target just that row. Menu
-or Shift+F10 targets the list's picks. Opening this menu leaves the viewed sheet and Calc's
-selected tabs unchanged.
+Right-click a row to open its context menu without selecting it. If the row is already picked,
+actions target the picked set; otherwise they target just that row. Menu or Shift+F10 targets the
+list's picks.
 Move actions appear directly in it. Choose **Sheet actions…** to open Calc's full sheet-tab menu,
 including your customizations. Hidden-only targets offer Show Sheet where safe.
-When visible and hidden sheets are picked together, **Sheet actions…** offers safe Show and move
-actions instead. Calc's built-in menu is offered only when every context target is visible.
+
+**Context view.** <Unreleased since="0.0.4" /> Opening this menu leaves the viewed sheet and
+Calc's selected tabs unchanged.
+
+**Mixed visibility.** <Unreleased since="0.0.4" /> When visible and hidden sheets are picked
+together, **Sheet actions…** offers safe Show and move actions instead. Calc's built-in menu is
+offered only when every context target is visible.
 
 Calc's built-in commands require its native tabs to match the context targets, so choosing
 **Sheet actions…** can temporarily change Calc's tab group and viewed sheet. The list's picks
@@ -107,10 +111,12 @@ to the list. While the list has focus:
 | Menu or Shift+F10 | Open the sheet tab menu |
 | Ctrl+S, Ctrl+Z, Ctrl+Page Down | Run Calc's save, undo, or next-sheet command |
 
-**Move shortcuts.** <Unreleased since="0.0.4" /> The four move shortcuts apply only while the list
-or a move button has focus, without changing Calc's shortcut configuration. In a cell, Alt+Down
-retains Calc's Data Select command.
+The four move shortcuts apply while the list has focus, without changing Calc's shortcut
+configuration. In a cell, Alt+Down retains Calc's Data Select command.
 Ctrl+Shift with navigation adds a range to the existing selection.
+
+**Move-button shortcuts.** <Unreleased since="0.0.4" /> Move shortcuts also apply while a move
+button has focus.
 
 Space and Shift+Space do nothing in the list. <Unreleased since="0.0.4" /> Tab and Shift+Tab traverse
 the enabled move buttons and the list, then return focus to Calc at either end. On a focused
