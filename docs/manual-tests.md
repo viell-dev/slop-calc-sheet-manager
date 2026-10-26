@@ -103,8 +103,9 @@ instead. Take screenshots only of this workbook.
 22. **Look.** Repeat step 1 and step 5 with a dark theme and, if available, at 150 % or 200 %
     display scaling.
     Expected: all text and swatches are readable and the insertion line is visible.
-    Select Charlie and Echo, then try each top move button and undo once after each move.
-    Expected: the picked sheets keep their order and selection; the view stays unchanged.
+    Before testing each top move button, select Charlie and Echo. Click the button, then undo once.
+    Expected: each move preserves the picked order, selection and view. Calc's Undo can activate
+    an affected sheet and the list follows, so select both rows again before the next button.
     Use Shift+Tab from the list to reach Bottom, Down, Up and Top. Enter/Space activate a focused
     button; ordinary letters do not edit cells. Tab at the end of the controls returns to Calc.
 23. **Sheets added during a selection.** Click "Charlie" and Ctrl+click "Echo". Then choose

@@ -92,8 +92,11 @@ def test_outer_menu_completion_never_reselects_the_original_tabs() -> None:
     assert not controller.mock_calls
 
 
-def test_refused_repeat_does_not_restore_the_previous_popups_view() -> None:
-    state = SimpleNamespace(active="Delta", tabs=[1])
+@pytest.mark.parametrize("previous_command", [None, ".uno:TableSelectAll", ".uno:TableDeselectAll"])
+def test_refused_repeat_does_not_restore_the_previous_popups_view(
+    previous_command: str | None,
+) -> None:
+    state = SimpleNamespace(active="Delta", tabs=[1], picks=["Charlie"])
     handles = {
         name: SimpleNamespace(getName=lambda name=name: name, IsVisible=True)
         for name in ("Alfa", "Delta")
@@ -115,7 +118,7 @@ def test_refused_repeat_does_not_restore_the_previous_popups_view() -> None:
         _closed_at=99.9,
         _targeted_native=True,
         view=previous,
-        command=None,
+        command=previous_command,
         _context=object(),
         _frame=object(),
         _controller=SimpleNamespace(
@@ -150,14 +153,39 @@ def test_refused_repeat_does_not_restore_the_previous_popups_view() -> None:
         },
     )
     assert show(owner, object(), 0, 0, object(), ["Delta"]) is None
-    if owner.view is not None:  # The caller completes even a refused invocation.
-        restore(owner, owner.view, lambda: True)
-    assert (state.active, state.tabs) == ("Delta", [1]), "A refused repeat restored an earlier view"
+
+    def restore_current(view: object, unchanged: Callable[[], bool]) -> None:
+        restore(owner, view, unchanged)
+
+    def follow() -> None:
+        state.picks = ["Delta"]
+
+    owner.restore_view = restore_current
+    caller = SimpleNamespace(
+        _disposed=False,
+        _menu=owner,
+        refresh=Mock(),
+        follow_calc_selection=follow,
+        _selection=SimpleNamespace(revalidate=Mock()),
+        _apply_selection=Mock(),
+        _acknowledge_view=Mock(),
+    )
+    finish = method(
+        "src/sheet_manager/uno_list.py",
+        "SheetList",
+        "_finish_menu",
+        {"MenuView": object, "SELECT_COMMANDS": {".uno:TableSelectAll", ".uno:TableDeselectAll"}},
+    )
+    finish(caller, owner.view, lambda: True)
+    assert (state.active, state.tabs, state.picks) == ("Delta", [1], ["Charlie"]), (
+        "A refused repeat restored an earlier view or replaced newer list picks"
+    )
+    caller._selection.revalidate.assert_called_once()
 
 
 def test_in_progress_menu_keeps_its_restoration_state() -> None:
     previous = object()
-    owner = SimpleNamespace(is_open=True, view=previous, _targeted_native=True)
+    owner = SimpleNamespace(is_open=True, view=previous, _targeted_native=True, command="native")
     show = method(
         "src/sheet_manager/uno_menu.py",
         "SheetMenu",
@@ -165,4 +193,4 @@ def test_in_progress_menu_keeps_its_restoration_state() -> None:
         {"Snapshot": object, "Callable": Callable},
     )
     assert show(owner, object(), 0, 0, object(), ["Delta"]) is None
-    assert owner.view is previous and owner._targeted_native
+    assert owner.view is previous and owner._targeted_native and owner.command == "native"

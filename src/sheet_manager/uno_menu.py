@@ -218,13 +218,13 @@ class SheetMenu:
         """
         if self.is_open:
             return None
-        # A refused reopen must not reuse the previous popup's restoration state.
+        # A refused reopen must not reuse the previous popup's transition state.
         self._targeted_native = False
         self.view = None
+        self.command = None
         if time.monotonic() - self._closed_at < REPEAT_GUARD_SECONDS:
             return None
         self.is_open = True
-        self.command = None
         try:
             hidden = set(hidden_targets(observed, picked))
             if set(picked) - hidden:

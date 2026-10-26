@@ -398,7 +398,8 @@ reconsider. The owner may report a defect themselves, in their own words.
   opening the full customized native popup. GTK can activate cascading menus while preparing
   them, so a submenu activation callback cannot defer targeting reliably. Capture the native
   view only when that command is chosen, and only then group its targets.
-  Clear a previous popup's restoration state before refusing a rapid reopen; retain live menu state.
+  Clear a completed popup's view, targeting flag and command before refusing a rapid reopen;
+  retain live menu state.
   Capture the observed snapshot, refs, and proof before posting a move. Use the common
   permission/plan checks and full `apply_order` preflight.
   Run extension actions only after the native dispatch guard is released, then restore the saved
@@ -436,7 +437,7 @@ reconsider. The owner may report a defect themselves, in their own words.
   reach these child peers or leave them reliably. Posted focus requests refuse when focus or
   the active frame moved.
 - Keys: a toolkit `XKeyHandler` is registered while the tree or a move button has focus and checks
-  focus again for every key. Selection/navigation, Enter, typed characters, and menu keys are
+  focus again for every key. Tree selection/navigation, Enter, typed characters, and menu keys are
   consumed and handled by the list; other
   shortcuts are resolved through the document, Calc, and global shortcut configurations and
   dispatched to the panel's frame; modified Tab combinations, F6, F10, Esc, modifier-only keys,
