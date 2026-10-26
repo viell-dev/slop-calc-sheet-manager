@@ -23,7 +23,10 @@ human gate. Keep the request open while required observations or their release b
 1. Download the exact build linked in the assigned test request, or an identified build from
    [Releases and test builds](./guide/releases.md). Install its `.oxt` with Tools ▸ Extension
    Manager ▸ Add, then restart LibreOffice.
-2. Download the [synthetic workbook](https://raw.githubusercontent.com/viell-dev/slop-calc-sheet-manager/main/docs/fixtures/sheet-manager-manual-tests.fods).
+2. Download the synthetic workbook from the commit-pinned link in the assigned test request.
+   For testing outside a release request, use the
+   [latest synthetic workbook](https://raw.githubusercontent.com/viell-dev/slop-calc-sheet-manager/main/docs/fixtures/sheet-manager-manual-tests.fods)
+   and record its commit.
    Open it, then save it with File ▸ Save As as `manual-tests.ods` in a scratch folder, so that
    saving later needs no format question.
 3. Open the Sheet Manager deck from its button in the sidebar's tab bar.
