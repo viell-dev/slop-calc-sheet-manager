@@ -37,9 +37,10 @@ class RowPaint:
                     bottom = middle - 1
                 else:
                     top = middle
-            # GetEntry includes a row's last pixel; the viewport boundary itself is
-            # exclusive. At the list's end, retain that last pixel and its divider.
-            height = top + 1 if top == geometry.gap_y(geometry.count) - 1 else top
+            # Hit testing includes the viewport boundary. The last row's final pixel
+            # can coincide with it, so always exclude this ambiguous pixel: including
+            # it can paint over a horizontal scrollbar. Its last divider may be absent.
+            height = top
         else:
             # All rows fit. Do not paint the empty area below them (or its scrollbar).
             height = min(height, geometry.gap_y(geometry.count))

@@ -1,10 +1,9 @@
 """Show hidden sheets as one undo step, with the reorder layer's safety rules.
 
 This is the one document change the list's own short menu makes, for selections that Calc's tab
-menu cannot represent (only hidden sheets). Like ``uno_reorder.apply_order`` it checks first
-that the sheets are still the ones the list showed and that the change can be undone, groups the
-change, verifies it, and on failure undoes its own group only and verifies the result. Call it
-synchronously on the UI thread.
+menu should not target: hidden or mixed-visibility sheets. Like ``uno_reorder.apply_order``,
+it verifies sheet identity and undo availability, groups and verifies the change, and recovers
+only its own undo group on failure. Call it synchronously on the UI thread.
 """
 
 from typing import Any

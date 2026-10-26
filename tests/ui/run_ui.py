@@ -31,7 +31,7 @@ from teardown import stalled_callbacks  # noqa: E402
 from xinput import RIGHT, Pointer, XInput  # noqa: E402
 
 from sheet_manager.reorder import Action, Sheet, target_order  # noqa: E402
-from sheet_manager.uno_calc import select_tabs  # noqa: E402
+from sheet_manager.uno_calc import dispatch, select_tabs  # noqa: E402
 
 NATO = [
     "Alfa",
@@ -772,8 +772,10 @@ def reset(book):
 def hide_through_menu(book, picked, opener):
     before = book.undo_titles()
     native_view = book.active(), book.calc_tabs()
+    assert not book.lab.input.popup_windows(), "The menu probe must start without a popup"
     opener()
     time.sleep(0.8)
+    assert book.lab.input.popup_windows(), "The outer menu did not create a native popup"
     assert (book.active(), book.calc_tabs()) == native_view, "Outer menu changed the native view"
     book.native_menu()
     tabs = book.calc_tabs()
@@ -957,6 +959,28 @@ def check_menu_mixed_visibility(book):
         book.lab.input.tap("Escape", pause=0.2)
         sheet.IsVisible = True
     return {"safe_mixed_targets": True, "one_undo": True, "view_kept": True}
+
+
+def check_reload_accepts_real_input(book):
+    """Calibrated X input must reach the replacement panel after native Reload (#88)."""
+    book.document.store()
+    old = book.controller
+    dispatch(book.lab.context, book.frame, ".uno:Reload")
+    wait_until(lambda: book.frame.getController() != old, "a replacement controller after reload")
+    book.controller = book.frame.getController()
+    book.document = book.controller.getModel()
+    book.panel, book.tree = view.open_list(book.lab.context, book.document)
+    wait_until(lambda: view.names(book.tree) == NAMES, "the reloaded native rows")
+    book.pointer = Pointer(book.lab.input, book.lab.calibrate(book.tree, book.window))
+    before = book.active(), book.calc_tabs()
+    book.click(1)
+    wait_until(lambda: book.selection() == [NAMES[1]], "a real click after reload")
+    assert (book.active(), book.calc_tabs()) == before
+    book.double_click(1)
+    wait_until(lambda: book.active() == NAMES[1], "real activation after reload")
+    select_tabs(book.lab.context, book.frame, [1, 3])
+    wait_until(lambda: book.selection() == [NAMES[1], NAMES[3]], "the replacement tab observer")
+    return {"real_click": True, "activation": True, "replacement_observer": True}
 
 
 def close_message(book):
@@ -1243,10 +1267,11 @@ def check_press_then_change(book):
             "selection": book.selection(),
         }
         if change == "replace":
-            # The menu key opens the menu for the list's selection and groups Calc's tabs
-            # to match while it is open; with nothing picked it does nothing.
+            # With no surviving picks, Menu must not open even the stationary outer popup.
             titles = book.undo_titles()
+            assert not book.lab.input.popup_windows(), "An earlier popup is still open"
             book.lab.input.tap("Menu", pause=0.8)
+            state["popup_opened"] = bool(book.lab.input.popup_windows())
             state["calc_tabs_after_menu_key"] = book.calc_tabs()
             book.lab.input.tap("Escape", pause=0.3)
             state["undo_unchanged"] = book.undo_titles() == titles
@@ -1254,6 +1279,7 @@ def check_press_then_change(book):
         assert state["active"] == NAMES[0] and state["calc_tabs"] == [NAMES[0]], evidence
         assert state["selection"] == picked, evidence
         if change == "replace":
+            assert not state["popup_opened"], evidence
             assert state["calc_tabs_after_menu_key"] == [NAMES[0]], evidence
             assert state["undo_unchanged"], evidence
     return evidence
@@ -1356,15 +1382,13 @@ def check_picks_dropped_when_sheets_change(book):
             "active": book.active(),
             "notice": bool(book.controller.hasInfobar(notice)),
         }
-        # The Menu key opens the menu for the list's picks and groups Calc's tabs to them while
-        # it is open. If it opened, choose Hide, as a user would.
+        # Empty stale picks must refuse the outer popup, whose presence cannot be inferred
+        # from Calc's tabs: the outer popup intentionally leaves them unchanged.
+        assert not book.lab.input.popup_windows(), "An earlier popup is still open"
         book.lab.input.tap("Menu", pause=0.8)
+        state["popup_opened"] = bool(book.lab.input.popup_windows())
         state["calc_tabs_after_menu_key"] = book.calc_tabs()
-        if state["calc_tabs_after_menu_key"] != tabs:
-            book.choose(".uno:Hide")
-            time.sleep(1)
-        else:
-            book.lab.input.tap("Escape", pause=0.3)
+        book.lab.input.tap("Escape", pause=0.3)
         state["undo_unchanged"] = book.undo_titles() == titles
         state["hidden"] = [n for n in book.order() if not sheets.getByName(n).IsVisible]
         state["hidden_markers"] = [
@@ -1376,6 +1400,7 @@ def check_picks_dropped_when_sheets_change(book):
         while undo.getAllUndoActionTitles():
             undo.undo()
         assert state["selection"] == [], evidence
+        assert not state["popup_opened"], evidence
         assert state["calc_tabs_after_menu_key"] == tabs, evidence
         assert state["undo_unchanged"] and state["hidden"] == [], evidence
         if way != "held_replace":
@@ -1497,14 +1522,14 @@ def check_actions_refused_while_lock_held(book):
                 if action == "enter":
                     book.lab.input.tap("Return", pause=0.8)
                 else:
+                    assert not book.lab.input.popup_windows(), "An earlier popup is still open"
                     book.lab.input.tap("Menu", pause=0.8)
-                    if book.calc_tabs() != tabs:
-                        book.choose(".uno:Hide")
-                        time.sleep(1)
-                    else:
-                        book.lab.input.tap("Escape", pause=0.3)
+                    popup = bool(book.lab.input.popup_windows())
+                    book.lab.input.tap("Escape", pause=0.3)
+                    assert not popup, "A menu opened while the document lock was held"
                 state = {
                     "active": book.active(),
+                    "calc_tabs": book.calc_tabs(),
                     "active_marker": sheets.getByName(book.active())
                     .getCellRangeByName("A1")
                     .getString(),
@@ -1520,6 +1545,7 @@ def check_actions_refused_while_lock_held(book):
             while undo.getAllUndoActionTitles():
                 undo.undo()
             assert state["active"] == NAMES[3] and state["active_marker"] != "replacement", evidence
+            assert state["calc_tabs"] == tabs, evidence
             assert state["hidden"] == [] and state["undo"] == [], evidence
     return evidence
 
@@ -1692,6 +1718,7 @@ def run_checks(lab, output):
         ("help_menu", lambda: check_help_menu(book)),
         ("menu_hidden_only", lambda: check_menu_hidden_only(book)),
         ("menu_mixed_visibility", lambda: check_menu_mixed_visibility(book)),
+        ("reload_accepts_real_input", lambda: check_reload_accepts_real_input(book)),
         ("plain_click_ends_group", lambda: check_plain_click_ends_group(book)),
         ("single_tap_after_client_pause", lambda: check_single_tap_after_client_pause(book)),
         ("cursor_across_refresh", lambda: check_cursor_across_refresh(book)),

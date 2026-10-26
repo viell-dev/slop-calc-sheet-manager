@@ -25,7 +25,19 @@ def check(image_path: Path, metadata_path: Path) -> None:
     )
     column = left + viewport - 6  # Beyond these synthetic labels, inside the row viewport.
     actual = [y for y in range(1, height - 1) if image.getpixel((column, top + y)) == shadow]
-    assert actual == expected, {"expected_dividers": expected, "actual_shadow_pixels": actual}
+    # The native hit test includes its bottom boundary. A fully visible last row can
+    # share that pixel with a horizontal scrollbar, so the painter excludes it safely.
+    final = data["rows"][-1]
+    last_omitted = bool(
+        width > viewport
+        and expected
+        and expected[-1] == final["Y"] + final["Height"] - 1
+        and actual == expected[:-1]
+    )
+    assert actual == expected or last_omitted, {
+        "expected_dividers": expected,
+        "actual_shadow_pixels": actual,
+    }
     if width - viewport > 6:
         # Native grips can contain shadow-coloured pixels, but do not span the track interior.
         crossed = [
@@ -38,7 +50,15 @@ def check(image_path: Path, metadata_path: Path) -> None:
             )
         ]
         assert not crossed, {"dividers_crossing_scrollbar": crossed}
-    print(json.dumps({"native_dividers": len(expected), "scrollbar_clear": True}))
+    print(
+        json.dumps(
+            {
+                "native_dividers": len(actual),
+                "last_divider_omitted": last_omitted,
+                "scrollbar_clear": True,
+            }
+        )
+    )
 
 
 if __name__ == "__main__":

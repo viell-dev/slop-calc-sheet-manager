@@ -6,6 +6,8 @@ Uses ctypes so that LibreOffice's bundled Python needs no extra packages.
 
 import ctypes
 import os
+import re
+import subprocess
 import time
 
 _x11 = ctypes.cdll.LoadLibrary("libX11.so.6")
@@ -49,6 +51,25 @@ class XInput:
 
     def _sync(self):
         _x11.XSync(self._display, 0)
+
+    def popup_windows(self):
+        """Mapped X11 popup windows on this private display, independent of Calc tab state."""
+        children = subprocess.check_output(["xwininfo", "-root", "-children"], text=True, timeout=5)
+        visible = set()
+        for window in re.findall(r"^\s+(0x[0-9a-fA-F]+)\s", children, re.MULTILINE):
+            info = subprocess.check_output(["xwininfo", "-id", window], text=True, timeout=5)
+            width = re.search(r"Width:\s+(\d+)", info)
+            height = re.search(r"Height:\s+(\d+)", info)
+            if (
+                "Map State: IsViewable" in info
+                and "Override Redirect State: yes" in info
+                and width is not None
+                and height is not None
+                and int(width[1]) > 1
+                and int(height[1]) > 1
+            ):
+                visible.add(window)
+        return visible
 
     def move(self, x, y):
         _xtst.XTestFakeMotionEvent(self._display, -1, int(x), int(y), 0)

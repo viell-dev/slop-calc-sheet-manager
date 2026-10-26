@@ -40,6 +40,9 @@ If Sheet Manager does not work in an environment where it is expected to, please
 - **Large lists.** The list rebuilds after changes. During rapid sheet switches the active-sheet
   marker can lag; timing measurements and the remaining work are in
   [#22](https://github.com/viell-dev/slop-calc-sheet-manager/issues/22).
+- **Final row divider.** At the end of a long list, the last row's lower divider can be absent.
+  The painter leaves an ambiguous boundary pixel clear to keep decorations off scrollbars
+  ([#86](https://github.com/viell-dev/slop-calc-sheet-manager/issues/86)).
 - **Refused held clicks.** If a held click is refused after the list changes, its picks are restored
   and, when any survive, the keyboard cursor returns to one of them. An unpicked position made
   during that hold is not preserved

@@ -38,8 +38,8 @@ instead. Take screenshots only of this workbook.
    selected in the tab bar.
 4. **Wheel.** Turn the mouse wheel over the list, both ways.
    Expected: the list scrolls; nothing else changes. Drag the scrollbar too, including to the
-   last row. Dividers stay one pixel thick, the last row has a bottom divider, and no line
-   crosses the scrollbar.
+   last row. Dividers stay one pixel thick and no line crosses the scrollbar. The last row's
+   lower divider can be absent at the end of a long list; see [Known issues](./guide/known-issues.md).
 5. **Drag two sheets above a row.** Click "Bravo", Ctrl+click "Delta", press on "Delta", and drag
    until the pointer is in the upper half of "Lima"; hold still for a moment, then release.
    Expected: during the drag a line marks the gap above Lima. After release the order starts
@@ -92,8 +92,8 @@ instead. Take screenshots only of this workbook.
 19. **Hidden sheets only.** Click "Hotel" (hidden), then right-click it.
     Expected: Calc's active sheet does not change; Show Sheet shows Hotel as one undo step.
     The menu also offers guarded movement and Help. Undo, then select Charlie and Hotel together.
-    Open their menu and choose **Sheet actions…**: because Calc cannot group hidden tabs, a safe
-    menu offers Show Sheet, guarded moves and Help. Show Sheet shows only Hotel in one undo step.
+    Open their menu and choose **Sheet actions…**: mixed targets use a safe menu offering Show
+    Sheet, guarded moves and Help. Show Sheet shows only Hotel in one undo step.
 20. **Other windows.** Open a second workbook, type in its cells, and use its shortcuts; then
     return to the first workbook and click a row of its list.
     Expected: the second workbook behaves exactly as without the extension; the first list still

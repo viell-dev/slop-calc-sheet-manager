@@ -10,7 +10,8 @@ from tests.unit.source_methods import method
 
 
 @pytest.mark.parametrize("choice", [20002, 20006, 0, 20000])
-def test_outer_move_help_and_cancel_never_target_native_tabs(choice: int) -> None:
+@pytest.mark.parametrize("mixed", [False, True])
+def test_outer_move_help_and_cancel_never_target_native_tabs(choice: int, mixed: bool) -> None:
     popup = Mock()
     popup.execute.return_value = choice
     owner = SimpleNamespace(
@@ -21,10 +22,11 @@ def test_outer_move_help_and_cancel_never_target_native_tabs(choice: int) -> Non
         group_calc_tabs=Mock(return_value=True),
         capture_view=Mock(return_value=object()),
         _native=Mock(return_value=None),
+        _safe=Mock(return_value=None),
     )
 
     def hidden(observed: object, picked: list[str]) -> list[str]:
-        return []
+        return ["Hidden"] if mixed else []
 
     def translate(text: str) -> str:
         return text
@@ -47,10 +49,11 @@ def test_outer_move_help_and_cancel_never_target_native_tabs(choice: int) -> Non
             "tr": translate,
         },
     )
-    assert show(owner, object(), 4, 8, object(), ["Bravo"]) == (
+    picked = ["Bravo", "Hidden"] if mixed else ["Bravo"]
+    assert show(owner, object(), 4, 8, object(), picked) == (
         None if choice == 20000 else choice or None
     )
-    if choice == 20000:
+    if choice == 20000 and not mixed:
         owner.capture_view.assert_called_once()
         owner.group_calc_tabs.assert_called_once_with(["Bravo"])
         owner._native.assert_called_once()
@@ -60,6 +63,10 @@ def test_outer_move_help_and_cancel_never_target_native_tabs(choice: int) -> Non
         owner.group_calc_tabs.assert_not_called()
         owner._native.assert_not_called()
         assert not owner._targeted_native
+    if choice == 20000 and mixed:
+        owner._safe.assert_called_once()
+    else:
+        owner._safe.assert_not_called()
     assert not owner.is_open
 
 

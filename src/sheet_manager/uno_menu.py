@@ -238,6 +238,10 @@ class SheetMenu:
                 if not unchanged():
                     self._report_refusal()
                     return None
+                if hidden_targets(observed, picked):
+                    # Calc can report hidden indices as selected too. Do not mistake
+                    # that for a visible tab context; keep mixed targets on safe actions.
+                    return self._safe(peer, x, y, observed, picked)
                 self.view = self.capture_view(observed)
                 if self.view is None or not unchanged():
                     self._report_refusal()
