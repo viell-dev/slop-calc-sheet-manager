@@ -5,6 +5,9 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Keep new guide instructions marked **Unreleased** through release preparation and failed or
+  abandoned publication. Published history controls their availability markers; documentation
+  corrections still deploy independently of software versions and tags.
 - Release the native sheet-menu dispatch guard even if its panel is disposed while the menu is
   open, so the surviving Calc window can still run ordinary commands after dismissal.
 - Replace the persistent selection-cleared infobar with a ten-second panel notice. Expiration
