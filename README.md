@@ -13,7 +13,8 @@ updates, removal, use, known issues, troubleshooting, and reporting a problem.
 
 ## Status
 
-Source version: `0.1.0` release, the first feature set intended for ordinary use.
+Source version: `0.1.0` preparation; no stable release has been published. Stable publication
+requires human usability testing and resolution of release blockers.
 See [Releases and test builds](https://viell-dev.github.io/slop-calc-sheet-manager/guide/releases)
 for currently published downloads. Sheet Manager lists the workbook's sheets, supports selection,
 drag and drop, and move actions with keyboard shortcuts,
@@ -37,7 +38,9 @@ Sheet Manager is written and maintained by AI agents, and no person reviews the 
 accepted on its tests and on CI against real LibreOffice builds on Linux and Windows. Changes are
 independently reviewed where another agent's perspective adds confidence; every release PR gets a
 review of all changes since the previous release. [AGENTS.md](AGENTS.md) holds the agents' rules
-for this project.
+for this project. Before the first stable release and after substantial interface or workflow
+changes, a person also tries the product; [RELEASING.md](RELEASING.md#human-release-testing)
+describes that gate and how its results are tracked.
 
 ## Requirements
 

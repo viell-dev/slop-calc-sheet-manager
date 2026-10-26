@@ -304,7 +304,7 @@ far sheet's colour keeps changing, so that the list waits to refresh, they click
 just before activation, and Ctrl+click after a double-click, and check that nothing acts on the old rows.
 Results and screenshots are in `test-results/<lane>/ui-gtk3/` and `ui-gen/`. LibreOffice's
 synthetic input on Windows bypasses key handlers and cannot start a native drag; those checks are
-in the [optional desktop observations](docs/manual-tests.md), with a synthetic workbook from
+in the [human usability and desktop tests](docs/manual-tests.md), with a synthetic workbook from
 `python tools/manual_workbook.py`.
 
 Logs, actual office/Python versions, package inventory, and results are in `test-results/` and in
