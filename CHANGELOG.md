@@ -5,6 +5,9 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Keep new guide instructions marked **Unreleased** through release preparation and failed or
+  abandoned publication. Published history controls their availability markers; documentation
+  corrections still deploy independently of software versions and tags.
 - Replace the persistent selection-cleared infobar with a ten-second panel notice. Expiration
   keeps keyboard focus, current picks, and Calc's separate grouped-editing warning unchanged.
   Undo/Redo still clears picks conservatively; preserving verified move selections is tracked

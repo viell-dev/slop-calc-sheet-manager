@@ -1,6 +1,6 @@
 # Status and plans
 
-The `0.0.4` test build targets the first feature release, `0.1.0`. The
+Test builds target the first feature release, `0.1.0`. The
 [release page](./releases.md) lists currently published downloads; the notice above identifies
 the build this guide describes.
 
@@ -18,9 +18,10 @@ the build this guide describes.
   applies the whole change as one undo step. It checks permissions first, and recovers and
   verifies if a change fails part-way. It is tested against real LibreOffice on workbooks of up to
   1,000 sheets. Drag any selection to an insertion line; the list scrolls near its edges.
-- **Move controls.** Use the top buttons or menu to move to top, up, down, or bottom in one undo
-  step, with Alt+Home/Up/Down/End shortcuts and availability checks. Right-click targets the pointed
-  row or existing picked set without changing picks or the viewed sheet. **Sheet actions…** opens
+- **Move controls.** <Unreleased since="0.0.4" /> Use the top buttons or menu to move to top, up,
+  down, or bottom in one undo step, with Alt+Home/Up/Down/End shortcuts and availability checks.
+  Right-click targets the pointed row or existing picked set without changing picks or the viewed
+  sheet. **Sheet actions…** opens
   Calc's customized menu;
   temporary native grouping is restored on dismissal where safe. The menu also links to Help.
 - **Manual-install downloads and update feeds.** Each published build includes an OXT and checksum.

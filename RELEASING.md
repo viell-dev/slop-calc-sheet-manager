@@ -68,9 +68,13 @@ LibreOffice supports SemVer prerelease precedence.
    released into a nonempty `## VERSION - YYYY-MM-DD` section in `CHANGELOG.md`, retaining an
    `Unreleased` section above it. The exact section body becomes the release notes; write for
    users, without an agent callout or footer. Update compatibility and installation documentation
-   if needed. Do not change the extension identifier. In the user guide, remove the **Unreleased**
-   markers for what this release contains. For the first release, also rewrite the statements that
-   no release exists, which
+   if needed. Do not change the extension identifier. In the user guide, give the changes being
+   released a versioned marker, `<Unreleased since="VERSION" />`, replacing untargeted
+   `<Unreleased />` or plain **Unreleased** labels. Keep the markers: published release history
+   hides them automatically when that version reaches the guide's baseline (latest stable, or
+   newest test build before the first stable release). Preparation, a reserved tag, and a draft do
+   not hide them, including when publication fails or is abandoned. For the first release, also
+   rewrite the statements that no release exists, which
    `git grep -n -i -E "no (release|build|download)|published yet|until then" -- docs README.md`
    finds.
 2. Run `python tools/check.py` and the relevant LibreOffice integration checks described in
@@ -172,7 +176,9 @@ across the complete build and deployment; locking deployment alone would allow s
 The same deployment serves the user guide.
 
 - **Building.** **Pages** builds the guide with VitePress from `main`. It passes the guide the
-  release history it has just generated, so that the guide's notice names the latest release.
+  release history it has just generated, so that the guide's notice names the latest release and
+  instructions unavailable in that baseline retain their **Unreleased** markers. A newer test
+  build does not remove markers while an older stable build is the baseline.
 - **Combining.** Pages then copies the guide into the generated site, and refuses to replace any
   file there: the guide may not write `releases.json` or anything under `updates/`.
 - **Pull requests.** CI's **Documentation** job builds and combines the guide on every pull
@@ -182,6 +188,10 @@ The same deployment serves the user guide.
   the commit the site was built from.
 - **One workflow.** No other workflow deploys Pages, so a guide deployment and a feed update
   cannot overwrite each other.
+- **Documentation corrections.** Use an ordinary documentation pull request to `main`, run
+  `npm run docs:build` and `python tools/check_release_page.py`, then let Pages redeploy on merge.
+  Keep markers for unavailable behaviour. No software version bump, publication, or tag move is
+  needed. Verify the correction and the documentation commit in the deployed notice.
 
 GitHub Pages must use **GitHub Actions** as its source. Set the `github-pages` environment's custom
 deployment policies to branch `main` and tags `[0-9]*`, so manual release events can deploy too.

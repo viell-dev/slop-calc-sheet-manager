@@ -400,7 +400,9 @@ npm run docs:dev
 
 `npm run docs:build` builds it as CI does; a broken link between pages fails the build.
 `python tools/check_release_page.py` also builds empty and synthetic release histories, checking
-channel separation, version order, and the rendered OXT/checksum links in the required docs job.
+channel separation, version order, rendered OXT/checksum links, and markers beside instructions
+that are not published yet. It covers preparation with old history, publication, and an older
+stable release alongside a newer test build, in the required docs job.
 Its disposable build output uses the operating system's temporary directory; it never publishes
 a build.
 Some Windows security policies block the native module that VitePress's bundler loads. Then build in a
@@ -415,9 +417,17 @@ docker run --rm --env "SHEET_MANAGER_DOCS_COMMIT=$(git rev-parse HEAD)" `
 ```
 
 Write for users of the extension. A user-visible change updates the guide in the same pull
-request. Until the change is released, mark it **Unreleased**. Every page is listed in the sidebar
-in `docs/.vitepress/config.mts`, and `tests/unit/test_consistency.py` checks the sidebar and the
-facts that the README, the guide, and the extension's metadata share.
+request. Mark new behaviour where it appears with an inline `<Unreleased />` inside its paragraph
+(for example, `Move buttons: <Unreleased /> ...`). When preparing its release, set
+`<Unreleased since="VERSION" />` to the first numeric version containing it; keep that marker
+in the source. The site shows **Unreleased** until published history reaches that version in the
+latest stable release, or the newest test build before any stable release. A source version,
+tag, or draft does not establish availability. An abandoned preparation keeps its markers.
+Documentation-only corrections use the same build and synthetic-history checks and deploy from
+`main` without changing a software version or tag; verify the deployed notice's source commit.
+Every page is listed in the sidebar in `docs/.vitepress/config.mts`, and
+`tests/unit/test_consistency.py` checks the sidebar and the facts that the README, the guide,
+and the extension's metadata share.
 
 ## Pull requests
 

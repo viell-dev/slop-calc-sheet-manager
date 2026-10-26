@@ -204,16 +204,21 @@ reconsider. The owner may report a defect themselves, in their own words.
   for meaning. After a change that affects the About text or the homepage, read the live settings
   and correct them.
 - **Which version the guide describes.** The guide describes the latest stable release.
-  Behaviour that is not in a stable release yet is marked **Unreleased** where it appears, and
-  the release pull request removes the markers for what it releases.
+  Behaviour that is not in a stable release yet is marked **Unreleased** where it appears.
+  Use `<Unreleased />` until a publication version is assigned, then
+  `<Unreleased since="VERSION" />`. Keep these markers through release preparation: the build
+  hides a versioned marker only when the published baseline includes that version or a later one.
+  Failed or abandoned publication leaves the marker visible. Never infer publication from the
+  source manifest, changelog, tag, or draft.
   - While only release candidates exist, the guide describes the newest candidate and marks what
     is not in it.
   - Before any release, the whole guide describes the development version.
   - The notice at the top of each page says which of these applies.
   - The first release pull request also rewrites the guide's statements that no release exists;
     RELEASING.md lists how to find them.
-  - A correction to the guide is an ordinary pull request. It deploys when it merges, and no tag
-    moves.
+  - A correction to the guide is an ordinary pull request. Run the documentation checks in
+    CONTRIBUTING.md; it deploys when it merges, and no software release or tag changes. Retain
+    availability markers for behaviour still absent from the published baseline.
   - The same notice names the commit the site was built from.
 - **How the guide is built.**
   - The guide is built with an exactly pinned VitePress 2 prerelease. CI's **Documentation** job

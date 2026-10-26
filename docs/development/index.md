@@ -13,8 +13,15 @@ together with the extension's update feeds.
   version.
 - **The notice at the top of every page** says which of these applies. It is generated from the
   published releases when the site is built, and names the commit that the site was built from.
+- **Release preparation.** New instructions use `<Unreleased />` until their publication version
+  is assigned, then `<Unreleased since="VERSION" />`. The marker stays in the source; the site
+  hides it only when the published baseline reaches that numeric version. Preparation commits,
+  reserved tags, and draft releases do not change it. Failed or abandoned publication therefore
+  leaves the instructions marked. A newer test build does not advance an existing stable baseline.
 - **Corrections.** A correction is an ordinary pull request to `main`. The site is rebuilt when it
-  merges, so no release has to change, and no tag moves.
+  merges, so no release has to change, and no tag moves. Run the build and synthetic-history check
+  below and retain markers for behaviour absent from the published baseline. Check the correction
+  and the source commit in the deployed notice.
 
 ## For contributors
 
@@ -40,7 +47,8 @@ npm run docs:dev
 
 `npm run docs:build` builds the site as CI does, and fails on a broken link between pages.
 After installing the Node dependencies, `python tools/check_release_page.py` checks the rendered
-release page with empty and synthetic histories, including channel separation and asset links.
+release page and use instructions with empty and synthetic histories, including channel separation,
+asset links, and availability markers before and after publication.
 Its disposable outputs use the operating system's temporary directory; it makes no publication
 changes.
 
