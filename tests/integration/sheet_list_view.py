@@ -152,6 +152,16 @@ def tree_of(panel):
     return None
 
 
+def move_buttons(panel):
+    """Visible native button peers keyed by their public accessible names."""
+    buttons = {}
+    for child in panel.getWindows():
+        if "com.sun.star.awt.XButton" in [kind.typeName for kind in child.getTypes()]:
+            name = child.getProperty("XAccessible").getAccessibleContext().getAccessibleName()
+            buttons[name] = child
+    return buttons
+
+
 def open_list(context, document):
     """Show the deck for this document and return its panel window and tree control."""
     frame = document.getCurrentController().getFrame()

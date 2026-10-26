@@ -57,6 +57,8 @@ def observer() -> tuple[Any, Any]:
         ),
         _tabs_method=SimpleNamespace(invoke=Mock(side_effect=invoke)),
         _take_tree_selection=Mock(return_value=False),
+        _update_moves=Mock(),
+        owns_tree_keys=lambda: True,
         _select=Mock(),
         document_modified=Mock(),
     )
@@ -250,7 +252,7 @@ def test_listener_input_only_posts_one_acknowledgement_and_does_not_read_native_
     assert not owner._view_ack_pending
 
 
-@pytest.mark.parametrize("key", ["Return", "Menu", "type-ahead"])
+@pytest.mark.parametrize("key", ["Return", "Menu", "type-ahead", "button-Return", "button-Space"])
 def test_queued_key_intent_prevents_an_older_observation_from_replacing_its_picks(key: str) -> None:
     from sheet_manager.keys import (
         CONTEXTMENU,
@@ -260,6 +262,7 @@ def test_queued_key_intent_prevents_an_older_observation_from_replacing_its_pick
         TAB,
         A,
         KeyRoute,
+        button_route,
         route_key,
     )
 
@@ -289,6 +292,8 @@ def test_queued_key_intent_prevents_an_older_observation_from_replacing_its_pick
     owner.open_menu_for_keyboard = lambda: actions.append("Menu")
     owner.type_ahead = type_ahead
     owner.owns_keys = lambda: True
+    button = key.startswith("button-")
+    owner.owns_tree_keys = lambda: not button
     handler = SimpleNamespace(_list=owner, _consumed={})
     pressed = method(
         "src/sheet_manager/uno_keys.py",
@@ -300,22 +305,25 @@ def test_queued_key_intent_prevents_an_older_observation_from_replacing_its_pick
             "TAB": TAB,
             "SHIFT": SHIFT,
             "SPACE": SPACE,
+            "button_route": button_route,
         },
     )
     code, char = {
         "Return": (RETURN, "\r"),
         "Menu": (CONTEXTMENU, ""),
         "type-ahead": (A, "a"),
+        "button-Return": (RETURN, "\r"),
+        "button-Space": (SPACE, " "),
     }[key]
     event = SimpleNamespace(KeyCode=code, KeyChar=char, Modifiers=SHIFT if "Shift" in key else 0)
-    assert pressed(handler, event)
+    assert pressed(handler, event) is not button
     assert owner._input == 1 and owner._view_ack_pending
     live.indices = (0, 2)
     owner._observe_view()  # Already queued ahead of the key's action.
     owner._select.assert_not_called()
     assert not actions
     queued[-1]()
-    assert actions == [key]
+    assert actions == ([] if button else [key])
 
 
 def test_visibility_guards_native_deck_access_after_sidebar_removal() -> None:

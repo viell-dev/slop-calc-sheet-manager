@@ -7,6 +7,28 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 No changes recorded yet.
 
+## 0.0.4 - 2026-10-26
+
+Third test build for 0.1.0, addressing feedback on 0.0.3.
+Requires LibreOffice 26.2.1 or later with Python support.
+
+- Opening the movement context menu keeps the viewed sheet and Calc tab selection unchanged.
+  **Sheet actions…** opens Calc's customized menu when every target is visible; only that step
+  temporarily targets its native tabs, with safe restoration after dismissal. Mixed visible
+  and hidden targets instead offer safe Show/move actions without native grouping.
+  Refused rapid repeats also leave the current view and list picks unchanged.
+- Restore Top, Up, Down, and Bottom buttons above the list. They share the menu's permission,
+  identity and undo checks, show refusal reasons, and support keyboard focus and activation.
+  The grouped-editing warning remains a conditional footer.
+- Keep row dividers aligned after scrolling and font/DPI changes by following actual native
+  row geometry. Decorations stop at the content viewport instead of covering scrollbars, and
+  fixed border pixels no longer get copied into rows by native scrolling. Horizontal scrolling
+  of long names keeps decorations aligned across the whole viewport.
+
+Install the OXT manually over 0.0.3, restart LibreOffice, and check its SHA-256 asset. Test builds
+keep the stable update feed; later test builds remain manual downloads. Existing compatibility
+and selection limits remain in the [known issues](https://viell-dev.github.io/slop-calc-sheet-manager/guide/known-issues).
+
 ## 0.0.3 - 2026-10-25
 
 Second test build for 0.1.0, focused on the sidebar's interaction and appearance.

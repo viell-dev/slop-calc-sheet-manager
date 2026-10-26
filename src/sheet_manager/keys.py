@@ -10,7 +10,7 @@ therefore routed as follows:
 - keys the list handles itself (Enter, typed characters, the menu keys) are consumed;
 - other shortcuts are consumed and their Calc command is dispatched to the panel's own frame,
   because the sidebar swallows some of them (Ctrl+Page Down) before they reach Calc;
-- Tab returns from the list to Calc; other focus travel, the menu bar,
+- Tab traverses enabled panel controls, then returns to Calc; other focus travel, the menu bar,
   and Escape are left to LibreOffice;
 - everything else is consumed so that it cannot reach a cell.
 
@@ -94,6 +94,13 @@ def move_action(code: int, modifiers: int) -> str | None:
     if modifiers != MOD2:
         return None
     return {HOME: "top", UP: "up", DOWN: "down", END: "bottom"}.get(code)
+
+
+def button_route(route: KeyRoute, code: int, modifiers: int) -> KeyRoute:
+    """Keep native button activation/navigation; printable input must not reach cells."""
+    if route in (KeyRoute.TREE, KeyRoute.ACTIVATE) or code == SPACE and modifiers == 0:
+        return KeyRoute.LIBREOFFICE
+    return KeyRoute.IGNORE if route is KeyRoute.TYPE_AHEAD else route
 
 
 def unbound_route(modifiers: int) -> KeyRoute:

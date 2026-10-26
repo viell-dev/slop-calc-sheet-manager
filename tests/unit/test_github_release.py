@@ -101,11 +101,11 @@ def test_dry_run_builds_assets_and_prospective_feeds_without_api_writes(
     cli.main()
     assert (tmp_path / f"sheet-manager-{version()}.oxt").exists()
     assert (tmp_path / f"sheet-manager-{version()}.oxt.sha256").exists()
-    plan = json.loads((tmp_path / "release-plan.json").read_text())
+    plan = json.loads((tmp_path / "release-plan.json").read_text(encoding="utf-8"))
     assert plan["release"]["target_commitish"] == "a" * 40
     assert plan["release"]["draft"] is True
     assert plan["release"]["prerelease"] is candidate
-    assert plan["release"]["body"] == (tmp_path / "release-notes.md").read_text()
+    assert plan["release"]["body"] == (tmp_path / "release-notes.md").read_text(encoding="utf-8")
     assert (tmp_path / "site/updates/stable.xml").exists()
     assert (tmp_path / "site/updates/prerelease.xml").exists()
 

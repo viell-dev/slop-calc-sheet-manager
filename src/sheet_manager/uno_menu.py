@@ -1,12 +1,9 @@
 """The sheet tab menu for the sheets selected in the list.
 
-Calc's own sheet tab menu acts on Calc's selected tabs. Before it opens, the list selects
-exactly its own picked sheets as Calc's tabs and reads the selection back; only if Calc holds
-exactly those sheets does the built-in menu, with the user's customizations, open. While it is
-open, a dispatch interceptor on the panel's frame wraps every command it dispatches: at the moment
-a command runs, the picked sheets must still be the same sheets and still be Calc's whole tab
-selection, or the command is not run. Calc cannot select only hidden sheets, so then, or if Calc
-does not take the selection, a short menu offers what the extension can do safely itself.
+The outer movement menu leaves Calc's tabs unchanged. Choosing Sheet actions… groups its
+visible targets and opens Calc's customized tab menu only after exact readback. Hidden or
+mixed-visibility targets use safe extension actions instead. While the native menu is open,
+a dispatch interceptor checks sheet identity and exact tab membership before every command.
 """
 
 import time
@@ -30,6 +27,7 @@ SHOW = 1
 ACTIONS = ("top", "up", "down", "bottom")
 MOVE_IDS = {20001 + index: action for index, action in enumerate(ACTIONS)}
 HELP = 20006
+NATIVE = 20000
 SELECT_COMMANDS = {".uno:TableSelectAll", ".uno:TableDeselectAll"}
 
 
@@ -122,6 +120,8 @@ class SheetMenu:
         self.is_open = False
         self._closed_at = 0.0
         self.command: str | None = None
+        self._targeted_native = False
+        self.view: MenuView | None = None
         self._dispatch_depth = 0
         self._completion: Callable[[], None] | None = None
 
@@ -157,7 +157,7 @@ class SheetMenu:
 
     def restore_view(self, view: MenuView, unchanged: Callable[[], bool]) -> None:
         """Restore only provable sheets with unchanged visibility; explicit selection wins."""
-        if self.command in SELECT_COMMANDS or not unchanged():
+        if not self._targeted_native or self.command in SELECT_COMMANDS or not unchanged():
             return
         refs = (view.active, *view.tabs)
         if any(ref.token.getName() != ref.name for ref in refs):
@@ -216,14 +216,39 @@ class SheetMenu:
         `unchanged` says whether that still holds as far as the caller can tell (no sheet was
         inserted or deleted since), and is checked again when a command runs.
         """
-        if self.is_open or time.monotonic() - self._closed_at < REPEAT_GUARD_SECONDS:
+        if self.is_open:
+            return None
+        # A refused reopen must not reuse the previous popup's transition state.
+        self._targeted_native = False
+        self.view = None
+        self.command = None
+        if time.monotonic() - self._closed_at < REPEAT_GUARD_SECONDS:
             return None
         self.is_open = True
-        self.command = None
         try:
             hidden = set(hidden_targets(observed, picked))
-            if set(picked) - hidden and self.group_calc_tabs(picked):
-                return self._native(peer, x, y, observed, picked, unchanged)
+            if set(picked) - hidden:
+                menu = self._popup()
+                self._add_actions(menu, observed, picked)
+                menu.insertSeparator(len(ACTIONS))
+                menu.insertItem(NATIVE, tr("Sheet actions…"), 0, len(ACTIONS) + 1)
+                chosen = menu.execute(peer, Rectangle(x, y, 1, 1), 0)
+                if chosen != NATIVE:
+                    return chosen if chosen in MOVE_IDS or chosen == HELP else None
+                if not unchanged():
+                    self._report_refusal()
+                    return None
+                if hidden_targets(observed, picked):
+                    # Calc can report hidden indices as selected too. Do not mistake
+                    # that for a visible tab context; keep mixed targets on safe actions.
+                    return self._safe(peer, x, y, observed, picked)
+                self.view = self.capture_view(observed)
+                if self.view is None or not unchanged():
+                    self._report_refusal()
+                    return None
+                self._targeted_native = True
+                if self.group_calc_tabs(picked):
+                    return self._native(peer, x, y, observed, picked, unchanged)
             return self._safe(peer, x, y, observed, picked)
         finally:
             self.is_open = False
@@ -251,7 +276,6 @@ class SheetMenu:
         executing = False
         try:
             popup = self._popup()
-            # SfxDispatcher's tab-bar arguments; the controller fills and runs the menu.
             controller = self._context.ServiceManager.createInstanceWithArgumentsAndContext(
                 "com.sun.star.comp.framework.ResourceMenuController",
                 (
@@ -262,14 +286,9 @@ class SheetMenu:
                 self._context,
             )
             controller.setPopupMenu(popup)
-            menu = self._popup()
-            self._add_actions(menu, observed, picked)
-            menu.insertSeparator(len(ACTIONS))
-            menu.insertItem(20000, tr("Sheet actions"), 0, len(ACTIONS) + 1)
-            menu.setPopupMenu(20000, popup)
             executing = True
-            chosen = menu.execute(peer, Rectangle(x, y, 1, 1), 0)
-            return chosen if chosen in MOVE_IDS or chosen == HELP else None
+            popup.execute(peer, Rectangle(x, y, 1, 1), 0)
+            return None
         finally:
             try:
                 if controller is not None:
@@ -280,7 +299,7 @@ class SheetMenu:
                     self._frame.releaseDispatchProviderInterceptor(guard)
 
                 if executing:
-                    # The chosen command is posted while the menu closes; release after it.
+                    # The native command is posted while its menu closes; release after it.
                     try:
                         self._post(release)
                     except BaseException:

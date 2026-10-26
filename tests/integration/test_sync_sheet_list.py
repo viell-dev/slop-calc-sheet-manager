@@ -235,6 +235,16 @@ def check_reload(context, desktop, directory):
             f"Reloaded rows={names(tree)!r}, picks={selection(tree, NAMES)!r}, "
             f"status={status(panel)!r}, focused={tree.hasFocus()!r}"
         )
+        try:
+            window = frame.getContainerWindow()
+            error.add_note(
+                f"Tree bounds={tree.getPosSize()!r}, visible={tree.isVisible()!r}, "
+                f"enabled={tree.isEnabled()!r}, frame_active={frame.isActive()!r}, "
+                f"frame_enabled={window.isEnabled()!r}, frame_visible={window.isVisible()!r}, "
+                f"same_controller={frame.getController() == current!r}"
+            )
+        except Exception as diagnostic_error:
+            error.add_note(f"Reload window diagnostics failed: {diagnostic_error!r}")
         raise
     select_tabs(context, frame, [0, 3])
     poll(lambda: selection(tree, NAMES) == ["Alfa", "Delta"], "the replacement observer")

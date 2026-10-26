@@ -28,6 +28,7 @@ from sheet_manager.keys import (
     A,
     KeyRoute,
     TypeAhead,
+    button_route,
     find_prefix,
     move_action,
     route_key,
@@ -36,6 +37,23 @@ from sheet_manager.keys import (
 )
 
 S = 530  # Key S
+
+
+@pytest.mark.parametrize(
+    ("code", "modifiers", "char", "expected"),
+    [
+        (RETURN, 0, "\r", KeyRoute.LIBREOFFICE),
+        (SPACE, 0, " ", KeyRoute.LIBREOFFICE),
+        (UP, 0, "", KeyRoute.LIBREOFFICE),
+        (A, 0, "a", KeyRoute.IGNORE),
+        (DOWN, MOD2, "", KeyRoute.MOVE),
+        (PAGEDOWN, MOD1, "", KeyRoute.SHORTCUT),
+    ],
+)
+def test_button_keys_activate_natively_and_keep_text_out_of_cells(
+    code: int, modifiers: int, char: str, expected: KeyRoute
+) -> None:
+    assert button_route(route_key(code, modifiers, char), code, modifiers) is expected
 
 
 @pytest.mark.parametrize(

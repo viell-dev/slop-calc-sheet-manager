@@ -42,6 +42,7 @@ PACKAGE_FILES = (
     "uno_keys.py",
     "uno_list.py",
     "uno_menu.py",
+    "uno_moves.py",
     "uno_status.py",
     "uno_panel.py",
     "uno_reorder.py",

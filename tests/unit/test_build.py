@@ -46,6 +46,7 @@ def test_two_builds_are_identical_and_allowlisted(tmp_path: Path) -> None:
                     "uno_keys",
                     "uno_list",
                     "uno_menu",
+                    "uno_moves",
                     "uno_status",
                     "uno_rows",
                     "uno_panel",

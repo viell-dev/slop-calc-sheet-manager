@@ -200,7 +200,7 @@ def ui_run_checks(calls: list[str], stall_at: str | None, fail_at: str | None = 
     )
 
     def fake(name: str) -> Callable[..., object]:
-        def check(*_: object) -> object:
+        def check(*_: object, **__: object) -> object:
             calls.append(name)
             if name == stall_at:
                 record_stalled_callback("work on LibreOffice's main thread did not finish")

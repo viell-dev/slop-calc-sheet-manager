@@ -37,7 +37,9 @@ instead. Take screenshots only of this workbook.
    Expected: the list selects Golf to Juliett; Calc still shows Echo and only Echo's tab is
    selected in the tab bar.
 4. **Wheel.** Turn the mouse wheel over the list, both ways.
-   Expected: the list scrolls; nothing else changes.
+   Expected: the list scrolls; nothing else changes. Drag the scrollbar too, including to the
+   last row. Dividers stay one pixel thick and no line crosses the scrollbar. The last row's
+   lower divider can be absent at the end of a long list; see [Known issues](./guide/known-issues.md).
 5. **Drag two sheets above a row.** Click "Bravo", Ctrl+click "Delta", press on "Delta", and drag
    until the pointer is in the upper half of "Lima"; hold still for a moment, then release.
    Expected: during the drag a line marks the gap above Lima. After release the order starts
@@ -71,10 +73,11 @@ instead. Take screenshots only of this workbook.
     Expected: Ctrl+Z removes the text; Ctrl+S saves without a dialog and the document's modified
     indicator in the status bar clears.
 15. **Menu by right click.** Click "Charlie", Ctrl+click "Echo", and right-click "Echo".
-    Expected: move actions appear directly and Calc's customized menu is under Sheet actions.
-    List picks stay unchanged. Choose Sheet actions ▸ Hide Sheet: exactly Charlie and Echo are
-    hidden. Press Ctrl+Z. Right-click an unpicked row and cancel: the previous picks, viewed sheet,
-    and Calc tab group return. Sheet Manager Help opens the guide.
+    Expected: move actions appear directly; picks, viewed sheet and Calc tab group stay unchanged
+    while this outer menu is open. Choose **Sheet actions…** to open Calc's customized menu,
+    then choose Hide Sheet: exactly Charlie and Echo are hidden. Press Ctrl+Z. Right-click an
+    unpicked row and cancel: picks, view and Calc tab group remain unchanged throughout.
+    Sheet Manager Help opens the guide.
 16. **Menu by keyboard.** Click "Golf" and press the Menu key; press Esc. Then press Shift+F10.
     Expected: the same menu opens each time, positioned at the Golf row.
 17. **Activation ends grouped editing.** Group Charlie and Echo using Calc's tab bar. Double-click
@@ -88,7 +91,9 @@ instead. Take screenshots only of this workbook.
     second window.
 19. **Hidden sheets only.** Click "Hotel" (hidden), then right-click it.
     Expected: Calc's active sheet does not change; Show Sheet shows Hotel as one undo step.
-    The menu also offers guarded movement and Help.
+    The menu also offers guarded movement and Help. Undo, then select Charlie and Hotel together.
+    Open their menu and choose **Sheet actions…**: mixed targets use a safe menu offering Show
+    Sheet, guarded moves and Help. Show Sheet shows only Hotel in one undo step.
 20. **Other windows.** Open a second workbook, type in its cells, and use its shortcuts; then
     return to the first workbook and click a row of its list.
     Expected: the second workbook behaves exactly as without the extension; the first list still
@@ -98,6 +103,11 @@ instead. Take screenshots only of this workbook.
 22. **Look.** Repeat step 1 and step 5 with a dark theme and, if available, at 150 % or 200 %
     display scaling.
     Expected: all text and swatches are readable and the insertion line is visible.
+    Before testing each top move button, select Charlie and Echo. Click the button, then undo once.
+    Expected: each move preserves the picked order, selection and view. Calc's Undo can activate
+    an affected sheet and the list follows, so select both rows again before the next button.
+    Use Shift+Tab from the list to reach Bottom, Down, Up and Top. Enter/Space activate a focused
+    button; ordinary letters do not edit cells. Tab at the end of the controls returns to Calc.
 23. **Sheets added during a selection.** Click "Charlie" and Ctrl+click "Echo". Then choose
     Sheet ▸ Insert Sheet at End and confirm.
     Expected: the list no longer selects Charlie and Echo, and an information bar above the sheet

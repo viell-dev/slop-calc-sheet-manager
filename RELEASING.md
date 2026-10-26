@@ -6,7 +6,7 @@ owner's standing approval. Readiness includes the checks below and the independe
 the owner's sign-in; prepare the listing text, screenshots, compatibility information, and files
 before asking them to sign in. Do not put that account's credentials in CI.
 
-The `0.0.3` test build targets the first feature release, `0.1.0`. Current published builds are
+The `0.0.4` test build targets the first feature release, `0.1.0`. Current published builds are
 listed on [Releases and test builds](https://viell-dev.github.io/slop-calc-sheet-manager/guide/releases).
 The changelog's development-history section records unpublished work before 0.0.2. Before the
 first publication, let Pages deploy empty feeds before reserving a version tag.
