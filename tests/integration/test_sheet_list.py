@@ -120,11 +120,14 @@ class Robot:
             self.key(top, keys.RETURN)
             time.sleep(0.5)
 
-    def choose(self, window, items, command):
-        """Choose an entry of the open built-in menu by position."""
+    def native_menu(self, window):
+        """Explicitly open Sheet actions from the extension's outer popup."""
         self.key(window, keys.END)
         self.key(window, keys.UP)
-        self.key(window, keys.RIGHT)
+        self.key(window, keys.RETURN)
+
+    def choose(self, window, items, command):
+        """Choose an entry of the already-open built-in menu by position."""
         self.key(window, keys.HOME)
         for _ in range(items.index(command)):
             self.key(window, keys.DOWN)
@@ -309,7 +312,10 @@ def check_selection_and_menu(context, desktop, menus):
     poll(lambda: selection(tree, sheet_names) == ["Two", "Four"], "two rows for the menu")
     undo = document.getUndoManager()
     depth = len(undo.getAllUndoActionTitles())
+    before = controller.getActiveSheet().getName(), tabs(), selection(tree, sheet_names)
     robot.click(tree, row_point(tree, 3), buttons=VCL_RIGHT)
+    assert (controller.getActiveSheet().getName(), tabs(), selection(tree, sheet_names)) == before
+    robot.native_menu(tree)
     grouped = poll(lambda: tabs() if tabs() == ["Two", "Four"] else None, "grouped tabs")
     items = enabled_menu_items(context, frame, PROGRAM)
     robot.choose(tree, items, ".uno:Hide")
@@ -328,6 +334,7 @@ def check_selection_and_menu(context, desktop, menus):
     robot.click(tree, row_point(tree, 1))
     robot.click(tree, row_point(tree, 3), modifiers=VCL_MOD1)
     robot.click(tree, row_point(tree, 3), buttons=VCL_RIGHT)
+    robot.native_menu(tree)
     poll(lambda: tabs() == ["Two", "Four"], "the menu to group the tabs")
     robot.key(tree, keys.ESCAPE)
     time.sleep(0.5)
@@ -365,6 +372,7 @@ def check_identity(context, desktop, menus):
     menu_tabs = None
     if menus:
         robot.click(tree, row_point(tree, 0), buttons=VCL_RIGHT)
+        robot.native_menu(tree)
         menu_tabs = poll(
             lambda: tabs_of(context, document) if tabs_of(context, document) == ["Alfa"] else None,
             "the menu to act only on Alfa",
@@ -392,6 +400,7 @@ def check_identity(context, desktop, menus):
     poll(lambda: selection(tree, renamed) == ["Echo", "Foxtrot"], "Echo and Foxtrot selected")
     undo = document.getUndoManager()
     robot.click(tree, row_point(tree, 5), buttons=VCL_RIGHT)
+    robot.native_menu(tree)
     poll(lambda: tabs_of(context, document) == ["Echo", "Foxtrot"], "the menu to group the tabs")
     items = enabled_menu_items(context, frame, PROGRAM)
     replace(document, "Foxtrot")
