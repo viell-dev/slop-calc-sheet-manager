@@ -10,10 +10,19 @@ from tests.unit.source_methods import method
 
 
 @pytest.mark.parametrize("choice", [20002, 20006, 0, 20000])
-@pytest.mark.parametrize("mixed", [False, True])
-def test_outer_move_help_and_cancel_never_target_native_tabs(choice: int, mixed: bool) -> None:
+@pytest.mark.parametrize("visibility", ["visible", "mixed", "becomes-hidden"])
+def test_outer_move_help_and_cancel_never_target_native_tabs(choice: int, visibility: str) -> None:
     popup = Mock()
-    popup.execute.return_value = choice
+    hidden_names = ["Hidden"] if visibility == "mixed" else []
+
+    def choose(*args: object) -> int:
+        if visibility == "becomes-hidden":
+            hidden_names[:] = [
+                "Hidden"
+            ]  # A macro changes visibility while the outer popup is open.
+        return choice
+
+    popup.execute.side_effect = choose
     owner = SimpleNamespace(
         is_open=False,
         _closed_at=0,
@@ -26,7 +35,7 @@ def test_outer_move_help_and_cancel_never_target_native_tabs(choice: int, mixed:
     )
 
     def hidden(observed: object, picked: list[str]) -> list[str]:
-        return ["Hidden"] if mixed else []
+        return list(hidden_names)
 
     def translate(text: str) -> str:
         return text
@@ -49,11 +58,11 @@ def test_outer_move_help_and_cancel_never_target_native_tabs(choice: int, mixed:
             "tr": translate,
         },
     )
-    picked = ["Bravo", "Hidden"] if mixed else ["Bravo"]
+    picked = ["Bravo"] if visibility == "visible" else ["Bravo", "Hidden"]
     assert show(owner, object(), 4, 8, object(), picked) == (
         None if choice == 20000 else choice or None
     )
-    if choice == 20000 and not mixed:
+    if choice == 20000 and visibility == "visible":
         owner.capture_view.assert_called_once()
         owner.group_calc_tabs.assert_called_once_with(["Bravo"])
         owner._native.assert_called_once()
@@ -63,7 +72,7 @@ def test_outer_move_help_and_cancel_never_target_native_tabs(choice: int, mixed:
         owner.group_calc_tabs.assert_not_called()
         owner._native.assert_not_called()
         assert not owner._targeted_native
-    if choice == 20000 and mixed:
+    if choice == 20000 and visibility != "visible":
         owner._safe.assert_called_once()
     else:
         owner._safe.assert_not_called()

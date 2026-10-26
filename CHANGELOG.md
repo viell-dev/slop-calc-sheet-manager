@@ -13,8 +13,9 @@ Third test build for 0.1.0, addressing feedback on 0.0.3.
 Requires LibreOffice 26.2.1 or later with Python support.
 
 - Opening the movement context menu keeps the viewed sheet and Calc tab selection unchanged.
-  **Sheet actions…** explicitly opens Calc's customized menu; only that step temporarily
-  targets its native tabs, with safe restoration after dismissal.
+  **Sheet actions…** opens Calc's customized menu when every target is visible; only that step
+  temporarily targets its native tabs, with safe restoration after dismissal. Mixed visible
+  and hidden targets instead offer safe Show/move actions without native grouping.
 - Restore Top, Up, Down, and Bottom buttons above the list. They share the menu's permission,
   identity and undo checks, show refusal reasons, and support keyboard focus and activation.
   The grouped-editing warning remains a conditional footer.

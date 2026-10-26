@@ -39,14 +39,15 @@ def check(image_path: Path, metadata_path: Path) -> None:
         "actual_shadow_pixels": actual,
     }
     if width - viewport > 6:
-        # Native grips can contain shadow-coloured pixels, but do not span the track interior.
+        # A native gen thumb bevel can span the track interior at a divider's Y.
+        # Extension overpaint is continuous through the content/scrollbar boundary too.
         crossed = [
             y
             for y in expected
             if 25 < y < height - 25
             and all(
                 image.getpixel((left + x, top + y)) == shadow
-                for x in range(viewport + 2, width - 2)
+                for x in range(viewport - 1, width - 2)
             )
         ]
         assert not crossed, {"dividers_crossing_scrollbar": crossed}

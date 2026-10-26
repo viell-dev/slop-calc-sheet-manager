@@ -25,7 +25,7 @@ sys.path[:0] = [str(HERE), str(ROOT / "tests" / "integration"), str(ROOT / "src"
 import sheet_list_view as view  # noqa: E402
 import uno  # noqa: E402
 import unohelper  # noqa: E402
-from com.sun.star.awt import XMouseMotionListener  # noqa: E402
+from com.sun.star.awt import XMouseListener, XMouseMotionListener  # noqa: E402
 from run import office_session, wait_for  # noqa: E402
 from teardown import stalled_callbacks  # noqa: E402
 from xinput import RIGHT, Pointer, XInput  # noqa: E402
@@ -933,7 +933,7 @@ def check_menu_hidden_only(book):
 
 
 def check_menu_mixed_visibility(book):
-    """Mixed targets get safe Show/move actions when Calc cannot group hidden tabs."""
+    """Mixed targets get safe Show/move actions without native tab grouping."""
     sheet = book.document.Sheets.getByName(NAMES[9])
     sheet.IsVisible = False
     book.click(2)
@@ -1574,27 +1574,85 @@ def check_click_hidden_before_refresh(book):
 
 
 def check_newer_selection_kept(book):
-    """A delayed refresh keeps a Ctrl+click made after a plain click (#44)."""
+    """Completed edits and queued real input precede repaint; newer picks survive it (#44)."""
+    wait_until(lambda: book.labels() == NAMES, "the preceding visibility change to repaint")
+    # A completed activation repaint gives this gesture a fresh baseline, independent of
+    # the previous check's queued colour/visibility changes and maximum-refresh deadline.
+    for index in (4, 0):
+        before = view.root(book.tree)
+        book.controller.setActiveSheet(book.document.Sheets.getByName(NAMES[index]))
+        wait_until(
+            lambda old=before: view.root(book.tree) not in (None, old),
+            "the baseline activation to repaint",
+        )
+    select_tabs(book.lab.context, book.frame, [0])
+    book.click(0)
+    wait_until(lambda: book.selection() == [NAMES[0]], "a settled pick before the queued input")
     first, second = book.point(1), book.point(3)
     model = view.root(book.tree)
-    with refresh_waiting(book):
+    sheet = book.document.Sheets.getByName(NAMES[-1])
+    original = sheet.TabColor
+    color = 0x996633 if original == 0x2A6099 else 0x2A6099
+    history = book.undo_titles()
+    received = threading.Event()
+    releases = [0]
+    state = {"marker_not_yet_moved": False, "error": ""}
+
+    class ReleaseProbe(unohelper.Base, XMouseListener):
+        def mouseReleased(self, event):
+            releases[0] += 1
+            if releases[0] == 3:
+                try:
+                    state["marker_not_yet_moved"] = view.root(book.tree) == model
+                except Exception:
+                    state["error"] = traceback.format_exc()
+                finally:
+                    received.set()
+
+        def mousePressed(self, event):
+            pass
+
+        def mouseEntered(self, event):
+            pass
+
+        def mouseExited(self, event):
+            pass
+
+        def disposing(self, event):
+            pass
+
+    def queue():
+        # The main thread waits for this callback. Queue real X events first, then complete
+        # one recorded edit before returning: no refresh timer runs during client sleeps,
+        # and no undo/modify pair is still in progress when the input is handled.
         book.pointer.click(*first, pause=0.02)
         book.pointer.click(*first, pause=0.05)
-        book.pointer.click(*second, modifiers=("Control_L",), pause=0.3)
-        stale = view.root(book.tree) == model
-        before_refresh = book.selection()
-    wait_until(lambda: view.root(book.tree) not in (None, model), "the activated row to repaint")
-    time.sleep(1)
-    evidence = {
-        "marker_not_yet_moved": stale,
-        "before_refresh": before_refresh,
-        "after_refresh": book.selection(),
-        "active": book.active(),
-    }
-    assert stale, evidence  # Otherwise the refresh ran before the Ctrl+click.
-    assert evidence["after_refresh"] == [NAMES[1], NAMES[3]], evidence
-    assert evidence["active"] == NAMES[1], evidence
-    return evidence
+        book.pointer.click(*second, modifiers=("Control_L",), pause=0)
+        sheet.TabColor = color
+
+    probe = ReleaseProbe()
+    book.tree.addMouseListener(probe)
+    try:
+        view.on_main_thread(book.lab.context, queue)
+        assert received.wait(10), state
+        assert not state["error"] and state["marker_not_yet_moved"], state
+        assert len(book.undo_titles()) == len(history) + 1, "The fixture edit was not recorded"
+        wait_until(
+            lambda: view.root(book.tree) not in (None, model), "the activated row to repaint"
+        )
+        time.sleep(1)
+        evidence = {
+            **state,
+            "releases": releases[0],
+            "after_refresh": book.selection(),
+            "active": book.active(),
+        }
+        assert evidence["after_refresh"] == [NAMES[1], NAMES[3]], evidence
+        assert evidence["active"] == NAMES[1], evidence
+        return evidence
+    finally:
+        book.tree.removeMouseListener(probe)
+        sheet.TabColor = original
 
 
 def check_other_document(lab, book):

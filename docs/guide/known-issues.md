@@ -37,6 +37,10 @@ If Sheet Manager does not work in an environment where it is expected to, please
   explains conservative clearing of a user-made selection. Ordinary refreshes retain the list's
   range anchor while its sheet identity remains valid. Native Undo and Redo can also activate an
   affected sheet; the list then follows Calc's new tab selection.
+  An immediate selection after Reload or during concurrent document changes can remain empty or
+  clear again, including during some recorded changes. Select the desired rows again once loading
+  or concurrent edits finish; the cause of this intermittent observation is still under
+  investigation ([#88](https://github.com/viell-dev/slop-calc-sheet-manager/issues/88)).
 - **Large lists.** The list rebuilds after changes. During rapid sheet switches the active-sheet
   marker can lag; timing measurements and the remaining work are in
   [#22](https://github.com/viell-dev/slop-calc-sheet-manager/issues/22).

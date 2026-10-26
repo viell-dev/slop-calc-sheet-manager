@@ -73,6 +73,11 @@ separate tab-only measurement. These are measurements, not performance gates. Ta
 keeps the existing model; property changes can still require a full rebuild, whose cost is tracked
 in #22.
 
+`newer_selection_kept` queues real X input while the lab's main-thread callback runs, then
+completes one recorded colour edit before returning. A native release observer proves that the
+final Ctrl-click precedes repaint. This isolates delayed refresh from concurrent undo/modify
+notifications, whose conservative selection-clearing limit is tracked in #88.
+
 ## The checks themselves
 
 A check that cannot see a failure is worse than none. The integration runner therefore fails a
@@ -120,3 +125,4 @@ These checks were shown to fail when the behaviour they guard was deliberately b
 | One Ctrl toggle despite queued native delivery (#85) | 086c9ec's package with a controlled early view acknowledgement, official LibreOffice 26.8.1.1 headless | The first Ctrl-click loses Bravo because native intake and the owned handler toggle it twice. The revised package preserves the pick under the same ordering; deterministic checks cover superseded input, stale proof/names and reentrant pointer cleanup. Removing deferral from either observation caller fails its wiring assertion. An unforced full-workload trace also catches the old double toggle in the existing delayed-refresh integration check. |
 | Stationary outer menu and aligned row paint (#86) | Published 0.0.3, official 26.8.1.1 GTK at 96 and 120 DPI | `context_preserves_view_and_picks` rejects premature outer-menu targeting at both DPIs; `row_paint_scroll` rejects scrollbar-crossing dividers at 96 DPI and mismatched native geometry at 120 DPI. Both negative sessions exit cleanly. |
 | Native geometry, observational enablement and fresh focus (#86) | Frozen copies restore old row/menu methods, consume pending monitor evidence during enablement, or remove the newer-input focus guard | Four focused unit regressions fail for their intended assertions. The actual 0.0.3 methods are used for the old geometry and menu cases. |
+| Delayed refresh retains newer input (#44) | A private OXT removes `_run_refresh`'s follow guard | With the last release proved to precede repaint, the real-input check fails because Bravo alone remains instead of Bravo and Delta. The unmodified package passes five GTK and five gen repetitions under gdb after Reload; all three positive/negative Office sessions exit cleanly. |
