@@ -216,12 +216,15 @@ class SheetMenu:
         `unchanged` says whether that still holds as far as the caller can tell (no sheet was
         inserted or deleted since), and is checked again when a command runs.
         """
-        if self.is_open or time.monotonic() - self._closed_at < REPEAT_GUARD_SECONDS:
+        if self.is_open:
+            return None
+        # A refused reopen must not reuse the previous popup's restoration state.
+        self._targeted_native = False
+        self.view = None
+        if time.monotonic() - self._closed_at < REPEAT_GUARD_SECONDS:
             return None
         self.is_open = True
         self.command = None
-        self._targeted_native = False
-        self.view = None
         try:
             hidden = set(hidden_targets(observed, picked))
             if set(picked) - hidden:

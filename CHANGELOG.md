@@ -16,6 +16,7 @@ Requires LibreOffice 26.2.1 or later with Python support.
   **Sheet actions…** opens Calc's customized menu when every target is visible; only that step
   temporarily targets its native tabs, with safe restoration after dismissal. Mixed visible
   and hidden targets instead offer safe Show/move actions without native grouping.
+  Refused rapid repeats also leave the current view unchanged.
 - Restore Top, Up, Down, and Bottom buttons above the list. They share the menu's permission,
   identity and undo checks, show refusal reasons, and support keyboard focus and activation.
   The grouped-editing warning remains a conditional footer.

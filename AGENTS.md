@@ -397,9 +397,10 @@ reconsider. The owner may report a defect themselves, in their own words.
   an outer popup that neither groups nor restores Calc tabs. Sheet actions… is an explicit command
   opening the full customized native popup. GTK can activate cascading menus while preparing
   them, so a submenu activation callback cannot defer targeting reliably. Capture the native
-  view only when that command is chosen, and only then group its targets. Capture the observed
-  snapshot, refs, and proof before
-  posting a move. Use the common permission/plan checks and full `apply_order` preflight.
+  view only when that command is chosen, and only then group its targets.
+  Clear a previous popup's restoration state before refusing a rapid reopen; retain live menu state.
+  Capture the observed snapshot, refs, and proof before posting a move. Use the common
+  permission/plan checks and full `apply_order` preflight.
   Run extension actions only after the native dispatch guard is released, then restore the saved
   view against fresh indices, retained identities, proof, and original visibility. A queued
   completion can run inside a native modal dialog: defer it until guarded dispatch returns,
