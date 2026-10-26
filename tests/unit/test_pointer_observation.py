@@ -43,6 +43,7 @@ def native_picks() -> tuple[Any, Any, list[Callable[[], None]]]:
         names=lambda: live.order,
         post=post,
         peer=SimpleNamespace(invalidate=Mock()),
+        _update_moves=Mock(),
     )
     take = method(SOURCE, "SheetList", "_take_tree_selection", {})
 

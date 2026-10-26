@@ -262,6 +262,7 @@ def test_failed_move_releases_busy_and_refreshes() -> None:
         context=object(),
         document=object(),
         refresh=lambda: refreshed.append(True),
+        _update_moves=Mock(),
     )
     move = method(
         "src/sheet_manager/uno_list.py",
@@ -272,6 +273,54 @@ def test_failed_move_releases_busy_and_refreshes() -> None:
     with pytest.raises(RuntimeError, match="move failure"):
         move(owner, "top", SimpleNamespace(sheets=()), (SimpleNamespace(name="Bravo"),), 7)
     assert not owner._busy and refreshed == [True]
+
+
+def test_move_enablement_does_not_consume_pending_identity_evidence() -> None:
+    def translate(text: str) -> str:
+        return text
+
+    permission = SimpleNamespace(allowed=True, reason="")
+    owner = SimpleNamespace(
+        _disposed=False,
+        _busy=False,
+        _moves=Mock(),
+        _observed=SimpleNamespace(sheets=()),
+        _selection=SimpleNamespace(picked=[object()], names=lambda: ["Bravo"]),
+        _monitor=SimpleNamespace(generation=7, check=Mock(side_effect=AssertionError("consumed"))),
+        _proven=7,
+        context=object(),
+        document=object(),
+    )
+    update = method(
+        "src/sheet_manager/uno_list.py",
+        "SheetList",
+        "_update_moves",
+        {
+            "ACTIONS": ("top", "up", "down", "bottom"),
+            "move_availability": Mock(return_value=permission),
+            "plan_move": Mock(),
+            "plan_availability": Mock(return_value=permission),
+            "Availability": SimpleNamespace,
+            "cast": cast,
+            "Action": str,
+            "tr": translate,
+        },
+    )
+    update(owner)
+    assert len(owner._moves.update.call_args.args[0]) == 4
+    owner._monitor.check.assert_not_called()
+
+
+def test_a_newer_input_cancels_a_queued_panel_focus_request() -> None:
+    target = Mock()
+    owner = SimpleNamespace(
+        _disposed=False,
+        _input=2,
+        frame=SimpleNamespace(isActive=Mock(side_effect=AssertionError("stale focus query"))),
+    )
+    focus = method("src/sheet_manager/uno_list.py", "SheetList", "_focus_control", {})
+    focus(owner, target, 1)
+    target.setFocus.assert_not_called()
 
 
 def test_owned_navigation_accumulates_while_the_ui_queue_is_paused() -> None:
@@ -498,6 +547,7 @@ def test_posted_focus_respects_later_focus(active: bool, owned: bool, expected: 
     focused: list[str] = []
     owner = SimpleNamespace(
         _disposed=False,
+        _input=1,
         frame=SimpleNamespace(
             isActive=lambda: active,
             getComponentWindow=lambda: SimpleNamespace(setFocus=lambda: focused.append("calc")),
@@ -505,7 +555,7 @@ def test_posted_focus_respects_later_focus(active: bool, owned: bool, expected: 
         owns_keys=lambda: owned,
     )
     focus = method("src/sheet_manager/uno_list.py", "SheetList", "_focus_control", {})
-    focus(owner, None)
+    focus(owner, None, 1)
     assert focused == expected
 
 

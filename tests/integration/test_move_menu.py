@@ -43,11 +43,7 @@ def exercise(context, desktop, directory, output, *, headless):
             sheets.insertNewByName(name, index)
         document.CurrentController.Frame.activate()
         document.UndoManager.clear()
-        panel, tree = open_list(context, document)
-        assert not any(
-            "com.sun.star.awt.XButton" in [kind.typeName for kind in child.getTypes()]
-            for child in panel.getWindows()
-        ), "Move buttons must not occupy the panel"
+        _, tree = open_list(context, document)
         empty = move_states(context, document, [])
         assert all(not enabled for enabled, _ in empty.values())
         edges = move_states(context, document, [SIX[0]])

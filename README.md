@@ -13,7 +13,7 @@ updates, removal, use, known issues, troubleshooting, and reporting a problem.
 
 ## Status
 
-The `0.0.3` test build targets the first feature release, `0.1.0`, and is intended for testing.
+The `0.0.4` test build targets the first feature release, `0.1.0`, and is intended for testing.
 See [Releases and test builds](https://viell-dev.github.io/slop-calc-sheet-manager/guide/releases)
 for currently published downloads. It lists the workbook's sheets, supports selection, drag and
 drop, and move actions with keyboard shortcuts,
@@ -27,8 +27,8 @@ the list's own picks. Its features include:
   select several;
 - drag and drop of one or more selected sheets, with an insertion line and scrolling near the
   edges;
-- context-menu actions to move sheets to the top, up, down, or to the bottom;
-- the sheet tab bar's own customized menu under **Sheet actions**, with temporary context
+- top buttons and context-menu actions to move sheets to the top, up, down, or to the bottom;
+- the sheet tab bar's own customized menu opened by **Sheet actions…**, with temporary context
   targeting that preserves independent list picks and restores the previous view where safe;
 - complete keyboard operation;
 - one undo step per change, and respect for protected and read-only documents.

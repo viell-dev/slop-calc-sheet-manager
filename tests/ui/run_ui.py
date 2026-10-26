@@ -165,13 +165,13 @@ class Workbook:
 
     def choose(self, command):
         """Choose a menu entry with the keyboard; generated mnemonics differ between plugins."""
+        self.lab.input.tap("End")
+        self.lab.input.tap("Up")
+        self.lab.input.tap("Return", pause=0.4)
         items = wait_for(
             lambda: view.enabled_menu_items(self.lab.context, self.frame, PROGRAM) or None,
             "the menu's command states",
         )
-        self.lab.input.tap("End")
-        self.lab.input.tap("Up")
-        self.lab.input.tap("Right", pause=0.2)
         self.lab.input.tap("Home")
         for _ in range(items.index(command)):
             self.lab.input.tap("Down")
@@ -356,7 +356,7 @@ def check_drag_two_sheets(book, fraction, gap):
     return evidence
 
 
-def check_move_controls(book, shortcuts):
+def check_move_controls(book, shortcuts, buttons=False):
     evidence = {}
     for action, key in (
         ("top", "Home"),
@@ -384,6 +384,18 @@ def check_move_controls(book, shortcuts):
         expected = list(target_order([Sheet(n) for n in before], picked, cast(Action, action)))
         if shortcuts:
             book.lab.input.tap(key, modifiers=("Alt_L",), pause=0.3)
+        elif buttons:
+            button = view.move_buttons(book.panel)[action.capitalize()]
+            wait_until(button.isEnabled, "the visible move control to be enabled")
+            bounds, tree_bounds = button.getPosSize(), book.tree.getPosSize()
+            pointer = Pointer(
+                book.lab.input,
+                (
+                    book.pointer.offset[0] + bounds.X - tree_bounds.X,
+                    book.pointer.offset[1] + bounds.Y - tree_bounds.Y,
+                ),
+            )
+            pointer.click(bounds.Width // 2, bounds.Height // 2)
         else:
             book.move_action(action)
         wait_until(lambda e=expected: book.order() == e, "the requested move")
@@ -450,15 +462,124 @@ def check_move_focus_and_queued_navigation(book):
     assert book.selection() == [NAMES[3]] and book.undo_titles() == ["Move Sheets"]
     book.document.UndoManager.undo()
     wait_until(lambda: view.names(book.tree) == before, "one undo of the queued move")
-    for modifiers in ((), ("Shift_L",)):
-        book.tree.setFocus()
-        book.lab.input.tap("Tab", modifiers=modifiers, pause=0.3)
-        wait_until(lambda: not book.tree.hasFocus(), "Tab to leave the panel")
-        history = book.undo_titles()
-        book.lab.input.tap("Down", modifiers=("Alt_L",), pause=0.3)
-        book.lab.input.tap("Escape", pause=0.2)
-        assert book.order() == before and book.undo_titles() == history
+    book.click(3)
+    history = book.undo_titles()
+    buttons = view.move_buttons(book.panel)
+    assert book.tree.hasFocus(), "Internal focus travel must start in the list"
+    for label in ("Bottom", "Down", "Up", "Top"):
+        book.lab.input.tap("Tab", modifiers=("Shift_L",), pause=0.2)
+        wait_until(buttons[label].hasFocus, "reverse Tab to " + label)
+    cell = book.document.Sheets.getByIndex(0).getCellRangeByName("A1")
+    content = cell.String
+    book.lab.input.tap("x", pause=0.2)
+    assert cell.String == content, "Typing on a button reached the sheet"
+    book.lab.input.tap("Return", pause=0.5)
+    wait_until(lambda: book.order()[0] == NAMES[3], "native Enter on the Top button")
+    assert book.tree.hasFocus() and book.undo_titles() == ["Move Sheets", *history]
+    book.document.UndoManager.undo()
+    wait_until(lambda: view.names(book.tree) == before, "undo of the keyboard button action")
+    assert book.tree.hasFocus()
+    book.lab.input.tap("Tab", pause=0.3)
+    wait_until(lambda: not book.tree.hasFocus(), "Tab after the last panel control")
+    history = book.undo_titles()
+    book.lab.input.tap("Down", modifiers=("Alt_L",), pause=0.3)
+    book.lab.input.tap("Escape", pause=0.2)
+    assert book.order() == before and book.undo_titles() == history
     return {"queued_navigation": True, "tab_boundaries": True, "outside_shortcut_scope": True}
+
+
+def check_row_paint_scroll(book):
+    """Native geometry and screenshot pixels must agree throughout scrolling."""
+    tree = book.tree
+    original_height = tree.getProperty("RowHeight")
+    native_view = book.active(), book.calc_tabs()
+    evidence = {}
+
+    def capture(name):
+        if name != "native-height-picked":
+            assert book.selection() == picked, "Scrolling or row sizing changed the picks"
+        size = tree.getOutputSize()
+        nodes = book.nodes()
+        first = next(node for node in nodes if tree.getNodeRect(node).Y >= 0)
+        rect = tree.getNodeRect(first)
+        y = min(size.Height - 1, rect.Y + rect.Height // 2)
+        viewport = next(
+            x
+            for x in range(size.Width, size.Width // 2, -1)
+            if tree.getClosestNodeForLocation(x, y) is not None
+        )
+        rows = [tree.getNodeRect(node) for node in nodes]
+        data = {
+            "offset": book.pointer.offset,
+            "width": size.Width,
+            "height": size.Height,
+            "viewport": viewport,
+            "shadow": tree.StyleSettings.ShadowColor,
+            "rows": [{"Y": row.Y, "Height": row.Height} for row in rows],
+        }
+        stem = "row-paint-" + name
+        path = book.lab.output / (stem + ".json")
+        path.write_text(json.dumps(data, indent=2) + "\n")
+        book.lab.screenshot(stem)
+        environment = {
+            key: value
+            for key, value in os.environ.items()
+            if key not in ("PYTHONHOME", "PYTHONPATH", "LD_LIBRARY_PATH", "URE_BOOTSTRAP")
+        }
+        checked = subprocess.run(
+            [
+                "/usr/bin/python3",
+                "-I",
+                str(HERE / "row_paint.py"),
+                str(path.with_suffix(".png")),
+                str(path),
+            ],
+            env=environment,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        assert checked.returncode == 0, checked.stdout + checked.stderr
+        evidence[name] = json.loads(checked.stdout)
+
+    try:
+        tree.makeNodeVisible(book.nodes()[0])
+        book.click(2)
+        picked = book.selection()
+        capture("initial")
+        book.pointer.wheel(90, 200, True, 4)
+        capture("wheel-down")
+        book.pointer.wheel(90, 200, False, 1)
+        capture("wheel-up")
+        tree.makeNodeVisible(book.nodes()[0])
+        time.sleep(0.3)
+        x = tree.getOutputSize().Width - 7
+        book.pointer.press(x, 20)
+        book.pointer.glide((x, 20), (x, 120))
+        book.pointer.release()
+        time.sleep(0.4)
+        assert tree.getNodeRect(book.nodes()[0]).Y < 0, "The thumb gesture did not scroll"
+        capture("thumb-down")
+        book.pointer.press(x, 120)
+        book.pointer.glide((x, 120), (x, 60))
+        book.pointer.release()
+        time.sleep(0.4)
+        capture("thumb-up")
+        # Like a font/DPI change, VCL may choose a height larger than the model requested.
+        tree.setProperty("RowHeight", original_height + 4)
+        tree.makeNodeVisible(book.nodes()[0])
+        tree.invalidate(0)
+        time.sleep(0.4)
+        capture("native-height-change")
+        rect = tree.getNodeRect(book.nodes()[10])
+        book.pointer.click(5, rect.Y + rect.Height - 2)
+        wait_until(lambda: book.selection() == [NAMES[10]], "hit testing the native row bottom")
+        capture("native-height-picked")
+        assert (book.active(), book.calc_tabs()) == native_view
+    finally:
+        tree.setProperty("RowHeight", original_height)
+        tree.invalidate(0)
+    return evidence
 
 
 def check_drop_in_place_and_escape(book):
@@ -681,8 +802,12 @@ def check_context_preserves_view_and_picks(book):
 
     for index in (1, 6):
         book.pointer.click(*book.point(index), button=RIGHT, pause=0.5)
-        assert book.selection() == before[1], "Context targeting changed the list's picks"
-        book.lab.input.tap("Escape", pause=0.5)
+        try:
+            assert state() == before, (
+                "The outer context menu changed the viewed sheet, tabs or picks"
+            )
+        finally:
+            book.lab.input.tap("Escape", pause=0.5)
         wait_until(lambda: state() == before, "cancel to restore the original view and picks")
         book.lab.input.tap("space", modifiers=("Control_L",), pause=0.3)
         assert book.selection() == [NAMES[1]], "Right-click changed the keyboard cursor"
@@ -710,6 +835,18 @@ def check_context_preserves_view_and_picks(book):
     wait_until(lambda: book.order() == order, "one undo of the context move")
     book.click(1)
     book.pointer.click(*book.point(6), button=RIGHT, pause=0.4)
+    # The outer menu has not taken ownership of the native view. A macro can still change it.
+    book.controller.setActiveSheet(book.document.Sheets.getByName(NAMES[9]))
+    select_tabs(book.lab.context, book.frame, [9, 11])
+    newer_view = state()
+    book.lab.input.tap("End")
+    book.lab.input.tap("Up")
+    book.lab.input.tap("Return", pause=0.5)
+    wait_until(lambda: book.calc_tabs() == [NAMES[6]], "explicit native menu targeting")
+    book.lab.input.tap("Escape", pause=0.5)
+    wait_until(lambda: state() == newer_view, "native menu to restore its entry-time view")
+    book.click(1)
+    book.pointer.click(*book.point(6), button=RIGHT, pause=0.4)
     book.choose(".uno:TableSelectAll")
     wait_until(lambda: book.calc_tabs() == order, "explicit native Select All Sheets")
     wait_until(lambda: book.selection() == order, "following the explicit selection command")
@@ -719,6 +856,7 @@ def check_context_preserves_view_and_picks(book):
         "one_undo": True,
         "explicit_native_selection": True,
         "modal_command_context_kept": True,
+        "native_entry_time_view": True,
     }
 
 
@@ -1474,11 +1612,13 @@ def run_checks(lab, output):
     lab.screenshot("panel")
     checks = [
         ("move_menu", lambda: check_move_controls(book, False)),
+        ("move_buttons", lambda: check_move_controls(book, False, buttons=True)),
         ("move_shortcuts", lambda: check_move_controls(book, True)),
         ("move_edges_and_refusal", lambda: check_move_edges_and_refusal(book)),
         ("move_focus_and_queued_navigation", lambda: check_move_focus_and_queued_navigation(book)),
         ("click_activates", lambda: check_click_activates(book)),
         ("ctrl_shift_selection", lambda: check_ctrl_shift_selection(book)),
+        ("row_paint_scroll", lambda: check_row_paint_scroll(book)),
         ("tab_selection_sync", lambda: check_tab_selection_sync(book)),
         ("drag_two_sheets_above_midpoint", lambda: check_drag_two_sheets(book, 0.25, 12)),
         ("drag_two_sheets_below_midpoint", lambda: check_drag_two_sheets(book, 0.75, 13)),

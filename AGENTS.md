@@ -359,7 +359,11 @@ reconsider. The owner may report a defect themselves, in their own words.
   backgrounds and separate gutter markers before native labels, then posts coalesced borders
   after them because the label backgrounds can cover dividers. Keep native text/accessibility,
   wheel input, and multi-sheet drag support; compound controls do not provide the same drag path.
-  Row geometry uses the configured row height, not `getNodeRect().Height`, which bounds the text.
+  Use native `getNodeRect()` Y/Height for row geometry: VCL can enlarge the requested RowHeight
+  for its font/DPI. In the supported tree peer this rectangle spans an entry, not just text.
+  Native hit testing supplies the content bounds, excluding scrollbars; the peer's output size
+  includes them. Do not put fixed frame lines on the scrolling surface: VCL's pixel
+  scrolling copies them into rows. Keep the screenshot-pixel wheel/thumb/native-height check.
   The list observes unowned native cursor changes via
   `ACTIVE_DESCENDANT_CHANGED` on the peer's accessible tree context. The event's row context has a
   cached sibling index that maps directly to the flat rows; the callback reads only that index and
@@ -384,15 +388,23 @@ reconsider. The owner may report a defect themselves, in their own words.
   no sidebar pre-release hook.
 - `uno_menu.py` owns context targeting, native tab grouping/restoration, and move enablement.
   Right-click retains a transient row ref without changing picks. Extension move actions are in
-  an outer popup; Calc's customized menu is a child under Sheet actions, so its resource
-  controller cannot hide the added items. Capture the observed snapshot, refs, and proof before
+  an outer popup that neither groups nor restores Calc tabs. Sheet actions… is an explicit command
+  opening the full customized native popup. GTK can activate cascading menus while preparing
+  them, so a submenu activation callback cannot defer targeting reliably. Capture the native
+  view only when that command is chosen, and only then group its targets. Capture the observed
+  snapshot, refs, and proof before
   posting a move. Use the common permission/plan checks and full `apply_order` preflight.
   Run extension actions only after the native dispatch guard is released, then restore the saved
   view against fresh indices, retained identities, proof, and original visibility. A queued
   completion can run inside a native modal dialog: defer it until guarded dispatch returns,
   including exceptions, before restoring view/group or running extension work. Explicit
   native Select All/Deselect All commands retain their selection result. Alt+Home/Up/Down/End
-  remain local to the focused list, and a move returns focus to the tree.
+  remain local to the focused list or a move button, and a move returns focus to the tree.
+  `uno_moves.py` owns the four top controls, their names, sizing, and refusal tooltips; the footer
+  remains separate in `uno_status.py`. Button enablement reads the monitor's generation without
+  consuming undo/modify evidence. Keyboard activation stamps input before native button handling;
+  queued focus requests also reject newer input. Tab follows the visible button/list order and
+  skips disabled controls; native Enter/Space activate buttons while letters stay out of cells.
   The native header generates its own unavailable help ID (#81); the outer menu links to the
   guide without intercepting global help or modifying the installed help system.
 - Calc sends no reliable notification for same-active tab selections. Each list caches the

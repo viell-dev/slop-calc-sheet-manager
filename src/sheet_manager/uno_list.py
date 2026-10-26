@@ -49,7 +49,7 @@ from sheet_manager.keys import (
     TypeAhead,
     find_prefix,
 )
-from sheet_manager.reorder import plan_move
+from sheet_manager.reorder import Action, plan_move
 from sheet_manager.selection import Ref, Selection, structure_kept
 from sheet_manager.sheet_list import RowGeometry, SheetRow, ordered, row_label
 from sheet_manager.uno_calc import (
@@ -75,10 +75,14 @@ from sheet_manager.uno_menu import (
     MenuView,
     SheetMenu,
 )
+from sheet_manager.uno_moves import MoveButtons
 from sheet_manager.uno_reorder import (
+    Availability,
     Snapshot,
     apply_order,
     is_current,
+    move_availability,
+    plan_availability,
     snapshot,
 )
 from sheet_manager.uno_rows import RowPaint
@@ -356,6 +360,7 @@ class SheetList:
         self._restoring_cursor = False
         self._cleanup = contextlib.ExitStack()
         self._status: CalcStatus | None = None
+        self._moves: MoveButtons | None = None
         self._bounds = (0, 0)
         try:
             self._initialize(context, frame, parent_window)
@@ -450,7 +455,7 @@ class SheetList:
         self.tree.setModel(model)
         self.tree.createPeer(self.toolkit, parent_window)
         self.peer = self.tree.getPeer()
-        self._row_paint = RowPaint(self.peer)
+        self._row_paint = RowPaint(self.peer, self.tree)
         self._row_height = self._row_paint.row_height()
         model.RowHeight = self._row_height
 
@@ -466,6 +471,10 @@ class SheetList:
         }
         self._status = CalcStatus(context, parent_window)
         self._release_with(self._status.dispose)
+        self._moves = MoveButtons(
+            context, parent_window, self.queue_move, self._listeners["focus"], self.note_input
+        )
+        self._release_with(self._moves.dispose)
         self.tree.addMouseListener(self._listeners["mouse"])
         self.tree.addFocusListener(self._listeners["focus"])
         self.tree.addPaintListener(self._listeners["paint"])
@@ -508,14 +517,20 @@ class SheetList:
         self._bounds = width, height
         if not self._disposed:
             footer = self._status.height if self._status is not None else 0
+            toolbar = self._moves.height if self._moves is not None else 0
             if self._status is not None:
                 self._status.set_bounds(width, height)
-            self.tree.setPosSize(4, 4, max(width - 8, 0), max(height - footer - 8, 0), POSSIZE)
-            self._page_rows = max(1, (height - footer - 8) // self._row_height - 1)
+            if self._moves is not None:
+                self._moves.set_bounds(width)
+            self.tree.setPosSize(
+                4, toolbar + 4, max(width - 8, 0), max(height - footer - toolbar - 8, 0), POSSIZE
+            )
+            row_height = self.geometry().row_height if self._nodes else self._row_height
+            self._page_rows = max(1, (height - footer - toolbar - 8) // row_height - 1)
 
     @property
     def minimal_width(self) -> int:
-        return 150
+        return max(150, self._moves.minimum_width if self._moves is not None else 0)
 
     def panel_hidden(self) -> None:
         self.focus_changed(False)
@@ -593,6 +608,7 @@ class SheetList:
             self._rebuild(rows)
         elif dropped or tuple(self._selection.names()) != self._shown:
             self._apply_selection()
+        self._update_moves()
 
         if self._view_generation != generation or self._view_names != frozenset(self.names()):
             # Replacement or rename is not a request to pick the new sheet under an old name.
@@ -703,6 +719,7 @@ class SheetList:
         wanted = {ref.name for ref in self._selection.picked}
         indices = [index for index, name in enumerate(names) if name in wanted]
         self._shown = tuple(names[index] for index in indices)
+        self._update_moves()
         if cursor is None:
             self.tree.clearSelection()
             return
@@ -750,6 +767,7 @@ class SheetList:
             self._user_picks = True
             if paint:
                 self.peer.invalidate(0)
+                self._update_moves()
             return True
         return False
 
@@ -772,9 +790,9 @@ class SheetList:
         if not self._nodes:
             return RowGeometry(0, 0, 0)
         rect = self.tree.getNodeRect(self._nodes[0])
-        return RowGeometry(
-            rect.Y - (self._row_height - rect.Height) // 2, self._row_height, len(self._nodes)
-        )
+        # VCL can enlarge the requested RowHeight to fit its eventual font/DPI. Both hit
+        # testing and painting must follow the actual entry bounds, including after scrolling.
+        return RowGeometry(rect.Y, rect.Height, len(self._nodes))
 
     def _height(self) -> int:
         return self.peer.getOutputSize().Height
@@ -1266,7 +1284,11 @@ class SheetList:
             self.toolkit.removeKeyHandler(self._keys)
 
     def owns_keys(self) -> bool:
-        return not self._disposed and not self._menu.is_open and self.owns_tree_keys()
+        return (
+            not self._disposed
+            and not self._menu.is_open
+            and (self.owns_tree_keys() or self._moves is not None and self._moves.has_focus())
+        )
 
     def owns_tree_keys(self) -> bool:
         return not self._disposed and bool(self.peer.hasFocus())
@@ -1274,14 +1296,70 @@ class SheetList:
     def travel_focus(self, backwards: bool) -> bool:
         if not self.owns_keys():
             return False
-        self.post(lambda: self._focus_control(None), "leaving Sheet Manager")
+        controls = [*(self._moves.buttons.values() if self._moves is not None else ()), self.tree]
+        current = next(
+            (index for index, control in enumerate(controls) if control.getPeer().hasFocus()), None
+        )
+        if current is None:
+            return False
+        seen = self._input
+        step = -1 if backwards else 1
+        for index in range(current + step, -1 if backwards else len(controls), step):
+            control = controls[index]
+            if control is self.tree or control.getModel().Enabled:
+                self.post(
+                    lambda target=control: self._focus_control(target, seen),
+                    "moving focus within Sheet Manager",
+                )
+                return True
+        self.post(lambda: self._focus_control(None, seen), "leaving Sheet Manager")
         return True
 
-    def _focus_control(self, control) -> None:
-        if not self._disposed and self.frame.isActive() and self.owns_keys():
+    def _focus_control(self, control, seen: int) -> None:
+        if (
+            self._disposed
+            or self._input != seen
+            or not self.frame.isActive()
+            or not self.owns_keys()
+        ):
+            return
+        if control is None:
             self.frame.getComponentWindow().setFocus()
+        elif control is self.tree or control.getModel().Enabled:
+            control.setFocus()
+        else:
+            self.tree.setFocus()
 
     # Movement commands
+
+    def _update_moves(self) -> None:
+        if self._moves is None or self._disposed:
+            return
+        reason = ""
+        states = {}
+        if self._busy:
+            reason = tr("Wait for the current move to finish.")
+        elif self._observed is None or not self._selection.picked:
+            reason = tr("Select sheets to move.")
+        else:
+            permission = move_availability(self.context, self.document)
+            if not permission.allowed:
+                reason = permission.reason
+            elif self._monitor.generation != self._proven:
+                # Enablement must not consume pending undo/modify identity evidence (#66).
+                reason = tr("The sheet list has changed. Refresh it and try again.")
+            else:
+                for action in ACTIONS:
+                    try:
+                        plan = plan_move(
+                            self._observed.sheets, self._selection.names(), cast(Action, action)
+                        )
+                        states[action] = plan_availability(permission, plan)
+                    except ValueError as error:
+                        states[action] = Availability(False, str(error))
+        if reason:
+            states = {action: Availability(False, reason) for action in ACTIONS}
+        self._moves.update(states)
 
     def queue_move(self, action: str) -> None:
         """Capture the shown selection now; queued work never adopts later picks or proof."""
@@ -1319,6 +1397,7 @@ class SheetList:
             return
         self._busy = True
         try:
+            self._update_moves()
             result = apply_order(self.context, self.document, observed, plan)
         finally:
             self._busy = False
@@ -1471,11 +1550,6 @@ class SheetList:
             self._context_target = None
             self.refresh()
             return
-        view = self._menu.capture_view(observed)
-        if view is None or not unchanged():
-            self._context_target = None
-            self.refresh()
-            return
         self._menu_context = True
         self._activating = True
         chosen = None
@@ -1486,7 +1560,7 @@ class SheetList:
             try:
                 self._menu_action(chosen, observed, refs, structure, unchanged)
             finally:
-                self._finish_menu(view, unchanged)
+                self._finish_menu(self._menu.view, unchanged)
 
         try:
             chosen = self._menu.show(self.peer, x, y, observed, picked, unchanged)
@@ -1513,13 +1587,14 @@ class SheetList:
             if result.status != "done":
                 show_error(self.peer, tr("Sheet Manager"), result.message)
 
-    def _finish_menu(self, view: MenuView, unchanged) -> None:
+    def _finish_menu(self, view: MenuView | None, unchanged) -> None:
         message = ""
         try:
             if self._disposed:
                 return
             try:
-                self._menu.restore_view(view, unchanged)
+                if view is not None:
+                    self._menu.restore_view(view, unchanged)
             except DisposedException:
                 self._view_stopped = True  # The view closed while its native command ran.
                 return

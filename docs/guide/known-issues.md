@@ -35,7 +35,8 @@ If Sheet Manager does not work in an environment where it is expected to, please
 - **Conservative selection clearing.** Inserting or deleting sheets, undoing or redoing, and
   modifications whose continuity cannot be established can clear the list's selection. A notice
   explains conservative clearing of a user-made selection. Ordinary refreshes retain the list's
-  range anchor while its sheet identity remains valid.
+  range anchor while its sheet identity remains valid. Native Undo and Redo can also activate an
+  affected sheet; the list then follows Calc's new tab selection.
 - **Large lists.** The list rebuilds after changes. During rapid sheet switches the active-sheet
   marker can lag; timing measurements and the remaining work are in
   [#22](https://github.com/viell-dev/slop-calc-sheet-manager/issues/22).

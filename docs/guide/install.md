@@ -42,15 +42,15 @@ download, compare the checksum of the `.oxt` file with that file's content.
 - On Linux, in the download folder:
 
   ```sh
-  sha256sum -c sheet-manager-0.0.3.oxt.sha256
+  sha256sum -c sheet-manager-0.0.4.oxt.sha256
   ```
 
   It prints `OK` for a matching file.
 - On Windows, in PowerShell:
 
   ```powershell
-  (Get-FileHash .\sheet-manager-0.0.3.oxt -Algorithm SHA256).Hash
-  Get-Content .\sheet-manager-0.0.3.oxt.sha256
+  (Get-FileHash .\sheet-manager-0.0.4.oxt -Algorithm SHA256).Hash
+  Get-Content .\sheet-manager-0.0.4.oxt.sha256
   ```
 
   The two values must be the same. PowerShell prints the checksum in capitals.

@@ -1,6 +1,6 @@
 """The sheet tab menu for the sheets selected in the list.
 
-Calc's own sheet tab menu acts on Calc's selected tabs. Before it opens, the list selects
+Calc's own sheet tab menu acts on Calc's selected tabs. Before that menu opens, the list selects
 exactly its own picked sheets as Calc's tabs and reads the selection back; only if Calc holds
 exactly those sheets does the built-in menu, with the user's customizations, open. While it is
 open, a dispatch interceptor on the panel's frame wraps every command it dispatches: at the moment
@@ -30,6 +30,7 @@ SHOW = 1
 ACTIONS = ("top", "up", "down", "bottom")
 MOVE_IDS = {20001 + index: action for index, action in enumerate(ACTIONS)}
 HELP = 20006
+NATIVE = 20000
 SELECT_COMMANDS = {".uno:TableSelectAll", ".uno:TableDeselectAll"}
 
 
@@ -122,6 +123,8 @@ class SheetMenu:
         self.is_open = False
         self._closed_at = 0.0
         self.command: str | None = None
+        self._targeted_native = False
+        self.view: MenuView | None = None
         self._dispatch_depth = 0
         self._completion: Callable[[], None] | None = None
 
@@ -157,7 +160,7 @@ class SheetMenu:
 
     def restore_view(self, view: MenuView, unchanged: Callable[[], bool]) -> None:
         """Restore only provable sheets with unchanged visibility; explicit selection wins."""
-        if self.command in SELECT_COMMANDS or not unchanged():
+        if not self._targeted_native or self.command in SELECT_COMMANDS or not unchanged():
             return
         refs = (view.active, *view.tabs)
         if any(ref.token.getName() != ref.name for ref in refs):
@@ -220,10 +223,28 @@ class SheetMenu:
             return None
         self.is_open = True
         self.command = None
+        self._targeted_native = False
+        self.view = None
         try:
             hidden = set(hidden_targets(observed, picked))
-            if set(picked) - hidden and self.group_calc_tabs(picked):
-                return self._native(peer, x, y, observed, picked, unchanged)
+            if set(picked) - hidden:
+                menu = self._popup()
+                self._add_actions(menu, observed, picked)
+                menu.insertSeparator(len(ACTIONS))
+                menu.insertItem(NATIVE, tr("Sheet actions…"), 0, len(ACTIONS) + 1)
+                chosen = menu.execute(peer, Rectangle(x, y, 1, 1), 0)
+                if chosen != NATIVE:
+                    return chosen if chosen in MOVE_IDS or chosen == HELP else None
+                if not unchanged():
+                    self._report_refusal()
+                    return None
+                self.view = self.capture_view(observed)
+                if self.view is None or not unchanged():
+                    self._report_refusal()
+                    return None
+                self._targeted_native = True
+                if self.group_calc_tabs(picked):
+                    return self._native(peer, x, y, observed, picked, unchanged)
             return self._safe(peer, x, y, observed, picked)
         finally:
             self.is_open = False
@@ -251,7 +272,6 @@ class SheetMenu:
         executing = False
         try:
             popup = self._popup()
-            # SfxDispatcher's tab-bar arguments; the controller fills and runs the menu.
             controller = self._context.ServiceManager.createInstanceWithArgumentsAndContext(
                 "com.sun.star.comp.framework.ResourceMenuController",
                 (
@@ -262,14 +282,9 @@ class SheetMenu:
                 self._context,
             )
             controller.setPopupMenu(popup)
-            menu = self._popup()
-            self._add_actions(menu, observed, picked)
-            menu.insertSeparator(len(ACTIONS))
-            menu.insertItem(20000, tr("Sheet actions"), 0, len(ACTIONS) + 1)
-            menu.setPopupMenu(20000, popup)
             executing = True
-            chosen = menu.execute(peer, Rectangle(x, y, 1, 1), 0)
-            return chosen if chosen in MOVE_IDS or chosen == HELP else None
+            popup.execute(peer, Rectangle(x, y, 1, 1), 0)
+            return None
         finally:
             try:
                 if controller is not None:
@@ -280,7 +295,7 @@ class SheetMenu:
                     self._frame.releaseDispatchProviderInterceptor(guard)
 
                 if executing:
-                    # The chosen command is posted while the menu closes; release after it.
+                    # The native command is posted while its menu closes; release after it.
                     try:
                         self._post(release)
                     except BaseException:
