@@ -33,7 +33,7 @@ selection changes that leave the active sheet unchanged. While the panel is visi
 the tab selection about every quarter second. Your newer input in the list takes precedence;
 unchanged Calc tabs do not overwrite independent list picks.
 
-The footer appears only when several Calc tabs are grouped. **Edits affect … Calc tabs** names
+The grouped-editing warning appears only when several Calc tabs are grouped. **Edits affect … Calc tabs** names
 the sheets affected by cell editing, even if the list's own picks differ. Double-click a row,
 press Enter on a single selected row, or click one Calc tab to end grouped editing.
 

@@ -63,8 +63,7 @@ const commit = sourceCommit();
 
 export default defineConfigWithTheme<ThemeConfig>({
   title: "Sheet Manager",
-  description:
-    "A LibreOffice Calc sidebar that lists a workbook's sheets top to bottom. Test builds for 0.1.0.",
+  description: "A LibreOffice Calc sidebar that lists a workbook's sheets top to bottom.",
   base: "/slop-calc-sheet-manager/",
   lang: "en",
   cleanUrls: true,
