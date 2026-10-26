@@ -207,7 +207,8 @@ provider parses descriptions without evaluating dependencies; the UI's
 performs that step inside a modal VCL dialog. `tests/ui/update_dialog.py` drives those real dialogs
 with XTEST in the private painted Linux lab. It checks empty, same-version, older, compatible and
 incompatible feeds, the disabled candidate's dependency reason, the actual OXT download and
-successful installation, then restarts the same profile and verifies the new version and deck.
+successful installation, then restarts the same profile and verifies the new version, complete
+installed payload and deck.
 Screenshots, accessibility trees, HTTP requests and both office lifecycles are retained as CI
 artifacts. This runs after the UI suite in every required Linux gtk3 job.
 
@@ -220,5 +221,5 @@ packages retain the stable feed, checked separately by integration tests. GTK-sp
 presentation, Windows GUI updates, automatic scheduling, and public HTTPS/redirect behavior are
 outside this loopback check. The release workflow verifies public asset checksums and packaged
 metadata; the live LibreOffice provider and installation of downloaded public bytes need the
-separate post-publication checks. [Issue #57](https://github.com/viell-dev/slop-calc-sheet-manager/issues/57)
-records this boundary.
+separate post-publication checks.
+[Issue #57](https://github.com/viell-dev/slop-calc-sheet-manager/issues/57) records this boundary.

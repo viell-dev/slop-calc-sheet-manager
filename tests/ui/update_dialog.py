@@ -327,6 +327,14 @@ def exercise(program, package, output, result, backtrace):
             registered = installed(context)
             assert registered.getVersion() == newer
             assert tuple(registered.getUpdateInformationURLs()) == (url + "/updates.xml",)
+            provider = context.getValueByName(
+                "/singletons/com.sun.star.deployment.PackageInformationProvider"
+            )
+            location = Path(uno.fileUrlToSystemPath(provider.getPackageLocation(IDENTIFIER)))
+            with zipfile.ZipFile(root / "newer.oxt") as archive:
+                for name in archive.namelist():
+                    assert (location / name).read_bytes() == archive.read(name), name
+                restarted["verified_payload_files"] = len(archive.namelist())
             assert_deck(context, desktop, installed=True)
             restarted["version"] = newer
     finally:
