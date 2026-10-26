@@ -128,6 +128,16 @@ its selection when it cannot establish that the picked sheets are still the same
 includes inserting or deleting sheets, undo and redo, and some macro or unrecorded changes.
 A notice explains conservative clearing of a user-made selection. Pick the sheets again before acting.
 
+**Unreleased:** this explanation appears within the panel and disappears after ten seconds,
+without changing keyboard focus or dismissing a grouped-editing warning. The published 0.0.4
+build shows an infobar that you close yourself.
+
+Calc's Undo may also change the active sheet and native tab selection. After a grouped move,
+it can activate the sheet immediately above the restored group; after a single move, it can
+activate the restored sheet itself. The list follows that native selection. Preserving independent
+picks through verified move Undo/Redo is tracked in
+[#91](https://github.com/viell-dev/slop-calc-sheet-manager/issues/91).
+
 The list keeps its range anchor through ordinary refreshes while that sheet identity remains
 valid. Large lists can take longer to refresh. See [Known issues](./known-issues.md) for
 refresh costs and the limits of detecting changes made by macros.

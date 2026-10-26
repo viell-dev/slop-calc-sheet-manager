@@ -115,17 +115,7 @@ CURSOR_CHANGED = cast(
 )
 
 
-NOTICE = "dev.viell.sheetmanager.selection-cleared"  # The infobar telling of a cleared pick.
-
-
-def _notice_type() -> int:
-    try:
-        return cast(int, uno.getConstantByName("com.sun.star.frame.InfobarType.INFO"))
-    except Exception:
-        return 0
-
-
-NOTICE_TYPE = _notice_type()
+NOTICE_SECONDS = 10.0
 
 
 def _name_or_none(handle: Any) -> str | None:
@@ -353,6 +343,8 @@ class SheetList:
         self._main = MainThread(context)
         self._refresh_timer: Later | None = None
         self._view_timer: Later | None = None
+        self._notice_timer: Later | None = None
+        self._notice_token: object | None = None
         self._view_token: object | None = None
         self._view_stopped = False
         self._scroll = 0
@@ -516,10 +508,10 @@ class SheetList:
     def set_bounds(self, width: int, height: int) -> None:
         self._bounds = width, height
         if not self._disposed:
-            footer = self._status.height if self._status is not None else 0
             toolbar = self._moves.height if self._moves is not None else 0
             if self._status is not None:
                 self._status.set_bounds(width, height)
+            footer = self._status.height if self._status is not None else 0
             if self._moves is not None:
                 self._moves.set_bounds(width)
             self.tree.setPosSize(
@@ -546,6 +538,9 @@ class SheetList:
         self._view_token = None
         if self._view_timer is not None:
             self._view_timer.cancel()
+        self._notice_token = None
+        if self._notice_timer is not None:
+            self._notice_timer.cancel()
         self._view_controls = None
         self._cleanup.close()
 
@@ -645,25 +640,28 @@ class SheetList:
         return had
 
     def _show_cleared_notice(self) -> None:
-        """Say so in an infobar above the sheet; the user closes it.
-
-        The list never removes it itself: removing an infobar moves the keyboard focus to the
-        sheet, which would send the user's next keys there.
-        """
-        if self._disposed:
+        """Explain clearing briefly in the panel, without Calc's focus-changing infobar."""
+        if self._disposed or self._status is None:
             return
-        title = tr("Sheet Manager")
-        text = tr(
-            "The sheet list's selection was cleared because sheets may have been added, "
-            "removed, or renamed. Select the sheets again."
+        self._status.show_notice(True)
+        self.set_bounds(*self._bounds)
+        if self._notice_timer is not None:
+            self._notice_timer.cancel()
+        token = self._notice_token = object()
+        self._notice_timer = self._main.later(
+            NOTICE_SECONDS,
+            lambda: self._expire_cleared_notice(token),
+            "clearing the selection notice",
         )
-        try:
-            if self.controller.hasInfobar(NOTICE):
-                self.controller.updateInfobar(NOTICE, title, text, NOTICE_TYPE)
-            else:
-                self.controller.appendInfobar(NOTICE, title, text, NOTICE_TYPE, (), True)
-        except Exception:
-            report("telling that the selection was cleared")
+
+    def _expire_cleared_notice(self, token: object) -> None:
+        # A cancelled timer can already be in the UI queue. It cannot hide a newer notice.
+        if self._disposed or token is not self._notice_token:
+            return
+        self._notice_token = self._notice_timer = None
+        if self._status is not None:
+            self._status.show_notice(False)
+            self.set_bounds(*self._bounds)
 
     def _rebuild(self, rows: list[SheetRow]) -> None:
         """Replace the whole data model.

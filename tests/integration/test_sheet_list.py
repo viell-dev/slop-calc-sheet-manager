@@ -27,6 +27,7 @@ from sheet_list_view import (
     UNRECORDED,
     cover_batch,
     enabled_menu_items,
+    footer_text,
     held_batch,
     labels,
     names,
@@ -420,7 +421,7 @@ def check_stale_clicks(context, desktop):
     document = make_workbook(desktop, SIX)
     controller = document.getCurrentController()
     sheets = document.getSheets()
-    _, tree = open_list(context, document)
+    panel, tree = open_list(context, document)
     robot = Robot(context)
     results: dict[str, Any] = {}
 
@@ -505,7 +506,7 @@ def check_stale_clicks(context, desktop):
         poll(lambda: selection(tree, list(sheets.getElementNames())) == [], "the picks to go")
         results[case] = {
             "selection": [],
-            "notice": bool(controller.hasInfobar(uno_list.NOTICE)),
+            "notice": bool(footer_text(panel, "Why the sheet list").getText()),
         }
         undo = document.getUndoManager()
         while len(undo.getAllUndoActionTitles()) > steps:
@@ -520,7 +521,10 @@ def check_stale_clicks(context, desktop):
         steps = len(document.getUndoManager().getAllUndoActionTitles())
         on_main_thread(context, lambda w=wrapper: cover_batch(document, w))
         poll(lambda: selection(tree, list(sheets.getElementNames())) == [], "the picks to go")
-        results[wrapper] = {"selection": [], "notice": bool(controller.hasInfobar(uno_list.NOTICE))}
+        results[wrapper] = {
+            "selection": [],
+            "notice": bool(footer_text(panel, "Why the sheet list").getText()),
+        }
         undo = document.getUndoManager()
         while len(undo.getAllUndoActionTitles()) > steps:
             undo.undo()
@@ -536,7 +540,10 @@ def check_stale_clicks(context, desktop):
         poll(lambda: selection(tree, list(sheets.getElementNames())) == [], "the picks to go")
         replaced = sheets.getByName("Bravo").getCellRangeByName("A1").getString()
         assert replaced == "replacement", (way, replaced)
-        results[way] = {"selection": [], "notice": bool(controller.hasInfobar(uno_list.NOTICE))}
+        results[way] = {
+            "selection": [],
+            "notice": bool(footer_text(panel, "Why the sheet list").getText()),
+        }
         controller.setActiveSheet(sheets.getByName("Alfa"))
 
     say("a click while a batch's lock is still held activates nothing (#28)")

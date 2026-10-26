@@ -113,6 +113,11 @@ instead. Take screenshots only of this workbook.
     Expected: the list no longer selects Charlie and Echo, and an information bar above the sheet
     says that the selection was cleared because sheets may have been added, removed, or renamed.
     Close the bar and delete the new sheet.
+    **Unreleased:** the explanation appears inside the panel and disappears after ten seconds.
+    Before it expires, click another row. Expected: expiration leaves that row picked and focus
+    in the list; typing a letter searches the list rather than editing a cell. If Calc tabs are
+    grouped, their separate warning remains. Repeat in another document while the first notice
+    expires; the first document must not become active.
 24. **Top.** Click Charlie and Ctrl+click Echo, then choose Move to top from the context menu.
     Expected: Charlie and Echo become the first two sheets, in that order, remain selected, and
     Calc keeps its active sheet. One Undo restores the original order.

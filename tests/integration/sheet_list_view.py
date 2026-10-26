@@ -162,6 +162,18 @@ def move_buttons(panel):
     return buttons
 
 
+def footer_text(panel, help_prefix):
+    """Find one native footer label by its distinct, visible-to-users help text."""
+    fields = [
+        child
+        for child in panel.getWindows()
+        if "com.sun.star.awt.XFixedText" in [kind.typeName for kind in child.getTypes()]
+        and child.getProperty("HelpText").startswith(help_prefix)
+    ]
+    assert len(fields) == 1, fields
+    return fields[0]
+
+
 def open_list(context, document):
     """Show the deck for this document and return its panel window and tree control."""
     frame = document.getCurrentController().getFrame()

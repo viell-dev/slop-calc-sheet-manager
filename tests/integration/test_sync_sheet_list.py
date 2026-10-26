@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from com.sun.star.container import NoSuchElementException
 from main_thread import close_document
 from sheet_list_view import (
+    footer_text,
     labels,
     names,
     on_main_thread,
@@ -60,13 +61,7 @@ def workbook(desktop):
 
 
 def status(panel):
-    fields = [
-        child
-        for child in panel.getWindows()
-        if "com.sun.star.awt.XFixedText" in [kind.typeName for kind in child.getTypes()]
-    ]
-    assert len(fields) == 1, fields
-    return fields[0].getText()
+    return footer_text(panel, "Cell edits affect").getText()
 
 
 def check_tabs(context, desktop):
