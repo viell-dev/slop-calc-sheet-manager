@@ -1,7 +1,7 @@
 # Use the sheet list
 
 See the notice above for the version this guide describes. Changes marked **Unreleased** are not
-in that published build; before the first release, all instructions describe development. See
+in that published build. Before any build is published, the guide describes development. See
 [Install, update, and remove](./install.md) for setup and
 [Releases and test builds](./releases.md) for available downloads.
 

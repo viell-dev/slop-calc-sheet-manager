@@ -30,8 +30,8 @@ Changes since the 0.0.4 test build:
   in [#91](https://github.com/viell-dev/slop-calc-sheet-manager/issues/91).
 
 Install the OXT manually or use LibreOffice's Extension Manager to check for stable updates.
-Copies of the earlier test builds already use the stable feed and can update to 0.1.0. Restart
-LibreOffice when asked. Each release includes an OXT and SHA-256 checksum; test builds remain
+Once 0.1.0 is published, earlier test builds can receive it from the stable feed they already use.
+Restart LibreOffice when asked. Each release includes an OXT and SHA-256 checksum; test builds remain
 manual downloads. See the [guide](https://viell-dev.github.io/slop-calc-sheet-manager/) for use,
 compatibility, and known limits, including conservative selection clearing on Undo/Redo.
 LibreOffice 26.8.0 and 26.8.1 still have a known formula-reference defect in their own Duplicate
