@@ -91,18 +91,23 @@ def test_current_build_and_package_examples_match_the_manifest_version() -> None
     node = description().find("d:version", NAMESPACES)
     assert node is not None
     version = node.attrib["value"]
-    for page in (ROOT / "CONTRIBUTING.md", DOCS / "guide" / "install.md"):
+    for page in (ROOT / "CONTRIBUTING.md",):
         examples = re.findall(r"sheet-manager-(\d+\.\d+\.\d+)\.oxt", text(page))
         assert examples, f"No current package example in {page.name}"
         assert all(example == version for example in examples), (page.name, examples, version)
     for page in (
         ROOT / "README.md",
         ROOT / "RELEASING.md",
-        DOCS / "guide" / "status.md",
-        DOCS / "guide" / "use.md",
     ):
         builds = re.findall(r"`(\d+\.\d+\.\d+)` (?:test build|release)", text(page))
         assert builds == [version], (page.name, builds, version)
+
+    # The public guide follows published history, not the source package's prepared version.
+    for name in ("status.md", "use.md"):
+        assert not re.search(r"`\d+\.\d+\.\d+` (?:test build|release)", text(DOCS / "guide" / name))
+    install = text(DOCS / "guide" / "install.md")
+    assert "sheet-manager-VERSION.oxt" in install
+    assert not re.search(r"sheet-manager-\d+\.\d+\.\d+\.oxt", install)
 
 
 def test_environment_table_names_the_tested_builds() -> None:

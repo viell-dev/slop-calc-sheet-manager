@@ -1,6 +1,7 @@
 # Use the sheet list
 
-These instructions describe the `0.0.4` test build for `0.1.0`. See
+See the notice above for the version this guide describes. Changes marked **Unreleased** are not
+in that published build; before the first release, all instructions describe development. See
 [Install, update, and remove](./install.md) for setup and
 [Releases and test builds](./releases.md) for available downloads.
 
@@ -49,12 +50,14 @@ point with a solid line and end markers. The selected sheets keep their relative
 when they started apart. Hold the
 pointer near an edge to scroll, or press Esc to cancel. Dropping in place changes nothing.
 
-Or use the **Top**, **Up**, **Down**, and **Bottom** buttons above the list, or the context menu's
-**Move to top**, **Move up**, **Move down**, and **Move to bottom** actions.
+Or use the context menu's **Move to top**, **Move up**, **Move down**, and **Move to bottom** actions.
 Top and Bottom gather
 the selected sheets, in their original order, at that end. Up and Down move each separate run of
 selected sheets one place; a run already at the edge stays there. The moved sheets stay selected,
 so pressing Up or Down again moves the same sheets further.
+
+**Move buttons.** <Unreleased since="0.0.4" /> The **Top**, **Up**, **Down**, and **Bottom** buttons
+above the list run the same actions.
 
 A move is one **Move Sheets** undo step. The move preserves the active sheet and Calc's tab
 selection. Use Ctrl+Z to undo it. Calc's own Undo and Redo can activate an affected sheet, and the
@@ -69,11 +72,16 @@ popup rendering can hide unavailable actions and their reasons; see the
 
 Right-click a row to open its context menu without selecting it. If the row is already picked,
 actions target the picked set; otherwise they target just that row. Menu or Shift+F10 targets the
-list's picks. Opening this menu leaves the viewed sheet and Calc's selected tabs unchanged.
+list's picks.
 Move actions appear directly in it. Choose **Sheet actions…** to open Calc's full sheet-tab menu,
 including your customizations. Hidden-only targets offer Show Sheet where safe.
-When visible and hidden sheets are picked together, **Sheet actions…** offers safe Show and move
-actions instead. Calc's built-in menu is offered only when every context target is visible.
+
+**Context view.** <Unreleased since="0.0.4" /> Opening this menu leaves the viewed sheet and
+Calc's selected tabs unchanged.
+
+**Mixed visibility.** <Unreleased since="0.0.4" /> When visible and hidden sheets are picked
+together, **Sheet actions…** offers safe Show and move actions instead. Calc's built-in menu is
+offered only when every context target is visible.
 
 Calc's built-in commands require its native tabs to match the context targets, so choosing
 **Sheet actions…** can temporarily change Calc's tab group and viewed sheet. The list's picks
@@ -103,13 +111,16 @@ to the list. While the list has focus:
 | Menu or Shift+F10 | Open the sheet tab menu |
 | Ctrl+S, Ctrl+Z, Ctrl+Page Down | Run Calc's save, undo, or next-sheet command |
 
-The four move shortcuts apply only while the list or a move button has focus, without changing
-Calc's shortcut configuration. In a cell, Alt+Down retains Calc's Data Select command.
+The four move shortcuts apply while the list has focus, without changing Calc's shortcut
+configuration. In a cell, Alt+Down retains Calc's Data Select command.
 Ctrl+Shift with navigation adds a range to the existing selection.
 
-Space and Shift+Space do nothing in the list. Tab and Shift+Tab traverse the enabled move buttons
-and the list, then return focus to Calc at either end. On a focused button, Enter or Space runs
-that move; typing letters cannot enter cell content.
+**Move-button shortcuts.** <Unreleased since="0.0.4" /> Move shortcuts also apply while a move
+button has focus.
+
+Space and Shift+Space do nothing in the list. <Unreleased since="0.0.4" /> Tab and Shift+Tab traverse
+the enabled move buttons and the list, then return focus to Calc at either end. On a focused
+button, Enter or Space runs that move; typing letters cannot enter cell content.
 F6, F10, Esc, and unbound
 Alt menu mnemonics retain LibreOffice's behaviour. Keys used by the list do not type into cells.
 Other documents keep their
@@ -128,9 +139,9 @@ its selection when it cannot establish that the picked sheets are still the same
 includes inserting or deleting sheets, undo and redo, and some macro or unrecorded changes.
 A notice explains conservative clearing of a user-made selection. Pick the sheets again before acting.
 
-**Unreleased:** this explanation appears within the panel and disappears after ten seconds,
-without changing keyboard focus or dismissing a grouped-editing warning. The published 0.0.4
-build shows an infobar that you close yourself.
+**Panel notice.** <Unreleased /> This explanation appears within the panel and disappears after
+ten seconds, without changing keyboard focus or dismissing a grouped-editing warning. In 0.0.4,
+the notice is an infobar that you close yourself.
 
 Calc's Undo may also change the active sheet and native tab selection. After a grouped move,
 it can activate the sheet immediately above the restored group; after a single move, it can
