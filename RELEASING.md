@@ -218,6 +218,7 @@ queue without checking bundled extensions against external services. The fixture
 built package payload and changes only its version, minimum and loopback update URL. Production
 packages retain the stable feed, checked separately by integration tests. GTK-specific dialog
 presentation, Windows GUI updates, automatic scheduling, and public HTTPS/redirect behavior are
-outside this loopback check; publication checks still verify the live provider, downloads and
-installed public bytes. [Issue #57](https://github.com/viell-dev/slop-calc-sheet-manager/issues/57)
+outside this loopback check. The release workflow verifies public asset checksums and packaged
+metadata; the live LibreOffice provider and installation of downloaded public bytes need the
+separate post-publication checks. [Issue #57](https://github.com/viell-dev/slop-calc-sheet-manager/issues/57)
 records this boundary.
