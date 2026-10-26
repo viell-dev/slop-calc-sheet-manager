@@ -50,6 +50,7 @@ The sheet list calls the reorder layer for drag and drop. Its contract is in
 
 | Promise | Evidence | Runs | Limits |
 | --- | --- | --- | --- |
+| Unreleased: the selection-cleared notice expires after ten seconds without changing focus, picks, native tabs, or the grouped-editing warning | `run_ui.py:selection_notice` uses real move/Undo and subsequent list input; `test_selection_notice.py` covers renewed timers and disposal | Checks; six gtk3/gen UI sessions in CI | Undo/Redo still invalidates picks conservatively (#91). Notice wrapping was inspected at one GTK panel width; text fit across widths, fonts and DPI has no automated assertion. Visible Windows, Wayland and screen-reader announcement behavior are unverified. |
 | Rows show tab order, active sheet, visibility, protection, scenarios, and tab colour | `test_sheet_list.py:check_states_and_refresh`; `test_sheet_list.py` unit tests | Every CI integration job; Checks | The native tree rebuilds after changes (#22). |
 | Picks never transfer to replacement sheets within the documented notification boundary | `test_selection.py` randomized sessions and deliberately broken controls; `test_sheet_list.py:check_identity`; real-input `picks_dropped_when_sheets_change`, `press_then_change`, `newer_pick_survives_voided_press`, `actions_refused_while_lock_held`, and stale-drop checks | Checks; every integration job; six gtk3/gen UI sessions in CI | Entirely silenced structural changes and deliberately indistinguishable edit sequences cannot be detected; see `structure.py` and `reordering.md`. Conservative invalidation can clear picks after ordinary unrecorded changes. |
 | Full-width clicks select; double-click/Enter activates and ends grouped editing; stale or hidden rows never activate replacements | `check_selection_and_menu`, `check_stale_clicks`, `check_activation_fallback`; deterministic `test_pointer_observation.py` callback ordering, stale intake and pointer cleanup; real-input `click_activates` full-width regions and double-click, `plain_click_ends_group`, `click_hidden_before_refresh`, `newer_selection_kept` | Integration, Checks and UI jobs | Built-in menu commands retain Calc's grouping semantics. |
@@ -77,6 +78,14 @@ in #22.
 completes one recorded colour edit before returning. A native release observer proves that the
 final Ctrl-click precedes repaint. This isolates delayed refresh from concurrent undo/modify
 notifications; the intermittent selection-loss observation is tracked in #88.
+
+The autoscroll check records viewport-height changes during its slow pointer glide. If a timed
+notice expires and moves the bottom edge, it puts the pointer at the new edge once, then leaves
+it stationary. The six-second scrolling budget, minimum movement and unchanged-order assertions
+stay intact. A classified #90 harness reproduction kept the old pointer at Y=696 while the
+viewport grew from 699 to 743 pixels; the old check failed, and tracking the actual edge passed.
+The structural-clearing and save checks observe the panel notice, waiting for a preceding notice
+to expire before establishing each case's selection.
 
 ## The checks themselves
 

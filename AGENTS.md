@@ -282,9 +282,11 @@ reconsider. The owner may report a defect themselves, in their own words.
   undo contexts, where modify notifications are batched or missing. Every action checks the
   generation again when it runs (`check()`). Picks, presses, drags, and an open menu carry the
   generation they were proved at. Actions refuse refs proved at a different generation; when a
-  refresh observes that change, it drops every ref and voids any held press. It shows an infobar only
-  when a user-made pick is cleared. Only the user closes that bar, since removing it moves the
-  focus to the sheet. As a second line, every refresh checks that its handles map one to one onto
+  refresh observes that change, it drops every ref and voids any held press. Clearing a user-made
+  pick shows a ten-second panel notice; invalidating only cursor/anchor/press is silent.
+  Never time out a native infobar: its removal can move focus to the sheet. The notice uses
+  the existing main-thread timer, with a token rejecting a stale queued timeout after renewal
+  or disposal. As a second line, every refresh checks that its handles map one to one onto
   the sheets with at most one rename (`structure_kept`). Otherwise refs stay while their handles
   report their names, so a renamed pick goes and a moved one stays (#28). Over-clearing is the
   accepted cost: undo and redo, document property changes, and other changes LibreOffice does
@@ -431,8 +433,9 @@ reconsider. The owner may report a defect themselves, in their own words.
   deck layout. Check deck activity before fresh panel discovery and treat `NoSuchElementException`
   as a temporarily unavailable context. Actual native panel disposal disposes the list too.
   A token rejects a cancelled timer already posted to the UI queue, preventing duplicate chains.
-  `uno_status.py` shows a footer only for a group of multiple Calc tabs, separately from list
-  picks. Its height changes below the tree, preserving the row origin under a held pointer.
+  `uno_status.py` shows separate footer labels for a group of multiple Calc tabs and a transient
+  clearing notice. Expiring the notice leaves the group warning intact. Native adjusted text
+  sizing follows the available width. Height changes below the tree preserve its row origin.
   Tab/Shift+Tab focuses the frame's component window. Native sidebar traversal alone does not
   reach these child peers or leave them reliably. Posted focus requests refuse when focus or
   the active frame moved.

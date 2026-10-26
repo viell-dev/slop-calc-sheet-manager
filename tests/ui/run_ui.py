@@ -676,15 +676,26 @@ def check_autoscroll(book):
     book.pointer.press(*start)
     book.pointer.glide(start, (start[0], start[1] + 12))
     book.pointer.glide((start[0], start[1] + 12), (start[0], height - 3))
+    heights = [height]
     deadline = time.monotonic() + 6
     while book.first_visible() <= first + 3 and time.monotonic() < deadline:
+        current_height = book.tree.getOutputSize().Height
+        if current_height != heights[-1]:
+            # A timed footer can expire during the slow glide. Follow the actual bottom
+            # edge once when it moves, then leave the pointer stationary to test scrolling.
+            heights.append(current_height)
+            book.pointer.at(start[0], current_height - 3)
         time.sleep(0.2)
     scrolled = book.first_visible()
     book.lab.screenshot("drag-autoscroll")
     book.lab.input.tap("Escape", pause=0.3)
     book.pointer.release()
     time.sleep(0.8)
-    evidence = {"first_visible": [first, scrolled], "order_unchanged": book.order() == NAMES}
+    evidence = {
+        "first_visible": [first, scrolled],
+        "order_unchanged": book.order() == NAMES,
+        "viewport_heights": heights,
+    }
     assert scrolled > first + 3 and book.order() == NAMES, evidence
     return evidence
 
@@ -1384,9 +1395,13 @@ def check_picks_dropped_when_sheets_change(book):
     sheets = book.document.getSheets()
     undo = book.document.getUndoManager()
     evidence = {}
+    notice = view.footer_text(book.panel, "Why the sheet list")
     ways = ("delete_rename", "insert_delete_rename", "held_replace", *view.BATCHES)
     for way in (*ways, *view.UNRECORDED):
         reset(book)
+        wait_until(
+            lambda: not notice.getText(), "the previous clearing notice to expire", timeout=12
+        )
         sheets.getByName(NAMES[0]).getCellRangeByName("A1").setString("victim")
         sheets.getByName(NAMES[1]).getCellRangeByName("A1").setString("original")
         undo.clear()
@@ -1422,11 +1437,10 @@ def check_picks_dropped_when_sheets_change(book):
         time.sleep(1)
         tabs = book.calc_tabs()
         titles = book.undo_titles()
-        notice = "dev.viell.sheetmanager.selection-cleared"
         state = {
             "selection": book.selection(),
             "active": book.active(),
-            "notice": bool(book.controller.hasInfobar(notice)),
+            "notice": bool(notice.getText()),
         }
         # Empty stale picks must refuse the outer popup, whose presence cannot be inferred
         # from Calc's tabs: the outer popup intentionally leaves them unchanged.
@@ -1441,8 +1455,6 @@ def check_picks_dropped_when_sheets_change(book):
             sheets.getByName(n).getCellRangeByName("A1").getString() for n in state["hidden"]
         ]
         evidence[way] = state
-        if state["notice"]:
-            book.controller.removeInfobar(notice)
         while undo.getAllUndoActionTitles():
             undo.undo()
         assert state["selection"] == [], evidence
@@ -1502,13 +1514,14 @@ def check_save_keeps_picks(book):
     LibreOffice reports a save as modify notifications without an undo action, between its
     save events, and may run the list's refresh in the middle with modify notifications off.
     """
-    notice = "dev.viell.sheetmanager.selection-cleared"
+    notice = view.footer_text(book.panel, "Why the sheet list")
     cell = book.document.getSheets().getByIndex(0).getCellRangeByName("B2")
     evidence = {}
     for where in ("list", "cell"):
         reset(book)
-        if book.controller.hasInfobar(notice):
-            book.controller.removeInfobar(notice)
+        wait_until(
+            lambda: not notice.getText(), "the previous clearing notice to expire", timeout=12
+        )
         time.sleep(1.5)
         book.click(1)
         book.click(3, modifiers=("Control_L",))
@@ -1526,7 +1539,7 @@ def check_save_keeps_picks(book):
         state = {
             "saved": book.path.stat().st_mtime_ns != stamp,
             "selection": book.selection(),
-            "notice": bool(book.controller.hasInfobar(notice)),
+            "notice": bool(notice.getText()),
         }
         evidence[where] = state
         assert state == {"saved": True, "selection": [NAMES[1], NAMES[3]], "notice": False}, (
@@ -1741,14 +1754,9 @@ def check_tab_selection_sync(book):
     elapsed = time.monotonic() - started
     assert book.active() == "Alfa"
     assert view.root(book.tree) == before, "Selection-only following rebuilt the rows"
-    fields = [
-        child
-        for child in book.panel.getWindows()
-        if "com.sun.star.awt.XFixedText" in [kind.typeName for kind in child.getTypes()]
-    ]
-    assert len(fields) == 1
-    assert fields[0].getText() == "Edits affect 2 Calc tabs: Alfa, Charlie"
-    accessible = fields[0].getProperty("XAccessible").getAccessibleContext()
+    field = view.footer_text(book.panel, "Cell edits affect")
+    assert field.getText() == "Edits affect 2 Calc tabs: Alfa, Charlie"
+    accessible = field.getProperty("XAccessible").getAccessibleContext()
     assert "Alfa" in accessible.getAccessibleName() and "Charlie" in accessible.getAccessibleName()
     book.click(1, ("Control_L",))
     wanted = ["Alfa", "Bravo", "Charlie"]
@@ -1797,6 +1805,49 @@ def check_tab_selection_sync(book):
     }
 
 
+def check_selection_notice(book):
+    """Real Ctrl+Z creates a bounded notice without moving focus into a cell (#90)."""
+    before = book.order()
+    book.click(2)
+    book.click(5, modifiers=("Control_L",))
+    wait_until(lambda: book.selection() == [NAMES[2], NAMES[5]], "independent picks")
+    book.lab.input.tap("Home", modifiers=("Alt_L",), pause=0.5)
+    wait_until(lambda: book.order() != before, "move before Undo")
+    book.lab.input.tap("z", modifiers=("Control_L",), pause=0.2)
+    wait_until(lambda: book.order() == before, "Ctrl+Z restoring order")
+    notice = view.footer_text(book.panel, "Why the sheet list")
+    wait_until(lambda: notice.getText().startswith("Selection cleared"), "the panel notice")
+    started = time.monotonic()
+    assert not book.controller.hasInfobar("dev.viell.sheetmanager.selection-cleared")
+    origin = book.tree.getPosSize().Y
+
+    # Grouping is a distinct persistent warning; newer independent picks survive expiration.
+    select_tabs(book.lab.context, book.frame, [0, 1])
+    group = view.footer_text(book.panel, "Cell edits affect")
+    wait_until(lambda: group.getText() == "Edits affect 2 Calc tabs: Alfa, Bravo", "group warning")
+    book.click(3)
+    wait_until(lambda: book.selection() == [NAMES[3]], "newer independent pick")
+    assert book.tree.hasFocus()
+    state = book.active(), book.calc_tabs(), book.selection()
+    content = [book.document.Sheets.getByName(n).getCellRangeByName("A1").String for n in before]
+    time.sleep(1)
+    assert notice.getText() and notice.isVisible()
+    book.lab.screenshot("selection-notice")
+    wait_until(lambda: not notice.getText(), "notice expiration", timeout=14)
+    elapsed = time.monotonic() - started
+    assert 9 <= elapsed <= 14, elapsed
+    assert not notice.isVisible() and notice.getPosSize().Height == 0
+    assert book.tree.hasFocus(), "Expiring the notice moved focus out of the list"
+    assert (book.active(), book.calc_tabs(), book.selection()) == state
+    assert origin == book.tree.getPosSize().Y
+    assert group.isVisible() and group.getText() == "Edits affect 2 Calc tabs: Alfa, Bravo"
+    book.lab.input.tap("d")
+    assert [
+        book.document.Sheets.getByName(n).getCellRangeByName("A1").String for n in before
+    ] == content
+    return {"expired_seconds": round(elapsed, 2), "focus_kept": True, "group_warning_kept": True}
+
+
 def run_checks(lab, output):
     book = Workbook(lab, "synthetic", NAMES)
     lab.screenshot("panel")
@@ -1810,6 +1861,7 @@ def run_checks(lab, output):
         ("ctrl_shift_selection", lambda: check_ctrl_shift_selection(book)),
         ("row_paint_scroll", lambda: check_row_paint_scroll(book)),
         ("tab_selection_sync", lambda: check_tab_selection_sync(book)),
+        ("selection_notice", lambda: check_selection_notice(book)),
         ("drag_two_sheets_above_midpoint", lambda: check_drag_two_sheets(book, 0.25, 12)),
         ("drag_two_sheets_below_midpoint", lambda: check_drag_two_sheets(book, 0.75, 13)),
         ("drop_in_place_and_escape", lambda: check_drop_in_place_and_escape(book)),

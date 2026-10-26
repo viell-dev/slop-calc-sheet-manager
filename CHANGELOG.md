@@ -5,7 +5,10 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
-No changes recorded yet.
+- Replace the persistent selection-cleared infobar with a ten-second panel notice. Expiration
+  keeps keyboard focus, current picks, and Calc's separate grouped-editing warning unchanged.
+  Undo/Redo still clears picks conservatively; preserving verified move selections is tracked
+  in [#91](https://github.com/viell-dev/slop-calc-sheet-manager/issues/91).
 
 ## 0.0.4 - 2026-10-26
 
