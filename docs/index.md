@@ -5,7 +5,7 @@ hero:
   text: Every sheet of a workbook, in one list
   tagline:
     A LibreOffice Calc sidebar for finding, selecting, and rearranging sheets, however many there
-    are. Test builds target the first feature release, 0.1.0.
+    are. Find published downloads and compatibility information in the guide.
   actions:
     - theme: brand
       text: Status and plans

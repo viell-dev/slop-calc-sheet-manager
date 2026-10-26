@@ -40,7 +40,7 @@ If Sheet Manager does not work in an environment where it is expected to, please
   the sheet above the returned group, whereas a single move can activate the returned sheet.
   Keeping independent picks is tracked in
   [#91](https://github.com/viell-dev/slop-calc-sheet-manager/issues/91).
-  **Selection feedback.** <Unreleased /> The clearing notice expires within the panel after ten
+  **Selection feedback.** <Unreleased since="0.1.0" /> The clearing notice expires within the panel after ten
   seconds, preserving focus.
   An immediate selection after Reload or during concurrent document changes can remain empty or
   clear again, including during some recorded changes. Select the desired rows again once loading

@@ -5,6 +5,20 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+## 0.1.0 - 2026-10-26
+
+First stable feature release. Requires LibreOffice 26.2.1 or later with Python support.
+
+- Find and select sheets in a vertical sidebar list, with full-width rows, keyboard navigation,
+  and an indicator for the viewed sheet. List picks remain independent of Calc's grouped tabs.
+- Drag one or more selected sheets any distance, or use Top, Up, Down and Bottom buttons,
+  context actions or Alt shortcuts. Each extension move is one undo step, with permission and
+  sheet-identity checks before acting and verified recovery if a move fails.
+- Open Calc's customized sheet-tab menu through **Sheet actions…**, with safe context targeting
+  and restoration of the previous view where the original sheets can still be identified.
+
+Changes since the 0.0.4 test build:
+
 - Keep new guide instructions marked **Unreleased** through release preparation and failed or
   abandoned publication. Published history controls their availability markers; documentation
   corrections still deploy independently of software versions and tags.
@@ -14,6 +28,14 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   keeps keyboard focus, current picks, and Calc's separate grouped-editing warning unchanged.
   Undo/Redo still clears picks conservatively; preserving verified move selections is tracked
   in [#91](https://github.com/viell-dev/slop-calc-sheet-manager/issues/91).
+
+Install the OXT manually or use LibreOffice's Extension Manager to check for stable updates.
+Once 0.1.0 is published, earlier test builds can receive it from the stable feed they already use.
+Restart LibreOffice when asked. Each release includes an OXT and SHA-256 checksum; test builds remain
+manual downloads. See the [guide](https://viell-dev.github.io/slop-calc-sheet-manager/) for use,
+compatibility, and known limits, including conservative selection clearing on Undo/Redo.
+LibreOffice 26.8.0 and 26.8.1 still have a known formula-reference defect in their own Duplicate
+Sheet and Move or Copy Sheet commands; see the guide before using those native copy commands.
 
 ## 0.0.4 - 2026-10-26
 

@@ -1,7 +1,7 @@
 # Use the sheet list
 
 See the notice above for the version this guide describes. Changes marked **Unreleased** are not
-in that published build; before the first release, all instructions describe development. See
+in that published build. Before any build is published, the guide describes development. See
 [Install, update, and remove](./install.md) for setup and
 [Releases and test builds](./releases.md) for available downloads.
 
@@ -33,8 +33,9 @@ selection changes that leave the active sheet unchanged. While the panel is visi
 the tab selection about every quarter second. Your newer input in the list takes precedence;
 unchanged Calc tabs do not overwrite independent list picks.
 
-The footer appears only when several Calc tabs are grouped. **Edits affect … Calc tabs** names
-the sheets affected by cell editing, even if the list's own picks differ. Double-click a row,
+The grouped-editing warning appears only when several Calc tabs are grouped.
+**Edits affect … Calc tabs** names the sheets affected by cell editing, even if the list's own
+picks differ. Double-click a row,
 press Enter on a single selected row, or click one Calc tab to end grouped editing.
 
 Periodic tab observation pauses while the panel is collapsed, another sidebar deck is selected,
@@ -139,7 +140,7 @@ its selection when it cannot establish that the picked sheets are still the same
 includes inserting or deleting sheets, undo and redo, and some macro or unrecorded changes.
 A notice explains conservative clearing of a user-made selection. Pick the sheets again before acting.
 
-**Panel notice.** <Unreleased /> This explanation appears within the panel and disappears after
+**Panel notice.** <Unreleased since="0.1.0" /> This explanation appears within the panel and disappears after
 ten seconds, without changing keyboard focus or dismissing a grouped-editing warning. In 0.0.4,
 the notice is an infobar that you close yourself.
 
