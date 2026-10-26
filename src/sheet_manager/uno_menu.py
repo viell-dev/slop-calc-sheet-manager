@@ -1,12 +1,9 @@
 """The sheet tab menu for the sheets selected in the list.
 
-Calc's own sheet tab menu acts on Calc's selected tabs. Before that menu opens, the list selects
-exactly its own picked sheets as Calc's tabs and reads the selection back; only if Calc holds
-exactly those sheets does the built-in menu, with the user's customizations, open. While it is
-open, a dispatch interceptor on the panel's frame wraps every command it dispatches: at the moment
-a command runs, the picked sheets must still be the same sheets and still be Calc's whole tab
-selection, or the command is not run. Calc cannot select only hidden sheets, so then, or if Calc
-does not take the selection, a short menu offers what the extension can do safely itself.
+The outer movement menu leaves Calc's tabs unchanged. Choosing Sheet actions… groups its
+visible targets and opens Calc's customized tab menu only after exact readback. Hidden or
+mixed-visibility targets use safe extension actions instead. While the native menu is open,
+a dispatch interceptor checks sheet identity and exact tab membership before every command.
 """
 
 import time

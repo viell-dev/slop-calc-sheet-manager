@@ -38,7 +38,10 @@ def test_scrollbar_is_outside_both_background_and_divider_painting() -> None:
     def hit(x: int, y: int) -> object | None:
         return object() if 22 <= x <= 307 else None
 
-    tree = SimpleNamespace(getClosestNodeForLocation=hit)
+    tree = SimpleNamespace(
+        getClosestNodeForLocation=hit,
+        getNodeRect=Mock(return_value=SimpleNamespace(X=22, Width=285)),
+    )
     paint = RowPaint(peer, tree)
     geometry = RowGeometry(-22, 22, 10)
     paint.draw([SheetRow(str(i)) for i in range(10)], geometry, set())
@@ -55,7 +58,8 @@ def test_scrollbar_is_outside_both_background_and_divider_painting() -> None:
     ]
 
 
-def test_both_scrollbars_clip_swatches_and_drop_marker_too() -> None:
+@pytest.mark.parametrize("origin", [0, 98, 500])
+def test_both_scrollbars_clip_swatches_and_drop_marker_too(origin: int) -> None:
     graphics = Mock()
     peer = SimpleNamespace(
         getOutputSize=lambda: SimpleNamespace(Width=321, Height=88),
@@ -68,13 +72,23 @@ def test_both_scrollbars_clip_swatches_and_drop_marker_too() -> None:
     def hit(x: int, y: int) -> object | None:
         return object() if 22 <= x <= 307 and 0 <= y <= 74 else None
 
-    paint = RowPaint(peer, SimpleNamespace(getClosestNodeForLocation=hit))
+    paint = RowPaint(
+        peer,
+        SimpleNamespace(
+            getClosestNodeForLocation=hit,
+            getNodeRect=Mock(return_value=SimpleNamespace(X=22, Width=285 + origin)),
+        ),
+    )
     geometry = RowGeometry(0, 22, 10)
     paint.draw([SheetRow(str(i), active=True, color=9) for i in range(10)], geometry, set())
     paint.decorate(geometry, 7)
     assert all(
-        x >= 0 and x + width <= 307 and y >= 0 and y + height <= 74
+        x >= origin and x + width <= origin + 307 and y >= 0 and y + height <= 74
         for x, y, width, height in (call.args for call in graphics.drawRect.call_args_list)
+    )
+    assert all(
+        call.args[0] == origin and call.args[2] == origin + 306
+        for call in graphics.drawLine.call_args_list
     )
 
 
@@ -100,7 +114,13 @@ def test_ambiguous_last_hit_never_paints_over_the_content_boundary(
     def hit(x: int, y: int) -> object | None:
         return object() if 22 <= x <= right and 0 <= y <= bottom else None
 
-    paint = RowPaint(peer, SimpleNamespace(getClosestNodeForLocation=hit))
+    paint = RowPaint(
+        peer,
+        SimpleNamespace(
+            getClosestNodeForLocation=hit,
+            getNodeRect=Mock(return_value=SimpleNamespace(X=22, Width=right - 22)),
+        ),
+    )
     paint.draw([SheetRow(str(i)) for i in range(geometry.count)], geometry, set())
     paint.decorate(geometry, None)
     assert all(call.args[1] < bottom for call in graphics.drawLine.call_args_list)

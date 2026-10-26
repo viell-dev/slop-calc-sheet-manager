@@ -21,7 +21,8 @@ Requires LibreOffice 26.2.1 or later with Python support.
   The grouped-editing warning remains a conditional footer.
 - Keep row dividers aligned after scrolling and font/DPI changes by following actual native
   row geometry. Decorations stop at the content viewport instead of covering scrollbars, and
-  fixed border pixels no longer get copied into rows by native scrolling.
+  fixed border pixels no longer get copied into rows by native scrolling. Horizontal scrolling
+  of long names keeps decorations aligned across the whole viewport.
 
 Install the OXT manually over 0.0.3, restart LibreOffice, and check its SHA-256 asset. Test builds
 keep the stable update feed; later test builds remain manual downloads. Existing compatibility

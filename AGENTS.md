@@ -364,6 +364,9 @@ reconsider. The owner may report a defect themselves, in their own words.
   Native hit testing supplies the content bounds, excluding scrollbars; the peer's output size
   includes them. Do not put fixed frame lines on the scrolling surface: VCL's pixel
   scrolling copies them into rows. Keep the screenshot-pixel wheel/thumb/native-height check.
+  XGraphics inherits the tree's horizontal map origin: offset drawing by the native full-row
+  rectangle's logical right edge minus the pixel viewport width. Keep long-name coverage with
+  both scrollbars; hit testing takes pixel coordinates and alone does not reveal this origin.
   The list observes unowned native cursor changes via
   `ACTIVE_DESCENDANT_CHANGED` on the peer's accessible tree context. The event's row context has a
   cached sibling index that maps directly to the flat rows; the callback reads only that index and

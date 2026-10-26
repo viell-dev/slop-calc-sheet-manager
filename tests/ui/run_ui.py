@@ -511,7 +511,7 @@ def check_move_focus_and_queued_navigation(book):
     }
 
 
-def check_row_paint_scroll(book):
+def check_row_paint_scroll(book, horizontal=False):
     """Native geometry and screenshot pixels must agree throughout scrolling."""
     tree = book.tree
     original_height = tree.getProperty("RowHeight")
@@ -540,7 +540,7 @@ def check_row_paint_scroll(book):
             "shadow": tree.StyleSettings.ShadowColor,
             "rows": [{"Y": row.Y, "Height": row.Height} for row in rows],
         }
-        stem = "row-paint-" + name
+        stem = ("row-paint-horizontal-" if horizontal else "row-paint-") + name
         path = book.lab.output / (stem + ".json")
         path.write_text(json.dumps(data, indent=2) + "\n")
         book.lab.screenshot(stem)
@@ -570,6 +570,18 @@ def check_row_paint_scroll(book):
         book.click(2)
         picked = book.selection()
         capture("initial")
+        if horizontal:
+            before = tree.getNodeRect(book.nodes()[0]).Width
+            y = tree.getOutputSize().Height - 7
+            assert tree.getClosestNodeForLocation(90, y) is None, "No horizontal scrollbar"
+            book.pointer.press(35, y)
+            book.pointer.glide((35, y), (120, y))
+            book.pointer.release()
+            wait_until(
+                lambda: tree.getNodeRect(book.nodes()[0]).Width > before,
+                "horizontal thumb movement",
+            )
+            capture("thumb-right")
         book.pointer.wheel(90, 200, True, 4)
         capture("wheel-down")
         book.pointer.wheel(90, 200, False, 1)
@@ -599,13 +611,24 @@ def check_row_paint_scroll(book):
         capture("native-height-change")
         rect = tree.getNodeRect(book.nodes()[10])
         book.pointer.click(5, rect.Y + rect.Height - 2)
-        wait_until(lambda: book.selection() == [NAMES[10]], "hit testing the native row bottom")
+        wait_until(
+            lambda: book.selection() == [book.order()[10]], "hit testing the native row bottom"
+        )
         capture("native-height-picked")
         assert (book.active(), book.calc_tabs()) == native_view
     finally:
         tree.setProperty("RowHeight", original_height)
         tree.invalidate(0)
     return evidence
+
+
+def check_row_paint_long_names(lab):
+    """Exercise both native scrollbars without changing the ordinary workbook's state."""
+    book = Workbook(lab, "synthetic long labels", ["W" * 28 + f"{n:02}" for n in range(80)])
+    try:
+        return check_row_paint_scroll(book, horizontal=True)
+    finally:
+        book.close()
 
 
 def check_drop_in_place_and_escape(book):
@@ -1647,6 +1670,7 @@ def check_newer_selection_kept(book):
             "after_refresh": book.selection(),
             "active": book.active(),
         }
+        assert evidence["releases"] == 3, evidence
         assert evidence["after_refresh"] == [NAMES[1], NAMES[3]], evidence
         assert evidence["active"] == NAMES[1], evidence
         return evidence
@@ -1795,6 +1819,7 @@ def run_checks(lab, output):
         ("click_hidden_before_refresh", lambda: check_click_hidden_before_refresh(book)),
         ("newer_selection_kept", lambda: check_newer_selection_kept(book)),
         ("other_document", lambda: check_other_document(lab, book)),
+        ("row_paint_long_names", lambda: check_row_paint_long_names(lab)),
     ]
     results = {}
     for name, check in checks:
