@@ -72,6 +72,8 @@ actions target the picked set; otherwise they target just that row. Menu or Shif
 list's picks. Opening this menu leaves the viewed sheet and Calc's selected tabs unchanged.
 Move actions appear directly in it. Choose **Sheet actions…** to open Calc's full sheet-tab menu,
 including your customizations. Hidden-only targets offer Show Sheet where safe.
+When visible and hidden sheets are picked together, **Sheet actions…** offers safe Show and move
+actions instead: Calc cannot group hidden tabs for its built-in commands.
 
 Calc's built-in commands require its native tabs to match the context targets, so choosing
 **Sheet actions…** can temporarily change Calc's tab group and viewed sheet. The list's picks

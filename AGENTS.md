@@ -428,9 +428,9 @@ reconsider. The owner may report a defect themselves, in their own words.
   Tab/Shift+Tab focuses the frame's component window. Native sidebar traversal alone does not
   reach these child peers or leave them reliably. Posted focus requests refuse when focus or
   the active frame moved.
-- Keys: a toolkit `XKeyHandler` is registered while the tree has focus and checks focus again
-  for every key. Selection/navigation, Enter, typed characters, and menu keys are consumed and
-  handled by the list; other
+- Keys: a toolkit `XKeyHandler` is registered while the tree or a move button has focus and checks
+  focus again for every key. Selection/navigation, Enter, typed characters, and menu keys are
+  consumed and handled by the list; other
   shortcuts are resolved through the document, Calc, and global shortcut configurations and
   dispatched to the panel's frame; modified Tab combinations, F6, F10, Esc, modifier-only keys,
   and unbound Alt mnemonics pass;

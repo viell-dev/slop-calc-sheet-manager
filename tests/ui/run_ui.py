@@ -163,11 +163,16 @@ class Workbook:
         self.lab.input.tap("Return", pause=0.5)
         wait_until(lambda: self.selection() == picked, "menu picks restored")
 
-    def choose(self, command):
-        """Choose a menu entry with the keyboard; generated mnemonics differ between plugins."""
+    def native_menu(self):
+        """Choose the outer popup's explicit Sheet actions command."""
         self.lab.input.tap("End")
         self.lab.input.tap("Up")
         self.lab.input.tap("Return", pause=0.4)
+
+    def choose(self, command, *, native_open=False):
+        """Choose a menu entry with the keyboard; generated mnemonics differ between plugins."""
+        if not native_open:
+            self.native_menu()
         items = wait_for(
             lambda: view.enabled_menu_items(self.lab.context, self.frame, PROGRAM) or None,
             "the menu's command states",
@@ -453,6 +458,23 @@ def check_move_edges_and_refusal(book):
 
 
 def check_move_focus_and_queued_navigation(book):
+    cell = book.controller.getActiveSheet().getCellRangeByName("A1")
+    content = cell.String
+    book.controller.select(cell)
+    book.document.setModified(False)
+    time.sleep(1.5)  # Let the unrecorded modified-state change renew the list's proof.
+    book.click(3)
+    buttons = view.move_buttons(book.panel)
+    book.lab.input.tap("Tab", modifiers=("Shift_L",), pause=0.2)
+    wait_until(buttons["Bottom"].hasFocus, "a focused button for the typing probe")
+    book.lab.input.tap("x", pause=0.2)
+    book.lab.input.tap("Tab", pause=0.2)
+    wait_until(book.tree.hasFocus, "Tab from Bottom to the tree")
+    book.lab.input.tap("Return", pause=0.4)
+    wait_until(lambda: book.active() == NAMES[3], "Enter on the tree after button typing")
+    assert cell.String == content and not book.document.isModified(), (
+        "Typing on a button reached or modified the sheet"
+    )
     book.click(2)
     before = book.order()
     book.lab.input.tap("Down", pause=0)
@@ -469,10 +491,6 @@ def check_move_focus_and_queued_navigation(book):
     for label in ("Bottom", "Down", "Up", "Top"):
         book.lab.input.tap("Tab", modifiers=("Shift_L",), pause=0.2)
         wait_until(buttons[label].hasFocus, "reverse Tab to " + label)
-    cell = book.document.Sheets.getByIndex(0).getCellRangeByName("A1")
-    content = cell.String
-    book.lab.input.tap("x", pause=0.2)
-    assert cell.String == content, "Typing on a button reached the sheet"
     book.lab.input.tap("Return", pause=0.5)
     wait_until(lambda: book.order()[0] == NAMES[3], "native Enter on the Top button")
     assert book.tree.hasFocus() and book.undo_titles() == ["Move Sheets", *history]
@@ -485,7 +503,12 @@ def check_move_focus_and_queued_navigation(book):
     book.lab.input.tap("Down", modifiers=("Alt_L",), pause=0.3)
     book.lab.input.tap("Escape", pause=0.2)
     assert book.order() == before and book.undo_titles() == history
-    return {"queued_navigation": True, "tab_boundaries": True, "outside_shortcut_scope": True}
+    return {
+        "button_typing_safe": True,
+        "queued_navigation": True,
+        "tab_boundaries": True,
+        "outside_shortcut_scope": True,
+    }
 
 
 def check_row_paint_scroll(book):
@@ -565,6 +588,9 @@ def check_row_paint_scroll(book):
         book.pointer.release()
         time.sleep(0.4)
         capture("thumb-up")
+        tree.makeNodeVisible(book.nodes()[-1])
+        time.sleep(0.4)
+        capture("last-row")
         # Like a font/DPI change, VCL may choose a height larger than the model requested.
         tree.setProperty("RowHeight", original_height + 4)
         tree.makeNodeVisible(book.nodes()[0])
@@ -745,10 +771,13 @@ def reset(book):
 
 def hide_through_menu(book, picked, opener):
     before = book.undo_titles()
+    native_view = book.active(), book.calc_tabs()
     opener()
     time.sleep(0.8)
+    assert (book.active(), book.calc_tabs()) == native_view, "Outer menu changed the native view"
+    book.native_menu()
     tabs = book.calc_tabs()
-    items = book.choose(".uno:Hide")
+    items = book.choose(".uno:Hide", native_open=True)
     wait_until(
         lambda: all(not book.document.getSheets().getByName(n).IsVisible for n in picked),
         "Hide Sheet to hide the picked sheets",
@@ -901,6 +930,35 @@ def check_menu_hidden_only(book):
     return evidence
 
 
+def check_menu_mixed_visibility(book):
+    """Mixed targets get safe Show/move actions when Calc cannot group hidden tabs."""
+    sheet = book.document.Sheets.getByName(NAMES[9])
+    sheet.IsVisible = False
+    book.click(2)
+    book.click(9, modifiers=("Control_L",))
+    picked = [NAMES[2], NAMES[9]]
+    wait_until(lambda: book.selection() == picked, "visible and hidden picks")
+    before = book.active(), book.calc_tabs()
+    history = book.undo_titles()
+    try:
+        book.lab.input.tap("Menu", pause=0.4)
+        assert (book.active(), book.calc_tabs()) == before
+        book.native_menu()
+        assert (book.active(), book.calc_tabs()) == before, "Fallback changed the native view"
+        book.lab.screenshot("menu-mixed-visibility")
+        book.lab.input.tap("Home")
+        book.lab.input.tap("Return", pause=0.5)
+        wait_until(lambda: sheet.IsVisible, "safe Show to show the hidden target")
+        assert book.undo_titles() == ["Show Sheet", *history]
+        assert (book.active(), book.calc_tabs()) == before and book.selection() == picked
+        book.document.UndoManager.undo()
+        wait_until(lambda: not sheet.IsVisible, "one Undo to hide the target again")
+    finally:
+        book.lab.input.tap("Escape", pause=0.2)
+        sheet.IsVisible = True
+    return {"safe_mixed_targets": True, "one_undo": True, "view_kept": True}
+
+
 def close_message(book):
     """Close the list's message box; True once it is gone.
 
@@ -952,6 +1010,7 @@ def check_plain_click_ends_group(book):
     book.click(3, modifiers=("Control_L",))
     wait_until(lambda: book.selection() == [NAMES[1], NAMES[3]], "Bravo and Delta selected")
     book.lab.input.tap("Menu", pause=0.8)
+    book.native_menu()
     wait_until(lambda: book.calc_tabs() == [NAMES[1], NAMES[3]], "the menu to group the tabs")
     book.lab.input.tap("Escape", pause=0.5)
     # Cancelling restored the original group. Establish a native group explicitly.
@@ -1632,6 +1691,7 @@ def run_checks(lab, output):
         ("context_preserves_view_and_picks", lambda: check_context_preserves_view_and_picks(book)),
         ("help_menu", lambda: check_help_menu(book)),
         ("menu_hidden_only", lambda: check_menu_hidden_only(book)),
+        ("menu_mixed_visibility", lambda: check_menu_mixed_visibility(book)),
         ("plain_click_ends_group", lambda: check_plain_click_ends_group(book)),
         ("single_tap_after_client_pause", lambda: check_single_tap_after_client_pause(book)),
         ("cursor_across_refresh", lambda: check_cursor_across_refresh(book)),

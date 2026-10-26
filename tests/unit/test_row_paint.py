@@ -74,3 +74,20 @@ def test_both_scrollbars_clip_swatches_and_drop_marker_too() -> None:
         x >= 0 and x + width <= 307 and y >= 0 and y + height <= 74
         for x, y, width, height in (call.args for call in graphics.drawRect.call_args_list)
     )
+
+
+def test_scrolling_to_the_end_retains_the_last_rows_bottom_pixel() -> None:
+    graphics = Mock()
+    peer = SimpleNamespace(
+        getOutputSize=lambda: SimpleNamespace(Width=412, Height=734),
+        StyleSettings=SimpleNamespace(HighlightColor=1, ShadowColor=5),
+        createGraphics=lambda: graphics,
+    )
+    geometry = RowGeometry(-1127, 23, 80)
+
+    def hit(x: int, y: int) -> object | None:
+        return object() if 22 <= x <= 398 and 0 <= y < geometry.gap_y(80) else None
+
+    paint = RowPaint(peer, SimpleNamespace(getClosestNodeForLocation=hit))
+    paint.decorate(geometry, None)
+    assert (0, 712, 397, 712) in [call.args for call in graphics.drawLine.call_args_list]

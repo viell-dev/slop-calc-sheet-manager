@@ -2,7 +2,7 @@
 
 UNO key listeners cannot consume a key, so the list registers a toolkit key handler while a
 panel control has focus. The handler sees every key in the application first; it acts only when
-the list's tree has focus at that moment, and routes keys as ``sheet_manager.keys``
+the list's tree or a move button has focus at that moment, and routes keys as ``sheet_manager.keys``
 describes. Shortcuts are resolved through the document's, Calc's, and the global shortcut
 configuration, in the order LibreOffice itself uses, and dispatched to the panel's frame.
 """

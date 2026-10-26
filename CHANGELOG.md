@@ -22,9 +22,9 @@ Requires LibreOffice 26.2.1 or later with Python support.
   row geometry. Decorations stop at the content viewport instead of covering scrollbars, and
   fixed border pixels no longer get copied into rows by native scrolling.
 
-Install the OXT manually over 0.0.3 and check its SHA-256 asset. Test builds keep the stable
-update feed; later test builds remain manual downloads. Existing compatibility and selection
-limits remain in the [known issues](https://viell-dev.github.io/slop-calc-sheet-manager/guide/known-issues).
+Install the OXT manually over 0.0.3, restart LibreOffice, and check its SHA-256 asset. Test builds
+keep the stable update feed; later test builds remain manual downloads. Existing compatibility
+and selection limits remain in the [known issues](https://viell-dev.github.io/slop-calc-sheet-manager/guide/known-issues).
 
 ## 0.0.3 - 2026-10-25
 
