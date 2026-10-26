@@ -577,14 +577,17 @@ def check_row_paint_scroll(book, horizontal=False, prefix="row-paint-"):
         picked = book.selection()
         capture("initial")
         if horizontal:
-            before = tree.getNodeRect(book.nodes()[0]).Width
+            # The final fixture row is long. A short first row's text extent does not
+            # change when it scrolls, so it cannot prove that the thumb gesture worked.
+            long_node = book.nodes()[-1]
+            before = tree.getNodeRect(long_node).Width
             y = tree.getOutputSize().Height - 7
             assert tree.getClosestNodeForLocation(90, y) is None, "No horizontal scrollbar"
             book.pointer.press(35, y)
             book.pointer.glide((35, y), (120, y))
             book.pointer.release()
             wait_until(
-                lambda: tree.getNodeRect(book.nodes()[0]).Width > before,
+                lambda: tree.getNodeRect(long_node).Width > before,
                 "horizontal thumb movement",
             )
             capture("thumb-right")
