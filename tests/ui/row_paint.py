@@ -17,14 +17,15 @@ def check(image_path: Path, metadata_path: Path) -> None:
     image = Image.open(image_path).convert("RGB")
     left, top = data["offset"]
     width, height, viewport = data["width"], data["height"], data["viewport"]
+    bottom = min(height - 1, data.get("content_height", height))
     shadow = tuple((data["shadow"] >> shift) & 255 for shift in (16, 8, 0))
     expected = sorted(
         row["Y"] + row["Height"] - 1
         for row in data["rows"]
-        if 0 < row["Y"] + row["Height"] - 1 < height - 1
+        if 0 < row["Y"] + row["Height"] - 1 < bottom
     )
     column = left + viewport - 6  # Beyond these synthetic labels, inside the row viewport.
-    actual = [y for y in range(1, height - 1) if image.getpixel((column, top + y)) == shadow]
+    actual = [y for y in range(1, bottom) if image.getpixel((column, top + y)) == shadow]
     # The native hit test includes its bottom boundary. A fully visible last row can
     # share that pixel with a horizontal scrollbar, so the painter excludes it safely.
     final = data["rows"][-1]
@@ -38,6 +39,15 @@ def check(image_path: Path, metadata_path: Path) -> None:
         "expected_dividers": expected,
         "actual_shadow_pixels": actual,
     }
+    short = [
+        y
+        for y in actual
+        if not any(
+            image.getpixel((left + x, top + y)) == shadow
+            for x in range(max(0, viewport - 3), viewport)
+        )
+    ]
+    assert not short, {"dividers_stopping_short": short, "viewport": viewport}
     if width - viewport > 6:
         # A native gen thumb bevel can span the track interior at a divider's Y.
         # Extension overpaint is continuous through the content/scrollbar boundary too.

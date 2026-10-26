@@ -45,11 +45,21 @@ class RowPaint:
         else:
             # All rows fit. Do not paint the empty area below them (or its scrollbar).
             height = min(height, geometry.gap_y(geometry.count))
-        # Hit testing takes pixel coordinates, but graphics inherit VCL's horizontal
-        # map origin. The native full-row focus rectangle ends at the logical viewport
-        # edge, so its excess over the pixel edge is the required drawing offset.
+        # Hit testing takes pixel coordinates; graphics inherit VCL's horizontal origin.
+        # GetFocusRect's right edge follows the label and can stop short of the viewport.
+        # Its left edge stays logical. EntryReallyHit extends that edge four pixels left
+        # for these icon-free rows, so find its pixel edge (which can be negative) instead.
         rect = self.tree.getNodeRect(node)
-        origin = max(0, rect.X + rect.Width - left)
+        lower, upper = -max(width, rect.Width), width // 2
+        while self.tree.getClosestNodeForLocation(lower, y) is not None:
+            lower *= 2
+        while upper - lower > 1:
+            middle = (lower + upper) // 2
+            if self.tree.getClosestNodeForLocation(middle, y) is None:
+                lower = middle
+            else:
+                upper = middle
+        origin = max(0, rect.X - 4 - upper)
         return left, height, origin
 
     def _font(self) -> Any:
@@ -93,14 +103,14 @@ class RowPaint:
                     graphics.setFillColor(foreground)
                     for offset in range(-4, 5):
                         if 0 <= middle + offset < height:
-                            graphics.drawRect(origin + 5, middle + offset, 6 - abs(offset), 1)
+                            graphics.drawRect(5, middle + offset, 6 - abs(offset), 1)
                 if row.color is not None and width > 16:
                     graphics.setLineColor(style.ShadowColor)
                     graphics.setFillColor(row.color)
                     swatch_top, swatch_bottom = max(0, middle - 4), min(height, middle + 4)
                     if swatch_bottom > swatch_top:
                         graphics.drawRect(
-                            origin + 16, swatch_top, min(8, width - 16), swatch_bottom - swatch_top
+                            16, swatch_top, min(8, width - 16), swatch_bottom - swatch_top
                         )
         finally:
             graphics.pop()

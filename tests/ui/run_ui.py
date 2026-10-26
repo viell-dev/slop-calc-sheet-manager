@@ -511,7 +511,7 @@ def check_move_focus_and_queued_navigation(book):
     }
 
 
-def check_row_paint_scroll(book, horizontal=False):
+def check_row_paint_scroll(book, horizontal=False, prefix="row-paint-"):
     """Native geometry and screenshot pixels must agree throughout scrolling."""
     tree = book.tree
     original_height = tree.getProperty("RowHeight")
@@ -531,16 +531,22 @@ def check_row_paint_scroll(book, horizontal=False):
             for x in range(size.Width, size.Width // 2, -1)
             if tree.getClosestNodeForLocation(x, y) is not None
         )
+        content_height = next(
+            bottom
+            for bottom in range(size.Height, -1, -1)
+            if tree.getClosestNodeForLocation(viewport // 2, bottom) is not None
+        )
         rows = [tree.getNodeRect(node) for node in nodes]
         data = {
             "offset": book.pointer.offset,
             "width": size.Width,
             "height": size.Height,
             "viewport": viewport,
+            "content_height": content_height,
             "shadow": tree.StyleSettings.ShadowColor,
             "rows": [{"Y": row.Y, "Height": row.Height} for row in rows],
         }
-        stem = ("row-paint-horizontal-" if horizontal else "row-paint-") + name
+        stem = prefix + name
         path = book.lab.output / (stem + ".json")
         path.write_text(json.dumps(data, indent=2) + "\n")
         book.lab.screenshot(stem)
@@ -582,6 +588,11 @@ def check_row_paint_scroll(book, horizontal=False):
                 "horizontal thumb movement",
             )
             capture("thumb-right")
+            book.pointer.press(120, y)
+            book.pointer.glide((120, y), (tree.getOutputSize().Width - 18, y))
+            book.pointer.release()
+            time.sleep(0.4)
+            capture("thumb-end")
         book.pointer.wheel(90, 200, True, 4)
         capture("wheel-down")
         book.pointer.wheel(90, 200, False, 1)
@@ -624,11 +635,19 @@ def check_row_paint_scroll(book, horizontal=False):
 
 def check_row_paint_long_names(lab):
     """Exercise both native scrollbars without changing the ordinary workbook's state."""
-    book = Workbook(lab, "synthetic long labels", ["W" * 28 + f"{n:02}" for n in range(80)])
-    try:
-        return check_row_paint_scroll(book, horizontal=True)
-    finally:
-        book.close()
+    evidence = {}
+    for name, names in (
+        ("equal", ["W" * 28 + f"{n:02}" for n in range(80)]),
+        ("mixed", [*NAMES[:-1], "W" * 30]),
+    ):
+        book = Workbook(lab, "synthetic long labels " + name, names)
+        try:
+            evidence[name] = check_row_paint_scroll(
+                book, horizontal=True, prefix="row-paint-" + name + "-"
+            )
+        finally:
+            book.close()
+    return evidence
 
 
 def check_drop_in_place_and_escape(book):
