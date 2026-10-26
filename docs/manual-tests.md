@@ -1,23 +1,39 @@
-# Optional desktop observations
+# Human usability and desktop tests
 
 Automated tests cover the sheet list with real mouse and keyboard input only on Linux, under a
 virtual X display with the gtk3 and gen interfaces. On Windows they can send only LibreOffice's
 own synthetic events, which bypass the key handler and cannot start a native drag. These checks
 cover observations outside the automated evidence: real keys and drags on Windows, input in an
-explicit Wayland session, and the list's appearance. These are optional checks, not an owner
-checklist or a routine release gate. A release PR assesses any material evidence limit and makes
-a narrowly scoped request only when the observation is unavailable to agents and blocks that
-release. An X11 result does not establish Wayland input behaviour.
+explicit Wayland session, and the list's appearance. A focused human usability pass is required
+before the first stable release and after substantial interface or workflow changes, as
+[RELEASING.md](https://github.com/viell-dev/slop-calc-sheet-manager/blob/main/RELEASING.md#human-release-testing)
+describes. Select the relevant tasks below and ask whether the controls, layout, feedback, and
+recovery make sense in ordinary use.
+Additional platform coverage is optional unless the release identifies it as required; one tester
+need not exercise every host. An X11 result does not establish Wayland input behaviour.
+
+The maintaining agent supplies the named installable build and a ready-made synthetic workbook
+in an assigned GitHub issue, with a short task list, expected results, and release impact. The
+generation commands below are for preparing that packet, not work to pass to the tester. Record
+the person's actual coverage and feedback; an agent running these steps does not satisfy the
+human gate. Keep the request open while required observations or their release blockers remain.
 
 ## Prepare
 
-1. Download the build to be tested from [Releases and test builds](./guide/releases.md), or build
-   the development package as [Install](./guide/install.md#install) describes. Install its `.oxt`
-   with Tools ▸ Extension Manager ▸ Add, then restart LibreOffice.
-2. Create the synthetic workbook: `python tools/manual_workbook.py` writes
-   `dist/sheet-manager-manual-tests.fods`. Open it, then save it with File ▸ Save As as
-   `manual-tests.ods` in a scratch folder, so that saving later needs no format question.
+1. Download the exact build linked in the assigned test request, or an identified build from
+   [Releases and test builds](./guide/releases.md). Install its `.oxt` with Tools ▸ Extension
+   Manager ▸ Add, then restart LibreOffice.
+2. Download the synthetic workbook from the commit-pinned link in the assigned test request.
+   For testing outside a release request, use the
+   [latest synthetic workbook](https://raw.githubusercontent.com/viell-dev/slop-calc-sheet-manager/main/docs/fixtures/sheet-manager-manual-tests.fods)
+   and record its commit.
+   Open it, then save it with File ▸ Save As as `manual-tests.ods` in a scratch folder, so that
+   saving later needs no format question.
 3. Open the Sheet Manager deck from its button in the sidebar's tab bar.
+
+Maintainers regenerate the downloadable fixture with
+`python tools/manual_workbook.py --output docs/fixtures` and verify it before changing the test
+instructions. Pin the download to a commit in each test request so its inputs remain reproducible.
 
 Report, for the whole run: the operating system, the LibreOffice version and the "VCL" line from
 Help ▸ About, the number of each step that did not behave as described, and what happened

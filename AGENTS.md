@@ -19,20 +19,23 @@ checks, and pull request rules that apply to everyone; follow it and do not repe
   documentation, review, merge, and any release the release rules call for. Unfinished work and its
   dependencies are recorded in issues; the issue, not an agent's session, is the record of
   progress.
-- The owner is not the project's code reviewer, tester, or release engineer, and is not assumed to
+- The owner is not the project's code reviewer or release engineer, and is not assumed to
   have read its code, issues, or documentation. Their reports from using the extension, directly or
   through other agents, are consumer reports: reproduce and investigate them without asking the
   reporter to diagnose the implementation.
 
 ## Requests to the owner
 
-Ask the owner only for what they alone can provide: a decision on direction or scope, an action
-needing their account, or an observation that no automated check can make. A recurring manual
-request is a gap in the automated checks; record it as maintenance work.
+Agents own functional verification and prepare focused human usability tests under
+[RELEASING.md](RELEASING.md#human-release-testing). Human testing is mandatory before the first
+stable release and after substantial interface or workflow changes. Other owner requests cover
+direction, scope, account access, or personal observations. Repeated mechanical checks are
+maintenance gaps; required human judgement is a separate kind of evidence.
 
 - Put the request in a self-contained issue, or reuse the issue that already owns the question.
   Assign it to the owner and label it `Needs: Owner`. Use `Needs: Human` instead when another
-  suitable person could supply what is needed. Label work that waits for the answer
+  suitable person could supply what is needed. Assign the person being asked under either label,
+  including the owner when asking them to test. Label work that waits for the answer
   `Status: Blocked` and link it; optional feedback blocks nothing.
 - State exactly what is needed, why an agent cannot provide it, the recommendation or the choices,
   the expected result, and which work waits. A request for an observation names the build, supplies
@@ -43,6 +46,9 @@ request is a gap in the automated checks; record it as maintenance work.
   appear in public. Performance on the owner's own workbooks is reported as timings only.
 - On an answer, act on it and update the assignment, labels, and linked blockers. Check open
   requests whenever maintenance resumes.
+- Before ending a thread with a human request, verify its live assignee and labels and link it
+  prominently with the pending action and release impact. Candidate publication or a preparation
+  merge does not complete the request. Keep it open until the answer and resulting work are handled.
 
 ## Safety invariants
 
@@ -82,9 +88,10 @@ where they can:
 - A failed or intermittent check is classified from its artifacts and then fixed in the extension
   or the test harness. Never rerun a job until it is green, widen a limit without understanding the
   failure, or let a skipped test, a swallowed failure, or a crashed office pass as success.
-- Release readiness rests on this automated evidence. No release waits on a manual checklist; a
-  real-desktop observation that no check can make is requested as described above, and the
-  release pull request says whether it blocks.
+- Release readiness requires this automated evidence and the human usability gate in
+  [RELEASING.md](RELEASING.md#human-release-testing). The release PR links the human report,
+  coverage, remaining limits, and open-defect dispositions. Missing required human coverage or
+  unresolved release blockers prevent stable publication even when CI passes.
 
 ## Review
 
@@ -466,7 +473,7 @@ reconsider. The owner may report a defect themselves, in their own words.
   which blocks the run (#40).
   Real-input UI tests live in `tests/ui/run_ui.py`, use XTEST under Xvfb with separate gtk3 and
   gen sessions, and run in the `linux-gtk3` jobs through `tools/linux_integration.py <lane> --ui`.
-  What neither can reach is in the optional observation guide, `docs/manual-tests.md`; keep it
+  Human usability tasks and additional platform observations are in `docs/manual-tests.md`; keep it
   current. A new document's window can be maximized after the runner's first geometry request
   (#9), so `exercise()` repeats that setup until four consecutive measurements agree; never retry
   the resize assertions. A terminate request has a time limit too: a save dialog cannot leave
