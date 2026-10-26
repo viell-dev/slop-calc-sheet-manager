@@ -13,9 +13,9 @@ updates, removal, use, known issues, troubleshooting, and reporting a problem.
 
 ## Status
 
-The `0.0.4` test build targets the first feature release, `0.1.0`, and is intended for testing.
+Source version: `0.1.0` release, the first feature set intended for ordinary use.
 See [Releases and test builds](https://viell-dev.github.io/slop-calc-sheet-manager/guide/releases)
-for currently published downloads. It lists the workbook's sheets, supports selection, drag and
+for currently published downloads. Sheet Manager lists the workbook's sheets, supports selection, drag and
 drop, and move actions with keyboard shortcuts,
 handles keyboard navigation, and opens Calc's sheet tab menu. Each extension move is one undo step.
 It follows this window's Calc tab selection and shows grouped-editing feedback separately from

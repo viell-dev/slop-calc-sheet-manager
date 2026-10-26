@@ -139,7 +139,7 @@ its selection when it cannot establish that the picked sheets are still the same
 includes inserting or deleting sheets, undo and redo, and some macro or unrecorded changes.
 A notice explains conservative clearing of a user-made selection. Pick the sheets again before acting.
 
-**Panel notice.** <Unreleased /> This explanation appears within the panel and disappears after
+**Panel notice.** <Unreleased since="0.1.0" /> This explanation appears within the panel and disappears after
 ten seconds, without changing keyboard focus or dismissing a grouped-editing warning. In 0.0.4,
 the notice is an infobar that you close yourself.
 
