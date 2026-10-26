@@ -204,10 +204,22 @@ according to their minimum-version dependency. No public network or normal profi
 There is no public UNO method for the Extension Manager's enabled/disabled update list. The
 provider parses descriptions without evaluating dependencies; the UI's
 [`prepareUpdateData`](https://github.com/LibreOffice/core/blob/libreoffice-26.8.1.1/desktop/source/deployment/gui/dp_gui_updatedialog.cxx)
-performs that step inside a modal VCL dialog. Automated tests therefore cover the real feed
-parser and deployment dependency checker separately. They do not claim to exercise the update
-dialog, its offered-update state, download/install clicks, restart behaviour, or automatic check
-scheduling. [Issue #57](https://github.com/viell-dev/slop-calc-sheet-manager/issues/57) adds a
-painted check of the update dialog. Before the first published build, either close it, or record
-in the release pull request why the remaining limit is acceptable and which substitute evidence
-covers it, such as a single recorded run of the dialog in the Linux lab.
+performs that step inside a modal VCL dialog. `tests/ui/update_dialog.py` drives those real dialogs
+with XTEST in the private painted Linux lab. It checks empty, same-version, older, compatible and
+incompatible feeds, the disabled candidate's dependency reason, the actual OXT download and
+successful installation, then restarts the same profile and verifies the new version, complete
+installed payload and deck.
+Screenshots, accessibility trees, HTTP requests and both office lifecycles are retained as CI
+artifacts. This runs after the UI suite in every required Linux gtk3 job.
+
+The dialog check uses **gen** because its public UNO accessibility tree exposes the deployment
+dialogs; GTK's native weld manager is absent from Toolkit top windows in this lab. It invokes
+the selected extension's **Check for Updates** context command, which uses the same update
+queue without checking bundled extensions against external services. The fixture keeps the full
+built package payload and changes only its version, minimum and loopback update URL. Production
+packages retain the stable feed, checked separately by integration tests. GTK-specific dialog
+presentation, Windows GUI updates, automatic scheduling, and public HTTPS/redirect behavior are
+outside this loopback check. The release workflow verifies public asset checksums and packaged
+metadata; the live LibreOffice provider and installation of downloaded public bytes need the
+separate post-publication checks.
+[Issue #57](https://github.com/viell-dev/slop-calc-sheet-manager/issues/57) records this boundary.

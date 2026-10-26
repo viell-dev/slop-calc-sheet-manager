@@ -25,3 +25,7 @@ elif [[ " $* " == *" --ui "* ]]; then
 fi
 /opt/lo/program/python "$runner" \
     --program /opt/lo/program --oxt /packages/extension.oxt --output /results "$@"
+if [[ "$runner" == /work/tests/ui/run_ui.py ]]; then
+    /opt/lo/program/python /work/tests/ui/update_dialog.py \
+        --program /opt/lo/program --oxt /packages/extension.oxt --output /results/update-dialog "$@"
+fi
