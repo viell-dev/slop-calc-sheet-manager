@@ -79,6 +79,14 @@ completes one recorded colour edit before returning. A native release observer p
 final Ctrl-click precedes repaint. This isolates delayed refresh from concurrent undo/modify
 notifications; the intermittent selection-loss observation is tracked in #88.
 
+The autoscroll check records viewport-height changes during its slow pointer glide. If a timed
+notice expires and moves the bottom edge, it puts the pointer at the new edge once, then leaves
+it stationary. The six-second scrolling budget, minimum movement and unchanged-order assertions
+stay intact. A classified #90 harness reproduction kept the old pointer at Y=696 while the
+viewport grew from 699 to 743 pixels; the old check failed, and tracking the actual edge passed.
+The structural-clearing and save checks observe the panel notice, waiting for a preceding notice
+to expire before establishing each case's selection.
+
 ## The checks themselves
 
 A check that cannot see a failure is worse than none. The integration runner therefore fails a

@@ -676,15 +676,26 @@ def check_autoscroll(book):
     book.pointer.press(*start)
     book.pointer.glide(start, (start[0], start[1] + 12))
     book.pointer.glide((start[0], start[1] + 12), (start[0], height - 3))
+    heights = [height]
     deadline = time.monotonic() + 6
     while book.first_visible() <= first + 3 and time.monotonic() < deadline:
+        current_height = book.tree.getOutputSize().Height
+        if current_height != heights[-1]:
+            # A timed footer can expire during the slow glide. Follow the actual bottom
+            # edge once when it moves, then leave the pointer stationary to test scrolling.
+            heights.append(current_height)
+            book.pointer.at(start[0], current_height - 3)
         time.sleep(0.2)
     scrolled = book.first_visible()
     book.lab.screenshot("drag-autoscroll")
     book.lab.input.tap("Escape", pause=0.3)
     book.pointer.release()
     time.sleep(0.8)
-    evidence = {"first_visible": [first, scrolled], "order_unchanged": book.order() == NAMES}
+    evidence = {
+        "first_visible": [first, scrolled],
+        "order_unchanged": book.order() == NAMES,
+        "viewport_heights": heights,
+    }
     assert scrolled > first + 3 and book.order() == NAMES, evidence
     return evidence
 
@@ -1384,9 +1395,13 @@ def check_picks_dropped_when_sheets_change(book):
     sheets = book.document.getSheets()
     undo = book.document.getUndoManager()
     evidence = {}
+    notice = view.footer_text(book.panel, "Why the sheet list")
     ways = ("delete_rename", "insert_delete_rename", "held_replace", *view.BATCHES)
     for way in (*ways, *view.UNRECORDED):
         reset(book)
+        wait_until(
+            lambda: not notice.getText(), "the previous clearing notice to expire", timeout=12
+        )
         sheets.getByName(NAMES[0]).getCellRangeByName("A1").setString("victim")
         sheets.getByName(NAMES[1]).getCellRangeByName("A1").setString("original")
         undo.clear()
@@ -1422,11 +1437,10 @@ def check_picks_dropped_when_sheets_change(book):
         time.sleep(1)
         tabs = book.calc_tabs()
         titles = book.undo_titles()
-        notice = "dev.viell.sheetmanager.selection-cleared"
         state = {
             "selection": book.selection(),
             "active": book.active(),
-            "notice": bool(book.controller.hasInfobar(notice)),
+            "notice": bool(notice.getText()),
         }
         # Empty stale picks must refuse the outer popup, whose presence cannot be inferred
         # from Calc's tabs: the outer popup intentionally leaves them unchanged.
@@ -1441,8 +1455,6 @@ def check_picks_dropped_when_sheets_change(book):
             sheets.getByName(n).getCellRangeByName("A1").getString() for n in state["hidden"]
         ]
         evidence[way] = state
-        if state["notice"]:
-            book.controller.removeInfobar(notice)
         while undo.getAllUndoActionTitles():
             undo.undo()
         assert state["selection"] == [], evidence
@@ -1502,13 +1514,14 @@ def check_save_keeps_picks(book):
     LibreOffice reports a save as modify notifications without an undo action, between its
     save events, and may run the list's refresh in the middle with modify notifications off.
     """
-    notice = "dev.viell.sheetmanager.selection-cleared"
+    notice = view.footer_text(book.panel, "Why the sheet list")
     cell = book.document.getSheets().getByIndex(0).getCellRangeByName("B2")
     evidence = {}
     for where in ("list", "cell"):
         reset(book)
-        if book.controller.hasInfobar(notice):
-            book.controller.removeInfobar(notice)
+        wait_until(
+            lambda: not notice.getText(), "the previous clearing notice to expire", timeout=12
+        )
         time.sleep(1.5)
         book.click(1)
         book.click(3, modifiers=("Control_L",))
@@ -1526,7 +1539,7 @@ def check_save_keeps_picks(book):
         state = {
             "saved": book.path.stat().st_mtime_ns != stamp,
             "selection": book.selection(),
-            "notice": bool(book.controller.hasInfobar(notice)),
+            "notice": bool(notice.getText()),
         }
         evidence[where] = state
         assert state == {"saved": True, "selection": [NAMES[1], NAMES[3]], "notice": False}, (
