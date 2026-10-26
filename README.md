@@ -13,7 +13,7 @@ updates, removal, use, known issues, troubleshooting, and reporting a problem.
 
 ## Status
 
-Source version: `0.1.0` preparation; no stable release has been published. Stable publication
+Source version: `0.1.0` release preparation; no stable release has been published. Stable publication
 requires human usability testing and resolution of release blockers.
 See [Releases and test builds](https://viell-dev.github.io/slop-calc-sheet-manager/guide/releases)
 for currently published downloads. Sheet Manager lists the workbook's sheets, supports selection,
