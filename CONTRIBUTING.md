@@ -119,9 +119,11 @@ Unit tests need no LibreOffice and run as part of the checks. To run them alone:
 
 Release tests cover version ordering, candidate policy, changelog extraction, and update feeds.
 The integration runner also sends generated loopback HTTP feeds through LibreOffice's update
-parser and checks candidate compatibility through its deployment API. The update dialog itself
-has no public headless offered-update API; see [RELEASING.md](RELEASING.md#verification-boundary)
-for the tested boundary and the remaining gap. Release dry runs and publication follow
+parser and checks candidate compatibility through its deployment API. The painted Linux lanes
+also run `tests/ui/update_dialog.py` with the gen interface: actual offered and refused updates,
+download/install clicks, and a same-profile restart that verifies the new version and deck.
+See [RELEASING.md](RELEASING.md#verification-boundary) for the tested boundary and its limits.
+Release dry runs and publication follow
 [RELEASING.md](RELEASING.md).
 
 The sheet list's selection model has a property test: random sequences of picks, refreshes,
