@@ -304,6 +304,8 @@ reconsider. The owner may report a defect themselves, in their own words.
   only for refs checked just before, with a fresh snapshot; while it is open, a dispatch
   interceptor on the frame checks at dispatch time that the generation did not move, that the
   picked sheets are unchanged, and that they are exactly Calc's selected tabs.
+  Release that guard through its own main-thread event after the native command, independent of
+  the list queue: panel disposal can close that queue inside the popup's nested loop (#63).
   `uno_show.show_sheets` applies the reorder layer's undo rules: refuse without undo or beyond
   the undo limit, one group, undo only its own group on failure, verify. A double click or Enter
   makes the sheet Calc's only selected tab and reads that back: `setActiveSheet` keeps an

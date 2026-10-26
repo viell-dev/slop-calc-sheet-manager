@@ -26,6 +26,7 @@ import sheet_list_view as view  # noqa: E402
 import uno  # noqa: E402
 import unohelper  # noqa: E402
 from com.sun.star.awt import XMouseListener, XMouseMotionListener  # noqa: E402
+from menu_lifetime import check_native_guard_lifetime  # noqa: E402
 from run import office_session, wait_for  # noqa: E402
 from teardown import stalled_callbacks  # noqa: E402
 from xinput import RIGHT, Pointer, XInput  # noqa: E402
@@ -1872,6 +1873,7 @@ def run_checks(lab, output):
         ("menu_right_click", lambda: check_menu_right_click(book)),
         ("menu_keyboard", lambda: check_menu_keyboard(book)),
         ("context_preserves_view_and_picks", lambda: check_context_preserves_view_and_picks(book)),
+        ("native_guard_lifetime", lambda: check_native_guard_lifetime(book)),
         ("help_menu", lambda: check_help_menu(book)),
         ("menu_hidden_only", lambda: check_menu_hidden_only(book)),
         ("menu_mixed_visibility", lambda: check_menu_mixed_visibility(book)),

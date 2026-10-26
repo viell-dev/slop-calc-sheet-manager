@@ -8,17 +8,19 @@ a dispatch interceptor checks sheet identity and exact tab membership before eve
 
 import time
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass
 from typing import cast
 
 import unohelper
 from com.sun.star.awt import Rectangle
 from com.sun.star.frame import XDispatch, XDispatchProviderInterceptor
+from com.sun.star.lang import DisposedException
 
 from sheet_manager.i18n import tr
 from sheet_manager.reorder import Action, plan_move
 from sheet_manager.selection import Ref
-from sheet_manager.uno_calc import prop, select_tabs, selected_tabs
+from sheet_manager.uno_calc import MainThread, prop, select_tabs, selected_tabs
 from sheet_manager.uno_reorder import Snapshot, move_availability, plan_availability
 from sheet_manager.uno_show import hidden_targets, show_refusal
 
@@ -296,12 +298,16 @@ class SheetMenu:
             finally:
 
                 def release():
-                    self._frame.releaseDispatchProviderInterceptor(guard)
+                    # A closed frame no longer has dispatches to protect.
+                    with suppress(DisposedException):
+                        self._frame.releaseDispatchProviderInterceptor(guard)
 
                 if executing:
                     # The native command is posted while its menu closes; release after it.
+                    # Panel disposal closes the list's queue even inside this nested loop.
+                    # Guard cleanup belongs to the surviving frame, not to the list lifetime.
                     try:
-                        self._post(release)
+                        MainThread(self._context).post(release, "releasing the sheet menu guard")
                     except BaseException:
                         release()
                         raise
