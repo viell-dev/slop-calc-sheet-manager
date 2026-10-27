@@ -266,6 +266,22 @@ def native_modal():
     )
 
 
+def native_dialog(book):
+    """A dialog over the frame: GTK's is found through X11, gen's as a shown VCL dialog."""
+    if native_modal():
+        return True
+    toolkit = book.lab.context.ServiceManager.createInstanceWithContext(
+        "com.sun.star.awt.Toolkit", book.lab.context
+    )
+    windows = [toolkit.getTopWindow(i) for i in range(toolkit.getTopWindowCount())]
+    return any(
+        window != book.window
+        and window.isVisible()
+        and "com.sun.star.awt.XDialog2" in [kind.typeName for kind in window.getTypes()]
+        for window in windows
+    )
+
+
 def configure_desktop_opener(output):
     # The office inherits these only inside the private test process/profile.
     os.environ["PATH"] = str(HERE) + os.pathsep + os.environ["PATH"]
@@ -909,9 +925,15 @@ def check_context_preserves_view_and_picks(book):
     assert book.selection() == before[1]
     book.lab.screenshot("context-delete-confirmation")
     book.lab.input.tap("Escape", pause=0.5)
-    wait_until(
-        lambda: state() == before, "cancelled native command to restore the original context"
-    )
+    # A chosen command keeps Calc on its target, even when its own dialog is cancelled (#100).
+    kept = NAMES[6], before[1], frozenset([NAMES[6]])
+    wait_until(lambda: state() == kept, "a cancelled native command to keep its target")
+    book.controller.setActiveSheet(book.document.Sheets.getByIndex(0))
+    select_tabs(book.lab.context, book.frame, [0, 2])
+    wait_until(lambda: book.selection() == [NAMES[0], NAMES[2]], "native grouped tabs again")
+    book.click(1)
+    book.click(3, modifiers=("Control_L",))
+    wait_until(lambda: state() == before, "the original context again")
     order = book.order()
     book.pointer.click(*book.point(6), button=RIGHT, pause=0.4)
     book.lab.input.tap("Home")
@@ -947,6 +969,94 @@ def check_context_preserves_view_and_picks(book):
         "modal_command_context_kept": True,
         "native_entry_time_view": True,
     }
+
+
+def check_context_rename_targets_row(book):
+    """Rename from Sheet actions… acts on its target, not the earlier viewed sheet (#100).
+
+    Calc's Rename Sheet dialog is asynchronous and renames the sheet viewed when it is
+    confirmed, so the view must stay on the target while the dialog is open. The active sheet,
+    the list's picks and the right-clicked row all differ; each sheet has identifying text.
+    """
+    sheets = book.document.getSheets()
+    target, picks = NAMES[3], [NAMES[2], NAMES[4]]
+    for name in NAMES[:6]:
+        sheets.getByName(name).getCellRangeByName("B1").String = f"identity {name}"
+    undo = book.document.getUndoManager()
+    undo.clear()
+    evidence = {}
+
+    def rename(label, opener, finish):
+        opener()
+        book.choose(".uno:RenameTable")
+        wait_until(lambda: native_dialog(book), "the native Rename Sheet dialog")
+        # Barriers: the menu's queued completion has run under the open dialog.
+        view.on_main_thread(book.lab.context, lambda: None)
+        view.on_main_thread(book.lab.context, lambda: None)
+        evidence[f"{label}_dialog"] = book.active(), book.calc_tabs()
+        book.lab.screenshot(f"context-rename-{label}")
+        finish()
+        wait_until(lambda: not native_dialog(book), "the dialog to close")
+        view.on_main_thread(book.lab.context, lambda: None)
+        evidence[f"{label}_after"] = book.active(), book.calc_tabs(), book.selection()
+
+    def type_name():
+        book.lab.input.tap("a", ("Control_L",))
+        for char in "renamed":
+            book.lab.input.tap(char, pause=0.03)
+        book.lab.input.tap("Return", pause=0.5)
+
+    def identities():
+        return {
+            sheets.getByIndex(i).getName(): sheets.getByIndex(i).getCellRangeByName("B1").String
+            for i in range(6)
+        }
+
+    def right_click():
+        book.pointer.click(*book.point(3), button=RIGHT, pause=0.5)
+
+    def view_first_sheet(picked):
+        book.controller.setActiveSheet(sheets.getByIndex(0))
+        select_tabs(book.lab.context, book.frame, [0])
+        # Newer list input wins over following this native change.
+        book.click(NAMES.index(picked[0]))
+        for name in picked[1:]:
+            book.click(NAMES.index(name), modifiers=("Control_L",))
+        wait_until(lambda: book.selection() == picked, f"the picks {picked}")
+        assert (book.active(), book.calc_tabs()) == (NAMES[0], [NAMES[0]])
+
+    expected = {("renamed" if n == target else n): f"identity {n}" for n in NAMES[:6]}
+    try:
+        view_first_sheet(picks)
+        original = identities()
+        rename("unpicked", right_click, type_name)
+        wait_until(lambda: "renamed" in book.order(), "the confirmed rename")
+        evidence["unpicked_identities"] = identities()
+        assert identities() == expected, evidence
+        assert evidence["unpicked_dialog"] == (target, [target]), evidence
+        assert book.undo_titles() == ["Rename Sheet"], book.undo_titles()
+        assert evidence["unpicked_after"] == ("renamed", ["renamed"], picks), evidence
+        undo.undo()
+        wait_until(lambda: book.order()[3] == target, "one undo of the rename")
+
+        view_first_sheet(picks)
+        rename("cancel", right_click, lambda: book.lab.input.tap("Escape", pause=0.5))
+        assert identities() == original and not book.undo_titles(), "Cancel renamed a sheet"
+        assert evidence["cancel_after"] == (target, [target], picks), evidence
+
+        view_first_sheet([target])
+        rename("keyboard", lambda: book.lab.input.tap("Menu", pause=0.4), type_name)
+        wait_until(lambda: "renamed" in book.order(), "the keyboard rename")
+        evidence["keyboard_identities"] = identities()
+        assert evidence["keyboard_dialog"] == (target, [target]), evidence
+        assert identities() == expected, evidence
+    finally:
+        for _ in range(2):
+            if native_dialog(book):
+                book.lab.input.tap("Escape", pause=0.5)
+        while book.undo_titles():
+            undo.undo()
+    return evidence
 
 
 def check_help_menu(book):
@@ -1849,7 +1959,7 @@ def check_selection_notice(book):
     return {"expired_seconds": round(elapsed, 2), "focus_kept": True, "group_warning_kept": True}
 
 
-def run_checks(lab, output):
+def run_checks(lab, output, only=()):
     book = Workbook(lab, "synthetic", NAMES)
     lab.screenshot("panel")
     checks = [
@@ -1873,6 +1983,7 @@ def run_checks(lab, output):
         ("menu_right_click", lambda: check_menu_right_click(book)),
         ("menu_keyboard", lambda: check_menu_keyboard(book)),
         ("context_preserves_view_and_picks", lambda: check_context_preserves_view_and_picks(book)),
+        ("context_rename_targets_row", lambda: check_context_rename_targets_row(book)),
         ("native_guard_lifetime", lambda: check_native_guard_lifetime(book)),
         ("help_menu", lambda: check_help_menu(book)),
         ("menu_hidden_only", lambda: check_menu_hidden_only(book)),
@@ -1898,6 +2009,11 @@ def run_checks(lab, output):
         ("other_document", lambda: check_other_document(lab, book)),
         ("row_paint_long_names", lambda: check_row_paint_long_names(lab)),
     ]
+    if only:
+        unknown = set(only) - {name for name, _ in checks}
+        if unknown:
+            raise ValueError(f"Unknown checks: {sorted(unknown)}")
+        checks = [(name, check) for name, check in checks if name in only]
     results = {}
     for name, check in checks:
         started = time.monotonic()
@@ -1925,6 +2041,7 @@ def main():
     parser.add_argument("--output", type=Path, default=Path("test-results/ui"))
     parser.add_argument("--vcl", action="append", choices=["gtk3", "gen"])
     parser.add_argument("--ui", action="store_true", help="Accepted from the container session")
+    parser.add_argument("--check", action="append", help="Run only this check (repeatable)")
     parser.add_argument(
         "--backtrace", action="store_true", help="Linux only: use LibreOffice's gdb wrapper"
     )
@@ -1947,7 +2064,9 @@ def main():
                 backtrace=arguments.backtrace,
                 vcl=vcl,
             ) as (context, desktop, directory):
-                checks = run_checks(Lab(context, desktop, directory, output), output)
+                checks = run_checks(
+                    Lab(context, desktop, directory, output), output, arguments.check or ()
+                )
                 result["checks"] = {name: check["pass"] for name, check in checks.items()}
                 failed = failed or not all(result["checks"].values())
         except Exception:

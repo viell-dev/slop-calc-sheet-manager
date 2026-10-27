@@ -418,12 +418,17 @@ reconsider. The owner may report a defect themselves, in their own words.
   retain live menu state.
   Capture the observed snapshot, refs, and proof before posting a move. Use the common
   permission/plan checks and full `apply_order` preflight.
-  Run extension actions only after the native dispatch guard is released, then restore the saved
-  view against fresh indices, retained identities, proof, and original visibility. A queued
-  completion can run inside a native modal dialog: defer it until guarded dispatch returns,
-  including exceptions, before restoring view/group or running extension work. Explicit
-  native Select All/Deselect All commands retain their selection result. Alt+Home/Up/Down/End
-  remain local to the focused list or a move button, and a move returns focus to the tree.
+  Run extension actions only after the native dispatch guard is released. Restore the saved view,
+  against fresh indices, retained identities, proof, and original visibility, only when no native
+  command was dispatched. A dispatched command keeps Calc on its targets: Calc's asynchronous
+  dialogs outlive the dispatch, and Rename Sheet renames the sheet viewed at confirmation (#100).
+  The document's `OnModeChanged` reports dialog lifetime on VCL and gtk3 dialogs, but native Qt
+  dialogs never report it, so no restoration may wait for it or for a delay. A queued
+  completion can run inside a synchronous native modal dialog: defer it until guarded dispatch
+  returns, including exceptions, before refreshing or running extension work. Explicit native
+  Select All/Deselect All commands also make the list follow their selection result.
+  Alt+Home/Up/Down/End remain local to the focused list or a move button, and a move returns focus
+  to the tree.
   `uno_moves.py` owns the four top controls, their names, sizing, and refusal tooltips; the footer
   remains separate in `uno_status.py`. Button enablement reads the monitor's generation without
   consuming undo/modify evidence. Keyboard activation stamps input before native button handling;

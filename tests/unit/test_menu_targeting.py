@@ -183,6 +183,58 @@ def test_refused_repeat_does_not_restore_the_previous_popups_view(
     caller._selection.revalidate.assert_called_once()
 
 
+@pytest.mark.parametrize(
+    "command", [None, ".uno:RenameTable", ".uno:Remove", ".uno:Hide", ".uno:TableSelectAll"]
+)
+def test_dispatched_native_command_keeps_calc_on_its_target(command: str | None) -> None:
+    """Calc can still be running a dispatched command, e.g. in Rename's async dialog (#100)."""
+    state = SimpleNamespace(active="Delta", tabs=[1])
+    handles = {
+        name: SimpleNamespace(getName=lambda name=name: name, IsVisible=True)
+        for name in ("Alfa", "Delta")
+    }
+    ref = SimpleNamespace(name="Alfa", token=handles["Alfa"])
+    view = SimpleNamespace(active=ref, tabs=(ref,), visible=frozenset({"Alfa"}))
+
+    def set_active(sheet: SimpleNamespace) -> None:
+        state.active = sheet.getName()
+
+    def select(context: object, frame: object, indices: list[int]) -> None:
+        state.tabs = list(indices)
+
+    def selected(context: object, controller: object) -> list[int]:
+        return state.tabs
+
+    owner = SimpleNamespace(
+        _targeted_native=True,
+        command=command,
+        _context=object(),
+        _frame=object(),
+        _controller=SimpleNamespace(
+            getActiveSheet=lambda: handles[state.active], setActiveSheet=set_active
+        ),
+        _document=SimpleNamespace(
+            getSheets=lambda: SimpleNamespace(getElementNames=lambda: ["Alfa", "Delta"])
+        ),
+    )
+    restore = method(
+        "src/sheet_manager/uno_menu.py",
+        "SheetMenu",
+        "restore_view",
+        {
+            "MenuView": object,
+            "Callable": Callable,
+            "SELECT_COMMANDS": {".uno:TableSelectAll", ".uno:TableDeselectAll"},
+            "select_tabs": select,
+            "selected_tabs": selected,
+            "tr": str,
+        },
+    )
+    restore(owner, view, lambda: True)
+    expected = ("Alfa", [0]) if command is None else ("Delta", [1])
+    assert (state.active, state.tabs) == expected
+
+
 def test_in_progress_menu_keeps_its_restoration_state() -> None:
     previous = object()
     owner = SimpleNamespace(is_open=True, view=previous, _targeted_native=True, command="native")

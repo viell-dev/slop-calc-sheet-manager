@@ -23,7 +23,8 @@ the build this guide describes.
   Right-click targets the pointed row or existing picked set without changing picks or the viewed
   sheet. **Sheet actions…** opens
   Calc's customized menu;
-  temporary native grouping is restored on dismissal where safe. The menu also links to Help.
+  native grouping is restored on dismissal where safe. <Unreleased /> A chosen command leaves
+  Calc on its targets. The menu also links to Help.
 - **Manual-install downloads and update feeds.** Each published build includes an OXT and checksum.
   Installed copies use the stable feed; later test builds are downloaded manually.
 
