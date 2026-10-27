@@ -914,6 +914,7 @@ def check_context_preserves_view_and_picks(book):
         book.lab.input.tap("space", modifiers=("Control_L",), pause=0.3)
         assert book.selection() == before[1]
     entries = book.entries([NAMES[6]])
+    history = book.undo_titles()  # Includes the edit that gives Golf data to confirm.
     book.pointer.click(*book.point(6), button=RIGHT, pause=0.4)
     book.choose(DELETE, entries)
     wait_until(native_modal, "native delete confirmation")
@@ -926,7 +927,7 @@ def check_context_preserves_view_and_picks(book):
     # A chosen command keeps Calc on its target, even when its own dialog is cancelled (#100).
     kept = NAMES[6], before[1], frozenset([NAMES[6]])
     wait_until(lambda: state() == kept, "a cancelled native command to keep its target")
-    assert NAMES[6] in book.order() and not book.undo_titles(), "Cancel deleted a sheet"
+    assert NAMES[6] in book.order() and book.undo_titles() == history, "Cancel deleted a sheet"
     book.controller.setActiveSheet(book.document.Sheets.getByIndex(0))
     select_tabs(book.lab.context, book.frame, [0, 2])
     wait_until(lambda: book.selection() == [NAMES[0], NAMES[2]], "native grouped tabs again")
