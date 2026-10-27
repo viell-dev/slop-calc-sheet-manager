@@ -85,11 +85,18 @@ together, **Sheet actions…** offers safe Show and move actions instead. Calc's
 offered only when every context target is visible.
 
 Calc's built-in commands require its native tabs to match the context targets, so choosing
-**Sheet actions…** can temporarily change Calc's tab group and viewed sheet. The list's picks
-stay unchanged.
-On dismissal, the previous view and group are restored where their sheet identities and visibility
-can still be proved; deleting or hiding those sheets can prevent restoration. Built-in commands
-keep Calc's confirmation and undo behaviour. A changed target is refused before dispatch.
+**Sheet actions…** can change Calc's tab group and viewed sheet. Opening the menu leaves the list's
+picks unchanged; a command's result can still clear them under the sheet-identity rules, such as
+when a picked sheet is renamed or deleted.
+If you close Calc's menu without choosing a command, the previous view and group are restored
+where their sheet identities and visibility can still be proved; deleting or hiding those sheets
+can prevent restoration.
+
+**After a command.** <Unreleased /> Once you choose a command, Calc stays on the sheets the command
+targeted, as it does after its own tab menu, even if you cancel that command's dialog. Some
+dialogs, such as Rename Sheet, apply to the viewed sheet only when you confirm them. When several
+sheets were targeted, they stay grouped and the footer shows the group. Built-in commands keep
+Calc's confirmation and undo behaviour. A changed target is refused before dispatch.
 
 **Sheet Manager Help** opens this guide. The header's native `?` uses an unavailable LibreOffice
 help topic; see [Known issues](./known-issues.md).

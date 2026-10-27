@@ -5,6 +5,13 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Fix **Sheet actions…** ▸ Rename Sheet renaming the previously viewed sheet instead of the
+  right-clicked or picked one. Its dialog applies to the sheet viewed when confirmed, and Sheet
+  Manager restored the earlier view while the dialog was open
+  ([#100](https://github.com/viell-dev/slop-calc-sheet-manager/issues/100)). Once a command is
+  chosen from Calc's menu, Calc now stays on its targets; closing the menu without a command still
+  restores the previous view.
+
 - Describe current development as alpha iteration, with no settled feature scope or scheduled
   stable release. Untargeted prereleases are titled with their own version and **alpha**.
 

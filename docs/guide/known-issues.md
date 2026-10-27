@@ -18,8 +18,11 @@ If Sheet Manager does not work in an environment where it is expected to, please
 
 - **Grouped tabs.** Cell edits affect every grouped Calc tab. The footer identifies the group
   separately from the list's picks. Double-click a row, press Enter on a single selected row, or
-  click a Calc tab to end grouping. Context menus can temporarily group tabs for native commands;
-  restoration is refused if the original sheet identities or visibility can no longer be proved.
+  click a Calc tab to end grouping. **Sheet actions…** groups its targets for Calc's commands.
+  <Unreleased /> A chosen command leaves them grouped, even when its dialog is cancelled
+  ([#100](https://github.com/viell-dev/slop-calc-sheet-manager/issues/100)). Closing the menu
+  without choosing a command, or refusing a stale command, restores the previous view and tab
+  group, unless the original sheet identities or visibility can no longer be proved.
 - **Header Help.** The header's native `?` opens LibreOffice's local error page for the generated
   `SIDEBAR_SHEETMANAGERDECK` help topic. No supported deck help-target setter is available. Use
   **Sheet Manager Help** in the context menu for this guide. Header hover sizing is also controlled

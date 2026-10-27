@@ -4,6 +4,7 @@ The outer movement menu leaves Calc's tabs unchanged. Choosing Sheet actions… 
 visible targets and opens Calc's customized tab menu only after exact readback. Hidden or
 mixed-visibility targets use safe extension actions instead. While the native menu is open,
 a dispatch interceptor checks sheet identity and exact tab membership before every command.
+Dismissing it restores the previous view; a dispatched command leaves Calc on its targets.
 """
 
 import time
@@ -158,8 +159,13 @@ class SheetMenu:
         )
 
     def restore_view(self, view: MenuView, unchanged: Callable[[], bool]) -> None:
-        """Restore only provable sheets with unchanged visibility; explicit selection wins."""
-        if not self._targeted_native or self.command in SELECT_COMMANDS or not unchanged():
+        """Restore a dismissed native menu's view to provable sheets with unchanged visibility.
+
+        A dispatched command keeps Calc on its targets. Calc can still be running it: Rename
+        Sheet's dialog is asynchronous and renames the sheet viewed when it is confirmed (#100),
+        and Qt dialogs report no modal state, so no restoration can safely wait for the end.
+        """
+        if not self._targeted_native or self.command is not None or not unchanged():
             return
         refs = (view.active, *view.tabs)
         if any(ref.token.getName() != ref.name for ref in refs):

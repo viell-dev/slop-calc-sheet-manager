@@ -302,6 +302,10 @@ the batch's outer lock is still held and check that neither activates nor hides 
 and save with Ctrl+S from the list and from a cell and check that the picks stay. While a
 far sheet's colour keeps changing, so that the list waits to refresh, they click a sheet hidden
 just before activation, and Ctrl+click after a double-click, and check that nothing acts on the old rows.
+They rename a right-clicked row through **Sheet actions…** while another sheet is viewed and
+others are picked, confirming, cancelling, and using the Menu key, and check which sheet's
+identifying cell the new name carries. Inside the container, `tests/ui/run_ui.py --check NAME`
+(repeatable) runs only the named checks.
 Results and screenshots are in `test-results/<lane>/ui-gtk3/` and `ui-gen/`. LibreOffice's
 synthetic input on Windows bypasses key handlers and cannot start a native drag; those checks are
 in the [human usability and desktop tests](docs/manual-tests.md), with a synthetic workbook from
