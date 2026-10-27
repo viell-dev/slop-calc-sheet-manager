@@ -15,10 +15,10 @@ on:
         type: string
       prerelease:
         description: Test build; set GitHub's Pre-release flag (never inferred from the version)
-        default: false
+        default: true
         type: boolean
       target:
-        description: Optional candidate target for a major release (for example 1.0.0)
+        description: Optional agreed next-minor/major target; leave empty for alpha development
         default: ""
         type: string
       dry_run:

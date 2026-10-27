@@ -19,7 +19,8 @@ for installation and checksum instructions.
 
 ## Test builds
 
-Test builds are for trying changes before a stable release. Download and install their OXT
+Current test builds are alpha iterations. The feature set is unsettled, and testing one does not
+imply that stable publication is close. Download and install their OXT
 packages manually. Installing one keeps the stable update feed: it will offer a newer final
 release, but does not offer later test builds. An extension-directory listing is not needed to
 install these GitHub assets.
@@ -35,14 +36,15 @@ be offered as an update to those test builds; manually installing it would be sh
 This is a host-application constraint, independent of GitHub and the extension directory.
 
 We keep the same version in the OXT, Git tag, release and asset names. Test builds use increasing
-numbers below the final release, with their status recorded by GitHub's **Pre-release** flag.
+numbers, with their status recorded by GitHub's **Pre-release** flag. Alpha builds have no
+implied final target; a future stable version must exceed all preceding builds.
 No patch numbers are reserved for testing. For example:
 
 | GitHub release title | OXT version and Git tag | Build type |
 | --- | --- | --- |
-| 0.1.0 test build (0.0.2) | `0.0.2` | Pre-release |
-| 0.1.0 test build (0.0.3) | `0.0.3` | Pre-release |
-| 0.1.0 | `0.1.0` | Stable |
+| 0.1.1 alpha | `0.1.1` | Pre-release |
+| 0.1.2 alpha | `0.1.2` | Pre-release |
+| 0.2.0 | `0.2.0` | Stable, only once ready |
 
 These are examples; the download lists above show what is actually published. A stable series
 can continue through `0.1.89`, `0.1.90`, `0.1.91`, and higher. A test build is identified by its

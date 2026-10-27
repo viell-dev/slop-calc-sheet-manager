@@ -6,7 +6,10 @@ owner's standing approval. Readiness includes the checks below and the independe
 the owner's sign-in; prepare the listing text, screenshots, compatibility information, and files
 before asking them to sign in. Do not put that account's credentials in CI.
 
-The current source prepares the `0.1.0` release. Published builds are
+The current source is an unpublished `0.1.0` test build preparation. Development is in alpha:
+features and workflows remain unsettled, and there is no scheduled stable release. Publish only
+prereleases during this phase. A future stable release needs an agreed scope as well as the human
+testing and defect-resolution gates below. Published builds are
 listed on [Releases and test builds](https://viell-dev.github.io/slop-calc-sheet-manager/guide/releases).
 The changelog's development-history section records unpublished work before 0.0.2.
 
@@ -29,11 +32,13 @@ as stable. Fix a bad build with a larger version.
 - Stable patch numbers have no reserved range: `0.1.89`, `0.1.90`, `0.1.91` and `0.1.100` are
   all valid stable versions. The workflow's `prerelease` input and GitHub's stored flag determine
   the channel; no version digit implies test status.
-- Test builds for the next minor use the next unused numeric version in the preceding series.
-  For example, `0.0.2` and `0.0.3` can test `0.1.0`. Set `prerelease`; the title becomes
-  `0.1.0 test build (0.0.2)`. No candidate sequence number is inferred from the patch number.
-- Test builds for a major `X.0.0` use the current major's last minor series. Set the optional
-  `target` input to `X.0.0`; `0.8.91` with target `1.0.0` is `1.0.0 test build (0.8.91)`.
+- Alpha builds use the next unused increasing numeric version, with `prerelease` selected and
+  `target` empty. For example, `0.1.1` produces the title `0.1.1 alpha`. No stable target or
+  feature-completeness claim is inferred. The workflow defaults to prerelease; check it explicitly.
+- Once a next-minor or next-major target is agreed, it can be supplied explicitly. For example,
+  package `0.0.2` with target `0.1.0` is titled `0.1.0 test build (0.0.2)`, and `0.8.91` with
+  target `1.0.0` is `1.0.0 test build (0.8.91)`. The target must exceed the package version.
+  Existing published titles, tags, and assets remain unchanged.
 - Every later publication, including a stable fix between test builds, takes a larger unused
   version. For example, after stable `0.1.90` and test build `0.1.91` for `0.2.0`, a stable fix
   can use `0.1.92`. The final `0.2.0` remains larger than all three. This preserves one increasing
@@ -147,8 +152,9 @@ its platform inventory is not a requirement to make one person test every host.
    [AGENTS.md](AGENTS.md#review) requires, then merge the preparation PR and wait for **CI** on its
    exact `main` commit to succeed.
 3. In Actions, select **Release → Run workflow**, choose `main`, enter the exact version, select
-   `prerelease` for a candidate, and leave `dry_run` checked. For a next-major candidate supply
-   its `target`; next-minor candidates derive it automatically. Inspect the resulting artifact:
+   `prerelease` for an alpha or candidate, and leave `dry_run` checked. Leave `target` empty for
+   alpha development; supply it only for an agreed next-minor or next-major target.
+   Inspect the resulting artifact:
    the OXT, `.oxt.sha256`, `release-plan.json`, `release-notes.md`, and prospective `site/` feeds.
    Check the title, notes, download URLs, minimum LibreOffice version, and CI URL.
 

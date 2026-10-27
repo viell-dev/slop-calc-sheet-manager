@@ -16,6 +16,10 @@ are in
 
 The jobs use official libreoffice.org builds pinned in `ci/libreoffice.json`.
 
+Release-title tests in `tests/unit/test_release_data.py` distinguish untargeted alpha builds from
+explicit next-minor/major test targets and stable releases. They retain numeric-order and feed-history
+checks; a number or passing checks do not establish feature completeness or human usability.
+
 ## What `main` does today
 
 | Promise                                                                                                 | Evidence                                                                                                                                                                                                                                                                                                                 | Runs                               | Limits                                                                                                                             |
