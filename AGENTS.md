@@ -420,9 +420,13 @@ reconsider. The owner may report a defect themselves, in their own words.
   last selected tab), Calc cannot view a hidden sheet (#43), and Delete skips protected sheets.
   Duplicate and Move or Copy stay off the menu until a fixed LibreOffice is verified
   (tdf#173608 in #33; #3). `run` repeats every check, whatever the popup showed; sets and reads
-  back exactly the targets, with a single target viewed; reads Calc's command state for that
-  group; and dispatches without arguments, as Calc's menu does. A refusal after grouping restores
-  the saved view against fresh indices, retained identities, proof, and original visibility.
+  back exactly the targets; queries the dispatcher and reads Calc's command state for that group.
+  Grouping runs Calc's activation listeners and the query runs the frame's interceptors, either
+  of which can move, rename, hide or protect a sheet, so after both it repeats the generation,
+  `command_refusal` and an exact tab readback (a single target viewed), then dispatches through
+  the dispatcher already found, without arguments, as Calc's menu does: only reads run in
+  between. A refusal after grouping, including a failed grouping, restores the saved view against
+  fresh indices, retained identities, proof, and original visibility, never by raw indices.
   A dispatched command keeps Calc on its targets: Calc's asynchronous dialogs outlive the
   dispatch, and Insert and Rename act on the sheet viewed at confirmation (#100). The document's
   `OnModeChanged` reports dialog lifetime on VCL and gtk3 dialogs, but native Qt dialogs never
