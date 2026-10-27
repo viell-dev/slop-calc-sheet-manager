@@ -10,6 +10,7 @@ import uno
 import unohelper
 from com.sun.star.awt import XCallback
 from com.sun.star.beans import PropertyValue
+from com.sun.star.frame import XStatusListener
 from com.sun.star.util import URL
 
 from sheet_manager.sheet_list import SheetRow, tab_color
@@ -158,6 +159,51 @@ def dispatch(context, frame, command: str, arguments=()) -> bool:
         return False
     dispatcher.dispatch(url, tuple(arguments))
     return True
+
+
+class _State(unohelper.Base, XStatusListener):
+    def __init__(self):
+        self.enabled = False
+
+    def statusChanged(self, State):
+        self.enabled = bool(State.IsEnabled)
+
+    def disposing(self, Source):
+        pass
+
+
+def command_enabled(context, frame, command: str) -> bool:
+    """Whether Calc would run this command now, for its current view and selected tabs.
+
+    Adding a status listener reports the current state at once: the dispatcher queries the
+    command's state from the view shell then.
+    """
+    url = command_url(context, command)
+    dispatcher = frame.queryDispatch(url, "", 0)
+    if dispatcher is None:
+        return False
+    state = _State()
+    dispatcher.addStatusListener(state, url)
+    dispatcher.removeStatusListener(state, url)
+    return state.enabled
+
+
+def command_label(context, command: str, fallback: str) -> str:
+    """Calc's own label for a command, in LibreOffice's interface language."""
+    try:
+        commands = context.getValueByName("/singletons/com.sun.star.frame.theUICommandDescription")
+        found = {
+            item.Name: item.Value
+            for item in commands.getByName("com.sun.star.sheet.SpreadsheetDocument").getByName(
+                command
+            )
+        }
+    except Exception:
+        return fallback
+    for key in ("PopupLabel", "Label"):
+        if isinstance(found.get(key), str) and found[key]:
+            return found[key]
+    return fallback
 
 
 def select_tabs(context, frame, indices: list[int]) -> None:

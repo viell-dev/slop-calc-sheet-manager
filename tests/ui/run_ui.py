@@ -26,13 +26,14 @@ import sheet_list_view as view  # noqa: E402
 import uno  # noqa: E402
 import unohelper  # noqa: E402
 from com.sun.star.awt import XMouseListener, XMouseMotionListener  # noqa: E402
-from menu_lifetime import check_native_guard_lifetime  # noqa: E402
+from menu_lifetime import check_menu_queue_disposal  # noqa: E402
 from run import office_session, wait_for  # noqa: E402
 from teardown import stalled_callbacks  # noqa: E402
 from xinput import RIGHT, Pointer, XInput  # noqa: E402
 
 from sheet_manager.reorder import Action, Sheet, target_order  # noqa: E402
 from sheet_manager.uno_calc import dispatch, select_tabs  # noqa: E402
+from sheet_manager.uno_menu import DELETE, HIDE, INSERT, MOVE_IDS, RENAME  # noqa: E402
 
 NATO = [
     "Alfa",
@@ -63,9 +64,10 @@ NATO = [
     "Zulu",
 ]
 NAMES = NATO + [f"Sheet {number}" for number in range(27, 81)]
-PROGRAM = Path("/opt/lo/program")
 PUSH_BUTTON = uno.getConstantByName("com.sun.star.accessibility.AccessibleRole.PUSH_BUTTON")
 unrecorded = view.unrecorded_batch
+ENTRY_NAMES = {INSERT: "insert", DELETE: "delete", RENAME: "rename", HIDE: "hide"}
+MOVES = {action: item for item, action in MOVE_IDS.items()}
 
 
 class Tracker(unohelper.Base, XMouseMotionListener):
@@ -156,34 +158,27 @@ class Workbook:
     def move_action(self, action):
         """Open the real menu and select one of its enabled move actions."""
         picked = self.selection()
+        entries = self.entries(picked)
         self.lab.input.tap("Menu", pause=0.4)
-        self.lab.input.tap("Home")
-        # These callers choose non-edge rows; all four actions are enabled.
-        for _ in range(("top", "up", "down", "bottom").index(action)):
-            self.lab.input.tap("Down")
-        self.lab.input.tap("Return", pause=0.5)
+        self.choose(MOVES[action], entries)
         wait_until(lambda: self.selection() == picked, "menu picks restored")
 
-    def native_menu(self):
-        """Choose the outer popup's explicit Sheet actions command."""
-        self.lab.input.tap("End")
-        self.lab.input.tap("Up")
-        self.lab.input.tap("Return", pause=0.4)
+    def entries(self, targets):
+        """The menu's enabled entries for these targets, from the menu's own code."""
+        return view.menu_entries(self.lab.context, self.document, targets)
 
-    def choose(self, command, *, native_open=False):
-        """Choose a menu entry with the keyboard; generated mnemonics differ between plugins."""
-        if not native_open:
-            self.native_menu()
-        items = wait_for(
-            lambda: view.enabled_menu_items(self.lab.context, self.frame, PROGRAM) or None,
-            "the menu's command states",
-        )
-        self.lab.input.tap("Home")
-        for _ in range(items.index(command)):
-            self.lab.input.tap("Down")
-        self.lab.screenshot(f"menu-{command[5:].lower()}")
+    def choose(self, item, entries):
+        """Choose an entry of the open menu with the keyboard, among its enabled `entries`.
+
+        End reaches Help, always the last entry, in gtk3 and gen; Home does not when the
+        first entries are unavailable (#84). Up skips separators and unavailable entries.
+        """
+        self.lab.input.tap("End")
+        for _ in range(len(entries) - 1 - entries.index(item)):
+            self.lab.input.tap("Up")
+        self.lab.screenshot(f"menu-{ENTRY_NAMES.get(item, item)}")
         self.lab.input.tap("Return", pause=0.5)
-        return items
+        return entries
 
     def close(self):
         self.document.close(True)
@@ -436,12 +431,11 @@ def check_move_controls(book, shortcuts, buttons=False):
 def check_move_edges_and_refusal(book):
     book.click(0)
     before, history = book.order(), book.undo_titles()
+    entries = book.entries([NAMES[0]])
+    assert MOVES["top"] not in entries and MOVES["up"] not in entries, entries
     book.lab.input.tap("Menu", pause=0.4)
     book.lab.screenshot("move-edge-disabled")
-    # gen's Home leaves no highlight when the leading disabled entries are hidden.
-    # Down selects the first enabled action on both backends.
-    book.lab.input.tap("Down")
-    book.lab.input.tap("Return", pause=0.4)
+    book.choose(MOVES["down"], entries)
     wait_until(lambda: book.order().index(NAMES[0]) == 1, "the first enabled edge action")
     book.move_action("down")
     wait_until(lambda: book.order().index(NAMES[0]) == 2, "repeated menu movement")
@@ -846,21 +840,22 @@ def reset(book):
 def hide_through_menu(book, picked, opener):
     before = book.undo_titles()
     native_view = book.active(), book.calc_tabs()
+    entries = book.entries(picked)
     assert not book.lab.input.popup_windows(), "The menu probe must start without a popup"
     opener()
     time.sleep(0.8)
-    assert book.lab.input.popup_windows(), "The outer menu did not create a native popup"
-    assert (book.active(), book.calc_tabs()) == native_view, "Outer menu changed the native view"
-    book.native_menu()
-    tabs = book.calc_tabs()
-    items = book.choose(".uno:Hide", native_open=True)
+    assert book.lab.input.popup_windows(), "The menu did not create a native popup"
+    assert (book.active(), book.calc_tabs()) == native_view, "The open menu changed the view"
+    book.choose(HIDE, entries)
     wait_until(
         lambda: all(not book.document.getSheets().getByName(n).IsVisible for n in picked),
         "Hide Sheet to hide the picked sheets",
     )
     hidden = [n for n in book.order() if not book.document.getSheets().getByName(n).IsVisible]
-    evidence = {"calc_tabs_while_open": tabs, "menu": items, "hidden": hidden}
-    assert tabs == picked and hidden == picked, evidence
+    second = bool(book.lab.input.popup_windows())
+    evidence = {"menu": entries, "hidden": hidden, "second_popup": second}
+    assert hidden == picked and not second, evidence
+    assert len(book.undo_titles()) == len(before) + 1, book.undo_titles()
     undo = book.document.getUndoManager()
     while len(book.undo_titles()) > len(before):
         undo.undo()
@@ -918,16 +913,20 @@ def check_context_preserves_view_and_picks(book):
         assert book.selection() == [NAMES[1]], "Right-click changed the keyboard cursor"
         book.lab.input.tap("space", modifiers=("Control_L",), pause=0.3)
         assert book.selection() == before[1]
+    entries = book.entries([NAMES[6]])
     book.pointer.click(*book.point(6), button=RIGHT, pause=0.4)
-    book.choose(".uno:Remove")
+    book.choose(DELETE, entries)
     wait_until(native_modal, "native delete confirmation")
-    assert book.calc_tabs() == [NAMES[6]], "Restoration ran inside the native confirmation"
+    # Calc's tabs are set on the target only once its command runs.
+    assert book.calc_tabs() == [NAMES[6]], "Delete must target exactly the right-clicked row"
+    assert not book.lab.input.popup_windows(), "A second menu opened after choosing Delete"
     assert book.selection() == before[1]
     book.lab.screenshot("context-delete-confirmation")
     book.lab.input.tap("Escape", pause=0.5)
     # A chosen command keeps Calc on its target, even when its own dialog is cancelled (#100).
     kept = NAMES[6], before[1], frozenset([NAMES[6]])
     wait_until(lambda: state() == kept, "a cancelled native command to keep its target")
+    assert NAMES[6] in book.order() and not book.undo_titles(), "Cancel deleted a sheet"
     book.controller.setActiveSheet(book.document.Sheets.getByIndex(0))
     select_tabs(book.lab.context, book.frame, [0, 2])
     wait_until(lambda: book.selection() == [NAMES[0], NAMES[2]], "native grouped tabs again")
@@ -935,44 +934,36 @@ def check_context_preserves_view_and_picks(book):
     book.click(3, modifiers=("Control_L",))
     wait_until(lambda: state() == before, "the original context again")
     order = book.order()
+    entries = book.entries([NAMES[6]])
     book.pointer.click(*book.point(6), button=RIGHT, pause=0.4)
-    book.lab.input.tap("Home")
-    for _ in range(3):
-        book.lab.input.tap("Down")
-    book.lab.input.tap("Return", pause=0.5)
+    book.choose(MOVES["bottom"], entries)
     wait_until(lambda: book.order()[-1] == NAMES[6], "context move of the unpicked row")
     wait_until(lambda: state() == before, "context move to keep independent picks and view")
     book.document.UndoManager.undo()
     wait_until(lambda: book.order() == order, "one undo of the context move")
     book.click(1)
     book.pointer.click(*book.point(6), button=RIGHT, pause=0.4)
-    # The outer menu has not taken ownership of the native view. A macro can still change it.
+    # The open menu has not touched the native view. A macro can still change it, and
+    # dismissing the menu keeps that newer view: nothing is restored.
     book.controller.setActiveSheet(book.document.Sheets.getByName(NAMES[9]))
     select_tabs(book.lab.context, book.frame, [9, 11])
     newer_view = state()
-    book.lab.input.tap("End")
-    book.lab.input.tap("Up")
-    book.lab.input.tap("Return", pause=0.5)
-    wait_until(lambda: book.calc_tabs() == [NAMES[6]], "explicit native menu targeting")
     book.lab.input.tap("Escape", pause=0.5)
-    wait_until(lambda: state() == newer_view, "native menu to restore its entry-time view")
-    book.click(1)
-    book.pointer.click(*book.point(6), button=RIGHT, pause=0.4)
-    book.choose(".uno:TableSelectAll")
-    wait_until(lambda: book.calc_tabs() == order, "explicit native Select All Sheets")
-    wait_until(lambda: book.selection() == order, "following the explicit selection command")
+    wait_until(lambda: not book.lab.input.popup_windows(), "the dismissed menu to close")
+    view.on_main_thread(book.lab.context, lambda: None)
+    time.sleep(0.5)
+    assert state() == newer_view, "Dismissing the menu changed the view"
     return {
         "picked_and_unpicked_cancel": True,
         "unpicked_move": True,
         "one_undo": True,
-        "explicit_native_selection": True,
         "modal_command_context_kept": True,
-        "native_entry_time_view": True,
+        "dismissal_leaves_view": True,
     }
 
 
 def check_context_rename_targets_row(book):
-    """Rename from Sheet actions… acts on its target, not the earlier viewed sheet (#100).
+    """Rename from the menu acts on its target, not the earlier viewed sheet (#100).
 
     Calc's Rename Sheet dialog is asynchronous and renames the sheet viewed when it is
     confirmed, so the view must stay on the target while the dialog is open. The active sheet,
@@ -987,13 +978,15 @@ def check_context_rename_targets_row(book):
     evidence = {}
 
     def rename(label, opener, finish):
+        entries = book.entries([target])
         opener()
-        book.choose(".uno:RenameTable")
+        book.choose(RENAME, entries)
         wait_until(lambda: native_dialog(book), "the native Rename Sheet dialog")
         # Barriers: the menu's queued completion has run under the open dialog.
         view.on_main_thread(book.lab.context, lambda: None)
         view.on_main_thread(book.lab.context, lambda: None)
         evidence[f"{label}_dialog"] = book.active(), book.calc_tabs()
+        assert not book.lab.input.popup_windows(), "A second menu opened after choosing Rename"
         book.lab.screenshot(f"context-rename-{label}")
         finish()
         wait_until(lambda: not native_dialog(book), "the dialog to close")
@@ -1059,6 +1052,154 @@ def check_context_rename_targets_row(book):
     return evidence
 
 
+def identify(book, count=6):
+    sheets = book.document.getSheets()
+    for name in NAMES[:count]:
+        sheets.getByName(name).getCellRangeByName("B1").String = f"identity {name}"
+    book.document.getUndoManager().clear()
+
+
+def identities(book, count=6):
+    sheets = book.document.getSheets()
+    return {
+        sheets.getByIndex(i).getName(): sheets.getByIndex(i).getCellRangeByName("B1").String
+        for i in range(min(count, sheets.getCount()))
+    }
+
+
+def view_first_sheet(book, picked):
+    """Calc views Alfa alone; the list picks `picked`. Newer list input wins over following."""
+    sheets = book.document.getSheets()
+    book.controller.setActiveSheet(sheets.getByIndex(0))
+    select_tabs(book.lab.context, book.frame, [0])
+    book.click(NAMES.index(picked[0]))
+    for name in picked[1:]:
+        book.click(NAMES.index(name), modifiers=("Control_L",))
+    wait_until(lambda: book.selection() == picked, f"the picks {picked}")
+    assert (book.active(), book.calc_tabs()) == (NAMES[0], [NAMES[0]])
+
+
+def check_context_insert_targets_row(book):
+    """Insert Sheet anchors on the right-clicked row, not the viewed sheet or the picks.
+
+    Calc's Insert Sheet dialog is asynchronous and inserts before the sheet viewed when it is
+    confirmed, so the view stays on the target. The active sheet, the picks and the
+    right-clicked row all differ; each sheet has identifying text.
+    """
+    target, picks = NAMES[3], [NAMES[2], NAMES[4]]
+    identify(book)
+    undo = book.document.getUndoManager()
+    original, order = identities(book), book.order()
+    evidence = {}
+
+    def insert(label, opener, finish):
+        entries = book.entries([target])
+        opener()
+        book.choose(INSERT, entries)
+        wait_until(lambda: native_dialog(book), "the native Insert Sheet dialog")
+        view.on_main_thread(book.lab.context, lambda: None)
+        view.on_main_thread(book.lab.context, lambda: None)
+        evidence[f"{label}_dialog"] = book.active(), book.calc_tabs()
+        assert not book.lab.input.popup_windows(), "A second menu opened after choosing Insert"
+        book.lab.screenshot(f"context-insert-{label}")
+        finish()
+        wait_until(lambda: not native_dialog(book), "the dialog to close")
+        view.on_main_thread(book.lab.context, lambda: None)
+
+    def right_click():
+        book.pointer.click(*book.point(3), button=RIGHT, pause=0.5)
+
+    def confirm():
+        book.lab.input.tap("Return", pause=0.5)  # OK: a new sheet before the current one.
+
+    def inserted():
+        new = [name for name in book.order() if name not in order]
+        assert len(new) == 1, book.order()
+        return new[0]
+
+    try:
+        for label, opener, picked in (
+            ("unpicked", right_click, picks),
+            ("keyboard", lambda: book.lab.input.tap("Menu", pause=0.4), [target]),
+        ):
+            view_first_sheet(book, picked)
+            insert(label, opener, confirm)
+            wait_until(lambda: len(book.order()) == len(order) + 1, "the confirmed insert")
+            name = inserted()
+            evidence[f"{label}_order"] = book.order()[:6]
+            assert evidence[f"{label}_dialog"] == (target, [target]), evidence
+            assert book.order()[3:5] == [name, target], evidence
+            assert {n: t for n, t in identities(book, 7).items() if n != name} == original
+            assert book.undo_titles() == ["Insert Sheet"], book.undo_titles()
+            undo.undo()
+            wait_until(lambda: book.order() == order, "one undo of the insert")
+            undo.clear()
+
+        view_first_sheet(book, picks)
+        insert("cancel", right_click, lambda: book.lab.input.tap("Escape", pause=0.5))
+        assert book.order() == order and not book.undo_titles(), "Cancel inserted a sheet"
+        assert (book.active(), book.calc_tabs(), book.selection()) == (target, [target], picks)
+    finally:
+        for _ in range(2):
+            if native_dialog(book):
+                book.lab.input.tap("Escape", pause=0.5)
+        while book.undo_titles():
+            undo.undo()
+    return evidence
+
+
+def check_context_delete_targets(book):
+    """Delete acts on exactly the targeted picks, after Calc's own confirmation.
+
+    The picks Charlie and Echo hold data, so Calc asks first. Cancelling deletes nothing and
+    leaves Calc grouped on them, with the footer's warning; confirming deletes exactly them in
+    one undo step. One-sheet commands are unavailable for two targets.
+    """
+    picks = [NAMES[2], NAMES[4]]
+    identify(book)
+    undo = book.document.getUndoManager()
+    original, order = identities(book), book.order()
+    entries = book.entries(picks)
+    evidence = {"entries": entries}
+    assert DELETE in entries and HIDE in entries, entries
+    assert INSERT not in entries and RENAME not in entries, entries
+    group = view.footer_text(book.panel, "Cell edits affect")
+    try:
+        for label, key in (("cancel", "Escape"), ("confirm", "Return")):
+            view_first_sheet(book, picks)
+            book.pointer.click(*book.point(4), button=RIGHT, pause=0.5)
+            book.choose(DELETE, entries)
+            wait_until(native_modal, "Calc's delete confirmation")
+            evidence[f"{label}_confirmation"] = book.active(), book.calc_tabs()
+            assert book.calc_tabs() == picks, evidence
+            assert not book.lab.input.popup_windows(), "A second menu opened after Delete"
+            book.lab.screenshot(f"context-delete-{label}")
+            book.lab.input.tap(key, pause=0.5)
+            wait_until(lambda: not native_modal(), "the confirmation to close")
+            view.on_main_thread(book.lab.context, lambda: None)
+            if label == "cancel":
+                assert book.order() == order and not book.undo_titles(), "Cancel deleted"
+                assert book.calc_tabs() == picks and book.selection() == picks
+                wait_until(
+                    lambda: group.getText() == f"Edits affect 2 Calc tabs: {picks[0]}, {picks[1]}",
+                    "the grouped-tabs warning",
+                )
+            else:
+                wait_until(lambda: len(book.order()) == len(order) - 2, "the confirmed delete")
+                left = {n: t for n, t in original.items() if n not in picks}
+                assert identities(book, 4) == left, identities(book, 4)
+                assert len(book.undo_titles()) == 1, book.undo_titles()
+                undo.undo()
+                wait_until(lambda: book.order() == order, "one undo of the delete")
+                assert identities(book) == original
+    finally:
+        if native_modal():
+            book.lab.input.tap("Escape", pause=0.5)
+        while book.undo_titles():
+            undo.undo()
+    return evidence
+
+
 def check_help_menu(book):
     path = book.lab.output / "opened-uris.txt"
     before = path.read_text().splitlines() if path.exists() else []
@@ -1101,7 +1242,7 @@ def check_menu_hidden_only(book):
 
 
 def check_menu_mixed_visibility(book):
-    """Mixed targets get safe Show/move actions without native tab grouping."""
+    """Mixed targets get the list's own Show in place of Calc's commands, without grouping."""
     sheet = book.document.Sheets.getByName(NAMES[9])
     sheet.IsVisible = False
     book.click(2)
@@ -1112,11 +1253,11 @@ def check_menu_mixed_visibility(book):
     history = book.undo_titles()
     try:
         book.lab.input.tap("Menu", pause=0.4)
-        assert (book.active(), book.calc_tabs()) == before
-        book.native_menu()
-        assert (book.active(), book.calc_tabs()) == before, "Fallback changed the native view"
+        assert (book.active(), book.calc_tabs()) == before, "The open menu changed the view"
         book.lab.screenshot("menu-mixed-visibility")
-        book.lab.input.tap("Home")
+        # Show takes Hide's place and is the first available entry; Calc's commands cannot
+        # target a hidden sheet. Down reaches it in gtk3 and gen alike (#84).
+        book.lab.input.tap("Down")
         book.lab.input.tap("Return", pause=0.5)
         wait_until(lambda: sheet.IsVisible, "safe Show to show the hidden target")
         assert book.undo_titles() == ["Show Sheet", *history]
@@ -1201,11 +1342,11 @@ def check_plain_click_ends_group(book):
     book.click(1)
     book.click(3, modifiers=("Control_L",))
     wait_until(lambda: book.selection() == [NAMES[1], NAMES[3]], "Bravo and Delta selected")
+    tabs = book.calc_tabs()
     book.lab.input.tap("Menu", pause=0.8)
-    book.native_menu()
-    wait_until(lambda: book.calc_tabs() == [NAMES[1], NAMES[3]], "the menu to group the tabs")
     book.lab.input.tap("Escape", pause=0.5)
-    # Cancelling restored the original group. Establish a native group explicitly.
+    assert book.calc_tabs() == tabs, "The menu grouped tabs without running a command"
+    # A command can leave its targets grouped, as Calc's tab menu does. Group them natively.
     select_tabs(book.lab.context, book.frame, [1, 3])
     book.double_click(1)
     wait_until(lambda: book.calc_tabs() == [NAMES[1]], "activation to leave one selected tab")
@@ -1984,7 +2125,9 @@ def run_checks(lab, output, only=()):
         ("menu_keyboard", lambda: check_menu_keyboard(book)),
         ("context_preserves_view_and_picks", lambda: check_context_preserves_view_and_picks(book)),
         ("context_rename_targets_row", lambda: check_context_rename_targets_row(book)),
-        ("native_guard_lifetime", lambda: check_native_guard_lifetime(book)),
+        ("context_insert_targets_row", lambda: check_context_insert_targets_row(book)),
+        ("context_delete_targets", lambda: check_context_delete_targets(book)),
+        ("menu_queue_disposal", lambda: check_menu_queue_disposal(book)),
         ("help_menu", lambda: check_help_menu(book)),
         ("menu_hidden_only", lambda: check_menu_hidden_only(book)),
         ("menu_mixed_visibility", lambda: check_menu_mixed_visibility(book)),
