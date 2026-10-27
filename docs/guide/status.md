@@ -26,10 +26,9 @@ preview. These are requests under development, not features available in the pub
 - **Move controls.** <Unreleased since="0.0.4" /> Use the top buttons or menu to move to top, up,
   down, or bottom in one undo step, with Alt+Home/Up/Down/End shortcuts and availability checks.
   Right-click targets the pointed row or existing picked set without changing picks or the viewed
-  sheet. **Sheet actions…** opens
-  Calc's customized menu;
-  native grouping is restored on dismissal where safe. <Unreleased /> A chosen command leaves
-  Calc on its targets. The menu also links to Help.
+  sheet. <Unreleased /> The menu also runs Calc's Insert, Delete, Rename and Hide sheet commands
+  on exactly its targets, and leaves Calc on them; Calc's sheet tabs keep their full menu. The
+  menu also links to Help.
 - **Manual-install downloads and update feeds.** Each published build includes an OXT and checksum.
   Installed copies use the stable feed; later test builds are downloaded manually.
 

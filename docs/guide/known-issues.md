@@ -18,11 +18,11 @@ If Sheet Manager does not work in an environment where it is expected to, please
 
 - **Grouped tabs.** Cell edits affect every grouped Calc tab. The footer identifies the group
   separately from the list's picks. Double-click a row, press Enter on a single selected row, or
-  click a Calc tab to end grouping. **Sheet actions…** groups its targets for Calc's commands.
-  <Unreleased /> A chosen command leaves them grouped, even when its dialog is cancelled
+  click a Calc tab to end grouping. <Unreleased /> A Calc command chosen from the list's menu
+  groups its targets and leaves them grouped, even when its dialog is cancelled
   ([#100](https://github.com/viell-dev/slop-calc-sheet-manager/issues/100)). Closing the menu
-  without choosing a command, or refusing a stale command, restores the previous view and tab
-  group, unless the original sheet identities or visibility can no longer be proved.
+  without choosing a command changes nothing. A command refused because its sheets changed
+  leaves the view as it was, unless the previous sheets can no longer be proved.
 - **Header Help.** The header's native `?` opens LibreOffice's local error page for the generated
   `SIDEBAR_SHEETMANAGERDECK` help topic. No supported deck help-target setter is available. Use
   **Sheet Manager Help** in the context menu for this guide. Header hover sizing is also controlled
@@ -30,10 +30,10 @@ If Sheet Manager does not work in an environment where it is expected to, please
   ([#81](https://github.com/viell-dev/slop-calc-sheet-manager/issues/81)).
 - **Save focus.** Ctrl+S from the list saves through Calc and moves focus to the sheet
   ([#23](https://github.com/viell-dev/slop-calc-sheet-manager/issues/23)).
-- **Unavailable menu actions.** Native popup rendering can hide disabled move actions and their
-  help text. In the gen backend, use Down to highlight the first available entry; Home can leave
-  no entry highlighted when the leading actions are unavailable. Alt move shortcuts still apply
-  the same permission and edge checks
+- **Unavailable menu actions.** Native popup rendering can hide disabled commands and move
+  actions, and their help text. In the gen backend, use Down to highlight the first available
+  entry; Home can leave no entry highlighted when the leading actions are unavailable. Alt move
+  shortcuts still apply the same permission and edge checks
   ([#84](https://github.com/viell-dev/slop-calc-sheet-manager/issues/84)).
 - **Conservative selection clearing.** Inserting or deleting sheets, undoing or redoing, and
   modifications whose continuity cannot be established can clear the list's selection. A notice
@@ -63,11 +63,14 @@ If Sheet Manager does not work in an environment where it is expected to, please
   LibreOffice reports nothing, or a deliberately constructed edit indistinguishable from ordinary
   typed input. The reorder adapter uses the same structural monitor and has the same boundary.
   The [reordering interface](../reordering.md) describes what is detected.
-- **A LibreOffice defect in two commands.** The sheet tab menu runs
-  LibreOffice's own Duplicate Sheet and Move or Copy Sheet. In LibreOffice 26.8.0 and 26.8.1 these
-  commands copy formulas with relative sheet references incorrectly
-  ([tdf#173608](https://bugs.documentfoundation.org/show_bug.cgi?id=173608)), whether they are
-  started from the tab bar or from the menu. LibreOffice's fix is due in 26.8.2.
+- **A LibreOffice defect in two commands.** In LibreOffice 26.8.0 and 26.8.1, Calc's own
+  Duplicate Sheet and Move or Copy Sheet copy formulas with relative sheet references incorrectly
+  ([tdf#173608](https://bugs.documentfoundation.org/show_bug.cgi?id=173608)). LibreOffice's fix
+  is due in 26.8.2. The published test builds offer both through **Sheet actions…**.
+  <Unreleased /> The list's menu leaves them to Calc's sheet tabs. Calc's Move or Copy also
+  reverses several sheets moved to the right
+  ([#3](https://github.com/viell-dev/slop-calc-sheet-manager/issues/3)); the list's own moves
+  keep their order.
 - **Other LibreOffice defects.** Defects in LibreOffice that affect Sheet Manager, and how each is
   handled, are listed in
   [issue #33](https://github.com/viell-dev/slop-calc-sheet-manager/issues/33).

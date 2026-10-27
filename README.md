@@ -20,7 +20,8 @@ resolution of release blockers.
 See [Releases and test builds](https://viell-dev.github.io/slop-calc-sheet-manager/guide/releases)
 for currently published downloads. Sheet Manager lists the workbook's sheets, supports selection,
 drag and drop, and move actions with keyboard shortcuts,
-handles keyboard navigation, and opens Calc's sheet tab menu. Each extension move is one undo step.
+handles keyboard navigation, and runs Calc's common sheet commands from its own menu. Each
+extension move is one undo step.
 It follows this window's Calc tab selection and shows grouped-editing feedback separately from
 the list's own picks. Its features include:
 
@@ -31,8 +32,9 @@ the list's own picks. Its features include:
 - drag and drop of one or more selected sheets, with an insertion line and scrolling near the
   edges;
 - top buttons and context-menu actions to move sheets to the top, up, down, or to the bottom;
-- the sheet tab bar's own customized menu opened by **Sheet actions…**, with temporary context
-  targeting that preserves independent list picks and restores the previous view where safe;
+- Calc's Insert, Delete, Rename and Hide sheet commands in the list's context menu, acting on
+  exactly the right-clicked row or the picked sheets without changing the list's picks; Calc's
+  sheet tabs keep their full menu;
 - complete keyboard operation;
 - one undo step per change, and respect for protected and read-only documents.
 
@@ -104,10 +106,11 @@ explains the model; [RELEASING.md](RELEASING.md) gives the maintainer rules and 
   rebuilt after changes, which can delay the active-sheet marker (#22).
 - The sidebar header's `?` opens LibreOffice's unavailable help topic for this extension. Use
   **Sheet Manager Help** in the context menu for the project guide (#81).
-- The sheet tab menu runs LibreOffice's own Duplicate Sheet and Move or Copy
-  Sheet. In LibreOffice 26.8.0 and 26.8.1 these commands copy formulas with relative sheet
-  references incorrectly ([tdf#173608](https://bugs.documentfoundation.org/show_bug.cgi?id=173608)),
-  whether they are started from the tab bar or from the menu. LibreOffice's fix is due in 26.8.2.
+- In LibreOffice 26.8.0 and 26.8.1, Calc's own Duplicate Sheet and Move or Copy Sheet copy
+  formulas with relative sheet references incorrectly
+  ([tdf#173608](https://bugs.documentfoundation.org/show_bug.cgi?id=173608)). The development
+  version's menu leaves both commands to Calc's sheet tabs; the published test builds still offer
+  them through **Sheet actions…**. LibreOffice's fix is due in 26.8.2.
 - Defects in LibreOffice that affect Sheet Manager, and how each is handled, are listed in
   [#33](https://github.com/viell-dev/slop-calc-sheet-manager/issues/33).
 

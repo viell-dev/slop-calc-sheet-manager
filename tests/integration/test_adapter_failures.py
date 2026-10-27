@@ -18,7 +18,7 @@ from sheet_manager.uno_structure import StructureMonitor, monitor_for
 
 
 class Tracked:
-    """Forward real UNO calls, retaining only listener/interceptor registration evidence."""
+    """Forward real UNO calls, retaining only listener registration evidence."""
 
     def __init__(self, real):
         self.real = real

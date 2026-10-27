@@ -5,12 +5,21 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
-- Fix **Sheet actions…** ▸ Rename Sheet renaming the previously viewed sheet instead of the
+- Offer **Insert Sheet…**, **Delete Sheet…**, **Rename Sheet…** and **Hide Sheet** directly in
+  the list's context menu, replacing **Sheet actions…** and its second, full Calc menu
+  ([#101](https://github.com/viell-dev/slop-calc-sheet-manager/issues/101)). Insert and Rename
+  act on one sheet; Delete and Hide act on every target. Show Sheet takes Hide's place for hidden
+  targets, and the move actions and Help are unchanged.
+  Each command checks its sheets and permissions again when it runs, and refuses renamed,
+  replaced, hidden or protected targets without changing the view. Opening or closing the menu
+  changes nothing in Calc. Duplicate Sheet and Move or Copy Sheet stay on Calc's sheet tabs:
+  LibreOffice 26.8.0 and 26.8.1 copy relative sheet references wrongly (tdf#173608), and the list
+  moves sheets itself. Calc's sheet tabs keep their full menu for every other command.
+- Fix Rename Sheet from the list's menu renaming the previously viewed sheet instead of the
   right-clicked or picked one. Its dialog applies to the sheet viewed when confirmed, and Sheet
   Manager restored the earlier view while the dialog was open
-  ([#100](https://github.com/viell-dev/slop-calc-sheet-manager/issues/100)). Once a command is
-  chosen from Calc's menu, Calc now stays on its targets; closing the menu without a command still
-  restores the previous view.
+  ([#100](https://github.com/viell-dev/slop-calc-sheet-manager/issues/100)). Calc now stays on a
+  chosen command's targets, as after its own tab menu, even if its dialog is cancelled.
 
 - Describe current development as alpha iteration, with no settled feature scope or scheduled
   stable release. Untargeted prereleases are titled with their own version and **alpha**.
