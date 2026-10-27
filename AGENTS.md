@@ -217,7 +217,7 @@ reconsider. The owner may report a defect themselves, in their own words.
   hides a versioned marker only when the published baseline includes that version or a later one.
   Failed or abandoned publication leaves the marker visible. Never infer publication from the
   source manifest, changelog, tag, or draft.
-  - While only release candidates exist, the guide describes the newest candidate and marks what
+  - While only prereleases exist, the guide describes the newest test build and marks what
     is not in it.
   - Before any release, the whole guide describes the development version.
   - The notice at the top of each page says which of these applies.
@@ -347,7 +347,8 @@ reconsider. The owner may report a defect themselves, in their own words.
 - `tools/release_data.py` owns version policy, changelog extraction, and feed XML.
   Versions are not full SemVer: LibreOffice orders suffixed candidates above their final
   version. Keep the single numeric package/tag version unless that host constraint changes.
-  Test status is an explicit release flag; never infer it from patch numbers or reserve a
+  Test status is an explicit release flag; untargeted builds are alpha iterations, not candidates
+  for an inferred stable target. Never infer test status from patch numbers or reserve a
   patch range. User download links go to the human
   `guide/releases` page, not the XML feeds. Its tables use the same verified release history
   as the guide's version notice.
@@ -533,6 +534,9 @@ reconsider. The owner may report a defect themselves, in their own words.
 
 ## Releases
 
+- The current phase is alpha development, with unsettled feature scope and no scheduled stable
+  release. Publish prereleases until the owner agrees a stable direction and scope. This does not
+  waive the human usability gate or required defect dispositions for any future stable release.
 - The owner has given standing approval for agents to publish releases, prereleases and stable
   versions alike, with their release notes, whenever the agents judge a build ready. Only the
   listing on extensions.libreoffice.org needs the owner's sign-in.

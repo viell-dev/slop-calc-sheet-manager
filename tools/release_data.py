@@ -40,7 +40,8 @@ def version_parts(version: str) -> tuple[int, int, int]:
 def release_title(version: str, prerelease: bool, target: str = "") -> str:
     major, minor, _ = version_parts(version)
     if prerelease:
-        target = target or f"{major}.{minor + 1}.0"
+        if not target:
+            return f"{version} alpha"
         if version_parts(target) not in {(major, minor + 1, 0), (major + 1, 0, 0)}:
             raise ValueError("Candidate target must be the next minor or next major .0 release")
         return f"{target} test build ({version})"

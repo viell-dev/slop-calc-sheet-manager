@@ -85,7 +85,9 @@ together, **Sheet actions…** offers safe Show and move actions instead. Calc's
 offered only when every context target is visible.
 
 Calc's built-in commands require its native tabs to match the context targets, so choosing
-**Sheet actions…** can change Calc's tab group and viewed sheet. The list's picks stay unchanged.
+**Sheet actions…** can change Calc's tab group and viewed sheet. Opening the menu leaves the list's
+picks unchanged; a command's result can still clear them under the sheet-identity rules, such as
+when a picked sheet is renamed or deleted.
 If you close Calc's menu without choosing a command, the previous view and group are restored
 where their sheet identities and visibility can still be proved; deleting or hiding those sheets
 can prevent restoration.

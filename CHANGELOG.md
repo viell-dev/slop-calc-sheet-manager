@@ -12,17 +12,22 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   chosen from Calc's menu, Calc now stays on its targets; closing the menu without a command still
   restores the previous view.
 
-## 0.1.0 - 2026-10-26
+- Describe current development as alpha iteration, with no settled feature scope or scheduled
+  stable release. Untargeted prereleases are titled with their own version and **alpha**.
 
-First stable feature release. Requires LibreOffice 26.2.1 or later with Python support.
+## 0.1.0 - Unpublished preparation
+
+This preparation was not published. Development continues in alpha; the earlier stable-release
+plan is superseded. Requires LibreOffice 26.2.1 or later with Python support.
 
 - Find and select sheets in a vertical sidebar list, with full-width rows, keyboard navigation,
   and an indicator for the viewed sheet. List picks remain independent of Calc's grouped tabs.
 - Drag one or more selected sheets any distance, or use Top, Up, Down and Bottom buttons,
   context actions or Alt shortcuts. Each extension move is one undo step, with permission and
   sheet-identity checks before acting and verified recovery if a move fails.
-- Open Calc's customized sheet-tab menu through **Sheet actions…**, with safe context targeting
-  and restoration of the previous view where the original sheets can still be identified.
+- Open Calc's customized sheet-tab menu through **Sheet actions…**. Wrong-target rename after
+  the native dialog is under investigation in
+  [#100](https://github.com/viell-dev/slop-calc-sheet-manager/issues/100).
 
 Changes since the 0.0.4 test build:
 
@@ -36,8 +41,8 @@ Changes since the 0.0.4 test build:
   Undo/Redo still clears picks conservatively; preserving verified move selections is tracked
   in [#91](https://github.com/viell-dev/slop-calc-sheet-manager/issues/91).
 
-Install the OXT manually or use LibreOffice's Extension Manager to check for stable updates.
-Once 0.1.0 is published, earlier test builds can receive it from the stable feed they already use.
+Install alpha OXTs manually. LibreOffice's Extension Manager offers only published stable updates;
+there is no stable release yet, and the unpublished 0.1.0 preparation will not be published as stable.
 Restart LibreOffice when asked. Each release includes an OXT and SHA-256 checksum; test builds remain
 manual downloads. See the [guide](https://viell-dev.github.io/slop-calc-sheet-manager/) for use,
 compatibility, and known limits, including conservative selection clearing on Undo/Redo.
