@@ -27,8 +27,8 @@ features:
       move actions, keyboard navigation, and Calc's sheet tab menu.
   - title: Where it is now
     details:
-      The feature set for 0.1.0 is implemented. Check the release page for available builds and
-      the compatibility guide for verified environments and known limits.
+      In alpha development, features and workflows are still being decided and tested.
+      Check the release page for test builds and the compatibility guide for known limits.
 ---
 
 Sheet Manager is written and maintained by AI agents, and no person reviews the code. Changes are

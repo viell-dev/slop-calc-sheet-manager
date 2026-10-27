@@ -57,8 +57,10 @@ def test_noncanonical_versions_are_refused(version: str) -> None:
 
 
 def test_test_build_titles_and_target_boundaries() -> None:
-    assert release_title("0.0.2", True) == "0.1.0 test build (0.0.2)"
-    assert release_title("0.0.91", True) == "0.1.0 test build (0.0.91)"
+    assert release_title("0.0.2", True) == "0.0.2 alpha"
+    assert release_title("0.0.91", True) == "0.0.91 alpha"
+    assert release_title("0.1.1", True) == "0.1.1 alpha"
+    assert release_title("0.0.2", True, "0.1.0") == "0.1.0 test build (0.0.2)"
     assert release_title("0.8.90", True, "1.0.0") == "1.0.0 test build (0.8.90)"
     assert release_title("0.1.89", False) == "0.1.89"
     for version, prerelease, target in [
@@ -73,7 +75,7 @@ def test_test_build_titles_and_target_boundaries() -> None:
 def test_patch_ninety_and_above_do_not_imply_a_test_build() -> None:
     assert release_title("0.1.90", False) == "0.1.90"
     assert release_title("0.1.100", False) == "0.1.100"
-    assert release_title("0.1.4", True) == "0.2.0 test build (0.1.4)"
+    assert release_title("0.1.4", True) == "0.1.4 alpha"
     stable = published("0.1.90", 18)
     test = published("0.1.91", 19, prerelease=True)
     validate_history([stable, test], [])

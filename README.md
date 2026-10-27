@@ -13,8 +13,10 @@ updates, removal, use, known issues, troubleshooting, and reporting a problem.
 
 ## Status
 
-Source version: `0.1.0` release preparation; no stable release has been published. Stable publication
-requires human usability testing and resolution of release blockers.
+Source version: `0.1.0` test build preparation, unpublished. Sheet Manager is in **alpha
+development**: features and workflows are still being decided and tested. No stable release is
+scheduled. Future stable publication requires an agreed scope, human usability testing, and
+resolution of release blockers.
 See [Releases and test builds](https://viell-dev.github.io/slop-calc-sheet-manager/guide/releases)
 for currently published downloads. Sheet Manager lists the workbook's sheets, supports selection,
 drag and drop, and move actions with keyboard shortcuts,
@@ -88,7 +90,7 @@ Installing one keeps stable updates enabled; later test builds are downloaded ma
 Versions are **not full SemVer** because LibreOffice itself treats `0.1.0-rc.1` as newer than
 `0.1.0`: the final would not be offered as an update, and manually installing it would be shown
 as a downgrade. This is independent of the extension directory. We use increasing numeric
-versions below the final instead, such as `0.0.2`, `0.0.3`, then `0.1.0`. GitHub's explicit
+versions instead. Alpha builds do not reserve a final version or imply readiness. GitHub's explicit
 **Pre-release** flag identifies test builds; no patch numbers are reserved, so `0.1.90` can be
 an ordinary stable patch. The
 [version guide](https://viell-dev.github.io/slop-calc-sheet-manager/guide/releases#version-numbers)

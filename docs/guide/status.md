@@ -1,8 +1,13 @@
 # Status and plans
 
-The core feature set is implemented. The
+Sheet Manager is in **alpha development**. Its feature set and workflows are still being decided
+and tested; no stable release is scheduled. The
 [release page](./releases.md) lists currently published downloads; the notice above identifies
 the build this guide describes.
+
+The [alpha backlog](https://github.com/viell-dev/slop-calc-sheet-manager/issues/93) tracks priorities
+and current work. Planned changes include a focused context menu and batch rename with replacement
+preview. These are requests under development, not features available in the published build.
 
 ## What Sheet Manager includes
 
