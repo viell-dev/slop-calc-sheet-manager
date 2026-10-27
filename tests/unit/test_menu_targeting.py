@@ -77,6 +77,10 @@ class Calc:
         self.readonly = self.protected = self.recording = False
         self.dispatched: list[str] = []
         self.enabled = True
+        # Other code that Calc runs inside a step: activation listeners during selection, or
+        # dispatch interceptors and status queries while the command is looked up.
+        self.on_select: Callable[[], None] | None = None
+        self.on_state: Callable[[], None] | None = None
 
     def by_name(self, name: str) -> Sheet:
         return next(sheet for sheet in self.sheets if sheet.name == name)
@@ -97,6 +101,9 @@ class Calc:
             self.tabs = [self.order()[index] for index in indices]
         if self.active not in self.tabs:
             self.active = self.tabs[0]
+        if self.on_select is not None:
+            hook, self.on_select = self.on_select, None
+            hook()
 
     def selected(self, context: object, controller: object) -> list[int]:
         order = self.order()
@@ -136,13 +143,19 @@ def bound_menu(
     """SheetMenu's targeting methods from the source, bound to a fake Calc."""
     refusal = menu_function("command_refusal")
 
-    def enabled(context: object, frame: object, command: str) -> bool:
-        return calc.enabled
+    def record(url: str, arguments: object) -> None:
+        calc.dispatched.append(url)
 
-    def dispatch(context: object, frame: object, command: str) -> bool:
-        if dispatches:
-            calc.dispatched.append(command)
-        return dispatches  # False: the frame had no dispatcher for the command.
+    def query(context: object, frame: object, command: str) -> tuple[str, object]:
+        dispatcher = SimpleNamespace(dispatch=record)
+        # None: the frame had no dispatcher for the command.
+        return command, dispatcher if dispatches else None
+
+    def state(dispatcher: object, url: str) -> bool:
+        if calc.on_state is not None:
+            hook, calc.on_state = calc.on_state, None
+            hook()
+        return calc.enabled
 
     namespace: dict[str, Any] = {
         "Snapshot": object,
@@ -153,8 +166,8 @@ def bound_menu(
         "_stale": _stale,
         "COMMANDS": COMMANDS,
         "command_refusal": refusal,
-        "command_enabled": enabled,
-        "dispatch": dispatch,
+        "query_command": query,
+        "command_state": state,
         "report": report or Mock(),
         "select_tabs": calc.select,
         "selected_tabs": calc.selected,
@@ -167,7 +180,7 @@ def bound_menu(
             getActiveSheet=lambda: calc.by_name(calc.active), setActiveSheet=calc.set_active
         ),
     )
-    for name in ("capture_view", "restore_view", "group_calc_tabs", "run"):
+    for name in ("capture_view", "restore_view", "group_calc_tabs", "_dispatch_refusal", "run"):
         function = method(MENU, "SheetMenu", name, dict(namespace))
 
         def bind(*args: Any, function: Any = function) -> Any:
@@ -269,6 +282,74 @@ def test_refusal_after_grouping_restores_the_view(failure: str) -> None:
     else:
         assert "does not allow" in reason
         assert calc.view() == before, "The view from before the refused command was not restored"
+
+
+@pytest.mark.parametrize("when", ["grouping", "state"])
+@pytest.mark.parametrize("change", ["protect", "hide", "rename", "regroup", "view"])
+def test_changes_made_by_code_calc_runs_before_dispatch_are_refused(when: str, change: str) -> None:
+    """An activation listener, interceptor or status query can change a target before dispatch.
+
+    Calc runs activation listeners while it selects the targets, and the frame's interceptors
+    while the command is looked up. A change there must be refused: Calc's Delete would skip a
+    sheet protected meanwhile, and Rename would act on whatever sheet is viewed.
+    """
+    calc = fresh()
+    menu = bound_menu(calc)
+    picked = ["Charlie"] if change == "view" else ["Charlie", "Echo"]
+    item = RENAME if change == "view" else DELETE
+
+    def meddle() -> None:
+        echo = calc.by_name("Echo")
+        if change == "protect":
+            echo.protected = True
+        elif change == "hide":
+            echo.IsVisible = False
+        elif change == "rename":
+            echo.name = "Other"
+            calc.tabs = ["Other" if name == "Echo" else name for name in calc.tabs]
+        elif change == "regroup":
+            calc.tabs = ["Charlie"]
+        else:
+            calc.active, calc.tabs = "Bravo", ["Bravo", "Charlie"]
+
+    if when == "grouping":
+        calc.on_select = meddle
+    else:
+        calc.on_state = meddle
+    before = calc.view()
+    reason = menu.run(item, calc.snapshot(), picked, lambda: True)
+    assert reason and not calc.dispatched, (when, change, reason)
+    if change in ("protect", "hide"):
+        assert calc.view() == before, "The view from before the refused command was not restored"
+
+
+@pytest.mark.parametrize("taken", ["partly", "exactly"])
+def test_sheet_moved_while_grouping(taken: str) -> None:
+    """An activation listener moves a sheet while Calc selects the targets.
+
+    Calc's selected tabs follow their sheets, so the earlier selection's indices name other
+    sheets afterwards. If Calc took the targets only partly, the view comes back by sheet
+    identity, not by those indices; if it took exactly them, the command acts on exactly them.
+    """
+    calc = fresh()  # Alfa viewed; Alfa and Bravo grouped.
+    menu = bound_menu(calc)
+
+    def move_echo_first() -> None:
+        echo = calc.by_name("Echo")
+        calc.sheets.remove(echo)
+        calc.sheets.insert(0, echo)
+        if taken == "partly":
+            calc.tabs = ["Charlie"]
+            calc.active = "Charlie"
+
+    calc.on_select = move_echo_first
+    reason = menu.run(DELETE, calc.snapshot(), ["Charlie", "Echo"], lambda: True)
+    if taken == "partly":
+        assert "could not select" in reason and not calc.dispatched, reason
+        assert calc.view() == ("Alfa", ["Alfa", "Bravo"]), calc.view()
+    else:
+        assert reason == "" and calc.dispatched == [COMMANDS[DELETE]], reason
+        assert sorted(calc.tabs) == ["Charlie", "Echo"]
 
 
 def test_partial_grouping_restores_the_users_tabs() -> None:

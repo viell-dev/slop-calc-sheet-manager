@@ -3,10 +3,11 @@
 The menu offers a few of Calc's sheet commands directly (Insert, Delete, Rename and Hide), the
 list's own Show and moves, and Help. Opening or dismissing it leaves Calc's view and tabs
 unchanged. A chosen built-in command is checked again when it runs, whatever the menu showed:
-its targets' identity and permissions; then Calc's selected tabs are set to exactly those targets
-and read back, and Calc's own state for the command is read. Only then is the command dispatched,
-and Calc stays on its targets afterwards: its dialogs can outlive the dispatch and act on the
-viewed sheet when confirmed (#100). A refusal after grouping restores the previous view.
+its targets' identity and permissions; then Calc's selected tabs are set to exactly those targets,
+and Calc's own state for the command is read. Grouping and that query can run other code, so
+every check is repeated after them, with only reads before the dispatch. Calc stays on its targets
+afterwards: its dialogs can outlive the dispatch and act on the viewed sheet when confirmed
+(#100). A refusal after grouping restores the previous view.
 """
 
 import time
@@ -20,9 +21,9 @@ from sheet_manager.i18n import tr
 from sheet_manager.reorder import Action, plan_move
 from sheet_manager.selection import Ref
 from sheet_manager.uno_calc import (
-    command_enabled,
     command_label,
-    dispatch,
+    command_state,
+    query_command,
     report,
     select_tabs,
     selected_tabs,
@@ -157,22 +158,21 @@ class SheetMenu:
             raise RuntimeError(tr("Calc could not restore the view after the sheet menu."))
 
     def group_calc_tabs(self, picked: list[str]) -> bool:
-        """Select exactly the picked sheets as Calc's tabs and confirm Calc did so."""
+        """Select exactly the picked sheets as Calc's tabs and confirm Calc did so.
+
+        The caller restores the previous view otherwise, through retained sheet identities:
+        selecting runs Calc's activation listeners, which can move sheets, so the indices of
+        the earlier selection may no longer name its sheets.
+        """
         order = list(self._document.getSheets().getElementNames())
         if not picked or not set(picked) <= set(order):
             return False
         indices = sorted(order.index(name) for name in picked)
-        active = self._controller.getActiveSheet().getName()
-        before = selected_tabs(self._context, self._controller)
         select_tabs(self._context, self._frame, indices)
-        if selected_tabs(self._context, self._controller) == indices:
-            return True
-        # Calc did not take exactly these sheets: leave its selection as the user had it.
-        if self._controller.getActiveSheet().getName() != active:
-            self._controller.setActiveSheet(self._document.getSheets().getByName(active))
-        if selected_tabs(self._context, self._controller) != before:
-            select_tabs(self._context, self._frame, before)
-        return False
+        order = list(self._document.getSheets().getElementNames())
+        return set(picked) <= set(order) and selected_tabs(self._context, self._controller) == (
+            sorted(order.index(name) for name in picked)
+        )
 
     def show(self, peer, x: int, y: int, observed: Snapshot, picked: list[str]) -> int | None:
         """Show the menu for the picked sheets; returns the chosen enabled entry, if any.
@@ -215,19 +215,20 @@ class SheetMenu:
         view = self.capture_view(observed)
         if view is None:
             return _stale()
+        # Grouping activates a target, and querying the command runs the frame's interceptors:
+        # either can run other code, which can move, rename, hide or protect a sheet. So after
+        # both, every check is made again, and only reads run between them and the dispatch.
         if not self.group_calc_tabs(picked):
-            return tr("Calc could not select exactly these sheets.")
-        # Insert and Rename act on the viewed sheet when their dialogs are confirmed.
-        if len(picked) == 1 and self._controller.getActiveSheet().getName() != picked[0]:
             reason = tr("Calc could not select exactly these sheets.")
-        elif not unchanged():
-            reason = _stale()
-        elif not command_enabled(self._context, self._frame, COMMANDS[item]):
-            reason = tr("Calc does not allow this command for these sheets now.")
-        elif dispatch(self._context, self._frame, COMMANDS[item]):
-            return ""
         else:
-            reason = tr("Calc does not allow this command for these sheets now.")
+            url, dispatcher = query_command(self._context, self._frame, COMMANDS[item])
+            if dispatcher is None or not command_state(dispatcher, url):
+                reason = tr("Calc does not allow this command for these sheets now.")
+            else:
+                reason = self._dispatch_refusal(item, observed, picked, unchanged)
+                if not reason:
+                    dispatcher.dispatch(url, ())
+                    return ""
         try:
             self.restore_view(view, unchanged)
         except RuntimeError:
@@ -237,6 +238,22 @@ class SheetMenu:
                 "Check them before editing."
             )
         return reason
+
+    def _dispatch_refusal(self, item: int, observed: Snapshot, picked: list[str], unchanged) -> str:
+        """Why the grouped command must not be dispatched now, or an empty string."""
+        if not unchanged():
+            return _stale()
+        reason = command_refusal(self._document, observed, item, picked)
+        if reason:
+            return reason
+        order = list(self._document.getSheets().getElementNames())
+        indices = sorted(order.index(name) for name in picked)
+        if selected_tabs(self._context, self._controller) != indices:
+            return tr("Calc could not select exactly these sheets.")
+        # Insert and Rename act on the viewed sheet when their dialogs are confirmed.
+        if len(picked) == 1 and self._controller.getActiveSheet().getName() != picked[0]:
+            return tr("Calc could not select exactly these sheets.")
+        return ""
 
     def _popup(self):
         manager = self._context.ServiceManager

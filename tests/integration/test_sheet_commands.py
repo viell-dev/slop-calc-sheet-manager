@@ -3,18 +3,22 @@
 The real popup model's enablement and reasons, Calc's own labels and command state, and the
 command path itself: identity and permission checks when the command runs, exact native targets,
 one native undo step, refusal without touching Calc's view, and restoration after a refusal that
-follows grouping. Commands whose dialogs need real input (Insert, Rename, Delete with data) are
-checked in the real-input UI tests.
+follows grouping, including changes made by Calc's activation listeners while it selects the
+targets. Commands whose dialogs need real input (Insert, Rename, Delete with data) are checked in
+the real-input UI tests.
 """
 
 from typing import Any
 from unittest.mock import patch
 
+import unohelper
 from com.sun.star.beans import PropertyValue
+from com.sun.star.sheet import XActivationEventListener
 from main_thread import close_after
+from sheet_list_view import on_main_thread
 
 from sheet_manager import uno_menu
-from sheet_manager.uno_calc import command_enabled, select_tabs, selected_tabs
+from sheet_manager.uno_calc import command_state, query_command, select_tabs, selected_tabs
 from sheet_manager.uno_menu import COMMANDS, DELETE, HIDE, INSERT, RENAME, SHOW, SheetMenu
 from sheet_manager.uno_reorder import snapshot
 from sheet_manager.uno_structure import monitor_for
@@ -129,7 +133,12 @@ def check_states(context, document, directory, desktop):
         close_after(context, readonly, failure)
         raise
     close_after(context, readonly)
-    document.CurrentController.Frame.activate()
+    # Come back to this window as a user does. The frame still counts as active, so activate()
+    # alone changes nothing, and on Windows Calc is then left without a current view: undoing
+    # Hide Sheet does nothing at all, though its undo step is used up (#108).
+    frame = document.CurrentController.Frame
+    frame.deactivate()
+    frame.activate()
     document.UndoManager.clear()
     return {"enablement_and_reasons": True, "calc_labels": True}
 
@@ -138,9 +147,14 @@ def check_native_state(context, document):
     """Calc's own state follows the grouped tabs synchronously: Rename needs one tab."""
     frame = document.CurrentController.Frame
     select_tabs(context, frame, [2, 3])
-    grouped = {command: command_enabled(context, frame, command) for command in COMMANDS.values()}
+
+    def enabled(command):
+        url, dispatcher = query_command(context, frame, command)
+        return dispatcher is not None and command_state(dispatcher, url)
+
+    grouped = {command: enabled(command) for command in COMMANDS.values()}
     select_tabs(context, frame, [2])
-    single = command_enabled(context, frame, COMMANDS[RENAME])
+    single = enabled(COMMANDS[RENAME])
     select_tabs(context, frame, [0])
     assert not grouped[COMMANDS[RENAME]] and grouped[COMMANDS[DELETE]], grouped
     assert single, "Calc's Rename state did not follow a single selected tab"
@@ -245,12 +259,120 @@ def check_refusals(context, document):
     # Calc refusing after grouping: forced through a test-only adapter; no document makes Calc
     # refuse a command that these checks allow.
     before = setup()
-    with patch.object(uno_menu, "command_enabled", lambda *args: False):
+    with patch.object(uno_menu, "command_state", lambda *args: False):
         reason = run(context, document, HIDE, ["Bravo"])
     assert "does not allow" in reason and sheets.getByName("Bravo").IsVisible, reason
     assert view_of(context, document) == before[0], (before[0], view_of(context, document))
     assert not undo.AllUndoActionTitles and identities(document) == before[1]
     evidence["native_refusal_restores_view"] = True
+    return evidence
+
+
+class Meddler(unohelper.Base, XActivationEventListener):
+    """Another program's activation listener: when Calc views a sheet, it changes one, once."""
+
+    def __init__(self, change):
+        self.change = change
+        self.seen = []
+
+    def activeSpreadsheetChanged(self, aEvent):
+        sheet: Any = aEvent.ActiveSheet
+        self.seen.append(sheet.getName())
+        if len(self.seen) == 1:
+            self.change()
+
+    def disposing(self, Source):
+        pass
+
+
+def check_listener_changes(context, document):
+    """Calc runs activation listeners while it selects a command's targets (reviewer finding).
+
+    Delete targets the empty Delta and Echo while Alfa is viewed with Alfa and Foxtrot grouped.
+    A listener then protects, hides or renames Echo, so the command must be refused with the
+    view restored; Calc's Delete would skip a protected Echo. Or it moves Foxtrot first, which
+    shifts every position: with exactly the targets grouped, Delete removes exactly them; when
+    the listener also views another sheet, the view comes back by sheet identity. `run` runs on
+    the UI thread, as the list's completion does.
+    """
+    controller, frame = document.CurrentController, document.CurrentController.Frame
+    sheets, undo = document.Sheets, document.UndoManager
+    evidence: dict[str, Any] = {}
+
+    def protect():
+        sheets.getByName("Echo").protect("")
+
+    def hide():
+        sheets.getByName("Echo").IsVisible = False
+
+    def rename():
+        sheets.getByName("Echo").Name = "Spare"
+
+    def move():
+        sheets.moveByName("Foxtrot", 0)
+
+    def move_and_view():
+        sheets.moveByName("Foxtrot", 0)
+        controller.setActiveSheet(sheets.getByName("Bravo"))
+
+    for name, change in (
+        ("protect", protect),
+        ("hide", hide),
+        ("rename", rename),
+        ("move", move),
+        ("move_and_view", move_and_view),
+    ):
+        controller.setActiveSheet(sheets.getByName("Alfa"))
+        select_tabs(context, frame, [0, 5])
+        undo.clear()
+        before = identities(document)
+        monitor = monitor_for(document)
+        structure = monitor.generation
+        observed = snapshot(document)
+        menu = SheetMenu(context, frame, document, controller)
+        meddler = Meddler(change)
+        out = {}
+
+        def do_run(menu=menu, observed=observed, monitor=monitor, structure=structure, out=out):
+            out["reason"] = menu.run(
+                DELETE, observed, ["Delta", "Echo"], lambda: monitor.check() == structure
+            )
+
+        controller.addActivationEventListener(meddler)
+        try:
+            on_main_thread(context, do_run)
+        finally:
+            controller.removeActivationEventListener(meddler)
+        active, tabs = view_of(context, document)
+        state = {
+            "reason": out["reason"],
+            "listener_saw": meddler.seen,
+            "names": list(sheets.ElementNames),
+            "view": [active, sorted(tabs)],
+        }
+        evidence[name] = state
+        if name == "move":
+            assert state["reason"] == "", state
+            assert sorted(state["names"]) == ["Alfa", "Bravo", "Charlie", "Foxtrot"], state
+            assert {n: t for n, t in before.items() if n not in EMPTY} == identities(document)
+        else:
+            assert state["reason"] and "Delta" in state["names"], state
+            assert "Echo" in state["names"] or "Spare" in state["names"], state
+            assert state["view"] == ["Alfa", ["Alfa", "Foxtrot"]], state
+        # Put the workbook back for the next case.
+        while undo.isUndoPossible():
+            undo.undo()
+        for sheet in ("Echo", "Spare"):
+            if sheets.hasByName(sheet):
+                sheets.getByName(sheet).unprotect("")
+                sheets.getByName(sheet).IsVisible = True
+        if sheets.hasByName("Spare"):
+            sheets.getByName("Spare").Name = "Echo"
+        if list(sheets.ElementNames) != SIX:
+            sheets.moveByName("Foxtrot", 5)
+        assert list(sheets.ElementNames) == SIX, list(sheets.ElementNames)
+        assert identities(document) == before
+    undo.clear()
     return evidence
 
 
@@ -262,6 +384,7 @@ def exercise(context, desktop, directory, output):
             "native_state": check_native_state(context, document),
             "commands": check_commands(context, document),
             "refusals": check_refusals(context, document),
+            "listener_changes": check_listener_changes(context, document),
         }
     except BaseException as failure:
         close_after(context, document, failure)

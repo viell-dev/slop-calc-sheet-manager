@@ -172,16 +172,21 @@ class _State(unohelper.Base, XStatusListener):
         pass
 
 
-def command_enabled(context, frame, command: str) -> bool:
+def query_command(context, frame, command: str):
+    """The frame's dispatcher for a command and its parsed URL; the dispatcher may be None.
+
+    Querying can run code: the frame's dispatch interceptors answer it.
+    """
+    url = command_url(context, command)
+    return url, frame.queryDispatch(url, "", 0)
+
+
+def command_state(dispatcher, url) -> bool:
     """Whether Calc would run this command now, for its current view and selected tabs.
 
     Adding a status listener reports the current state at once: the dispatcher queries the
     command's state from the view shell then.
     """
-    url = command_url(context, command)
-    dispatcher = frame.queryDispatch(url, "", 0)
-    if dispatcher is None:
-        return False
     state = _State()
     dispatcher.addStatusListener(state, url)
     dispatcher.removeStatusListener(state, url)
