@@ -90,7 +90,7 @@ directly, under Calc's own names:
 
 A command is unavailable where it cannot act on exactly its targets: Insert and Rename when the
 menu targets several sheets, every command for hidden sheets, and Delete for protected sheets.
-<Unreleased /> For several sheets, **Rename Sheets…** takes Rename Sheet's place; see
+<Unreleased since="0.0.6" /> For several sheets, **Rename Sheets…** takes Rename Sheet's place; see
 [Rename several sheets](#rename-several-sheets).
 They are also unavailable in a read-only document or one whose sheet structure is protected,
 Rename for a protected sheet, Delete while changes are recorded, and Delete and Hide when no other
@@ -113,7 +113,7 @@ rules, such as when a picked sheet is renamed or deleted.
 
 **Mixed visibility.** <Unreleased since="0.0.4" /> When visible and hidden sheets are picked
 together, Calc's commands are unavailable for them; Show Sheet and the move actions remain.
-<Unreleased /> So does Rename Sheets…, which renames hidden sheets too.
+<Unreleased since="0.0.6" /> So does Rename Sheets…, which renames hidden sheets too.
 
 **Hidden sheets.** <Unreleased since="0.0.5" /> When any target is hidden, **Show Sheet** takes
 Hide's place and shows the hidden targets in one undo step where safe. Calc's commands are
@@ -127,9 +127,9 @@ help topic; see [Known issues](./known-issues.md).
 
 ## Rename several sheets
 
-**Rename Sheets.** <Unreleased /> When the menu targets two or more sheets, **Rename Sheets…**
-takes the place of Rename Sheet… and opens one dialog for all of them. One sheet is still renamed
-with Calc's own Rename Sheet…. Nothing changes until you choose **Rename**.
+**Rename Sheets.** <Unreleased since="0.0.6" /> When the menu targets two or more sheets, **Rename
+Sheets…** takes the place of Rename Sheet… and opens one dialog for all of them. One sheet is still
+renamed with Calc's own Rename Sheet…. Nothing changes until you choose **Rename**.
 
 1. Pick the sheets in the list, then right-click one of them, or press Menu or Shift+F10, and
    choose **Rename Sheets…**. Hidden sheets can be included.

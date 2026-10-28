@@ -13,7 +13,7 @@ updates, removal, use, known issues, troubleshooting, and reporting a problem.
 
 ## Status
 
-Source version: `0.0.5` alpha. Sheet Manager is in **alpha
+Source version: `0.0.6` alpha. Sheet Manager is in **alpha
 development**: features and workflows are still being decided and tested. No stable release is
 scheduled. Future stable publication requires an agreed scope, human usability testing, and
 resolution of release blockers.
@@ -36,7 +36,7 @@ the list's own picks. Its features include:
   exactly the right-clicked row or the picked sheets without changing the list's picks; Calc's
   sheet tabs keep their full menu;
 - renaming several sheets in one dialog, with find and replace and every new name checked before
-  anything changes (not yet in a published build);
+  anything changes;
 - complete keyboard operation;
 - one undo step per change, and respect for protected and read-only documents.
 
