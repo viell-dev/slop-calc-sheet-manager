@@ -94,6 +94,7 @@ def test_menu_command_runs_through_the_menu_and_reports_its_refusal(refusal: str
             "MOVE_IDS": {},
             "HELP": 20006,
             "SHOW": 1,
+            "RENAME_SHEETS": 6,
             "COMMANDS": {4: ".uno:RenameTable"},
             "show_error": show_error,
             "tr": str,

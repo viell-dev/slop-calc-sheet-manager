@@ -115,6 +115,25 @@ class Selection:
         self.picked, self.cursor, self.anchor = picked, cursor, anchor
         return dropped
 
+    def carry(self, renamed: Mapping[str, str]) -> bool:
+        """After the list's own verified rename, give each renamed sheet's refs the new name.
+
+        `renamed` maps old names to new ones. A carried ref keeps its token, and stays only while
+        that token reports exactly the new name; every ref is then revalidated as usual. True if
+        any ref went.
+        """
+        carried: dict[int, Ref] = {}
+
+        def carry(ref: Ref) -> Ref:
+            if ref.name not in renamed:
+                return ref
+            return carried.setdefault(id(ref), Ref(renamed[ref.name], ref.token, ref.position))
+
+        self.picked = [carry(ref) for ref in self.picked]
+        self.cursor = None if self.cursor is None else carry(self.cursor)
+        self.anchor = None if self.anchor is None else carry(self.anchor)
+        return self.revalidate()
+
     def clear(self) -> bool:
         """Drop every ref; True if there was anything to drop."""
         had = bool(self.picked) or self.cursor is not None or self.anchor is not None

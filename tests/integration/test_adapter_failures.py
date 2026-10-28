@@ -61,7 +61,7 @@ def check_failed_list(context, document):
                 cursors.append(value)
             super().__setattr__(name, value)
 
-        def refresh(self):
+        def refresh(self, renamed=None):
             # This is after every listener is attached. It must unwind even though the
             # SheetPanel assignment never receives the partly constructed list.
             disposed.append(self)

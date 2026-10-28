@@ -19,6 +19,7 @@ of them from other threads or in the middle of a change.
 import contextlib
 import time
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from typing import Any, cast
 
@@ -50,6 +51,7 @@ from sheet_manager.keys import (
     TypeAhead,
     find_prefix,
 )
+from sheet_manager.rename import Batch
 from sheet_manager.reorder import Action, plan_move
 from sheet_manager.selection import Ref, Selection, structure_kept
 from sheet_manager.sheet_list import RowGeometry, SheetRow, ordered, row_label
@@ -67,8 +69,18 @@ from sheet_manager.uno_calc import (
     start_thread,
 )
 from sheet_manager.uno_keys import ListKeyHandler, Shortcuts
-from sheet_manager.uno_menu import ACTIONS, COMMANDS, HELP, MOVE_IDS, SHOW, SheetMenu
+from sheet_manager.uno_menu import (
+    ACTIONS,
+    COMMANDS,
+    HELP,
+    MOVE_IDS,
+    RENAME_SHEETS,
+    SHOW,
+    SheetMenu,
+)
 from sheet_manager.uno_moves import MoveButtons
+from sheet_manager.uno_rename import apply_renames, preflight
+from sheet_manager.uno_rename_dialog import RenameDialog
 from sheet_manager.uno_reorder import (
     Availability,
     Snapshot,
@@ -550,19 +562,23 @@ class SheetList:
             return None
         return self._selection.ref(name, self._handles, self.names())
 
-    def refresh(self) -> None:
-        """Read the sheets again; keep only selected rows whose sheets are still the same."""
+    def refresh(self, renamed: Mapping[str, str] | None = None) -> None:
+        """Read the sheets again; keep only selected rows whose sheets are still the same.
+
+        `renamed` is the list's own verified batch rename, old names to new, just made at the
+        proven generation: refs of those sheets are carried to their new names (`_rename`).
+        """
         if self._disposed:
             return
         started = time.monotonic()
         try:
-            self._refresh()
+            self._refresh(renamed or {})
         finally:
             self._refreshed_at = time.monotonic()
             self._refresh_cost = self._refreshed_at - started
             self._stale_since = None
 
-    def _refresh(self) -> None:
+    def _refresh(self, renamed: Mapping[str, str]) -> None:
         """Read the sheets, drop every pick that is no longer its sheet, and show the rest.
 
         Picks, cursor, and anchor are revalidated on every refresh, whether or not the rows
@@ -575,10 +591,12 @@ class SheetList:
         observed = snapshot(self.document)
         rows = read_rows(self.controller, observed)
         generation = self._monitor.check()
-        if previous is not None and not self._identities_kept(previous, observed, generation):
+        if previous is not None and not self._identities_kept(
+            previous, observed, generation, renamed
+        ):
             dropped = self._drop_all_picks()
         else:
-            dropped = self._selection.revalidate()
+            dropped = self._selection.carry(renamed)
         self._proven = generation
         changed = rows != self.rows or not self._nodes
         self._observed = observed
@@ -600,17 +618,25 @@ class SheetList:
                 # change after this return must not be mistaken for that first baseline.
                 self._observe_view(True)
 
-    def _identities_kept(self, previous: Snapshot, observed: Snapshot, generation: int) -> bool:
+    def _identities_kept(
+        self,
+        previous: Snapshot,
+        observed: Snapshot,
+        generation: int,
+        renamed: Mapping[str, str],
+    ) -> bool:
         """Whether the handles of the last refresh still prove which sheet each one is.
 
         Not if a sheet may have been inserted or deleted since (the structure generation
         moved), nor if the handles no longer map one to one onto the sheets with at most one
-        rename (`structure_kept`): a deleted sheet's handle turns to another sheet.
+        rename (`structure_kept`): a deleted sheet's handle turns to another sheet. The list's
+        own verified batch rename counts as recorded under the new names, so only renames
+        made by others count against that one.
         """
         if generation != self._proven:
             return False
         reported = [_name_or_none(handle) for handle in previous.handles]
-        recorded = [sheet.name for sheet in previous.sheets]
+        recorded = [renamed.get(sheet.name, sheet.name) for sheet in previous.sheets]
         return structure_kept(recorded, reported, [sheet.name for sheet in observed.sheets])
 
     def _drop_all_picks(self) -> bool:
@@ -1562,6 +1588,8 @@ class SheetList:
                 "com.sun.star.system.SystemShellExecute", self.context
             )
             shell.execute("https://viell-dev.github.io/slop-calc-sheet-manager/", "", 2)
+        elif chosen == RENAME_SHEETS:
+            self._rename(observed, refs, unchanged)
         elif chosen == SHOW:
             if not unchanged():
                 self._command_refused()
@@ -1588,6 +1616,44 @@ class SheetList:
             self._menu_context = False
             self._context_target = None
             self._acknowledge_view()
+
+    def _rename(self, observed, refs, unchanged) -> None:
+        """Rename the menu's targets together through the list's dialog, then carry the picks.
+
+        The dialog checks the plan against `observed`, the menu's snapshot, before it closes;
+        `apply_renames` checks everything again before it changes a name. After a verified
+        rename at the generation the picks were proved at, the refresh carries every ref of a
+        renamed sheet to its new name, through its retained handle (`Selection.carry`).
+        """
+        if not unchanged():
+            self._command_refused()
+            return
+        changed = tr("The sheets changed while this dialog was open. Cancel and try again.")
+
+        def check(plan) -> str:
+            if not unchanged():
+                return changed
+            return preflight(self.context, self.document, observed, plan)
+
+        batch = Batch([sheet.name for sheet in observed.sheets], [ref.name for ref in refs])
+        plan = RenameDialog(self.context, self.frame.getContainerWindow(), batch, check).run()
+        if plan is None:
+            return  # Cancelled: nothing changed.
+        if not unchanged():
+            self._command_refused()
+            return
+        renamed = None
+        self._busy = True
+        try:
+            self._update_moves()
+            result = apply_renames(self.context, self.document, observed, plan)
+            if result.status == "done":
+                renamed = dict(plan.renames)
+        finally:
+            self._busy = False
+            self.refresh(renamed)
+        if result.status != "done":
+            show_error(self.peer, tr("Sheet Manager"), result.message)
 
     def _command_refused(self) -> None:
         self.refresh()

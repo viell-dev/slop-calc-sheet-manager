@@ -16,6 +16,7 @@ import random
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
+from sheet_manager.rename import plan_renames
 from sheet_manager.selection import Ref, Selection, structure_kept
 from sheet_manager.structure import History, Quiet, StructureEvents
 
@@ -317,17 +318,20 @@ class List:
         quiet = self.book.quiet() if self.sampled else Quiet.NONE
         return self.events.check(len(self.book.sheets), self.book.history(), quiet)
 
-    def refresh(self) -> None:
+    def refresh(self, renamed: dict[str, str] | None = None) -> None:
+        """`renamed`: the list's own verified batch rename, just made (`own_rename`)."""
+        renamed = renamed or {}
         generation = self.check()
         if self.rows:
             reported: list[str | None] = [handle.name() for handle in self.handles]
+            recorded = [renamed.get(name, name) for name in self.rows]
             proved = generation == self.proven and structure_kept(
-                self.rows, reported, self.book.names()
+                recorded, reported, self.book.names()
             )
             if self.careful and not proved:
                 self.selection.clear()
             else:
-                self.selection.revalidate()
+                self.selection.carry(renamed)
         self.proven = generation
         self.rows = self.book.names()
         self.handles = [self.book.handle(name) for name in self.rows]
@@ -349,6 +353,27 @@ class List:
             end_lock(book)
         finally:
             self.events.own_move_finished()
+
+    def own_rename(self, rng: random.Random) -> dict[str, str]:
+        """The list's own batch rename, as apply_renames makes it: planned renames of retained
+        handles in one undo context, refused unless proved; the renames made, old to new."""
+        book = self.book
+        if self.check() != self.proven or book.lock or not book.recording:
+            return {}
+        names = book.names()
+        targets = rng.sample(names, rng.randrange(1, len(names) + 1))
+        pool = targets + [book.unused_name(rng) for _ in targets]
+        try:
+            plan = plan_renames(names, [(old, rng.choice(pool)) for old in targets])
+        except ValueError:
+            return {}
+        if not plan.steps:
+            return {}
+        book.enter("Rename Sheets")
+        for step in plan.steps:
+            book.rename(book.names().index(step.old), step.new)
+        book.leave()
+        return dict(plan.renames)
 
 
 DELIVERIES = (
@@ -468,8 +493,22 @@ def random_session(
             count = len(book.sheets)
             sheet_list.own_move(rng.randrange(count), rng.randrange(count))
         elif step < 0.6:
-            sheet_list.refresh()
+            renamed = sheet_list.own_rename(rng) if step < 0.45 else {}
+            before = held(sheet_list.selection)
+            sheet_list.refresh(renamed)
             for ref in held(sheet_list.selection):
+                # A ref carried across the list's own rename stands for the ref it came from.
+                origin = next(
+                    (old for old in before if old.token is ref.token and old.name in renamed),
+                    None,
+                )
+                if (
+                    id(ref) not in made_for
+                    and origin is not None
+                    and id(origin) in made_for
+                    and renamed[origin.name] == ref.name
+                ):
+                    made_for[id(ref)] = (ref, made_for[id(origin)][1])
                 if id(ref) not in made_for:
                     violations.append(f"seed {seed}: {ref.name} was made by no pick")
                 elif book.id_named(ref.name) != made_for[id(ref)][1]:
@@ -716,6 +755,72 @@ def test_moves_and_one_rename_keep_the_other_picks():
     book.rename(book.names().index("Delta"), "Echo")
     sheet_list.refresh()
     assert sheet_list.selection.names() == ["Bravo"]
+
+
+def own_swap(sheet_list: List) -> dict[str, str]:
+    """The list's own batch rename of Bravo and Delta into each other's names, and Alfa."""
+    book = sheet_list.book
+    plan = plan_renames(book.names(), [("Alfa", "One"), ("Bravo", "Delta"), ("Delta", "Bravo")])
+    book.enter("Rename Sheets")
+    for step in plan.steps:
+        book.rename(book.names().index(step.old), step.new)
+    book.leave()
+    return dict(plan.renames)
+
+
+def test_the_lists_own_rename_carries_its_picks():
+    """Picks follow their sheets through the list's own swap; the cursor and anchor too."""
+    book = Book(["Alfa", "Bravo", "Charlie", "Delta"])
+    sheet_list = List(book)
+    sheet_list.selection.take(["Alfa", "Bravo", "Charlie"], sheet_list.tokens(), sheet_list.rows)
+    picked = {ref.name: ref.token.sheet_id for ref in sheet_list.selection.picked}
+    first = sheet_list.selection.cursor = sheet_list.selection.anchor = sheet_list.selection.picked[
+        1
+    ]
+    sheet_list.refresh(own_swap(sheet_list))
+    selection = sheet_list.selection
+    assert [ref.name for ref in selection.picked] == ["One", "Delta", "Charlie"]
+    assert [ref.token.sheet_id for ref in selection.picked] == [
+        picked["Alfa"],
+        picked["Bravo"],
+        picked["Charlie"],
+    ]
+    assert selection.cursor is selection.anchor is selection.picked[1] and first.name == "Bravo"
+
+
+def test_picks_need_the_carry_after_the_lists_own_rename():
+    """Without the carry, several renames are not provable: the refresh drops every pick."""
+    book = Book(["Alfa", "Bravo", "Charlie", "Delta"])
+    sheet_list = List(book)
+    sheet_list.selection.take(["Bravo", "Charlie"], sheet_list.tokens(), sheet_list.rows)
+    own_swap(sheet_list)
+    sheet_list.refresh()
+    assert sheet_list.selection.picked == []
+
+
+def test_a_carry_never_survives_a_structural_change():
+    """A sheet inserted and deleted as well: the generation moved, so nothing is carried."""
+    book = Book(["Alfa", "Bravo", "Charlie", "Delta"])
+    sheet_list = List(book)
+    sheet_list.selection.take(["Bravo", "Charlie"], sheet_list.tokens(), sheet_list.rows)
+    renamed = own_swap(sheet_list)
+    book.insert(0, "Newcomer")
+    book.delete(0)
+    sheet_list.refresh(renamed)
+    assert sheet_list.selection.picked == []
+
+
+def test_a_carried_ref_needs_its_handle_to_report_the_new_name():
+    """A ref whose handle reports anything but the planned name is dropped, not renamed."""
+    book = Book(["Alfa", "Bravo", "Charlie"])
+    sheet_list = List(book)
+    sheet_list.selection.take(["Alfa", "Bravo"], sheet_list.tokens(), sheet_list.rows)
+    book.enter("Rename Sheets")
+    book.rename(0, "One")
+    book.rename(1, "Something else")  # Not the name the carry is told about.
+    book.leave()
+    sheet_list.refresh({"Alfa": "One", "Bravo": "Two"})
+    assert sheet_list.selection.names() == ["One"]
 
 
 def test_structure_kept():

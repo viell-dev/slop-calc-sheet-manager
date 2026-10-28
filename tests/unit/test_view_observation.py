@@ -1,5 +1,6 @@
 """Native-tab observation must not create picks from stale proof or overwrite newer input."""
 
+from collections.abc import Mapping
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import Mock
@@ -154,7 +155,10 @@ def test_refresh_seeds_the_new_proof_before_a_subsequent_tab_change(kept: bool) 
     def selected_names() -> list[str]:
         return []
 
-    owner._selection = SimpleNamespace(revalidate=lambda: False, names=selected_names)
+    def carry(renamed: Any) -> bool:
+        return False
+
+    owner._selection = SimpleNamespace(carry=carry, names=selected_names)
     owner._shown = ()
     owner._apply_selection = Mock()
 
@@ -165,9 +169,12 @@ def test_refresh_seeds_the_new_proof_before_a_subsequent_tab_change(kept: bool) 
         return rows
 
     refresh = method(
-        SOURCE, "SheetList", "_refresh", {"snapshot": snapshot, "read_rows": read_rows}
+        SOURCE,
+        "SheetList",
+        "_refresh",
+        {"snapshot": snapshot, "read_rows": read_rows, "Mapping": Mapping},
     )
-    refresh(owner)
+    refresh(owner, {})
     assert owner._take_tree_selection.call_args_list[0].kwargs == {"defer": True}
     assert owner._proven == owner._view_generation == 1
     assert owner._view_state == ("Alfa", frozenset({"Alfa"}))
