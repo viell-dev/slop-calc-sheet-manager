@@ -21,10 +21,12 @@ sheets with at most one rename (`structure_kept`). If either fails, every ref is
 none can be proved; otherwise each ref stays while its handle still reports its name, so a
 renamed pick drops out and a moved one stays (#28).
 
-Picks, a held press, a drag, and an open menu carry the generation they were proved at. Every
-action checks the generation again when it runs (`StructureMonitor.check()`) and refuses refs
-proved at a different one; a refresh that observes the change drops every ref and voids any held
-press. The keyboard cursor and `Selection.anchor`, which pointer and keyboard ranges share, are
+Picks, a held press, a drag, and an open menu carry the generation they were proved at. Before
+acting on the document through held handles, the list brings the generation up to date
+(`StructureMonitor.check()`) and refuses refs proved at a different one; a refresh that observes
+the change drops every ref and voids any held press. Selection keys and control enablement,
+which change no document, only compare with the monitor's `generation`, which does not consume
+pending notification evidence (#66). The keyboard cursor and `Selection.anchor`, which pointer and keyboard ranges share, are
 refs too: they survive ordinary rebuilds and are dropped by the same rules.
 """
 
