@@ -238,7 +238,7 @@ def check_reload(context, desktop, directory):
         poll(lambda: replacement in loaded.documents, "the replacement document's OnLoad")
         # Rows can exist before first-paint page-break initialization. Its native timer
         # restores the clean flag, which Calc still reports as a modify notification (#88).
-        # Complete that queued work before establishing the group/status baseline below;
+        # Drain queued work before reacquiring the panel and establishing the baseline below;
         # a click across its identity invalidation must remain fail-closed. Neither
         # dispatch completion nor OnLoadFinished guarantees this work has finished.
         toolkit = context.ServiceManager.createInstanceWithContext(
