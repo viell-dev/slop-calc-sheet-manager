@@ -6,8 +6,7 @@ and tested; no stable release is scheduled. The
 the build this guide describes.
 
 The [alpha backlog](https://github.com/viell-dev/slop-calc-sheet-manager/issues/93) tracks priorities
-and current work. Planned changes include batch rename with replacement preview, a request under
-development rather than a feature of the published build.
+and current work.
 
 ## What Sheet Manager includes
 
@@ -30,6 +29,10 @@ development rather than a feature of the published build.
   <Unreleased since="0.0.5" /> The menu also runs Calc's Insert, Delete, Rename and Hide sheet
   commands on exactly its targets, and leaves Calc on them; Calc's sheet tabs keep their full
   menu. It links to Help as well.
+- **Batch rename.** <Unreleased /> Rename two or more picked sheets in one dialog: literal Find
+  and Replace All across the new names, individual corrections, and every problem shown before
+  anything changes. The renames are one undo step, and the sheets stay picked under their new
+  names.
 - **Manual-install downloads and update feeds.** Each published build includes an OXT and checksum.
   Installed copies use the stable feed; later test builds are downloaded manually.
 

@@ -5,6 +5,19 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Rename two or more sheets at once
+  ([#102](https://github.com/viell-dev/slop-calc-sheet-manager/issues/102)). For several targets,
+  the list's context menu offers **Rename Sheets…** in Rename Sheet's place; one sheet keeps
+  Calc's own Rename Sheet…. The dialog lists every current and new name, edits the selected row's
+  name, and replaces literal, case-sensitive text in every new name with **Replace All**. It
+  shows each problem before anything changes: empty names, characters Calc refuses, an
+  apostrophe at either end, and names that another sheet has, will have, or that Calc can treat
+  as the same. Swaps and cycles of names work. Rename is one undo step; it checks the sheets and
+  permissions again before changing a name, reads every rename back, and puts every name back
+  if Calc refuses one. The viewed sheet and Calc's selected tabs stay as they were, and the
+  renamed sheets stay picked under their new names. Formulas, named ranges and charts follow the
+  new names; sheet names written as text, such as in `INDIRECT`, do not change.
+
 ## 0.0.5 - 2026-10-28
 
 Alpha build following the 0.0.4 test build.

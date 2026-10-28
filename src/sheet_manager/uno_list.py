@@ -10,7 +10,10 @@ from list picks.
 The list keeps the reorder layer's snapshot of the sheets it shows. A selected row survives a
 refresh only while the sheet handle retained for it still has that row's name, so a sheet that
 was deleted and recreated, or renamed and reused, drops out of the selection rather than passing
-it to a different sheet. Drags, the menu, and Show check the same identity again when they run.
+it to a different sheet. Drags, the menu, Show, and Rename Sheets check the same identity again
+when they run. After its own verified batch rename, the list carries its picks, cursor, and
+anchor to the new names through their retained handles (`selection.Selection.carry`); the
+refresh counts only others' renames against its one-rename check.
 
 Every listener only records state or posts work to the main thread: LibreOffice calls some
 of them from other threads or in the middle of a change.

@@ -27,13 +27,23 @@ import uno  # noqa: E402
 import unohelper  # noqa: E402
 from com.sun.star.awt import XMouseListener, XMouseMotionListener  # noqa: E402
 from menu_lifetime import check_menu_queue_disposal  # noqa: E402
+from rename_dialog import check_keyboard as check_rename_keyboard  # noqa: E402
+from rename_dialog import check_mouse as check_rename_mouse  # noqa: E402
+from rename_dialog import check_stale as check_rename_stale  # noqa: E402
 from run import office_session, wait_for  # noqa: E402
 from teardown import stalled_callbacks  # noqa: E402
 from xinput import RIGHT, Pointer, XInput  # noqa: E402
 
 from sheet_manager.reorder import Action, Sheet, target_order  # noqa: E402
 from sheet_manager.uno_calc import dispatch, select_tabs  # noqa: E402
-from sheet_manager.uno_menu import DELETE, HIDE, INSERT, MOVE_IDS, RENAME  # noqa: E402
+from sheet_manager.uno_menu import (  # noqa: E402
+    DELETE,
+    HIDE,
+    INSERT,
+    MOVE_IDS,
+    RENAME,
+    RENAME_SHEETS,
+)
 
 NATO = [
     "Alfa",
@@ -66,7 +76,13 @@ NATO = [
 NAMES = NATO + [f"Sheet {number}" for number in range(27, 81)]
 PUSH_BUTTON = uno.getConstantByName("com.sun.star.accessibility.AccessibleRole.PUSH_BUTTON")
 unrecorded = view.unrecorded_batch
-ENTRY_NAMES = {INSERT: "insert", DELETE: "delete", RENAME: "rename", HIDE: "hide"}
+ENTRY_NAMES = {
+    INSERT: "insert",
+    DELETE: "delete",
+    RENAME: "rename",
+    RENAME_SHEETS: "rename-sheets",
+    HIDE: "hide",
+}
 MOVES = {action: item for item, action in MOVE_IDS.items()}
 
 
@@ -2128,6 +2144,9 @@ def run_checks(lab, output, only=()):
         ("context_rename_targets_row", lambda: check_context_rename_targets_row(book)),
         ("context_insert_targets_row", lambda: check_context_insert_targets_row(book)),
         ("context_delete_targets", lambda: check_context_delete_targets(book)),
+        ("rename_sheets_keyboard", lambda: check_rename_keyboard(book)),
+        ("rename_sheets_mouse", lambda: check_rename_mouse(book)),
+        ("rename_sheets_stale", lambda: check_rename_stale(book)),
         ("menu_queue_disposal", lambda: check_menu_queue_disposal(book)),
         ("help_menu", lambda: check_help_menu(book)),
         ("menu_hidden_only", lambda: check_menu_hidden_only(book)),

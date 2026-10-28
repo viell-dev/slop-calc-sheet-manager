@@ -250,13 +250,15 @@ before changing the module, and update it in the same pull request when a rule c
   `LICENSE.txt`. `src/sheet_manager/` ships as `pythonpath/sheet_manager/`.
 - **Pure logic,** importable without `uno`: `keys.py` key routing, `sheet_list.py` rows and
   geometry, `selection.py` the list's picks and cursor, `structure.py` the structural generation,
-  `reorder.py` the move planner, and `i18n.py` the translation boundary.
+  `reorder.py` the move planner, `rename.py` the batch rename planner, and `i18n.py` the
+  translation boundary.
 - **UNO adapters:** `uno_panel.py` the factory and panel window; `uno_list.py` the tree, its
   refresh, input, drag and drop, and observation of Calc's tabs; `uno_rows.py` row painting;
   `uno_keys.py` the key handler; `uno_menu.py` the context menu and Calc's commands;
   `uno_moves.py` the move buttons; `uno_status.py` the footer; `uno_show.py` Show;
-  `uno_reorder.py` moves, undo and recovery; `uno_structure.py` the per-document structure
-  monitor; `uno_calc.py` shared Calc and threading helpers.
+  `uno_rename.py` batch renames, their undo and recovery; `uno_rename_dialog.py` the Rename
+  Sheets dialog; `uno_reorder.py` moves, undo and recovery; `uno_structure.py` the per-document
+  structure monitor; `uno_calc.py` shared Calc and threading helpers.
 - **Tests:** `tests/unit/`; `tests/integration/run.py` and its `test_*.py` suites, with
   `main_thread.py` and `teardown.py` for closing documents and stalls; `tests/ui/run_ui.py` for
   real input under Xvfb; `tools/linux_integration.py` for the Docker lab. CONTRIBUTING.md says what

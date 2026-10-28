@@ -1,7 +1,7 @@
 """The sheet tab menu for the sheets selected in the list.
 
 The menu offers a few of Calc's sheet commands directly (Insert, Delete, Rename and Hide), the
-list's own Show and moves, and Help. Opening or dismissing it leaves Calc's view and tabs
+list's own Show, Rename Sheets and moves, and Help. Opening or dismissing it leaves Calc's view and tabs
 unchanged. A chosen built-in command is checked again when it runs, whatever the menu showed:
 its targets' identity and permissions; then Calc's selected tabs are set to exactly those targets,
 and Calc's own state for the command is read. Grouping and that query can run other code, so
@@ -12,7 +12,9 @@ afterwards: its dialogs can outlive the dispatch and act on the viewed sheet whe
 This module owns context targeting, native tab grouping and restoration, and move enablement.
 
 - A right click retains a transient row ref without changing the picks. The menu opens only for
-  refs checked just before, with a fresh snapshot. Show takes Hide's place for hidden targets.
+  refs checked just before, with a fresh snapshot. Show takes Hide's place for hidden targets, and
+  the list's Rename Sheets (`uno_rename`) takes Rename's place for two or more targets: Calc's
+  Rename acts on the one viewed sheet.
 - GTK can activate cascading menus while preparing them, so never group from a menu callback;
   only `SheetMenu.run` groups.
 - `command_refusal` applies Calc's state rules to the targets, because Calc's command state

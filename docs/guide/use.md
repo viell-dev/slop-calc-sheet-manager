@@ -90,6 +90,8 @@ directly, under Calc's own names:
 
 A command is unavailable where it cannot act on exactly its targets: Insert and Rename when the
 menu targets several sheets, every command for hidden sheets, and Delete for protected sheets.
+<Unreleased /> For several sheets, **Rename Sheets…** takes Rename Sheet's place; see
+[Rename several sheets](#rename-several-sheets).
 They are also unavailable in a read-only document or one whose sheet structure is protected,
 Rename for a protected sheet, Delete while changes are recorded, and Delete and Hide when no other
 sheet would stay visible. Calc's own sheet tabs keep their full menu, including your
@@ -121,6 +123,57 @@ their reasons; see the [known issue](./known-issues.md).
 
 **Sheet Manager Help** opens this guide. The header's native `?` uses an unavailable LibreOffice
 help topic; see [Known issues](./known-issues.md).
+
+## Rename several sheets
+
+**Rename Sheets.** <Unreleased /> When the menu targets two or more sheets, **Rename Sheets…**
+takes the place of Rename Sheet… and opens one dialog for all of them. One sheet is still renamed
+with Calc's own Rename Sheet…. Nothing changes until you choose **Rename**.
+
+1. Pick the sheets in the list, then right-click one of them, or press Menu or Shift+F10, and
+   choose **Rename Sheets…**. Hidden sheets can be included.
+2. The dialog lists each sheet as its current name, an arrow, and its new name. Rows that are not
+   changing say so.
+3. To change part of every new name, type the text in **Find** and what replaces it in **Replace
+   with**, then choose **Replace All**. The text is matched exactly, letter case included, and
+   anything typed is plain text, not a pattern. Leave Replace with empty to remove the text, such
+   as a shared prefix. Replace All can be repeated with other text.
+4. To change one name, select its row and edit **New name**.
+5. **Reset All** puts every current name back. **Rename** applies the new names; **Cancel** or
+   Esc closes the dialog and changes nothing.
+
+For example, pick `WIP North`, `WIP South`, and `WIP West`, type `WIP ` (with its space) in Find,
+leave Replace with empty, and choose Replace All: the new names are `North`, `South`, and `West`.
+
+A row that cannot be renamed shows ⚠ and the reason, and Rename stays unavailable until every row
+is correct. The status line below the list explains the selected row, or counts the changes. A new
+name is refused when it:
+
+- is empty, contains `:` `\` `/` `?` `*` `[` or `]`, or begins or ends with an apostrophe;
+- is another sheet's name, now or after the renames;
+- is too close to another sheet's name: Calc treats names that differ only in letter case as the
+  same name, and the dialog also refuses a few pairs that LibreOffice can confuse, such as `ß` and
+  `ss`, or the dotted and dotless i (`I`, `İ`, `i`, `ı`).
+
+Names are used exactly as typed. Spaces at either end are kept, and the list shows such names in
+quotation marks. Sheets can swap names, or pass them around in a cycle; the dialog renames them
+in a safe order.
+
+All the renames are one **Rename Sheets** undo step. The viewed sheet and Calc's selected tabs do
+not change, and the list keeps the renamed sheets picked under their new names. Formulas, named
+ranges, and charts that refer to the sheets follow the new names. A sheet name written as text,
+such as in `INDIRECT("'WIP North'.A1")`, is not changed; see
+[Known issues](./known-issues.md).
+
+Rename Sheets is unavailable, with the reason in its help text, in a read-only document, when the
+sheet structure is protected, when a target sheet is protected, or when undo is off. If the sheets
+change while the dialog is open, Rename refuses and says so in the dialog; cancel and try again.
+If Calc refuses a name part-way, every name is put back, and a message says which name Calc
+refused.
+
+The dialog opens with Find focused. Tab and Shift+Tab move through its fields, list, and buttons,
+and Alt with a control's underlined letter goes straight to it. Enter in a field does not rename:
+choose Rename. Esc cancels.
 
 ## Keyboard
 

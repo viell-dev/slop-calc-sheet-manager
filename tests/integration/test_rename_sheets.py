@@ -3,8 +3,8 @@
 The menu's enablement and reasons; Calc's naming rules through the adapter; swaps and cycles with
 formulas, named ranges and charts; one undo step at undo capacities 0, 1 and 2; failures after
 real mutations, silent refusals by Calc, and recovery; permissions, stale and replaced targets;
-another window on the same document; and timings with 200 and 1,000 populated sheets. The
-dialog's real keyboard and mouse use is checked in the real-input UI tests.
+another window on the same document; and, in headless sessions, timings with 200 and 1,000
+populated sheets. The dialog's real keyboard and mouse use is checked in the real-input UI tests.
 
 Failures are injected through test-only forwarding handles and documents; nothing ships for it.
 `check_native_refusal_after_search` runs last: the Find & Replace it dispatches leaves Calc's
@@ -16,6 +16,7 @@ import statistics
 import time
 from dataclasses import replace
 from typing import Any
+from unittest.mock import patch
 
 from com.sun.star.beans import PropertyValue
 from main_thread import close_after
@@ -25,11 +26,12 @@ from test_reorder import BrokenUndo, FaultyDocument, populated_workbook, undo_ca
 from sheet_manager.rename import Plan, Step, plan_renames
 from sheet_manager.uno_calc import select_tabs, selected_tabs
 from sheet_manager.uno_menu import RENAME, RENAME_SHEETS, SheetMenu
-from sheet_manager.uno_rename import TITLE, apply_renames, preflight
+from sheet_manager.uno_rename import apply_renames, preflight
 from sheet_manager.uno_reorder import Snapshot, snapshot
 from sheet_manager.uno_structure import monitor_for
 
 SIX = ["Alfa", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot"]
+TITLE = "Rename Sheets"  # The undo step, in the English fallback.
 
 
 def prop(name, value):
@@ -471,6 +473,34 @@ def check_failures(context, desktop):
     return evidence
 
 
+def casefold_only(name):
+    """Test-only: a comparator that misses Calc's uppercase lookup, as a weaker one would."""
+    return ((0, name.casefold()),)
+
+
+def check_lookup_verification(context, desktop):
+    """A final name that Calc accepts but looks up as another sheet is undone and reported.
+
+    Calc accepts `ı` (dotless i) beside `I`, but then finds `I` for both (#113). The planner's
+    comparator refuses that pair, so this weakens it for the test: the adapter's lookup check
+    must still catch the result.
+    """
+    document = make_book(desktop, ["I", *SIX])
+    try:
+        with patch("sheet_manager.rename.keys", casefold_only):
+            plan, result = rename(context, document, [("Alfa", "ı"), ("Bravo", "Two")])
+        assert len(plan.steps) == 2, plan
+        assert result.status == "failed-restored", result
+        assert "looks up another sheet" in result.detail, result
+        assert names(document) == ["I", *SIX] and not titles(document)
+        assert document.Sheets.getByName("Alfa").getName() == "Alfa"
+    except BaseException as failure:
+        close_after(context, document, failure)
+        raise
+    close_after(context, document)
+    return result.detail
+
+
 def check_stale_targets(context, desktop):
     """A held snapshot is refused after a rename, a replacement, protection, or Undo."""
     document = make_book(desktop)
@@ -685,15 +715,16 @@ def exercise(context, desktop, directory, output, headless=True):
         "swaps_and_cycles": check_swaps_and_cycles(context, desktop),
         "capacities": check_capacities(context, desktop),
         "failures": check_failures(context, desktop),
+        "lookup_verification": check_lookup_verification(context, desktop),
         "stale_targets": check_stale_targets(context, desktop),
         "other_window": check_other_window(context, desktop),
         "main_thread": check_main_thread(context, desktop),
     }
-    timings = performance(context, desktop)
-    mode = "headless" if headless else "gtk3"
-    (output / f"rename-performance-{mode}.json").write_text(
-        json.dumps(timings, indent=2) + "\n", encoding="utf-8"
-    )
-    result["timings"] = timings
+    if headless:  # Measurements, not gates: painted sessions skip them to save CI time.
+        timings = performance(context, desktop)
+        (output / "rename-performance-headless.json").write_text(
+            json.dumps(timings, indent=2) + "\n", encoding="utf-8"
+        )
+        result["timings"] = timings
     result["native_refusal_after_search"] = check_native_refusal_after_search(context, desktop)
     return result

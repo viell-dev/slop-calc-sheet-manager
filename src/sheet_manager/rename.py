@@ -20,9 +20,9 @@ What Calc does, measured with 26.2.1.2 and 26.8.1.1 on Linux and Windows (#102):
 
 So `keys` is a conservative comparator of its own, not Calc's. Two names conflict when they share
 their case folding, their uppercase form taken one character at a time, or their case folding
-with I, İ and ı all read as i. That caught every conflict Calc made among 102 measured cases in
-English and Turkish locales: refusals and lookup clashes alike. It also refuses a few pairs Calc
-accepts, such as ß beside ss and the I/İ/i/ı family. It decides what the dialog accepts and the
+with I, İ and ı all read as i. That caught every conflict Calc made in the measured cases, 102 in
+English locales and 14 in a Turkish one, refusals and lookup clashes alike (`test_rename.py` keeps
+them). It also refuses a few pairs Calc accepts, such as ß beside ss and the I/İ/i/ı family. It decides what the dialog accepts and the
 order of calls, never what Calc did: `uno_rename` reads every call back and verifies every final
 name by lookup.
 

@@ -59,6 +59,21 @@ If Sheet Manager does not work in an environment where it is expected to, please
   and, when any survive, the keyboard cursor returns to one of them. An unpicked position made
   during that hold is not preserved
   ([#71](https://github.com/viell-dev/slop-calc-sheet-manager/issues/71)).
+- **Rename Sheets.** <Unreleased /> Sheet names written as text are not changed: after a rename,
+  a formula such as `INDIRECT("'WIP North'.A1")` refers to no sheet, or to whichever sheet then
+  has that name. Calc's own formula references, named ranges, and charts follow the new names.
+  After a Find & Replace in the same LibreOffice session, Calc can refuse some full-width or
+  half-width names, such as `Ａ` beside `A`; Rename Sheets then puts every name back and says
+  which name was refused. Restarting LibreOffice ends this
+  ([#112](https://github.com/viell-dev/slop-calc-sheet-manager/issues/112)). The dialog refuses a
+  few names that Calc accepts, such as `ss` beside `ß`, because LibreOffice can confuse them. Other
+  windows on the same workbook clear their list's selection after a rename of several sheets.
+- **Names that LibreOffice confuses.** Calc accepts two sheets whose names differ only in some
+  characters, such as `ﬁ` (a single ligature character) and `fi`, but then finds the first one
+  for either name, also in formulas. The list then shows the second sheet with the first one's
+  hidden, protected, or colour state, and refuses to move, show, or rename sheets until one of
+  them is renamed in Calc
+  ([#113](https://github.com/viell-dev/slop-calc-sheet-manager/issues/113)).
 - **Macros that suppress notifications.** The list cannot detect structural edits for which
   LibreOffice reports nothing, or a deliberately constructed edit indistinguishable from ordinary
   typed input. The reorder adapter uses the same structural monitor and has the same boundary.

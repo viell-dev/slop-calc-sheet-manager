@@ -31,8 +31,6 @@ from sheet_manager.i18n import tr
 from sheet_manager.rename import Plan, plan_renames, quoted
 from sheet_manager.uno_reorder import Result, Snapshot, is_current, undo_steps
 
-TITLE = "Rename Sheets"
-
 
 def _handles(observed: Snapshot) -> dict[str, Any]:
     return {
@@ -128,7 +126,7 @@ def apply_renames(context: Any, document: Any, observed: Snapshot, plan: Plan) -
         return Result("refused", reason)
     handles = _handles(observed)
     undo = document.getUndoManager()
-    title = tr(TITLE)
+    title = tr("Rename Sheets")
     before = {name: name for name in plan.before}
     after = dict(zip(plan.before, plan.after, strict=True))
     attempted = entered = left = False
