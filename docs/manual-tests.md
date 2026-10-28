@@ -90,8 +90,8 @@ instead. Take screenshots only of this workbook.
     indicator in the status bar clears.
 15. **Menu by right click.** Click "Charlie", Ctrl+click "Echo", and right-click "Echo".
     Expected: Delete Sheet, Hide Sheet, the move actions and Help appear in one menu; Insert
-    and Rename are not offered for two sheets. <Unreleased /> Rename Sheets… is offered in
-    Rename's place instead (step 30). Picks, viewed sheet and Calc tab group stay
+    and Rename are not offered for two sheets. <Unreleased since="0.0.6" /> Rename Sheets… is
+    offered in Rename's place instead (step 30). Picks, viewed sheet and Calc tab group stay
     unchanged while the menu is open. Choose Hide Sheet: exactly Charlie and Echo are hidden, and
     no second menu opens. Press Ctrl+Z. Right-click an unpicked row and press Esc: picks, view and
     Calc tab group remain unchanged throughout. Sheet Manager Help opens the guide.
@@ -119,7 +119,8 @@ instead. Take screenshots only of this workbook.
     Expected: Calc's active sheet does not change; Show Sheet shows Hotel as one undo step.
     The menu also offers guarded movement and Help, and none of Calc's commands. Undo, then
     select Charlie and Hotel together and open their menu: it offers Show Sheet in place of Hide,
-    guarded moves and Help. <Unreleased /> It also offers Rename Sheets… (step 30). Show Sheet shows only Hotel in one undo step.
+    guarded moves and Help. <Unreleased since="0.0.6" /> It also offers Rename Sheets… (step 30).
+    Show Sheet shows only Hotel in one undo step.
 21. **Other windows.** Open a second workbook, type in its cells, and use its shortcuts; then
     return to the first workbook and click a row of its list.
     Expected: the second workbook behaves exactly as without the extension; the first list still
@@ -162,10 +163,10 @@ instead. Take screenshots only of this workbook.
     and list keys do not type into cells. Both Tab directions return focus to Calc. Unavailable
     move actions cannot run. Native rendering may hide disabled actions and their help text;
     use Down to highlight the first available entry in the gen backend.
-30. **Rename several sheets.** <Unreleased /> Double-click "Alfa". Click "Bravo", Ctrl+click
-    "Charlie" and "Delta", press the Menu key, and choose Rename Sheets…. Type `a` in Find, press
-    Tab, type `4`, and choose Replace All. Select the Charlie row, change New name to `a/b`, then to
-    `Bravo`. Choose Rename.
+30. **Rename several sheets.** <Unreleased since="0.0.6" /> Double-click "Alfa". Click "Bravo",
+    Ctrl+click "Charlie" and "Delta", press the Menu key, and choose Rename Sheets…. Type `a` in
+    Find, press Tab, type `4`, and choose Replace All. Select the Charlie row, change New name to
+    `a/b`, then to `Bravo`. Choose Rename.
     Expected: the dialog lists the three sheets as unchanged, then as Br4vo, Ch4rlie and Delt4
     after Replace All. `a/b` is marked with ⚠ and a reason, and Rename is unavailable until the
     name is `Bravo`. After Rename, the sheets are called Br4vo, Bravo and Delt4, each keeps its own

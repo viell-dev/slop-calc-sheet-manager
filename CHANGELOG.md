@@ -5,6 +5,11 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+## 0.0.6 - 2026-10-28
+
+Alpha build following 0.0.5, adding batch rename.
+Requires LibreOffice 26.2.1 or later with Python support.
+
 - Rename two or more sheets at once
   ([#102](https://github.com/viell-dev/slop-calc-sheet-manager/issues/102)). For several targets,
   the list's context menu offers **Rename Sheets…** in Rename Sheet's place; one sheet keeps
@@ -16,8 +21,15 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   permissions again before changing a name and reads every rename back. If Calc refuses a name,
   it undoes its own step and checks the old names, or says that it could not. The viewed sheet
   and Calc's selected tabs stay as they were, and the renamed sheets stay picked under their new
-  names. Formulas, named ranges and charts follow the
-  new names; sheet names written as text, such as in `INDIRECT`, do not change.
+  names. Formulas, named ranges and charts follow the new names; sheet names written as text,
+  such as in `INDIRECT`, do not change.
+
+Install the OXT manually over 0.0.5, restart LibreOffice when asked, and check its SHA-256 asset.
+Later alpha builds remain manual downloads. Known limits, including LibreOffice's own refusal of
+some full-width names after a Find & Replace and sheet names written as text, are in the
+[known issues](https://viell-dev.github.io/slop-calc-sheet-manager/guide/known-issues). Optional
+feedback on the rename dialog and the menu's sheet commands is welcome in
+[#117](https://github.com/viell-dev/slop-calc-sheet-manager/issues/117).
 
 ## 0.0.5 - 2026-10-28
 

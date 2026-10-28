@@ -5,10 +5,12 @@ import os
 import shutil
 import subprocess
 import tempfile
+from collections.abc import Mapping, Sequence
 from html.parser import HTMLParser
 from pathlib import Path
 
 from build import ROOT
+from release_data import version_parts
 
 RELEASES = "https://github.com/viell-dev/slop-calc-sheet-manager/releases"
 
@@ -60,38 +62,48 @@ class Paragraphs(HTMLParser):
             self.text = None
 
 
-def check_instructions(html: str, *, marked: bool, alpha_marked: bool) -> str:
-    paragraphs = Paragraphs()
-    paragraphs.feed(html)
-    for instruction in (
+# Guide instructions for behaviour first published in each version. A rendered marker must show
+# exactly when the published baseline (`baseline`) is older than that version.
+FIRST_PUBLISHED = {
+    "0.0.4": (
         "buttons above the list",
         "Opening this menu leaves",
         "When visible and hidden sheets",
         "Move shortcuts also apply",
         "Tab and Shift+Tab traverse",
-    ):
-        matches = [
-            (text, markers) for text, markers in paragraphs.paragraphs if instruction in text
-        ]
-        assert len(matches) == 1, (instruction, matches)
-        text, markers = matches[0]
-        assert ("0.0.4" in markers) == marked and ("Unreleased" in text) == marked, (
-            f"Publication marker disagrees with history: {instruction}",
-            markers,
-        )
-    for instruction in (
+    ),
+    "0.0.5": (
         "This explanation appears within the panel",
         "The menu offers four of Calc's sheet commands",
-    ):
-        matches = [
-            (text, markers) for text, markers in paragraphs.paragraphs if instruction in text
-        ]
-        assert len(matches) == 1, (instruction, matches)
-        text, markers = matches[0]
-        assert (
-            markers == (["0.0.5"] if alpha_marked else [])
-            and ("Unreleased" in text) == alpha_marked
-        ), ("0.0.5 publication marker disagrees with history", instruction, markers)
+    ),
+    "0.0.6": ("When the menu targets two or more sheets",),
+}
+
+
+def baseline(builds: Sequence[Mapping[str, object]]) -> str | None:
+    """The version the guide describes: the latest stable build, else the newest test build."""
+    stable = [str(build["version"]) for build in builds if not build["prerelease"]]
+    pool = stable or [str(build["version"]) for build in builds]
+    return max(pool, key=version_parts) if pool else None
+
+
+def check_instructions(html: str, *, described: str | None) -> str:
+    paragraphs = Paragraphs()
+    paragraphs.feed(html)
+    for version, instructions in FIRST_PUBLISHED.items():
+        marked = described is None or version_parts(version) > version_parts(described)
+        for instruction in instructions:
+            matches = [
+                (text, markers) for text, markers in paragraphs.paragraphs if instruction in text
+            ]
+            assert len(matches) == 1, (instruction, matches)
+            text, markers = matches[0]
+            assert (version in markers) == marked and ("Unreleased" in text) == bool(markers), (
+                f"Publication marker disagrees with history: {instruction}",
+                version,
+                described,
+                markers,
+            )
     for instruction in ("Right-click a row", "The four move shortcuts"):
         published = [
             (text, markers) for text, markers in paragraphs.paragraphs if instruction in text
@@ -133,55 +145,49 @@ def main() -> None:
         }
         next_build = {**candidate, "version": "0.0.4", "published": "2026-10-26T00:00:00Z"}
         alpha = {**candidate, "version": "0.0.5", "published": "2026-10-28T00:00:00Z"}
+        next_alpha = {**candidate, "version": "0.0.6", "published": "2026-10-29T00:00:00Z"}
         first_stable = {**next_build, "version": "0.1.0", "prerelease": False}
-        for name, builds, marked, alpha_marked, notice in (
-            ("empty", [], True, True, "Sheet Manager has no release yet."),
+        for name, builds, notice in (
+            ("empty", [], "Sheet Manager has no release yet."),
             # Merged preparation, a failed publication and an abandoned draft all have the same
             # published history. The newer source must not silently become released instructions.
-            ("preparing", [candidate], True, True, "0.0.3, the newest test build"),
+            ("preparing", [candidate], "0.0.3, the newest test build"),
             (
                 "candidate-published",
                 [candidate, next_build],
-                False,
-                True,
                 "0.0.4, the newest test build",
             ),
             (
                 "alpha-published",
                 [candidate, next_build, alpha],
-                False,
-                False,
                 "0.0.5, the newest test build",
+            ),
+            (
+                "next-alpha-published",
+                [candidate, next_build, alpha, next_alpha],
+                "0.0.6, the newest test build",
             ),
             (
                 "stable-with-candidate",
                 [{**candidate, "prerelease": False}, next_build],
-                True,
-                True,
                 "Sheet Manager 0.0.3, the latest release",
             ),
             (
                 "stable-published",
                 [candidate, {**next_build, "prerelease": False}],
-                False,
-                True,
                 "Sheet Manager 0.0.4, the latest release",
             ),
             (
                 "first-stable-candidate",
                 [{**next_build, "prerelease": False}, {**first_stable, "prerelease": True}],
-                False,
-                True,
                 "Sheet Manager 0.0.4, the latest release",
             ),
             (
                 "first-stable-published",
                 [candidate, next_build, first_stable],
-                False,
-                False,
                 "Sheet Manager 0.1.0, the latest release",
             ),
-            ("published", fixture, False, False, "Sheet Manager 0.1.90, the latest release"),
+            ("published", fixture, "Sheet Manager 0.1.90, the latest release"),
         ):
             history.write_text(json.dumps(builds), encoding="utf-8")
             output = directory / name
@@ -200,7 +206,7 @@ def main() -> None:
             )
             html = (output / "guide/releases.html").read_text(encoding="utf-8")
             instructions = (output / "guide/use.html").read_text(encoding="utf-8")
-            plain = check_instructions(instructions, marked=marked, alpha_marked=alpha_marked)
+            plain = check_instructions(instructions, described=baseline(builds))
             assert notice in plain, (name, notice)
             tables = Tables()
             tables.feed(html)
@@ -215,6 +221,10 @@ def main() -> None:
             elif name == "alpha-published":
                 assert "No stable releases have been published yet." in html
                 assert links("0.0.5") + links("0.0.4") + links("0.0.3") in tables.links
+            elif name == "next-alpha-published":
+                assert links("0.0.6") + links("0.0.5") + links("0.0.4") + links("0.0.3") in (
+                    tables.links
+                )
             elif name == "first-stable-published":
                 assert tables.links[:2] == [links("0.1.0"), links("0.0.4") + links("0.0.3")]
         print("Release pages: downloads, preparation, publication and no-history markers passed")

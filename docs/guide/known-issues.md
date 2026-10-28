@@ -59,12 +59,12 @@ If Sheet Manager does not work in an environment where it is expected to, please
   and, when any survive, the keyboard cursor returns to one of them. An unpicked position made
   during that hold is not preserved
   ([#71](https://github.com/viell-dev/slop-calc-sheet-manager/issues/71)).
-- **Rename Sheets.** <Unreleased /> Sheet names written as text are not changed: after a rename,
-  a formula such as `INDIRECT("'WIP North'.A1")` refers to no sheet, or to whichever sheet then
-  has that name. Calc's own formula references, named ranges, and charts follow the new names.
+- **Rename Sheets.** <Unreleased since="0.0.6" /> Sheet names written as text are not changed: after
+  a rename, a formula such as `INDIRECT("'WIP North'.A1")` refers to no sheet, or to whichever sheet
+  then has that name. Calc's own formula references, named ranges, and charts follow the new names.
   After a Find & Replace in the same LibreOffice session, Calc can refuse some full-width or
-  half-width names, such as `Ａ` beside `A`; Rename Sheets then undoes its own step and says
-  which name was refused. Restarting LibreOffice ends this
+  half-width names, such as `Ａ` beside `A`; Rename Sheets then undoes its own step and says which
+  name was refused. Restarting LibreOffice ends this
   ([#112](https://github.com/viell-dev/slop-calc-sheet-manager/issues/112)). The dialog refuses a
   few names that Calc accepts, such as `ss` beside `ß`, because LibreOffice can confuse them. Other
   windows on the same workbook clear their list's selection after a rename of several sheets.

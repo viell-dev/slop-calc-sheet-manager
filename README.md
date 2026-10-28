@@ -13,7 +13,7 @@ updates, removal, use, known issues, troubleshooting, and reporting a problem.
 
 ## Status
 
-Source version: `0.0.5` alpha. Sheet Manager is in **alpha
+Source version: `0.0.6` alpha. Sheet Manager is in **alpha
 development**: features and workflows are still being decided and tested. No stable release is
 scheduled. Future stable publication requires an agreed scope, human usability testing, and
 resolution of release blockers.
