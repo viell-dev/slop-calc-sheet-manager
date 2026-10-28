@@ -208,7 +208,18 @@ menu steps, which the real-input UI tests cover.
 `test_sync_sheet_list.py` checks same-active tab selection, independent list picks, logical
 membership across reordering, grouped-editing status, hidden-panel pause/resume, separate windows,
 document switching, and reload. Minimize needs a painted window; the other cases run headlessly
-too. `test_view_observation.py` makes queued-observation/input races and cancelled callbacks
+too. The Reload fixture observes the replacement's `OnLoad`, drains queued native events and idles
+on the main thread, then reacquires the panel before establishing its group-status baseline and
+clicking. The drain alone is not a guarantee that a future timer cannot report another change.
+Correct rows alone do not establish readiness: Calc's first-paint page-break timer can still report
+a modify notification that conservatively clears picks (#88). This does not waive the product's
+identity checks or promise that input during initialization is retained.
+Each synchronization case closes its workbooks before the next starts, while keeping all windows
+needed by its own assertions. Retaining unrelated workbooks reproduced native window-creation
+failure in the Windows agent's non-interactive session 0 environment (#45); this does not establish
+the same resource limit on an interactive desktop or CI runner. The multi-window case still
+exercises simultaneous views.
+`test_view_observation.py` makes queued-observation/input races and cancelled callbacks
 deterministic without pretending its adapters verify native visibility or selection behaviour.
 Every workbook is synthetic and loaded visibly, even when the office process itself is headless.
 It retries only startup, up to three times, to tolerate a Windows crash just after connecting. It
