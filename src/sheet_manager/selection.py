@@ -21,6 +21,14 @@ sheets with at most one rename (`structure_kept`). If either fails, every ref is
 none can be proved; otherwise each ref stays while its handle still reports its name, so a
 renamed pick drops out and a moved one stays (#28).
 
+The list's own batch rename (`uno_rename`) is the one change that renames several sheets and
+keeps their refs. After it has verified the result, at the generation the refs were proved at,
+the refresh maps the last snapshot's names through those renames before `structure_kept`, so that
+only renames made by others count against its one rename, and `Selection.carry` gives each
+renamed sheet's refs the new name. A carried ref keeps its token and stays only while that token
+reports exactly the new name; it is never made from a name. Every other view of the document sees
+several renames and drops its refs.
+
 Picks, a held press, a drag, and an open menu carry the generation they were proved at. Before
 acting on the document through held handles, the list brings the generation up to date
 (`StructureMonitor.check()`) and refuses refs proved at a different one; a refresh that observes
@@ -124,6 +132,25 @@ class Selection:
         dropped = dropped or cursor is not self.cursor or anchor is not self.anchor
         self.picked, self.cursor, self.anchor = picked, cursor, anchor
         return dropped
+
+    def carry(self, renamed: Mapping[str, str]) -> bool:
+        """After the list's own verified rename, give each renamed sheet's refs the new name.
+
+        `renamed` maps old names to new ones. A carried ref keeps its token, and stays only while
+        that token reports exactly the new name; every ref is then revalidated as usual. True if
+        any ref went.
+        """
+        carried: dict[int, Ref] = {}
+
+        def carry(ref: Ref) -> Ref:
+            if ref.name not in renamed:
+                return ref
+            return carried.setdefault(id(ref), Ref(renamed[ref.name], ref.token, ref.position))
+
+        self.picked = [carry(ref) for ref in self.picked]
+        self.cursor = None if self.cursor is None else carry(self.cursor)
+        self.anchor = None if self.anchor is None else carry(self.anchor)
+        return self.revalidate()
 
     def clear(self) -> bool:
         """Drop every ref; True if there was anything to drop."""

@@ -35,6 +35,8 @@ the list's own picks. Its features include:
 - Calc's Insert, Delete, Rename and Hide sheet commands in the list's context menu, acting on
   exactly the right-clicked row or the picked sheets without changing the list's picks; Calc's
   sheet tabs keep their full menu;
+- renaming several sheets in one dialog, with find and replace and every new name checked before
+  anything changes (not yet in a published build);
 - complete keyboard operation;
 - one undo step per change, and respect for protected and read-only documents.
 

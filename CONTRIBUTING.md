@@ -161,7 +161,14 @@ list view keeps other views and held snapshots protected until the document clos
 Undo per action. `test_sheet_commands.py` checks the menu's Calc commands: their enablement,
 reasons and Calc's own labels, Calc's command state for grouped tabs, Hide and Delete on exactly
 their targets with one undo step, refusal of changed targets without touching the view, and
-restoration of the view after a refusal that follows grouping. The real-input UI suite exercises
+restoration of the view after a refusal that follows grouping. `test_rename_sheets.py` checks
+the list's batch rename: the menu entry's enablement and reasons, names Calc keeps exactly and
+names refused before any change, swaps and cycles with formulas, named ranges, charts and
+`INDIRECT` text, one undo step at undo capacities 0, 1 and 2, failures before, after and instead
+of each real call, a broken undo, Calc's own refusals (structure protected part-way, and a name
+refused after a Find & Replace, #112), stale, replaced and newly protected targets, another
+window's view, the main thread, and timings at 200 and 1,000 populated sheets, written to
+`rename-performance-headless.json`. The real-input UI suite exercises
 every move action and Alt shortcut, separated picks, repeated moves, edges, and permission
 refusals.
 Cursor checks cover Ctrl navigation outside the picks, Home/End, page navigation, and rebuilding
@@ -321,6 +328,13 @@ They rename a right-clicked row and insert a sheet next to it from the menu whil
 is viewed and others are picked, confirming, cancelling, and using the Menu key, and check which
 sheet's identifying cell the new name carries and where the new sheet goes. They delete two picked
 sheets, cancelling and accepting Calc's confirmation, and check that no second menu opens.
+They open Rename Sheets for three picks by the Menu key, use Find, Replace with and Replace All,
+check that Enter applies nothing, select a row, type a refused name and then a valid one, rename
+with Alt+R, and check the new names, the identifying cells, one undo step, the unchanged view, and
+the picks carried to the new names. By mouse they do the same through the fields, the buttons and
+a clicked row, use Reset All and Cancel, and rename. They rename a target from another program
+while the dialog is open and check that Rename is refused in the dialog and that Cancel then
+changes nothing.
 Inside the container, `tests/ui/run_ui.py --check NAME` (repeatable) runs only the named checks.
 Results and screenshots are in `test-results/<lane>/ui-gtk3/` and `ui-gen/`. LibreOffice's
 synthetic input on Windows bypasses key handlers and cannot start a native drag; those checks are

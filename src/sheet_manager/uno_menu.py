@@ -1,18 +1,20 @@
 """The sheet tab menu for the sheets selected in the list.
 
 The menu offers a few of Calc's sheet commands directly (Insert, Delete, Rename and Hide), the
-list's own Show and moves, and Help. Opening or dismissing it leaves Calc's view and tabs
-unchanged. A chosen built-in command is checked again when it runs, whatever the menu showed:
-its targets' identity and permissions; then Calc's selected tabs are set to exactly those targets,
-and Calc's own state for the command is read. Grouping and that query can run other code, so
-every check is repeated after them, with only reads before the dispatch. Calc stays on its targets
-afterwards: its dialogs can outlive the dispatch and act on the viewed sheet when confirmed
-(#100). A refusal after grouping restores the previous view.
+list's own Show, Rename Sheets and moves, and Help. Opening or dismissing it leaves Calc's view
+and tabs unchanged. A chosen built-in command is checked again when it runs, whatever the menu
+showed: its targets' identity and permissions; then Calc's selected tabs are set to exactly those
+targets, and Calc's own state for the command is read. Grouping and that query can run other code,
+so every check is repeated after them, with only reads before the dispatch. Calc stays on its
+targets afterwards: its dialogs can outlive the dispatch and act on the viewed sheet when
+confirmed (#100). A refusal after grouping restores the previous view.
 
 This module owns context targeting, native tab grouping and restoration, and move enablement.
 
 - A right click retains a transient row ref without changing the picks. The menu opens only for
-  refs checked just before, with a fresh snapshot. Show takes Hide's place for hidden targets.
+  refs checked just before, with a fresh snapshot. Show takes Hide's place for hidden targets, and
+  the list's Rename Sheets (`uno_rename`) takes Rename's place for two or more targets: Calc's
+  Rename acts on the one viewed sheet.
 - GTK can activate cascading menus while preparing them, so never group from a menu callback;
   only `SheetMenu.run` groups.
 - `command_refusal` applies Calc's state rules to the targets, because Calc's command state
@@ -66,12 +68,14 @@ from sheet_manager.uno_calc import (
     select_tabs,
     selected_tabs,
 )
+from sheet_manager.uno_rename import rename_refusal
 from sheet_manager.uno_reorder import Snapshot, move_availability, plan_availability
 from sheet_manager.uno_show import hidden_targets, show_refusal
 
 REPEAT_GUARD_SECONDS = 0.3  # gtk3 can deliver one menu request twice in a row.
 SHOW = 1
 INSERT, DELETE, RENAME, HIDE = 2, 3, 4, 5
+RENAME_SHEETS = 6  # The list's own Rename Sheets, in Rename's place for two or more targets.
 # Calc's commands offered directly. Duplicate Sheet and Move or Copy Sheet are left to Calc's tab
 # bar: they copy formulas wrongly in 26.8.0 and 26.8.1 (tdf#173608, #33), and the list moves
 # sheets itself (#3).
@@ -320,15 +324,20 @@ class SheetMenu:
         return manager.createInstanceWithContext("com.sun.star.awt.PopupMenu", self._context)
 
     def _add_commands(self, popup, observed, picked) -> set[int]:
-        """Add Calc's commands, and Show in place of Hide for hidden targets."""
+        """Add Calc's commands, Show in place of Hide for hidden targets, and Rename Sheets in
+        place of Rename for two or more targets."""
         popup.hideDisabledEntries(False)
         hidden = hidden_targets(observed, picked)
         labels = _labels()
         enabled: set[int] = set()
-        for item in (INSERT, DELETE, RENAME, SHOW if hidden else HIDE):
+        rename = RENAME_SHEETS if len(set(picked)) > 1 else RENAME
+        for item in (INSERT, DELETE, rename, SHOW if hidden else HIDE):
             if item == SHOW:
                 label = tr("Show Sheet") if len(hidden) == 1 else tr("Show Sheets")
                 reason = show_refusal(self._context, self._document, observed, hidden)
+            elif item == RENAME_SHEETS:
+                label = tr("Rename Sheets...")
+                reason = rename_refusal(self._context, self._document, observed, picked)
             else:
                 label = command_label(self._context, COMMANDS[item], labels[item])
                 reason = command_refusal(self._document, observed, item, picked)

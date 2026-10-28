@@ -27,13 +27,24 @@ import uno  # noqa: E402
 import unohelper  # noqa: E402
 from com.sun.star.awt import XMouseListener, XMouseMotionListener  # noqa: E402
 from menu_lifetime import check_menu_queue_disposal  # noqa: E402
+from rename_dialog import check_keyboard as check_rename_keyboard  # noqa: E402
+from rename_dialog import check_mouse as check_rename_mouse  # noqa: E402
+from rename_dialog import check_stale as check_rename_stale  # noqa: E402
 from run import office_session, wait_for  # noqa: E402
 from teardown import stalled_callbacks  # noqa: E402
 from xinput import RIGHT, Pointer, XInput  # noqa: E402
 
 from sheet_manager.reorder import Action, Sheet, target_order  # noqa: E402
 from sheet_manager.uno_calc import dispatch, select_tabs  # noqa: E402
-from sheet_manager.uno_menu import DELETE, HIDE, INSERT, MOVE_IDS, RENAME  # noqa: E402
+from sheet_manager.uno_menu import (  # noqa: E402
+    DELETE,
+    HIDE,
+    INSERT,
+    MOVE_IDS,
+    RENAME,
+    RENAME_SHEETS,
+    SHOW,
+)
 
 NATO = [
     "Alfa",
@@ -66,7 +77,13 @@ NATO = [
 NAMES = NATO + [f"Sheet {number}" for number in range(27, 81)]
 PUSH_BUTTON = uno.getConstantByName("com.sun.star.accessibility.AccessibleRole.PUSH_BUTTON")
 unrecorded = view.unrecorded_batch
-ENTRY_NAMES = {INSERT: "insert", DELETE: "delete", RENAME: "rename", HIDE: "hide"}
+ENTRY_NAMES = {
+    INSERT: "insert",
+    DELETE: "delete",
+    RENAME: "rename",
+    RENAME_SHEETS: "rename-sheets",
+    HIDE: "hide",
+}
 MOVES = {action: item for item, action in MOVE_IDS.items()}
 
 
@@ -1256,9 +1273,13 @@ def check_menu_mixed_visibility(book):
         book.lab.input.tap("Menu", pause=0.4)
         assert (book.active(), book.calc_tabs()) == before, "The open menu changed the view"
         book.lab.screenshot("menu-mixed-visibility")
-        # Show takes Hide's place and is the first available entry; Calc's commands cannot
-        # target a hidden sheet. Down reaches it in gtk3 and gen alike (#84).
-        book.lab.input.tap("Down")
+        # Show takes Hide's place; Calc's commands cannot target a hidden sheet. The list's
+        # Rename Sheets comes first among the available entries. Down skips unavailable
+        # entries in gtk3 and gen alike (#84).
+        entries = book.entries(picked)
+        assert RENAME_SHEETS in entries and SHOW in entries, entries
+        for _ in range(entries.index(SHOW) + 1):
+            book.lab.input.tap("Down")
         book.lab.input.tap("Return", pause=0.5)
         wait_until(lambda: sheet.IsVisible, "safe Show to show the hidden target")
         assert book.undo_titles() == ["Show Sheet", *history]
@@ -2128,6 +2149,9 @@ def run_checks(lab, output, only=()):
         ("context_rename_targets_row", lambda: check_context_rename_targets_row(book)),
         ("context_insert_targets_row", lambda: check_context_insert_targets_row(book)),
         ("context_delete_targets", lambda: check_context_delete_targets(book)),
+        ("rename_sheets_keyboard", lambda: check_rename_keyboard(book)),
+        ("rename_sheets_mouse", lambda: check_rename_mouse(book)),
+        ("rename_sheets_stale", lambda: check_rename_stale(book)),
         ("menu_queue_disposal", lambda: check_menu_queue_disposal(book)),
         ("help_menu", lambda: check_help_menu(book)),
         ("menu_hidden_only", lambda: check_menu_hidden_only(book)),

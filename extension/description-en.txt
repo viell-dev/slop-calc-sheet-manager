@@ -1,4 +1,4 @@
-{{Sheet Manager lists a Calc workbook's sheets in a vertical sidebar. Click a full-width row to select it, double-click or press Enter to view it, move sheets by dragging or with top buttons, context actions and keyboard shortcuts, and run Calc's Insert, Delete, Rename and Hide sheet commands from the list's menu. Each extension move is one undo step.}}
+{{Sheet Manager lists a Calc workbook's sheets in a vertical sidebar. Click a full-width row to select it, double-click or press Enter to view it, move sheets by dragging or with top buttons, context actions and keyboard shortcuts, run Calc's Insert, Delete, Rename and Hide sheet commands from the list's menu, and rename several sheets at once with find and replace. Each extension move or batch rename is one undo step.}}
 
 {{See the user guide for installation, use, compatibility, and known issues: https://viell-dev.github.io/slop-calc-sheet-manager/}}
 
