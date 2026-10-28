@@ -149,39 +149,38 @@ longest-common-subsequence oracle. The panel-facing contract is in
 
 The runner also discovers `tests/integration/test_*.py` modules with an
 `exercise(context, desktop, directory, output)` entry point, and passes `headless=` too when the
-entry point takes that keyword. These suites import the built OXT's modules through zipimport, so
-allowlist omissions fail integration. Keep feature suites additive and keep failure injection in
-test-only forwarding adapters. Reorder checks cover active-sheet and native selection preservation,
-one undo and redo, permission refusals, stale handles, hidden sheets, scenario ownership, failures
-after each real mutation, and a silently ineffective undo.
-`test_reorder_identity.py` checks adapter snapshots across kept-count sheet replacements, recorded
-and unrecorded batches, held locks, Undo, and shared-monitor disposal. It verifies that closing one
-list view keeps other views and held snapshots protected until the document closes.
-`test_move_menu.py` checks real UNO popup enablement, refusal reasons, robot menu actions, and one
-Undo per action. `test_sheet_commands.py` checks the menu's Calc commands: their enablement,
-reasons and Calc's own labels, Calc's command state for grouped tabs, Hide and Delete on exactly
-their targets with one undo step, refusal of changed targets without touching the view, and
-restoration of the view after a refusal that follows grouping. `test_rename_sheets.py` checks
-the list's batch rename: the menu entry's enablement and reasons, names Calc keeps exactly and
-names refused before any change, swaps and cycles with formulas, named ranges, charts and
-`INDIRECT` text, one undo step at undo capacities 0, 1 and 2, failures before, after and instead
-of each real call, a broken undo, Calc's own refusals (structure protected part-way, and a name
-refused after a Find & Replace, #112), stale, replaced and newly protected targets, another
+entry point takes that keyword. It runs them in one office session in file-name order, except that
+suites leaving session-wide native state behind run last (`LAST_SUITES` in `run.py`). These suites
+import the built OXT's modules through zipimport, so allowlist omissions fail integration. Keep
+feature suites additive and keep failure injection in test-only forwarding adapters. Reorder checks
+cover active-sheet and native selection preservation, one undo and redo, permission refusals, stale
+handles, hidden sheets, scenario ownership, failures after each real mutation, and a silently
+ineffective undo. `test_reorder_identity.py` checks adapter snapshots across kept-count sheet
+replacements, recorded and unrecorded batches, held locks, Undo, and shared-monitor disposal. It
+verifies that closing one list view keeps other views and held snapshots protected until the
+document closes. `test_move_menu.py` checks real UNO popup enablement, refusal reasons, robot menu
+actions, and one Undo per action. `test_sheet_commands.py` checks the menu's Calc commands: their
+enablement, reasons and Calc's own labels, Calc's command state for grouped tabs, Hide and Delete on
+exactly their targets with one undo step, refusal of changed targets without touching the view, and
+restoration of the view after a refusal that follows grouping. `test_rename_sheets.py` checks the
+list's batch rename: the menu entry's enablement and reasons, names Calc keeps exactly and names
+refused before any change, swaps and cycles with formulas, named ranges, charts and `INDIRECT` text,
+one undo step at undo capacities 0, 1 and 2 (also for a 31-call cycle at 1), failures before, after
+and instead of each real call, a broken undo, Calc's own refusals (structure protected part-way, and
+a name refused after a Find & Replace, #112), stale, replaced and newly protected targets, another
 window's view, the main thread, and timings at 200 and 1,000 populated sheets, written to
-`rename-performance-headless.json`. The real-input UI suite exercises
-every move action and Alt shortcut, separated picks, repeated moves, edges, and permission
-refusals.
-Cursor checks cover Ctrl navigation outside the picks, Home/End, page navigation, and rebuilding
-the list. Selection keys are consumed before native forwarding, share a retained range anchor,
-and accumulate logical intent before a coalesced UI write. Boundary regressions cover a paused
-UI queue, ignored intermediate restoration
-events and failure cleanup; the native failure adapter also checks cursor-listener removal.
-The failure suite also runs with two configured undo steps, forcing nested groups, and checks zero
-and one-step settings. Full-stack tests put both native and extension moves above 99 inputs and
-fail before mutation, checking that recovery never undoes either preceding move. View-restoration
-failures preserve verified move/rollback outcomes and report a separate warning. All configuration
-changes belong to the runner's private profile. Pure planning has a five-second regression budget
-at 10,000 sheets for both one-call and reverse-order plans.
+`rename-performance-headless.json`. The real-input UI suite exercises every move action and Alt
+shortcut, separated picks, repeated moves, edges, and permission refusals. Cursor checks cover Ctrl
+navigation outside the picks, Home/End, page navigation, and rebuilding the list. Selection keys are
+consumed before native forwarding, share a retained range anchor, and accumulate logical intent
+before a coalesced UI write. Boundary regressions cover a paused UI queue, ignored intermediate
+restoration events and failure cleanup; the native failure adapter also checks cursor-listener
+removal. The failure suite also runs with two configured undo steps, forcing nested groups, and
+checks zero and one-step settings. Full-stack tests put both native and extension moves above 99
+inputs and fail before mutation, checking that recovery never undoes either preceding move.
+View-restoration failures preserve verified move/rollback outcomes and report a separate warning.
+All configuration changes belong to the runner's private profile. Pure planning has a five-second
+regression budget at 10,000 sheets for both one-call and reverse-order plans.
 
 The reorder suite generates 200- and 1,000-sheet workbooks with a cross-sheet formula and named
 range per sheet plus charts referencing distant sheets. It measures first-sheet, half-selection,
