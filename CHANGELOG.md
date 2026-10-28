@@ -5,6 +5,16 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+## 0.0.5 - 2026-10-28
+
+Alpha build following the 0.0.4 test build.
+Requires LibreOffice 26.2.1 or later with Python support.
+
+- Fix Rename Sheet from the list's menu renaming the previously viewed sheet instead of the
+  right-clicked or picked one. Its dialog applies to the sheet viewed when confirmed, and Sheet
+  Manager restored the earlier view while the dialog was open
+  ([#100](https://github.com/viell-dev/slop-calc-sheet-manager/issues/100)). Calc now stays on a
+  chosen command's targets, as after its own tab menu, even if its dialog is cancelled.
 - Offer **Insert Sheet…**, **Delete Sheet…**, **Rename Sheet…** and **Hide Sheet** directly in
   the list's context menu, replacing **Sheet actions…** and its second, full Calc menu
   ([#101](https://github.com/viell-dev/slop-calc-sheet-manager/issues/101)). Insert and Rename
@@ -17,19 +27,30 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   Sheet and Move or Copy Sheet stay on Calc's sheet tabs: LibreOffice 26.8.0 and 26.8.1 copy
   relative sheet references wrongly (tdf#173608), and the list moves sheets itself. Calc's sheet
   tabs keep their full menu for every other command.
-- Fix Rename Sheet from the list's menu renaming the previously viewed sheet instead of the
-  right-clicked or picked one. Its dialog applies to the sheet viewed when confirmed, and Sheet
-  Manager restored the earlier view while the dialog was open
-  ([#100](https://github.com/viell-dev/slop-calc-sheet-manager/issues/100)). Calc now stays on a
-  chosen command's targets, as after its own tab menu, even if its dialog is cancelled.
-
+- Replace the persistent selection-cleared infobar with a ten-second panel notice. Expiration
+  keeps keyboard focus, current picks, and Calc's separate grouped-editing warning unchanged.
+  Undo/Redo still clears picks conservatively; preserving verified move selections is tracked
+  in [#91](https://github.com/viell-dev/slop-calc-sheet-manager/issues/91).
+- Drop the guard that **Sheet actions…** placed on Calc's commands while its menu was open. In
+  0.0.4 it could be left in place if the panel closed during the menu
+  ([#63](https://github.com/viell-dev/slop-calc-sheet-manager/issues/63)); the list's menu now
+  drops its pending command instead.
 - Describe current development as alpha iteration, with no settled feature scope or scheduled
-  stable release. Untargeted prereleases are titled with their own version and **alpha**.
+  stable release. Builds without an agreed stable target are titled with their own version and
+  **alpha**, as this one is.
 
-## 0.1.0 - Unpublished preparation
+Install the OXT manually over 0.0.4, restart LibreOffice when asked, and check its SHA-256 asset.
+LibreOffice's Extension Manager offers only published stable updates, and there is no stable
+release yet, so later alpha builds remain manual downloads. Known limits, including conservative
+selection clearing on Undo/Redo and LibreOffice's own defect in Duplicate Sheet and Move or Copy
+Sheet, are in the
+[known issues](https://viell-dev.github.io/slop-calc-sheet-manager/guide/known-issues).
+
+## Unpublished 0.1.0 preparation
 
 This preparation was not published. Development continues in alpha; the earlier stable-release
-plan is superseded. Requires LibreOffice 26.2.1 or later with Python support.
+plan is superseded. Its changes since 0.0.4 were first published in 0.0.5. Requires LibreOffice
+26.2.1 or later with Python support.
 
 - Find and select sheets in a vertical sidebar list, with full-width rows, keyboard navigation,
   and an indicator for the viewed sheet. List picks remain independent of Calc's grouped tabs.

@@ -78,8 +78,8 @@ list's picks.
 **Context view.** <Unreleased since="0.0.4" /> Opening this menu leaves the viewed sheet and
 Calc's selected tabs unchanged.
 
-**Sheet commands.** <Unreleased /> The menu offers four of Calc's sheet commands directly, under
-Calc's own names:
+**Sheet commands.** <Unreleased since="0.0.5" /> The menu offers four of Calc's sheet commands
+directly, under Calc's own names:
 
 | Command | Acts on |
 | --- | --- |
@@ -97,10 +97,10 @@ customizations, for every other command. Duplicate Sheet and Move or Copy Sheet 
 see [Known issues](./known-issues.md). Test builds up to 0.0.4 offer **Sheet actions…** instead,
 which opens Calc's customized menu.
 
-**Choosing a command.** <Unreleased /> Closing the menu without choosing anything changes
-nothing. A chosen command first checks its sheets again: if one was renamed, replaced or hidden
-since the menu opened, or became protected where the command does not allow that, nothing runs
-and a message explains why. Calc's selected tabs are then set to exactly the targets, and Calc
+**Choosing a command.** <Unreleased since="0.0.5" /> Closing the menu without choosing anything
+changes nothing. A chosen command first checks its sheets again: if one was renamed, replaced or
+hidden since the menu opened, or became protected where the command does not allow that, nothing
+runs and a message explains why. Calc's selected tabs are then set to exactly the targets, and Calc
 stays on them afterwards, as it does after its own tab menu, even if you cancel the command's
 dialog. If Calc reports an error once the command has started, Calc also stays on the targets
 and a message asks you to check them. Insert Sheet and Rename Sheet apply to the viewed sheet
@@ -112,9 +112,9 @@ rules, such as when a picked sheet is renamed or deleted.
 **Mixed visibility.** <Unreleased since="0.0.4" /> When visible and hidden sheets are picked
 together, Calc's commands are unavailable for them; Show Sheet and the move actions remain.
 
-**Hidden sheets.** <Unreleased /> When any target is hidden, **Show Sheet** takes Hide's place
-and shows the hidden targets in one undo step where safe. Calc's commands are unavailable for
-these targets, because Calc cannot view a hidden sheet.
+**Hidden sheets.** <Unreleased since="0.0.5" /> When any target is hidden, **Show Sheet** takes
+Hide's place and shows the hidden targets in one undo step where safe. Calc's commands are
+unavailable for these targets, because Calc cannot view a hidden sheet.
 
 The move actions follow the commands. Native popup rendering can hide unavailable entries and
 their reasons; see the [known issue](./known-issues.md).
@@ -168,9 +168,9 @@ its selection when it cannot establish that the picked sheets are still the same
 includes inserting or deleting sheets, undo and redo, and some macro or unrecorded changes.
 A notice explains conservative clearing of a user-made selection. Pick the sheets again before acting.
 
-**Panel notice.** <Unreleased since="0.1.0" /> This explanation appears within the panel and disappears after
-ten seconds, without changing keyboard focus or dismissing a grouped-editing warning. In 0.0.4,
-the notice is an infobar that you close yourself.
+**Panel notice.** <Unreleased since="0.0.5" /> This explanation appears within the panel and
+disappears after ten seconds, without changing keyboard focus or dismissing a grouped-editing
+warning. In 0.0.4, the notice is an infobar that you close yourself.
 
 Calc's Undo may also change the active sheet and native tab selection. After a grouped move,
 it can activate the sheet immediately above the restored group; after a single move, it can

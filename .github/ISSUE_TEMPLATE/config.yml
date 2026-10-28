@@ -5,4 +5,4 @@ contact_links:
     about: Report it privately. Do not open a public issue for a vulnerability.
   - name: Status and plans
     url: https://github.com/viell-dev/slop-calc-sheet-manager#status
-    about: What the extension does, current test builds, and plans for 0.1.0.
+    about: What the extension does, current test builds, and plans.

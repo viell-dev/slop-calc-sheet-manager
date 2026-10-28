@@ -18,8 +18,8 @@ If Sheet Manager does not work in an environment where it is expected to, please
 
 - **Grouped tabs.** Cell edits affect every grouped Calc tab. The footer identifies the group
   separately from the list's picks. Double-click a row, press Enter on a single selected row, or
-  click a Calc tab to end grouping. <Unreleased /> A Calc command chosen from the list's menu
-  groups its targets and leaves them grouped, even when its dialog is cancelled
+  click a Calc tab to end grouping. <Unreleased since="0.0.5" /> A Calc command chosen from the
+  list's menu groups its targets and leaves them grouped, even when its dialog is cancelled
   ([#100](https://github.com/viell-dev/slop-calc-sheet-manager/issues/100)). Closing the menu
   without choosing a command changes nothing. A command refused because its sheets changed
   leaves the view as it was, unless the previous sheets can no longer be proved.
@@ -43,8 +43,8 @@ If Sheet Manager does not work in an environment where it is expected to, please
   the sheet above the returned group, whereas a single move can activate the returned sheet.
   Keeping independent picks is tracked in
   [#91](https://github.com/viell-dev/slop-calc-sheet-manager/issues/91).
-  **Selection feedback.** <Unreleased since="0.1.0" /> The clearing notice expires within the panel after ten
-  seconds, preserving focus.
+  **Selection feedback.** <Unreleased since="0.0.5" /> The clearing notice expires within the
+  panel after ten seconds, preserving focus.
   An immediate selection after Reload or during concurrent document changes can remain empty or
   clear again, including during some recorded changes. Select the desired rows again once loading
   or concurrent edits finish; the cause of this intermittent observation is still under
@@ -66,11 +66,14 @@ If Sheet Manager does not work in an environment where it is expected to, please
 - **A LibreOffice defect in two commands.** In LibreOffice 26.8.0 and 26.8.1, Calc's own
   Duplicate Sheet and Move or Copy Sheet copy formulas with relative sheet references incorrectly
   ([tdf#173608](https://bugs.documentfoundation.org/show_bug.cgi?id=173608)). LibreOffice's fix
-  is due in 26.8.2. The published test builds offer both through **Sheet actions…**.
-  <Unreleased /> The list's menu leaves them to Calc's sheet tabs. Calc's Move or Copy also
-  reverses several sheets moved to the right
+  is due in 26.8.2. Test builds up to 0.0.4 offer both through **Sheet actions…**.
+  <Unreleased since="0.0.5" /> The list's menu leaves them to Calc's sheet tabs. Calc's Move or
+  Copy also reverses several sheets moved to the right
   ([#3](https://github.com/viell-dev/slop-calc-sheet-manager/issues/3)); the list's own moves
   keep their order.
 - **Other LibreOffice defects.** Defects in LibreOffice that affect Sheet Manager, and how each is
   handled, are listed in
-  [issue #33](https://github.com/viell-dev/slop-calc-sheet-manager/issues/33).
+  [issue #33](https://github.com/viell-dev/slop-calc-sheet-manager/issues/33). Among them, Hide
+  Sheet keeps Calc's own undo, whether chosen from Calc's tabs or the list's menu: LibreOffice
+  skips undoing it when no Calc window is current, as can happen when a macro undoes it, yet uses
+  up the undo step ([#108](https://github.com/viell-dev/slop-calc-sheet-manager/issues/108)).

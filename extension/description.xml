@@ -3,7 +3,7 @@
              xmlns:xlink="http://www.w3.org/1999/xlink"
              xmlns:lo="http://libreoffice.org/extensions/description/2011">
   <identifier value="dev.viell.sheetmanager"/>
-  <version value="0.1.0"/>
+  <version value="0.0.5"/>
   <platform value="all"/>
   <display-name><name lang="en">{{Sheet Manager}}</name></display-name>
   <publisher>

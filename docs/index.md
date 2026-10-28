@@ -24,7 +24,7 @@ features:
   - title: What you can do
     details:
       Lists sheets top to bottom in the sidebar, with full-width selection, drag and drop,
-      move actions, keyboard navigation, and Calc's sheet tab menu.
+      move actions, keyboard navigation, and Calc's common sheet commands.
   - title: Where it is now
     details:
       In alpha development, features and workflows are still being decided and tested.
