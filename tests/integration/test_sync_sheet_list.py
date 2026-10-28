@@ -3,7 +3,9 @@
 import time
 from types import SimpleNamespace
 
+import unohelper
 from com.sun.star.container import NoSuchElementException
+from com.sun.star.document import XDocumentEventListener
 from main_thread import close_document
 from sheet_list_view import (
     footer_text,
@@ -23,6 +25,20 @@ from sheet_manager.uno_calc import dispatch, prop, select_tabs
 
 NAMES = ["Alfa", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot"]
 _CREATED = []
+
+
+class _Loaded(unohelper.Base, XDocumentEventListener):
+    """Record native load completion without reading UNO from the notification."""
+
+    def __init__(self):
+        self.documents = []
+
+    def documentEventOccured(self, Event):
+        if Event.EventName == "OnLoad":
+            self.documents.append(Event.Source)
+
+    def disposing(self, Source):
+        pass
 
 
 def open_list(context, document):
@@ -207,12 +223,31 @@ def check_reload(context, desktop, directory):
     frame = old.getFrame()
     open_list(context, document)
     document.setModified(False)
-    dispatch(context, frame, ".uno:Reload")
-    poll(lambda: frame.getController() != old, "a replacement controller after reload")
-    current = frame.getController()
-    replacement = current.getModel()
-    _CREATED.remove(document)
-    _CREATED.append(replacement)
+    loaded = _Loaded()
+    broadcaster = context.ServiceManager.createInstanceWithContext(
+        "com.sun.star.frame.GlobalEventBroadcaster", context
+    )
+    broadcaster.addDocumentEventListener(loaded)
+    try:
+        dispatch(context, frame, ".uno:Reload")
+        poll(lambda: frame.getController() != old, "a replacement controller after reload")
+        current = frame.getController()
+        replacement = current.getModel()
+        _CREATED.remove(document)
+        _CREATED.append(replacement)
+        poll(lambda: replacement in loaded.documents, "the replacement document's OnLoad")
+        # Rows can exist before first-paint page-break initialization. Its native timer
+        # restores the clean flag, which Calc still reports as a modify notification (#88).
+        # Complete that queued work before establishing the group/status baseline below;
+        # a click across its identity invalidation must remain fail-closed. Neither
+        # dispatch completion nor OnLoadFinished guarantees this work has finished.
+        toolkit = context.ServiceManager.createInstanceWithContext(
+            "com.sun.star.awt.Toolkit", context
+        )
+        on_main_thread(context, toolkit.processEventsToIdle)
+    finally:
+        broadcaster.removeDocumentEventListener(loaded)
+    # Reacquire the panel after native sidebar context initialization.
     panel, tree = open_list(context, replacement)
     poll(lambda: names(tree) == NAMES, "the reloaded rows")
     select_tabs(context, frame, [0, 2])
@@ -220,8 +255,7 @@ def check_reload(context, desktop, directory):
         lambda: status(panel) == "Edits affect 2 Calc tabs: Alfa, Charlie",
         "the replacement controller's group status",
     )
-    # Late load notifications can clear picks while renewing structural proof. They must not
-    # repopulate picks, but the new panel must observe later input and the replacement model.
+    # The settled replacement panel must observe later input and the replacement model.
     Robot(context).click(tree, row_point(tree, 0))
     try:
         poll(lambda: selection(tree, NAMES) == ["Alfa"], "an explicit pick after reload")
