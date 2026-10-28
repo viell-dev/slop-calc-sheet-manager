@@ -2,8 +2,9 @@
 
 This is the one document change the list's own short menu makes, for selections that Calc's tab
 menu should not target: hidden or mixed-visibility sheets. Like ``uno_reorder.apply_order``,
-it verifies sheet identity and undo availability, groups and verifies the change, and recovers
-only its own undo group on failure. Call it synchronously on the UI thread.
+it verifies sheet identity and undo availability, refuses without undo or beyond the undo limit,
+groups and verifies the change, and recovers only its own undo group on failure. Call it
+synchronously on the UI thread.
 """
 
 from typing import Any

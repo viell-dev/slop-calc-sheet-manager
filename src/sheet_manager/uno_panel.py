@@ -1,4 +1,13 @@
-"""UNO sidebar adapter: the panel factory and the panel that holds the sheet list."""
+"""UNO sidebar adapter: the panel factory and the panel that holds the sheet list.
+
+The panel's window is a `"tabcontrol"` peer: a plain `"window"` does not consume mouse-down
+events, so VCL takes a click as the start of undocking the sidebar. The tab control sits inside a
+plain `"window"` of the same size, because on every Shift, Ctrl, or Alt change VCL's access-key
+walk enters each tab control's current page and crashes on a tab control without pages (#18); it
+does not descend into plain windows. Keep any page-less tab control out of that walk, keep the
+integration tests' tab-control interface assertion when adding controls and the painted
+modifier-key test, and keep the panel filling its container on resize.
+"""
 
 from contextlib import suppress
 from typing import cast

@@ -1,8 +1,32 @@
 """Install into a fresh profile and assert the live sidebar through bundled PyUNO.
 
 Run with LibreOffice's program/python[.exe], never the development venv interpreter.
-Choose headless, gtk3, or both with --sessions; gtk3 saves a screenshot.
+Choose headless, gtk3, or both with --sessions (default headless); gtk3 saves a screenshot.
 """
+
+# The runner installs into a new temporary profile, starts only its own office process with a
+# unique pipe, and disposes of it afterwards. Rules for changing it:
+#
+# - Open documents visibly, even in headless runs: hidden documents do not reliably execute Calc
+#   commands or undo.
+# - Startup retries end before document creation; failed tests are never retried.
+# - A new document's window can be maximized after the first geometry request (#9), so
+#   `exercise()` repeats that setup until four consecutive measurements agree. Never retry the
+#   resize assertions.
+# - A terminate request has a time limit, so that a save dialog cannot leave the runner hanging
+#   (#40). Keep shared lifecycle changes additive.
+# - In painted sessions, close test documents only after they have settled, as `close_writer()`
+#   does: LibreOffice crashed when a test closed Writer within milliseconds of opening it (#30),
+#   the cause of the intermittent painted abort (#8). The generic fatal message alone is not proof
+#   of #8, and it is never allowed in a passing run.
+# - A crashed office exits with status 0 on Windows (#48), so the runner copies LibreOffice's own
+#   crash dumps from the profile into the results as `crash-*.dmp` and fails a session whose
+#   office left one. A retried startup attempt's dumps are kept but do not fail a clean retry.
+#   CONTRIBUTING.md gives the CDB command that reads a dump with TDF's symbols.
+# - `--backtrace` uses LibreOffice's gdb wrapper; validate its trace as well as the wrapper's
+#   status. The wrapper bypasses the normal launcher's exit-81 bootstrap restart, so the runner
+#   handles that restart once, only before connecting UNO, and keeps the initialization trace.
+#   Never extend this startup handling into retrying test assertions or shutdown failures.
 
 import argparse
 import importlib.util

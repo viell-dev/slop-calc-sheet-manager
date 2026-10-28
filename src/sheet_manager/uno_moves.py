@@ -1,4 +1,16 @@
-"""Visible native move buttons; selection, planning and execution stay in the list."""
+"""Visible native move buttons; selection, planning and execution stay in the list.
+
+This module owns the four controls above the list: their names, sizing, and refusal tooltips.
+The footer stays separate, in `uno_status`.
+
+- Enablement reads the structure monitor's generation without consuming undo or modify evidence.
+- Keyboard activation stamps input before native button handling, and queued focus requests
+  reject newer input too.
+- Tab follows the visible button and list order and skips disabled controls. Native Enter and
+  Space activate a button, while letters stay out of cells.
+- Alt+Home, Alt+Up, Alt+Down and Alt+End stay local to the focused list or move button, and a
+  move returns focus to the tree.
+"""
 
 import contextlib
 

@@ -1,4 +1,10 @@
-"""Live moves, reference integrity, permissions, and partial-failure recovery."""
+"""Live moves, reference integrity, permissions, and partial-failure recovery.
+
+Failures are injected through test-only forwarding adapters that fail after actual UNO
+mutations; no injection seam ships in the extension. The populated synthetic workbooks exercise
+formulas, named ranges, and charts at 200 and 1,000 sheets and record median complete-move and
+undo timings. `generate_workbooks.py` keeps copies for inspection, from the same generator.
+"""
 
 import json
 import statistics

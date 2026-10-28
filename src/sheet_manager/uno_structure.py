@@ -1,7 +1,10 @@
 """Feeds `structure.StructureEvents` from one document's modify, undo, and document events.
 
-The sheet list and reorder snapshots share one monitor per document. Its listeners live until
-the document is disposed, independently of any list view or snapshot.
+The sheet list and reorder snapshots share one monitor per document, obtained through
+`monitor_for` before they retain any sheet handle. Its listeners live until the document is
+disposed, independently of any list view or snapshot: disposing a list never detaches it.
+`own_move()` marks the controller lock of the extension's own move; `uno_reorder.apply_order`
+holds it until the controllers are unlocked, and callers do not wrap it.
 
 The modify and undo listener methods read the sheet count and the document's state while
 LibreOffice is still notifying: whether undo recording is enabled (the `IsUndoEnabled`

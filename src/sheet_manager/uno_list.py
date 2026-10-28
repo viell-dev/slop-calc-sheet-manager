@@ -14,6 +14,81 @@ it to a different sheet. Drags, the menu, and Show check the same identity again
 
 Every listener only records state or posts work to the main thread: LibreOffice calls some
 of them from other threads or in the middle of a change.
+
+The tree. The list is a borderless `TreeControl`, so that it is a direct child of the panel
+window, with a hidden root. With a hidden root, the tree peer mishandles every data-model change
+event and re-parents all rows under the root, so nodes are never changed in place: a refresh
+builds a new data model and restores the selection, scroll position, and keyboard cursor.
+`uno_rows` paints the rows.
+
+Refresh. Refreshing reads every sheet and rebuilds the tree on the main thread, so it is limited.
+An activation refreshes at once only after the list has been idle for several times the last
+refresh's cost; other changes wait for a pause, with a bounded wait. Bulk API changes, such as a
+500-call move, send an event for each call, and refreshing on each one slowed such a move on
+Windows from seconds to over a minute. Rows can therefore be out of date when the user acts on
+them, so every action checks its sheets when it runs, never against the cached rows. A drop plans
+against the snapshot of the drag's start through `apply_order`, which refuses stale state, and is
+refused when the generation moved during the drag.
+
+Pointer input. A left press keeps the pressed sheet's handle, and its release activates only that
+sheet, still in that row (#28). If a refresh during the press moved the sheet or showed another
+under its name, the release has no effect at all: the list writes its own refs back, whatever the
+tree selected on release, so a newer pick made meanwhile, by following Calc or by keyboard, stays.
+While a press is held, a refresh does not take the tree's selection as the user's; the press and
+release handlers do. A selected row's native release can move the tree's cursor before the
+queued mouse listener runs, so refusing that gesture also restores a surviving picked cursor,
+preferring its original sheet, and keeps newer picks. An unpicked cursor moved during an invalid
+held gesture is deliberately not kept, and the known-issues guide records that limit (#71): the
+supported toolkit and controller interfaces offer no sidebar pre-release hook.
+
+Activation. A double click or Enter makes the sheet Calc's only selected tab and reads that back,
+because `setActiveSheet` keeps an existing group when the sheet belongs to it. Activation reads
+the handle's current name and visibility first, because Calc sends the activation of a hidden
+sheet to another sheet (#43); if Calc goes elsewhere anyway, the list restores the previous sheet
+and tabs and reads both back before saying that the view is unchanged (#46). The mouse handlers
+and the notice of a sheet switch both run after input already queued, so a switch is matched to
+the list's input count when Calc reports it: newer clicks or keys in the list win over following
+Calc's selection, and a switch the list made itself is not followed (#44).
+
+Keyboard cursor. The list observes native cursor changes it did not make through
+`ACTIVE_DESCENDANT_CHANGED` on the peer's accessible tree context. The event's row context has a
+cached sibling index that maps directly to the flat rows; the callback reads only that index and
+records a ref from the shown handles. Delivery is synchronous in the supported LibreOffice
+versions. Intermediate focus events during model replacement and restoration are ignored, and
+the listener is removed on failed setup and on disposal. A disposed event row supplies no new
+position: catch only `DisposedException` from its getters and keep the last valid cursor; report
+other errors. Selection keys are consumed before native handling, because forwarding a key can
+deliver it more than once; never return a key unconsumed after updating the owned cursor.
+Consumed key intent is recorded synchronously and the UI write coalesced, and native focus and
+selection are ignored while that write or a pointer gesture is pending.
+
+Following Calc's tabs. Calc sends no reliable notification for a tab selection that keeps the
+same active sheet, so each list caches the reflected `getSelectedSheets` method and samples its
+retained controller on the UI thread every `VIEW_INTERVAL`. Never run that getter in a timer
+worker or a toolkit listener. Compare logical name membership, establish a fresh baseline after
+a namespace or proof change, and never consume pending modify evidence through the structure
+monitor's `check()` merely to observe tabs. List input acknowledges the preceding native state at
+the listener boundary, so that queued Enter, menu, type-ahead, and move requests cannot have an
+older sample replace their picks. Observation is skipped during a held tree press, a drag, the
+menu, a move, a restoration, or a document lock. A token rejects a cancelled timer already posted
+to the UI queue, so that timer chains cannot duplicate.
+
+Sidebar visibility. A hidden panel checks its visibility every `HIDDEN_VIEW_INTERVAL` without
+reading native tabs. Test the sidebar's visibility before calling `deck.isActive()`, which
+dereferences its native controller, then the deck's activity and the panel's expansion; native
+child-window visibility misses GTK hiding. Cached wrappers are dropped after the sidebar closes,
+and observation stops on disposal or controller replacement. A panel wrapper is kept while the
+panel is collapsed or inactive, because fresh `XPanel` discovery runs native deck layout: check
+deck activity before a fresh discovery, and treat `NoSuchElementException` as a context that is
+temporarily unavailable. Actual native panel disposal disposes the list too.
+
+Notices and focus. Clearing a pick the user made shows a panel notice for `NOTICE_SECONDS`
+(`uno_status`); invalidating only the cursor, the anchor, or a press is silent. Never time out a
+native infobar instead: its removal can move focus to the sheet. The notice uses the existing
+main-thread timer, with a token rejecting a stale queued timeout after renewal or disposal. The
+list moves Tab and Shift+Tab focus itself, between its controls and, past either end, to the
+frame's component window: native sidebar traversal alone neither reaches these child peers nor
+leaves them reliably. Posted focus requests are refused when focus or the active frame moved.
 """
 
 import contextlib

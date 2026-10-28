@@ -1,5 +1,11 @@
 """Build and run a pinned LibreOffice Docker lane on Linux or Windows."""
 
+# `ci/libreoffice.json`, `ci/Dockerfile`, and this helper define the same Linux lab for CI and
+# local tests. Headless checks use svp; painted checks use gtk3 under Xvfb inside the container.
+# Never mount a host display socket or use an existing office profile. The Windows MSI installer,
+# `ci/install-windows.ps1`, is only for disposable CI runners; developer machines use their
+# existing installation.
+
 import argparse
 import hashlib
 import json

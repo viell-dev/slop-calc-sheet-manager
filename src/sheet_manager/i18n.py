@@ -1,4 +1,10 @@
-"""Translation boundary shared by generated metadata and future UI controls."""
+"""Translation boundary shared by generated metadata and future UI controls.
+
+Python UI strings go through `tr`. Metadata templates use `{{message}}`, which `tools/build.py`
+renders as English through it. That renderer supports only English: adding the first translation
+catalogue must also replace it with locale-aware XML/XCU element generation and per-locale
+description files. Keep English as the fallback.
+"""
 
 
 def tr(message: str) -> str:

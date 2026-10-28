@@ -13,12 +13,19 @@ again. So a handle reporting the ref's name proves the ref's sheet only while no
 inserted or deleted since the ref was made.
 
 Hence the rules. A ref is made only for the sheet a row showed at the moment of the user's
-input, and never again from a name. The list proves its refs at every refresh against
+input, and never again from a name; everything the list writes to the tree, restores, or acts on
+comes from refs. The list proves its refs at every refresh against
 `structure.StructureEvents`, whose generation moves whenever a sheet may have been inserted or
 deleted, and checks as a second line that its retained handles still map one to one onto the
-sheets (`structure_kept`). If either fails, every ref is dropped, since none can be proved;
-otherwise each ref stays while its handle still reports its name, so a renamed pick drops out
-and a moved one stays.
+sheets with at most one rename (`structure_kept`). If either fails, every ref is dropped, since
+none can be proved; otherwise each ref stays while its handle still reports its name, so a
+renamed pick drops out and a moved one stays (#28).
+
+Picks, a held press, a drag, and an open menu carry the generation they were proved at. Every
+action checks the generation again when it runs (`StructureMonitor.check()`) and refuses refs
+proved at a different one; a refresh that observes the change drops every ref and voids any held
+press. The keyboard cursor and `Selection.anchor`, which pointer and keyboard ranges share, are
+refs too: they survive ordinary rebuilds and are dropped by the same rules.
 """
 
 from collections.abc import Callable, Iterable, Mapping, Sequence
