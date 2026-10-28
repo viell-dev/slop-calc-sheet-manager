@@ -1,4 +1,11 @@
-"""Pure release policy, changelog extraction, and LibreOffice update-feed rendering."""
+"""Pure release policy, changelog extraction, and LibreOffice update-feed rendering.
+
+Versions are not full SemVer: LibreOffice orders a suffixed candidate above its final version, so
+the package, tag, and assets share one plain numeric version until that host constraint changes
+(RELEASING.md). Test status is an explicit release flag, and untargeted builds are alpha
+iterations, not candidates for an inferred stable target. Never infer test status from patch
+numbers or reserve a patch range.
+"""
 
 import re
 import xml.etree.ElementTree as ET

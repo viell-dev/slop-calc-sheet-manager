@@ -8,6 +8,43 @@ and Calc's own state for the command is read. Grouping and that query can run ot
 every check is repeated after them, with only reads before the dispatch. Calc stays on its targets
 afterwards: its dialogs can outlive the dispatch and act on the viewed sheet when confirmed
 (#100). A refusal after grouping restores the previous view.
+
+This module owns context targeting, native tab grouping and restoration, and move enablement.
+
+- A right click retains a transient row ref without changing the picks. The menu opens only for
+  refs checked just before, with a fresh snapshot. Show takes Hide's place for hidden targets.
+- GTK can activate cascading menus while preparing them, so never group from a menu callback;
+  only `SheetMenu.run` groups.
+- `command_refusal` applies Calc's state rules to the targets, because Calc's command state
+  describes its current tabs. Insert's "after" uses the last selected tab.
+- Duplicate Sheet and Move or Copy Sheet stay off the menu until a fixed LibreOffice is verified
+  (tdf#173608 in #33; #3).
+- `run` repeats every check in the list's posted completion: the generation, the targets'
+  identity, and `command_refusal`. It sets and reads back exactly the targets, queries the
+  dispatcher, and reads Calc's command state for that group. Grouping runs Calc's activation
+  listeners and the query runs the frame's interceptors, either of which can move, rename, hide or
+  protect a sheet, so after both it repeats the generation, `command_refusal`, and an exact tab
+  readback (a single target viewed). It then dispatches through the dispatcher already found,
+  without arguments, as Calc's menu does; only reads run in between.
+- A refusal after grouping, including a failed grouping or a UNO error before the dispatch,
+  restores the saved view against fresh indices, retained identities, proof, and the original
+  visibility, never by raw indices. An error raised by the dispatch itself is different: Calc may
+  already have opened the command's dialog or acted, so the view stays on the targets and the
+  message says the outcome is uncertain; restoring could send a Rename or Insert dialog to another
+  sheet (#100). `DisposedException` propagates: the view is gone.
+- A dispatched command keeps Calc on its targets, because Calc's asynchronous dialogs outlive the
+  dispatch, and Insert and Rename act on the sheet viewed at confirmation (#100). The document's
+  `OnModeChanged` reports dialog lifetime for VCL and gtk3 dialogs, but native Qt dialogs never
+  report it, so no restoration may wait for it or for a delay. Synchronous dialogs, such as
+  Delete's confirmation, run inside the list's completion, which refreshes after the dispatch
+  returns.
+- Panel disposal can close the list's queue inside the popup's nested loop (#63): the completion
+  is then dropped, and nothing else outlives the popup.
+- A move captures the observed snapshot, refs and proof before it is posted, and uses the common
+  permission and plan checks and the full `apply_order` preflight.
+- The sidebar's native panel header generates its own help ID, for a topic that does not exist
+  (#81). The menu's Help links to the guide instead, without intercepting global help or changing
+  the installed help system.
 """
 
 import time

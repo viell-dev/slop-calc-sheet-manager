@@ -3,7 +3,8 @@
 The enabled/disabled update list belongs to a modal VCL dialog, not a UNO API. The
 public UpdateInformationProvider parses descriptions without filtering versions or
 dependencies. Test that boundary honestly, and check candidate dependencies through
-deployment's real XPackage API rather than duplicating LibreOffice's floor check.
+deployment's real XPackage API rather than duplicating LibreOffice's floor check. Keep the parser
+and dependency assertions distinct.
 """
 
 import argparse

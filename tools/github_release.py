@@ -130,7 +130,9 @@ def write_site(output: Path, builds: list[PublishedBuild], *, check_history: boo
     (output / "releases.json").write_text(
         json.dumps([asdict(item) for item in builds], indent=2) + "\n", encoding="utf-8"
     )
-    # The site's root belongs to the user guide; see combine_site.
+    # The site's root belongs to the user guide; see combine_site. Download links for people go
+    # to the guide's releases page, whose tables use this same verified history as the guide's
+    # version notice, not to the XML feeds.
     (updates / "index.html").write_text(
         '<!doctype html><html lang="en"><meta charset="utf-8">'
         "<title>Sheet Manager updates</title><h1>Sheet Manager updates</h1>"

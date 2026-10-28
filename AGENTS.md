@@ -210,28 +210,15 @@ reconsider. The owner may report a defect themselves, in their own words.
   `tests/unit/test_consistency.py` compares what can be compared mechanically. Prose is reviewed
   for meaning. After a change that affects the About text or the homepage, read the live settings
   and correct them.
-- **Which version the guide describes.** The guide describes the latest stable release.
-  Behaviour that is not in a stable release yet is marked **Unreleased** where it appears.
-  Use `<Unreleased />` until a publication version is assigned, then
-  `<Unreleased since="VERSION" />`. Keep these markers through release preparation: the build
-  hides a versioned marker only when the published baseline includes that version or a later one.
-  Failed or abandoned publication leaves the marker visible. Never infer publication from the
-  source manifest, changelog, tag, or draft.
-  - While only prereleases exist, the guide describes the newest test build and marks what
-    is not in it.
-  - Before any release, the whole guide describes the development version.
-  - The notice at the top of each page says which of these applies.
-  - The first release pull request also rewrites the guide's statements that no release exists;
-    RELEASING.md lists how to find them.
-  - A correction to the guide is an ordinary pull request. Run the documentation checks in
-    CONTRIBUTING.md; it deploys when it merges, and no software release or tag changes. Retain
-    availability markers for behaviour still absent from the published baseline.
-  - The same notice names the commit the site was built from.
-- **How the guide is built.**
-  - The guide is built with an exactly pinned VitePress 2 prerelease. CI's **Documentation** job
-    builds it and combines it with the feeds on every pull request.
-  - `pages.yml` is the only workflow that deploys Pages. It builds the guide and the feeds
-    together, and refuses any guide file that would replace a feed or the release history.
+- **Which version the guide describes** follows
+  [About this site](docs/development/index.md#which-version-it-describes): the latest stable
+  release, the newest test build while only prereleases exist, or the development version before
+  any release, with **Unreleased** markers for what that baseline lacks. Never infer publication
+  from the source manifest, changelog, tag, or draft. Corrections to the guide are ordinary pull
+  requests that deploy on merge without a software release. CI's **Documentation** job builds the
+  guide, with its exactly pinned VitePress 2 prerelease, on every pull request; `pages.yml` alone
+  deploys it, together with the feeds, and refuses guide files that would replace a feed or the
+  release history.
 - **Guide pages.** Keep every guide page in the sidebar. A new page that users need belongs in the
   Guide section. Developer reference goes in the Development section.
 
@@ -244,303 +231,72 @@ reconsider. The owner may report a defect themselves, in their own words.
 - Pull requests need not be up to date with `main` before merging, so that they do not wait for one
   another; CI runs again on `main` after every merge, and a failure there is fixed forward first.
   GitHub offers no merge queue for this repository's owner account.
+- `.github/rulesets/main.json` and `release-tags.json` are the API request bodies of rulesets
+  25349507 (`main`) and 25349508 (immutable version tags); recording them does not apply them.
+  Keep the main ruleset's required contexts identical to CI's job names, and its strict
+  up-to-date policy off.
 
-## Technical map
+## Code map
 
-- `reorder.py` is the UNO-free target/minimum-call planner; `uno_reorder.py` captures snapshots,
-  checks permissions and stale handles, applies one undo group, and verifies recovery. The panel
-  contract is [docs/reordering.md](docs/reordering.md). Keep the panel busy and defer refresh during
-  application: consecutive individual scenario moves have intermediate block splits. Never pass
-  an interior scenario gap through as a raw move destination or use native multi-sheet Move.
-  Retain balanced nested undo groups: Calc limits the current context to configured undo Steps,
-  so a flat group silently loses early moves above that capacity
-  ([#16](https://github.com/viell-dev/slop-calc-sheet-manager/issues/16)). Tests cover capacity two.
-- `tests/integration/test_reorder.py` uses test-only forwarding adapters to fail after actual UNO
-  mutations; no injection seam ships. Its populated synthetic workbooks exercise formulas,
-  named ranges, and charts at 200/1,000 sheets and emit median complete-move/undo timings.
-  `generate_workbooks.py` retains copies for inspection using the same synthetic generator.
-- `src/sheet_manager/` ships under `pythonpath/sheet_manager/`. Keep pure logic importable without
-  `uno` (`keys.py`, `sheet_list.py`, `selection.py`, `structure.py`, `reorder.py`); the `uno_*.py`
-  modules adapt it: `uno_panel.py` owns the UNO factory and panel, `uno_list.py` the tree control,
-  its drag and drop and refresh, `uno_keys.py` the key handler, `uno_menu.py` the sheet tab menu,
-  `uno_show.py` the list's own Show operation, and `uno_calc.py` shared Calc helpers. Tests observe
-  only public UNO: the `XPanel.getDialog()` window, its child tree control
-  (`tests/integration/sheet_list_view.py`), and its `XEventListener`; keep test hooks out of the
-  production factory.
-- The list keeps the `uno_reorder.snapshot` that produced its rows. Its picks and keyboard cursor
-  live in `selection.py` as refs: the name a sheet had when the user's input made
-  the ref, and that sheet's retained handle. A ref is never made again from a name later, and
-  everything the list writes to the tree, restores, or acts on comes from refs. Retained handles
-  are not identities: when a sheet is deleted, its handle turns to the previous sheet and can
-  report the deleted sheet's name again after a rename (measured; `docs/reordering.md`). So each
-  document has a shared `uno_structure.StructureMonitor`: list views and reorder snapshots use
-  `monitor_for` to obtain it. It attaches before snapshot reads and lives until document disposal;
-  disposing a list never detaches it. Snapshots carry its identity and generation, and
-  `is_current`, `preflight`, and `apply_order` check both. The adapter owns `own_move()` through
-  controller unlock; callers do not wrap it. Undo and Redo invalidate held snapshots even when
-  the original order returns, so recovery tests take fresh ones. The monitor listens to modify,
-  undo, and document events, reads the sheet count and the document's undo and lock state at every modify
-  and undo notification, and moves a generation (`structure.StructureEvents`) whenever a sheet
-  may have been inserted or deleted. It moves when the count changes; when undo recording is
-  off or locked, the controllers or actions are locked, or modify notifications are off at a
-  notification, except for the controller lock of the list's own move (`own_move`); on every
-  undo and redo; at a modify notification that no recorded undo action explains, except inside
-  a save window (`OnSave`, `OnSaveAs`, or `OnCopyTo` up to its `Done` or `Failed` event, or the
-  next undo notification); and at a check, when the undo history changed without a notification
-  or any of those states holds then, since a lock still held may be holding back the report of a
-  whole batch (except the list's own move's lock, and modify notifications being off inside a
-  save window, where LibreOffice turns them off itself). Undo notifications come for every
-  recorded action, also inside `lockControllers`, `addActionLock`, `disableSetModified`, and
-  undo contexts, where modify notifications are batched or missing. Every action checks the
-  generation again when it runs (`check()`). Picks, presses, drags, and an open menu carry the
-  generation they were proved at. Actions refuse refs proved at a different generation; when a
-  refresh observes that change, it drops every ref and voids any held press. Clearing a user-made
-  pick shows a ten-second panel notice; invalidating only cursor/anchor/press is silent.
-  Never time out a native infobar: its removal can move focus to the sheet. The notice uses
-  the existing main-thread timer, with a token rejecting a stale queued timeout after renewal
-  or disposal. As a second line, every refresh checks that its handles map one to one onto
-  the sheets with at most one rename (`structure_kept`). Otherwise refs stay while their handles
-  report their names, so a renamed pick goes and a moved one stays (#28). Over-clearing is the
-  accepted cost: undo and redo, document property changes, and other changes LibreOffice does
-  not record for undo clear the picks too. Threat model, decided by the maintainer: everything
-  LibreOffice reports must be caught; only a structural edit that LibreOffice does not report at
-  all (undo recording and modify notifications both off), or whose only report falls inside a
-  save window, is out of scope. The one other known way past the rules is a sequence built to
-  report like typed input, documented in `structure.py`; such a program could hide or delete any
-  sheet itself. The monitor's listeners read the sheet count and the five state getters while
-  LibreOffice notifies: a narrow exception to the rule that listeners only note and post, for
-  getters that take the main lock and return a count or a flag without UI work (checked in the
-  pinned sources); call nothing else from them. Drops plan against the snapshot of the drag's
-  start through `apply_order`, which refuses stale state, and the list refuses a drop when the
-  generation moved during the drag. The menu opens
-  only for refs checked just before, with a fresh snapshot. A chosen Calc command checks the
-  generation, its sheets' identity and its permissions again when it runs, in the list's posted
-  completion, then sets Calc's tabs to exactly those sheets and reads them back before dispatch.
-  Panel disposal can close the list's queue inside the popup's nested loop (#63): the completion
-  is then dropped, and nothing else outlives the popup.
-  `uno_show.show_sheets` applies the reorder layer's undo rules: refuse without undo or beyond
-  the undo limit, one group, undo only its own group on failure, verify. A double click or Enter
-  makes the sheet Calc's only selected tab and reads that back: `setActiveSheet` keeps an
-  existing group when the sheet belongs to it.
-- Refreshing reads every sheet and rebuilds the tree on the main thread, so `uno_list.py` limits
-  it: an activation refreshes at once only after the list has been idle for several times the last
-  refresh's cost, and other changes wait for a pause, with a bounded wait. Bulk API changes, such
-  as a 500-call move, send an event for each call; refreshing on each one slowed such a move on
-  Windows from seconds to over a minute. So rows can be out of date when the user acts on them:
-  every action checks its sheets when it runs, never against the cached rows. A left press keeps
-  the pressed sheet's handle, and its release activates only that sheet, still in that row
-  (#28). If a refresh during the press moved the sheet or showed another under its name, the
-  release has no effect at all: the list writes its own refs back, whatever the tree selected on
-  release, so a newer pick made meanwhile (following Calc, or by keyboard) stays. While a press
-  is held, a refresh does not take the tree's selection as the user's; the press and release
-  handlers do. Activation reads the handle's current name and visibility first, because
-  Calc sends the activation of a hidden sheet to another sheet (#43); if Calc goes elsewhere
-  anyway, the list restores the previous sheet and tabs and reads both back before saying the
-  view is unchanged (#46). The list's mouse handlers and its notice of a sheet switch both run
-  after input already queued, so a switch is matched to the list's input count when Calc reports
-  it: newer clicks or keys in the list win over following Calc's selection, and a switch the list
-  made itself is not followed (#44).
-- `extension/description.xml` is the version source. `extension/sheet-manager.components` and
-  `registration.py` provide passive Python registration. `Factories.xcu` maps tool-panel URLs to
-  that factory; `Sidebar.xcu` registers the Calc-only deck and panel. `tools/build.py` explicitly
-  allowlists every packaged file and includes the root licence as `LICENSE.txt`.
-- `tools/release_data.py` owns version policy, changelog extraction, and feed XML.
-  Versions are not full SemVer: LibreOffice orders suffixed candidates above their final
-  version. Keep the single numeric package/tag version unless that host constraint changes.
-  Test status is an explicit release flag; untargeted builds are alpha iterations, not candidates
-  for an inferred stable target. Never infer test status from patch numbers or reserve a
-  patch range. User download links go to the human
-  `guide/releases` page, not the XML feeds. Its tables use the same verified release history
-  as the guide's version notice.
-  `tools/github_release.py` validates GitHub history and exact-commit CI, builds/publishes releases,
-  and generates Pages from published OXT metadata. `release.yml` validates PR workflow changes
-  without writes and publishes only by dispatch on `main`; `pages.yml` is also callable by it.
-  `tests/integration/test_updates.py` checks loopback feeds with LibreOffice's real parser and
-  candidate dependencies through its temporary deployment repository. The modal update dialog
-  has no public UNO offered-update API; keep parser and dependency assertions distinct.
-- Python UI strings go through `sheet_manager.i18n.tr`. Metadata templates use `{{message}}`,
-  rendered as English through that helper at build time. This renderer supports only English;
-  adding the first translation catalogue must also replace it with locale-aware XML/XCU element
-  generation and per-locale description files. Keep English as the fallback.
-- The panel uses a `"tabcontrol"` peer. A plain `"window"` does not consume mouse-down events,
-  which lets VCL interpret clicks as the start of sidebar undocking. Retain the tab-control
-  interface assertion when adding controls, and keep the panel filling its container on resize.
-  The tab control sits inside a plain `"window"` of the same size: on every Shift, Ctrl, or Alt
-  change, VCL's access-key walk enters each tab control's current page and crashes on a tab
-  control without pages (#18), but it does not descend into plain windows. Keep any page-less tab
-  control out of that walk, and keep the painted modifier-key test.
-- The list is a borderless `TreeControl` (so that it is a direct child of the panel window) with
-  a hidden root. With a hidden root, the tree peer mishandles every data-model change event and
-  re-parents all rows under the root, so never change nodes in place: build a new data model and
-  restore selection, scroll position, and keyboard cursor. `uno_rows.py` paints full-width
-  backgrounds and separate gutter markers before native labels, then posts coalesced borders
-  after them because the label backgrounds can cover dividers. Keep native text/accessibility,
-  wheel input, and multi-sheet drag support; compound controls do not provide the same drag path.
-  Use native `getNodeRect()` Y/Height for row geometry: VCL can enlarge the requested RowHeight
-  for its font/DPI. Its Y/Height span the entry; its X/Width follow the label.
-  Native hit testing supplies the content bounds, excluding scrollbars; the peer's output size
-  includes them. Do not put fixed frame lines on the scrolling surface: VCL's pixel
-  scrolling copies them into rows. Keep the screenshot-pixel wheel/thumb/native-height check.
-  XGraphics inherits the tree's horizontal map origin. Find the hit interval's left pixel edge,
-  including negative X, and compare it with the rectangle's logical left edge minus VCL's
-  four-pixel hit tolerance for icon-free rows. Its label-sized right edge cannot reveal the origin.
-  Keep long-name coverage with both scrollbars and the source-pinned hit-tolerance assumption.
-  Backgrounds, dividers and drop markers fill the viewport; the arrow and swatch scroll with the
-  label so they cannot overlap its text.
-  The list observes unowned native cursor changes via
-  `ACTIVE_DESCENDANT_CHANGED` on the peer's accessible tree context. The event's row context has a
-  cached sibling index that maps directly to the flat rows; the callback reads only that index and
-  records a ref from the shown handles. Delivery is synchronous in supported LibreOffice versions.
-  Ignore intermediate focus events during model replacement/restoration, and remove the listener
-  on failed setup and disposal. A disposed event row supplies no new position: catch only
-  `DisposedException` from its getters and retain the last valid cursor; report other errors.
-  Selection keys are now consumed before native handling; forwarding a key can deliver it more
-  than once. Do not return unconsumed after updating the owned cursor. Pointer and keyboard
-  ranges share `Selection.anchor`, a retained ref that survives ordinary rebuilds and is dropped
-  by the same identity rules as the cursor. Record consumed key intent synchronously, coalesce
-  the UI write, and ignore native focus/selection while that write or a pointer gesture is pending.
-  Listener callbacks can arrive on
-  other threads or during a change; they only record state or post work
-  through `AsyncCallback`. Start threads only through `uno_calc.start_thread`, never with
-  `threading`: `Thread.start` waits for the new thread, whose first steps can wait for
-  LibreOffice's main lock that listeners and the main thread hold, and Calc then hangs (#55).
-  A selected-row native release can move its cursor before the queued mouse listener. Refusing
-  that gesture must also restore a surviving picked cursor (prefer its original sheet), retaining
-  newer picks. An unpicked cursor moved during an invalid held gesture is deliberately not retained;
-  the known-issues guide records that limit. The supported toolkit/controller interfaces expose
-  no sidebar pre-release hook.
-- `uno_menu.py` owns context targeting, native tab grouping/restoration, and move enablement.
-  Right-click retains a transient row ref without changing picks. One popup offers Calc's Insert,
-  Delete, Rename and Hide (`COMMANDS`), the list's Show in Hide's place for hidden targets, moves
-  and Help; opening or dismissing it neither groups nor restores Calc tabs. GTK can activate
-  cascading menus while preparing them, so never group from a menu callback; only `run` groups.
-  Calc's command state describes its current tabs, not the targets, so `command_refusal` applies
-  `ScTabViewShell::GetStateTable`'s rules to the targets, and refuses where the command would
-  act on other sheets: Insert and Rename anchor on one viewed sheet (Insert's "after" uses the
-  last selected tab), Calc cannot view a hidden sheet (#43), and Delete skips protected sheets.
-  Duplicate and Move or Copy stay off the menu until a fixed LibreOffice is verified
-  (tdf#173608 in #33; #3). `run` repeats every check, whatever the popup showed; sets and reads
-  back exactly the targets; queries the dispatcher and reads Calc's command state for that group.
-  Grouping runs Calc's activation listeners and the query runs the frame's interceptors, either
-  of which can move, rename, hide or protect a sheet, so after both it repeats the generation,
-  `command_refusal` and an exact tab readback (a single target viewed), then dispatches through
-  the dispatcher already found, without arguments, as Calc's menu does: only reads run in
-  between. A refusal after grouping, including a failed grouping or a UNO error before the
-  dispatch, restores the saved view against fresh indices, retained identities, proof, and
-  original visibility, never by raw indices. An error raised by the dispatch itself is different:
-  Calc may already have opened the command's dialog or acted, so the view stays on the targets
-  and the message says the outcome is uncertain; restoring could send a Rename or Insert dialog
-  to another sheet (#100). `DisposedException` propagates: the view is gone.
-  A dispatched command keeps Calc on its targets: Calc's asynchronous dialogs outlive the
-  dispatch, and Insert and Rename act on the sheet viewed at confirmation (#100). The document's
-  `OnModeChanged` reports dialog lifetime on VCL and gtk3 dialogs, but native Qt dialogs never
-  report it, so no restoration may wait for it or for a delay. Synchronous dialogs, such as
-  Delete's confirmation, run inside the list's completion, which refreshes after the dispatch
-  returns. Capture the observed snapshot, refs, and proof before posting a move. Use the common
-  permission/plan checks and full `apply_order` preflight.
-  Alt+Home/Up/Down/End remain local to the focused list or a move button, and a move returns focus
-  to the tree.
-  `uno_moves.py` owns the four top controls, their names, sizing, and refusal tooltips; the footer
-  remains separate in `uno_status.py`. Button enablement reads the monitor's generation without
-  consuming undo/modify evidence. Keyboard activation stamps input before native button handling;
-  queued focus requests also reject newer input. Tab follows the visible button/list order and
-  skips disabled controls; native Enter/Space activate buttons while letters stay out of cells.
-  The native header generates its own unavailable help ID (#81); the outer menu links to the
-  guide without intercepting global help or modifying the installed help system.
-- Calc sends no reliable notification for same-active tab selections. Each list caches the
-  reflected `getSelectedSheets` method and samples its retained controller on the UI thread every
-  0.25 seconds. Never run that getter in a timer worker or toolkit listener. Compare logical name
-  membership, establish a fresh baseline after namespace/proof changes, and never consume pending
-  modify evidence through the structural monitor's `check()` merely to observe tabs.
-  List input acknowledges preceding native state at the listener boundary; queued Enter, menu,
-  type-ahead, and move requests must not let an older sample replace their picks.
-  Skip observation during a held tree press, drag, menu, move, restoration, or document lock.
-  Hidden panels check visibility once a second without reading native tabs. Test sidebar
-  visibility before calling `deck.isActive()` (the native method dereferences its controller),
-  then deck activity and panel expansion; native child-window visibility misses GTK hiding.
-  Drop cached wrappers after sidebar closure and stop on disposal or controller replacement.
-  Retain a panel wrapper while collapsed/inactive: fresh `XPanel` discovery invokes native
-  deck layout. Check deck activity before fresh panel discovery and treat `NoSuchElementException`
-  as a temporarily unavailable context. Actual native panel disposal disposes the list too.
-  A token rejects a cancelled timer already posted to the UI queue, preventing duplicate chains.
-  `uno_status.py` shows separate footer labels for a group of multiple Calc tabs and a transient
-  clearing notice. Expiring the notice leaves the group warning intact. Native adjusted text
-  sizing follows the available width. Height changes below the tree preserve its row origin.
-  Tab/Shift+Tab focuses the frame's component window. Native sidebar traversal alone does not
-  reach these child peers or leave them reliably. Posted focus requests refuse when focus or
-  the active frame moved.
-- Keys: a toolkit `XKeyHandler` is registered while the tree or a move button has focus and checks
-  focus again for every key. Tree selection/navigation, Enter, typed characters, and menu keys are
-  consumed and handled by the list; other
-  shortcuts are resolved through the document, Calc, and global shortcut configurations and
-  dispatched to the panel's frame; modified Tab combinations, F6, F10, Esc, modifier-only keys,
-  and unbound Alt mnemonics pass;
-  everything else is consumed so it cannot reach a cell (`keys.py` documents the routing).
-- `tests/integration/run.py` runs with the tested office's bundled Python, installs into a new
-  temporary profile, starts only its own process with a unique pipe, and disposes it afterwards.
-  Open documents visibly even in headless runs: hidden documents do not reliably execute Calc
-  commands or undo. Startup retries end before document creation and never retry failed tests.
-  `--sessions headless|gtk3|both` selects sessions; default headless. The feature suite
-  `test_sheet_list.py` checks the list's contents, refresh, identity, robot clicks and menu,
-  clicks on rows not yet refreshed, and tests Show's undo and recovery directly; the robot only
-  posts events, so they reach the list ahead of its delayed refresh. Robot input cannot reach
-  gtk3's native menus, so it skips the menu steps in painted sessions, and it closes leftover
-  workbooks after a failure: a painted office asks to save them when the runner terminates it,
-  which blocks the run (#40).
-  Real-input UI tests live in `tests/ui/run_ui.py`, use XTEST under Xvfb with separate gtk3 and
-  gen sessions, and run in the `linux-gtk3` jobs through `tools/linux_integration.py <lane> --ui`.
-  Human usability tasks and additional platform observations are in `docs/manual-tests.md`; keep it
-  current. A new document's window can be maximized after the runner's first geometry request
-  (#9), so `exercise()` repeats that setup until four consecutive measurements agree; never retry
-  the resize assertions. A terminate request has a time limit too: a save dialog cannot leave
-  the runner hanging (#40). Keep shared lifecycle changes additive.
-- PyUNO exceptions reject a new `__traceback__`, so a UNO exception leaving a `@contextmanager`
-  block, such as `office_session`, arrives as a RuntimeException about a traceback object
-  ([#41](https://github.com/viell-dev/slop-calc-sheet-manager/issues/41)). Keep UNO calls whose
-  exceptions a caller catches out of generator-based context managers; in a failed run, read the
-  first traceback.
-- On Windows, a Calc document closed from the test's own thread, which is a UNO bridge thread in
-  the office, crashes LibreOffice when one of its toolbars has an update pending: the close
-  releases LibreOffice's lock while it destroys native windows, and the main thread then updates
-  a toolbar control being disposed
-  ([#47](https://github.com/viell-dev/slop-calc-sheet-manager/issues/47)). The user interface
-  closes on the main thread, where this cannot happen. Close every Calc document in the tests and
-  the workbook generator through `main_thread.close_document`, which on Windows closes inside an
-  `AsyncCallback` notification, on the main thread; close in place of a `finally` clause with
-  `close_after`, close a suite's leftovers through `teardown.run_checks`, and set office settings
-  for a block with `teardown.Configured`. A callback that does not finish in time is recorded in
-  `teardown` (#50): no further close, check, suite, or settings restore is tried (#51), the UI
-  runner stops too (#52), the session fails without an earlier failure being hidden, and the
-  runner stops its own office process tree instead of asking it to terminate, which would wait
-  for the stuck main thread too (#40). A crashed office exits with status 0 on Windows
-  ([#48](https://github.com/viell-dev/slop-calc-sheet-manager/issues/48)), so the runner copies
-  LibreOffice's own crash dumps from the profile into the results as `crash-*.dmp` and fails a
-  session whose office left one; a retried startup attempt's dumps are kept but do not fail a
-  clean retry. GitHub's Windows runners have CDB, not on `PATH`, at
-  `C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe`; with it,
-  `cdb -z <dump> -y "srv*<cache>*https://dev-downloads.libreoffice.org/symstore/symbols;srv*<cache>*https://msdl.microsoft.com/download/symbols" -c ".ecxr; !analyze -v; ~* kp; q"`
-  gives every thread's stack with TDF's symbols.
-- `ci/libreoffice.json`, `ci/Dockerfile`, and `tools/linux_integration.py` define the same Linux
-  lab for CI and local tests. Headless checks use svp; screenshot checks use gtk3 under Xvfb.
-  Never mount host display sockets or use an existing office profile. The Windows MSI installer
-  helper is only for disposable CI runners; use the existing installation on developer machines.
-  `Linux (LibreOffice …)` jobs run the headless checks and `Linux gtk3 (LibreOffice …)` jobs the
-  painted ones; both are required. The painted jobs were not required from #10 until #32, while
-  their intermittent abort (#8) was investigated: LibreOffice crashed when a test closed Writer
-  within milliseconds of opening it (#30). Close test documents in painted sessions only after
-  they have settled, as `close_writer()` does. A red painted job blocks merging like any other;
-  never rerun it until it is green without classifying the failure from its artifacts. The
-  generic fatal message alone is not proof of #8 and is never allowed in the runner.
-  `gtk3-soak.yml` and `tests/integration/soak.py` repeat fresh painted sessions in installed and
-  absent modes; dispatch the workflow on a branch to measure the reliability of painted sessions.
-  `--backtrace` uses LibreOffice's gdb wrapper; validate its trace as well as the wrapper status.
-  That wrapper bypasses the normal launcher's exit-81 bootstrap restart. The runner handles it
-  once, only before connecting UNO, and preserves the initialization trace; never extend this
-  startup handling into retrying test assertions or shutdown failures.
-- `.github/rulesets/main.json` records the main ruleset with the CI job names to require after
-  this workflow is merged. `release-tags.json` records immutable version tags. These are API
-  request bodies captured from rulesets 25349507 and 25349508; recording them does not apply them.
-  Keep required contexts identical to the workflow's job names and strict up-to-date policy off.
+Each module's docstring, or the comment at the top of a command-line tool, holds the rules for
+changing that module, with the measured LibreOffice behaviour and the issues behind them. Read it
+before changing the module, and update it in the same pull request when a rule changes.
+[docs/reordering.md](docs/reordering.md) is the contract between the list and the move operation.
+
+- **Packaging.** `extension/description.xml` is the version source.
+  `extension/sheet-manager.components` and `registration.py` provide passive Python registration;
+  `Factories.xcu` maps tool-panel URLs to that factory, and `Sidebar.xcu` registers the Calc-only
+  deck and panel. `tools/build.py` allowlists every packaged file and includes the root licence as
+  `LICENSE.txt`. `src/sheet_manager/` ships as `pythonpath/sheet_manager/`.
+- **Pure logic,** importable without `uno`: `keys.py` key routing, `sheet_list.py` rows and
+  geometry, `selection.py` the list's picks and cursor, `structure.py` the structural generation,
+  `reorder.py` the move planner, and `i18n.py` the translation boundary.
+- **UNO adapters:** `uno_panel.py` the factory and panel window; `uno_list.py` the tree, its
+  refresh, input, drag and drop, and observation of Calc's tabs; `uno_rows.py` row painting;
+  `uno_keys.py` the key handler; `uno_menu.py` the context menu and Calc's commands;
+  `uno_moves.py` the move buttons; `uno_status.py` the footer; `uno_show.py` Show;
+  `uno_reorder.py` moves, undo and recovery; `uno_structure.py` the per-document structure
+  monitor; `uno_calc.py` shared Calc and threading helpers.
+- **Tests:** `tests/unit/`; `tests/integration/run.py` and its `test_*.py` suites, with
+  `main_thread.py` and `teardown.py` for closing documents and stalls; `tests/ui/run_ui.py` for
+  real input under Xvfb; `tools/linux_integration.py` for the Docker lab. CONTRIBUTING.md says what
+  each covers. Human usability tasks and additional platform observations are in
+  [docs/manual-tests.md](docs/manual-tests.md); keep it current.
+- **Releases:** `tools/release_data.py` owns version policy, changelog extraction, and feed XML;
+  `tools/github_release.py` validates history and exact-commit CI, publishes, and generates Pages
+  from published OXT metadata. `release.yml` publishes only by dispatch on `main` and checks
+  workflow changes on pull requests without writing; `pages.yml` is the only workflow that deploys
+  Pages. RELEASING.md describes them.
+
+### Rules for all code
+
+Breaking one of these has hung or crashed LibreOffice, or let an action reach the wrong sheet:
+
+- **Sheet identity.** A retained sheet handle is not an identity: when a sheet is deleted, its
+  handle turns to another sheet and can later report the deleted sheet's name. Whatever holds
+  handles across user time keeps refs made at the user's input, never from a name later, and
+  checks the shared structure monitor's generation when it acts (`selection.py`, `structure.py`).
+  Every action checks its sheets when it runs, never against the list's cached rows.
+- **Listeners** can be called on other threads or in the middle of a change. They only record
+  state or post work to the main thread (`uno_calc.MainThread`, an `AsyncCallback`). The structure
+  monitor's state reads are the one documented exception (`uno_structure.py`).
+- **Threads** start only through `uno_calc.start_thread`, never with `threading`: Calc hung when
+  `Thread.start` waited for a thread that was waiting for LibreOffice's main lock
+  ([#55](https://github.com/viell-dev/slop-calc-sheet-manager/issues/55)).
+- **Test observation.** Tests observe only public UNO: the `XPanel.getDialog()` window, its child
+  tree control (`tests/integration/sheet_list_view.py`), and its `XEventListener`. Keep test hooks
+  and failure-injection seams out of the shipped extension; inject failures through test-only
+  forwarding adapters.
+- **Test documents** are opened visibly, even in headless runs, and every Calc document is closed
+  through `main_thread.close_document`: on Windows, closing one from the test's own thread
+  crashed LibreOffice ([#47](https://github.com/viell-dev/slop-calc-sheet-manager/issues/47)).
+- **PyUNO exceptions** reject a new `__traceback__`, so a UNO exception leaving a
+  `@contextmanager` block, such as `office_session`, arrives as a RuntimeException about a
+  traceback object ([#41](https://github.com/viell-dev/slop-calc-sheet-manager/issues/41)). Keep
+  UNO calls whose exceptions a caller catches out of generator-based context managers; in a
+  failed run, read the first traceback.
+- **Shipped files.** Add a new shipped module to the allowlist in `tools/build.py` and to the
+  package-content test.
 
 ## Releases
 
@@ -550,20 +306,11 @@ reconsider. The owner may report a defect themselves, in their own words.
 - The owner has given standing approval for agents to publish releases, prereleases and stable
   versions alike, with their release notes, whenever the agents judge a build ready. Only the
   listing on extensions.libreoffice.org needs the owner's sign-in.
-- Version numbers are plain dotted numbers without a `v` prefix. New versions exceed every
-  published build and reserved tag; an already-reserved draft can be recovered later without
-  changing the feeds' version order. There are no `-rc` suffixes, because LibreOffice's update
-  check ranks `0.1.0-rc.1` above `0.1.0`. Whether a build is a prerelease or stable is a property of
-  its GitHub release and of the update feed it appears in.
-- Published files and tags are never replaced, and update feeds never move backwards: a bad release
-  is fixed by a newer version.
-- Follow [RELEASING.md](RELEASING.md) for numeric test builds below the final version, explicit
-  channel selection, changelog sections, dry runs, publication and recovery. Publication requires a
-  successful CI push run on the exact `main` commit. Upload assets to the draft before publishing
-  and verify that the complete assets are present. Keep GitHub release immutability disabled
-  during early development; do not enable it without the owner's direction.
-  The stable feed excludes candidates; the prerelease feed
-  retains every build. Never reclassify a published candidate or delete deployed feed history.
+- Follow [RELEASING.md](RELEASING.md) for version numbers, channels, changelog sections, dry runs,
+  publication, and recovery. Its guarantees hold without exception: published files, tags, and
+  channels never change, update feeds never lose history or move backwards, and a bad release is
+  fixed by a newer version. Keep GitHub release immutability disabled during early development;
+  do not enable it without the owner's direction.
 
 ## Ongoing maintenance
 

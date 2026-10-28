@@ -335,7 +335,17 @@ with the `dump.ini` that names the version and the last commands; on Windows a c
 exits with status 0, so the dump is the sign there
 ([#48](https://github.com/viell-dev/slop-calc-sheet-manager/issues/48)). Dumps from a startup
 attempt that is retried are kept and listed as `office_startup_crash_dumps` without failing the
-session. On Windows the tests close Calc documents on LibreOffice's main thread, as its user
+session. GitHub's Windows runners have CDB, though not on `PATH`. With `$dump` set to a dump's
+path and `$cache` to a local symbol cache directory, this prints every thread's stack with TDF's
+symbols:
+
+```powershell
+$cdb = 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe'
+$symbols = "srv*$cache*https://dev-downloads.libreoffice.org/symstore/symbols;srv*$cache*https://msdl.microsoft.com/download/symbols"
+& $cdb -z $dump -y $symbols -c '.ecxr; !analyze -v; ~* kp; q'
+```
+
+On Windows the tests close Calc documents on LibreOffice's main thread, as its user
 interface does: closing one from the test's own thread crashed LibreOffice when a toolbar update
 was pending
 ([#47](https://github.com/viell-dev/slop-calc-sheet-manager/issues/47)). If such a close does not
