@@ -7,8 +7,9 @@ another window on the same document; and, in headless sessions, timings with 200
 populated sheets. The dialog's real keyboard and mouse use is checked in the real-input UI tests.
 
 Failures are injected through test-only forwarding handles and documents; nothing ships for it.
-`check_native_refusal_after_search` runs last: the Find & Replace it dispatches leaves Calc's
-sheet-name comparison ignoring character width for the rest of the office session (#112).
+`check_native_refusal_after_search` runs last, and the runner runs this suite after all others
+(`run.LAST_SUITES`): the Find & Replace it dispatches leaves Calc's sheet-name comparison ignoring
+character width for the rest of the office session (#112).
 """
 
 import json
@@ -324,9 +325,11 @@ def check_swaps_and_cycles(context, desktop):
 
 def check_capacities(context, desktop):
     """Undo steps 0 refuses; 1 and 2 still undo the whole batch in one step (#16 is moves')."""
-    evidence = {}
+    evidence: dict[object, object] = {}
     for steps in (0, 1, 2):
         with undo_capacity(context, steps):
+            if steps == 1:
+                evidence["1, 31 calls"] = large_batch_at_capacity(context, desktop)
             document = make_book(desktop)  # The limit is set before the document exists (#37).
             try:
                 document.Sheets.getByName("Alfa").getCellRangeByName("C1").Value = 7
@@ -352,6 +355,34 @@ def check_capacities(context, desktop):
                 raise
             close_after(context, document)
     return evidence
+
+
+def large_batch_at_capacity(context, desktop):
+    """A 30-sheet cycle, 31 calls with its temporary name, is still one undo step at capacity 1.
+
+    Moves lose early actions beyond the capacity in a flat context (#16); renames were measured
+    to keep them. This keeps every lane checking that for a batch well beyond the capacity.
+    """
+    many = [f"Sheet {index:02}" for index in range(30)]
+    document = make_book(desktop, many)  # The limit is set before the document exists (#37).
+    try:
+        renames = [(name, many[(index + 1) % len(many)]) for index, name in enumerate(many)]
+        plan, result = rename(context, document, renames)
+        assert result.status == "done" and len(plan.steps) == len(many) + 1, result
+        assert titles(document) == [TITLE], titles(document)
+        rotated = many[1:] + many[:1]
+        assert names(document) == rotated, names(document)
+        document.UndoManager.undo()
+        assert names(document) == many, names(document)
+        assert identities(document) == {name: f"identity {name}" for name in many}
+        document.UndoManager.redo()
+        assert names(document) == rotated, names(document)
+        calls = len(plan.steps)
+    except BaseException as failure:
+        close_after(context, document, failure)
+        raise
+    close_after(context, document)
+    return {"calls": calls}
 
 
 def one_step_at_capacity(context, document, renames, steps):
