@@ -1,7 +1,8 @@
 """Install into a fresh profile and assert the live sidebar through bundled PyUNO.
 
 Run with LibreOffice's program/python[.exe], never the development venv interpreter.
-Choose headless, gtk3, or both with --sessions (default headless); gtk3 saves a screenshot.
+Choose headless, gtk3, or both with --sessions (default headless, or both with --screenshot);
+gtk3 saves a screenshot.
 """
 
 # The runner installs into a new temporary profile, starts only its own office process with a

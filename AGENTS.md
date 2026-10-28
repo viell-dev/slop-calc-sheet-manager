@@ -217,7 +217,8 @@ reconsider. The owner may report a defect themselves, in their own words.
   from the source manifest, changelog, tag, or draft. Corrections to the guide are ordinary pull
   requests that deploy on merge without a software release. CI's **Documentation** job builds the
   guide, with its exactly pinned VitePress 2 prerelease, on every pull request; `pages.yml` alone
-  deploys it, together with the feeds, and refuses guide files that would replace either.
+  deploys it, together with the feeds, and refuses guide files that would replace a feed or the
+  release history.
 - **Guide pages.** Keep every guide page in the sidebar. A new page that users need belongs in the
   Guide section. Developer reference goes in the Development section.
 

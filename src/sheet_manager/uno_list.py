@@ -89,6 +89,8 @@ main-thread timer, with a token rejecting a stale queued timeout after renewal o
 list moves Tab and Shift+Tab focus itself, between its controls and, past either end, to the
 frame's component window: native sidebar traversal alone neither reaches these child peers nor
 leaves them reliably. Posted focus requests are refused when focus or the active frame moved.
+`uno_moves` states the move buttons' rules, which `_update_moves` and `travel_focus` here, and
+`uno_keys` and `keys.move_action`, carry out.
 """
 
 import contextlib

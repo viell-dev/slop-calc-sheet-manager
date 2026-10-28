@@ -153,5 +153,5 @@ those names as persistent identifiers. Undo retains the new names. This native l
 occurs with raw `moveByName` and the native dialog, and is tracked in
 [#17](https://github.com/viell-dev/slop-calc-sheet-manager/issues/17).
 
-Translations currently fall back to English, as described in the technical map. Undo is grouped
+Translations currently fall back to English, as `sheet_manager.i18n` describes. Undo is grouped
 through the same translation boundary as the rest of the extension.
