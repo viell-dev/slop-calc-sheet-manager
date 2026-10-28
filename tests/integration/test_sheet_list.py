@@ -9,9 +9,7 @@ gtk3 session opens a native GTK menu, so there the suite skips its menu steps an
 UI tests cover the menu. Moving sheets is covered by ``test_reorder.py``.
 """
 
-import sys
 import time
-from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
@@ -26,10 +24,10 @@ from sheet_list_view import (
     LOCKS,
     UNRECORDED,
     cover_batch,
-    enabled_menu_items,
     footer_text,
     held_batch,
     labels,
+    menu_entries,
     names,
     on_main_thread,
     open_list,
@@ -46,13 +44,12 @@ from teardown import Configured, run_checks
 from sheet_manager import keys, uno_list
 from sheet_manager.sheet_list import SheetRow, row_label, tab_color
 from sheet_manager.uno_calc import select_tabs
+from sheet_manager.uno_menu import HIDE, INSERT, RENAME
 from sheet_manager.uno_reorder import snapshot
 from sheet_manager.uno_show import show_sheets
 
 # XToolkitRobot passes mouse buttons and modifiers to VCL unconverted.
 VCL_LEFT, VCL_RIGHT, VCL_SHIFT, VCL_MOD1 = 1, 4, 0x1000, 0x2000
-# LibreOffice's Python runs from the program directory on every platform.
-PROGRAM = Path(sys.executable).resolve().parent
 SIX = ["Alfa", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot"]
 NATIVE_MENU = "menu steps skipped: robot input cannot reach a native gtk3 menu (see tests/ui)"
 # Workbooks a check created and has not closed yet; a failed check leaves its own open, and a
@@ -121,17 +118,15 @@ class Robot:
             self.key(top, keys.RETURN)
             time.sleep(0.5)
 
-    def native_menu(self, window):
-        """Explicitly open Sheet actions from the extension's outer popup."""
-        self.key(window, keys.END)
-        self.key(window, keys.UP)
-        self.key(window, keys.RETURN)
+    def choose(self, window, entries, item):
+        """Choose an entry of the open list menu among its enabled `entries`.
 
-    def choose(self, window, items, command):
-        """Choose an entry of the already-open built-in menu by position."""
-        self.key(window, keys.HOME)
-        for _ in range(items.index(command)):
-            self.key(window, keys.DOWN)
+        End reaches Help, the last entry, in every backend; Home does not when the first
+        entries are unavailable (#84).
+        """
+        self.key(window, keys.END)
+        for _ in range(len(entries) - 1 - entries.index(item)):
+            self.key(window, keys.UP)
         self.key(window, keys.RETURN)
 
 
@@ -307,19 +302,19 @@ def check_selection_and_menu(context, desktop, menus):
         close_workbook(context, document)
         return {"shift_selection": shift, "menu": "skipped"}
 
-    say("menu: Calc's tabs are exactly the picked sheets, and Hide acts on them")
+    say("menu: Hide acts on exactly the picked sheets; the open menu changes no tabs")
     robot.click(tree, row_point(tree, 1))
     robot.click(tree, row_point(tree, 3), modifiers=VCL_MOD1)
     poll(lambda: selection(tree, sheet_names) == ["Two", "Four"], "two rows for the menu")
     undo = document.getUndoManager()
     depth = len(undo.getAllUndoActionTitles())
     before = controller.getActiveSheet().getName(), tabs(), selection(tree, sheet_names)
+    entries = menu_entries(context, document, ["Two", "Four"])
+    assert INSERT not in entries and RENAME not in entries, entries  # One-sheet commands.
     robot.click(tree, row_point(tree, 3), buttons=VCL_RIGHT)
     assert (controller.getActiveSheet().getName(), tabs(), selection(tree, sheet_names)) == before
-    robot.native_menu(tree)
-    grouped = poll(lambda: tabs() if tabs() == ["Two", "Four"] else None, "grouped tabs")
-    items = enabled_menu_items(context, frame, PROGRAM)
-    robot.choose(tree, items, ".uno:Hide")
+    grouped = tabs()
+    robot.choose(tree, entries, HIDE)
 
     def hidden():
         return [name for name in sheet_names if not sheets.getByName(name).IsVisible]
@@ -331,14 +326,10 @@ def check_selection_and_menu(context, desktop, menus):
     poll(lambda: hidden() == ["Six"], "undo to show the sheets again")
     poll(lambda: labels(tree) == expected_labels(document), "the list to show them again")
 
-    say("activation after the menu leaves exactly one selected tab (#25)")
-    robot.click(tree, row_point(tree, 1))
-    robot.click(tree, row_point(tree, 3), modifiers=VCL_MOD1)
-    robot.click(tree, row_point(tree, 3), buttons=VCL_RIGHT)
-    robot.native_menu(tree)
-    poll(lambda: tabs() == ["Two", "Four"], "the menu to group the tabs")
-    robot.key(tree, keys.ESCAPE)
-    time.sleep(0.5)
+    say("activation after grouped tabs leaves exactly one selected tab (#25)")
+    # A command from the menu can leave its targets grouped, as Calc's own tab menu does.
+    select_tabs(context, frame, [1, 3])
+    poll(lambda: tabs() == ["Two", "Four"], "grouped tabs")
     robot.double_click(tree, row_point(tree, 1))
     poll(lambda: tabs() == ["Two"], "activation to leave one selected tab")
     after_click = tabs()
@@ -346,6 +337,7 @@ def check_selection_and_menu(context, desktop, menus):
     return {
         "shift_selection": shift,
         "calc_tabs_while_menu_open": grouped,
+        "one_sheet_commands_refused_for_two": True,
         "hidden_after_menu": hid,
         "tabs_after_plain_click": after_click,
     }
@@ -370,16 +362,21 @@ def check_identity(context, desktop, menus):
     # A sheet was deleted and one inserted: no retained handle proves its sheet any more, so
     # every pick goes, not only the replaced one (#28).
     poll(lambda: selection(tree, order) == [], "the picks to be dropped")
-    menu_tabs = None
+    menu_hidden = None
     if menus:
+        undo = document.getUndoManager()
+        depth = len(undo.getAllUndoActionTitles())
+        entries = menu_entries(context, document, ["Alfa"])
         robot.click(tree, row_point(tree, 0), buttons=VCL_RIGHT)
-        robot.native_menu(tree)
-        menu_tabs = poll(
-            lambda: tabs_of(context, document) if tabs_of(context, document) == ["Alfa"] else None,
+        robot.choose(tree, entries, HIDE)
+        menu_hidden = poll(
+            lambda: [n for n in order if not sheets.getByName(n).IsVisible] or None,
             "the menu to act only on Alfa",
         )
-        robot.key(tree, keys.ESCAPE)
-        time.sleep(0.5)
+        assert menu_hidden == ["Alfa"], menu_hidden
+        while len(undo.getAllUndoActionTitles()) > depth:
+            undo.undo()
+        poll(lambda: sheets.getByName("Alfa").IsVisible, "undo to show Alfa again")
 
     say("rename a selected sheet and give its name to another")
     robot.click(tree, row_point(tree, 2))
@@ -395,25 +392,26 @@ def check_identity(context, desktop, menus):
         close_workbook(context, document)
         return {"menu": "skipped"}
 
-    say("replace a picked sheet while the built-in menu is open")
+    say("replace a picked sheet while the menu is open")
     robot.click(tree, row_point(tree, 4))
     robot.click(tree, row_point(tree, 5), modifiers=VCL_MOD1)
     poll(lambda: selection(tree, renamed) == ["Echo", "Foxtrot"], "Echo and Foxtrot selected")
     undo = document.getUndoManager()
+    entries = menu_entries(context, document, ["Echo", "Foxtrot"])
+    view = controller.getActiveSheet().getName(), tabs_of(context, document)
     robot.click(tree, row_point(tree, 5), buttons=VCL_RIGHT)
-    robot.native_menu(tree)
-    poll(lambda: tabs_of(context, document) == ["Echo", "Foxtrot"], "the menu to group the tabs")
-    items = enabled_menu_items(context, frame, PROGRAM)
     replace(document, "Foxtrot")
     titles = list(undo.getAllUndoActionTitles())
-    robot.choose(tree, items, ".uno:Hide")
+    robot.choose(tree, entries, HIDE)  # Still enabled in the open menu.
     time.sleep(1.5)
     robot.dismiss(frame)  # The refusal message; a headless office cancels it by itself.
     shown = all(sheets.getByName(name).IsVisible for name in ("Echo", "Foxtrot"))
     assert shown and list(undo.getAllUndoActionTitles()) == titles, "A stale command ran"
+    after = controller.getActiveSheet().getName(), tabs_of(context, document)
+    assert after == view, ("A refused command changed Calc's view", view, after)
     poll(lambda: "Foxtrot" not in selection(tree, renamed), "the replacement to stay unpicked")
     close_workbook(context, document)
-    return {"menu_tabs_after_replacement": menu_tabs, "stale_menu_command_refused": True}
+    return {"menu_hidden_after_replacement": menu_hidden, "stale_menu_command_refused": True}
 
 
 def check_stale_clicks(context, desktop):

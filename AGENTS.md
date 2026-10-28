@@ -313,11 +313,11 @@ reconsider. The owner may report a defect themselves, in their own words.
   pinned sources); call nothing else from them. Drops plan against the snapshot of the drag's
   start through `apply_order`, which refuses stale state, and the list refuses a drop when the
   generation moved during the drag. The menu opens
-  only for refs checked just before, with a fresh snapshot; while it is open, a dispatch
-  interceptor on the frame checks at dispatch time that the generation did not move, that the
-  picked sheets are unchanged, and that they are exactly Calc's selected tabs.
-  Release that guard through its own main-thread event after the native command, independent of
-  the list queue: panel disposal can close that queue inside the popup's nested loop (#63).
+  only for refs checked just before, with a fresh snapshot. A chosen Calc command checks the
+  generation, its sheets' identity and its permissions again when it runs, in the list's posted
+  completion, then sets Calc's tabs to exactly those sheets and reads them back before dispatch.
+  Panel disposal can close the list's queue inside the popup's nested loop (#63): the completion
+  is then dropped, and nothing else outlives the popup.
   `uno_show.show_sheets` applies the reorder layer's undo rules: refuse without undo or beyond
   the undo limit, one group, undo only its own group on failure, verify. A double click or Enter
   makes the sheet Calc's only selected tab and reads that back: `setActiveSheet` keeps an
@@ -410,24 +410,34 @@ reconsider. The owner may report a defect themselves, in their own words.
   the known-issues guide records that limit. The supported toolkit/controller interfaces expose
   no sidebar pre-release hook.
 - `uno_menu.py` owns context targeting, native tab grouping/restoration, and move enablement.
-  Right-click retains a transient row ref without changing picks. Extension move actions are in
-  an outer popup that neither groups nor restores Calc tabs. Sheet actions… is an explicit command
-  opening the full customized native popup. GTK can activate cascading menus while preparing
-  them, so a submenu activation callback cannot defer targeting reliably. Capture the native
-  view only when that command is chosen, and only then group its targets.
-  Clear a completed popup's view, targeting flag and command before refusing a rapid reopen;
-  retain live menu state.
-  Capture the observed snapshot, refs, and proof before posting a move. Use the common
+  Right-click retains a transient row ref without changing picks. One popup offers Calc's Insert,
+  Delete, Rename and Hide (`COMMANDS`), the list's Show in Hide's place for hidden targets, moves
+  and Help; opening or dismissing it neither groups nor restores Calc tabs. GTK can activate
+  cascading menus while preparing them, so never group from a menu callback; only `run` groups.
+  Calc's command state describes its current tabs, not the targets, so `command_refusal` applies
+  `ScTabViewShell::GetStateTable`'s rules to the targets, and refuses where the command would
+  act on other sheets: Insert and Rename anchor on one viewed sheet (Insert's "after" uses the
+  last selected tab), Calc cannot view a hidden sheet (#43), and Delete skips protected sheets.
+  Duplicate and Move or Copy stay off the menu until a fixed LibreOffice is verified
+  (tdf#173608 in #33; #3). `run` repeats every check, whatever the popup showed; sets and reads
+  back exactly the targets; queries the dispatcher and reads Calc's command state for that group.
+  Grouping runs Calc's activation listeners and the query runs the frame's interceptors, either
+  of which can move, rename, hide or protect a sheet, so after both it repeats the generation,
+  `command_refusal` and an exact tab readback (a single target viewed), then dispatches through
+  the dispatcher already found, without arguments, as Calc's menu does: only reads run in
+  between. A refusal after grouping, including a failed grouping or a UNO error before the
+  dispatch, restores the saved view against fresh indices, retained identities, proof, and
+  original visibility, never by raw indices. An error raised by the dispatch itself is different:
+  Calc may already have opened the command's dialog or acted, so the view stays on the targets
+  and the message says the outcome is uncertain; restoring could send a Rename or Insert dialog
+  to another sheet (#100). `DisposedException` propagates: the view is gone.
+  A dispatched command keeps Calc on its targets: Calc's asynchronous dialogs outlive the
+  dispatch, and Insert and Rename act on the sheet viewed at confirmation (#100). The document's
+  `OnModeChanged` reports dialog lifetime on VCL and gtk3 dialogs, but native Qt dialogs never
+  report it, so no restoration may wait for it or for a delay. Synchronous dialogs, such as
+  Delete's confirmation, run inside the list's completion, which refreshes after the dispatch
+  returns. Capture the observed snapshot, refs, and proof before posting a move. Use the common
   permission/plan checks and full `apply_order` preflight.
-  Run extension actions only after the native dispatch guard is released. Restore the saved view,
-  against fresh indices, retained identities, proof, and original visibility, only when no native
-  command was dispatched. A dispatched command keeps Calc on its targets: Calc's asynchronous
-  dialogs outlive the dispatch, and Rename Sheet renames the sheet viewed at confirmation (#100).
-  The document's `OnModeChanged` reports dialog lifetime on VCL and gtk3 dialogs, but native Qt
-  dialogs never report it, so no restoration may wait for it or for a delay. A queued
-  completion can run inside a synchronous native modal dialog: defer it until guarded dispatch
-  returns, including exceptions, before refreshing or running extension work. Explicit native
-  Select All/Deselect All commands also make the list follow their selection result.
   Alt+Home/Up/Down/End remain local to the focused list or a move button, and a move returns focus
   to the tree.
   `uno_moves.py` owns the four top controls, their names, sizing, and refusal tooltips; the footer

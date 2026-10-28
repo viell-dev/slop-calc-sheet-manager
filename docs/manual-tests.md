@@ -89,34 +89,43 @@ instead. Take screenshots only of this workbook.
     Expected: Ctrl+Z removes the text; Ctrl+S saves without a dialog and the document's modified
     indicator in the status bar clears.
 15. **Menu by right click.** Click "Charlie", Ctrl+click "Echo", and right-click "Echo".
-    Expected: move actions appear directly; picks, viewed sheet and Calc tab group stay unchanged
-    while this outer menu is open. Choose **Sheet actions…** to open Calc's customized menu,
-    then choose Hide Sheet: exactly Charlie and Echo are hidden. Press Ctrl+Z. Right-click an
-    unpicked row and cancel: picks, view and Calc tab group remain unchanged throughout.
-    Sheet Manager Help opens the guide.
+    Expected: Delete Sheet, Hide Sheet, the move actions and Help appear in one menu; Insert
+    and Rename are not offered for two sheets. Picks, viewed sheet and Calc tab group stay
+    unchanged while the menu is open. Choose Hide Sheet: exactly Charlie and Echo are hidden, and
+    no second menu opens. Press Ctrl+Z. Right-click an unpicked row and press Esc: picks, view and
+    Calc tab group remain unchanged throughout. Sheet Manager Help opens the guide.
 16. **Menu by keyboard.** Click "Golf" and press the Menu key; press Esc. Then press Shift+F10.
-    Expected: the same menu opens each time, positioned at the Golf row.
-17. **Activation ends grouped editing.** Group Charlie and Echo using Calc's tab bar. Double-click
+    Expected: the same menu opens each time, positioned at the Golf row, with Insert Sheet,
+    Delete Sheet, Rename Sheet and Hide Sheet available.
+17. **Commands act on their row.** Double-click "Alfa", then click "Charlie" and Ctrl+click
+    "Echo". Right-click the unpicked "Delta", choose Rename Sheet, type `Renamed`, and press
+    Enter. Right-click "Echo", choose Delete Sheet, and answer No; repeat and answer Yes. Then
+    right-click "Bravo", choose Insert Sheet, and press Enter.
+    Expected: the Rename dialog shows Delta, and Delta's A1 text is now on the sheet called
+    Renamed; Charlie and Echo stay picked. After No, every sheet is still there, Charlie and Echo
+    are grouped, and the footer says so; Yes deletes exactly Charlie and Echo. The new sheet
+    appears directly before Bravo. Each change is one Ctrl+Z; undo them all.
+18. **Activation ends grouped editing.** Group Charlie and Echo using Calc's tab bar. Double-click
     "Charlie" in the list, click a cell of the sheet, type `x`, and press Enter.
     Expected: the tab bar shows only Charlie selected, and the `x` appears only on
     Charlie, not on Echo. Delete the `x` afterwards.
-18. **Keyboard position survives changes.** Open Window ▸ New Window. In the first window click
+19. **Keyboard position survives changes.** Open Window ▸ New Window. In the first window click
     "Bravo" and press Ctrl+Down twice. In the second window colour another sheet's tab with
     Sheet ▸ Sheet Tab Color, return to the first window, and press Ctrl+Space.
     Expected: Bravo and Delta are selected: the keyboard position stayed on Delta. Close the
     second window.
-19. **Hidden sheets only.** Click "Hotel" (hidden), then right-click it.
+20. **Hidden sheets only.** Click "Hotel" (hidden), then right-click it.
     Expected: Calc's active sheet does not change; Show Sheet shows Hotel as one undo step.
-    The menu also offers guarded movement and Help. Undo, then select Charlie and Hotel together.
-    Open their menu and choose **Sheet actions…**: mixed targets use a safe menu offering Show
-    Sheet, guarded moves and Help. Show Sheet shows only Hotel in one undo step.
-20. **Other windows.** Open a second workbook, type in its cells, and use its shortcuts; then
+    The menu also offers guarded movement and Help, and none of Calc's commands. Undo, then
+    select Charlie and Hotel together and open their menu: it offers Show Sheet in place of Hide,
+    guarded moves and Help. Show Sheet shows only Hotel in one undo step.
+21. **Other windows.** Open a second workbook, type in its cells, and use its shortcuts; then
     return to the first workbook and click a row of its list.
     Expected: the second workbook behaves exactly as without the extension; the first list still
     works.
-21. **Another deck.** Switch the sidebar to the Properties deck and type into a cell.
+22. **Another deck.** Switch the sidebar to the Properties deck and type into a cell.
     Expected: typing reaches the cell as usual.
-22. **Look.** Repeat step 1 and step 5 with a dark theme and, if available, at 150 % or 200 %
+23. **Look.** Repeat step 1 and step 5 with a dark theme and, if available, at 150 % or 200 %
     display scaling.
     Expected: all text and swatches are readable and the insertion line is visible.
     Before testing each top move button, select Charlie and Echo. Click the button, then undo once.
@@ -124,7 +133,7 @@ instead. Take screenshots only of this workbook.
     an affected sheet and the list follows, so select both rows again before the next button.
     Use Shift+Tab from the list to reach Bottom, Down, Up and Top. Enter/Space activate a focused
     button; ordinary letters do not edit cells. Tab at the end of the controls returns to Calc.
-23. **Sheets added during a selection.** Click "Charlie" and Ctrl+click "Echo". Then choose
+24. **Sheets added during a selection.** Click "Charlie" and Ctrl+click "Echo". Then choose
     Sheet ▸ Insert Sheet at End and confirm.
     Expected: the list no longer selects Charlie and Echo, and an information bar above the sheet
     says that the selection was cleared because sheets may have been added, removed, or renamed.
@@ -134,18 +143,18 @@ instead. Take screenshots only of this workbook.
     in the list; typing a letter searches the list rather than editing a cell. If Calc tabs are
     grouped, their separate warning remains. Repeat in another document while the first notice
     expires; the first document must not become active.
-24. **Top.** Click Charlie and Ctrl+click Echo, then choose Move to top from the context menu.
+25. **Top.** Click Charlie and Ctrl+click Echo, then choose Move to top from the context menu.
     Expected: Charlie and Echo become the first two sheets, in that order, remain selected, and
     Calc keeps its active sheet. One Undo restores the original order.
-25. **Up.** Select Charlie and Echo again and choose Move up twice, reopening the menu each time.
+26. **Up.** Select Charlie and Echo again and choose Move up twice, reopening the menu each time.
     Expected: each separate selected run moves one place per action, stopping at an edge. Each
     action is one undo step and keeps the same sheets selected. Undo twice.
-26. **Down.** Select Charlie and Echo and choose Move down twice, then undo twice.
+27. **Down.** Select Charlie and Echo and choose Move down twice, then undo twice.
     Expected: each run moves one place per press, with the gaps preserved until runs meet an
     edge or each other; the same sheets stay selected and each action is one undo step.
-27. **Bottom.** Select Charlie and Echo and choose Move to bottom, then undo.
+28. **Bottom.** Select Charlie and Echo and choose Move to bottom, then undo.
     Expected: Charlie and Echo are the last two sheets, in that order, still selected.
-28. **Move shortcuts and focus.** Repeat steps 24–27 with Alt+Home, Alt+Up,
+29. **Move shortcuts and focus.** Repeat steps 25–28 with Alt+Home, Alt+Up,
     Alt+Down, and Alt+End while the list is focused. Use Menu or Shift+F10 to reach move actions
     by keyboard, then cancel and use Tab or Shift+Tab to leave the list.
     Expected: shortcuts match the context actions, a successful move returns focus to the list,

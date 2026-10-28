@@ -1,6 +1,5 @@
 """Deterministic races and display guards; real UNO behaviour is checked in integration."""
 
-from collections.abc import Callable
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import Mock
@@ -78,60 +77,35 @@ def test_menu_keeps_intent_and_pick_proof_before_a_fresh_snapshot(changed: str) 
     owner.refresh.assert_called_once()
 
 
-@pytest.mark.parametrize("failure", [False, True])
-def test_modal_native_command_finishes_before_view_restoration(failure: bool) -> None:
-    queued: list[Any] = []
-    restored: list[bool] = []
-    menu = SimpleNamespace(
-        _dispatch_depth=0,
-        _completion=None,
-        command=None,
-        _post=queued.append,
-    )
-    begin = method("src/sheet_manager/uno_menu.py", "SheetMenu", "_begin_command", {})
-    end = method("src/sheet_manager/uno_menu.py", "SheetMenu", "_end_command", {})
-    defer = method(
-        "src/sheet_manager/uno_menu.py",
-        "SheetMenu",
-        "defer_completion",
+@pytest.mark.parametrize("refusal", ["", "The sheets changed while the menu was open."])
+def test_menu_command_runs_through_the_menu_and_reports_its_refusal(refusal: str) -> None:
+    shown: list[str] = []
+
+    def show_error(peer: object, title: str, message: str) -> None:
+        shown.append(message)
+
+    menu = SimpleNamespace(run=Mock(return_value=refusal))
+    owner = SimpleNamespace(_menu=menu, refresh=Mock(), peer=object())
+    action = method(
+        "src/sheet_manager/uno_list.py",
+        "SheetList",
+        "_menu_action",
         {
-            "Callable": Callable,
+            "MOVE_IDS": {},
+            "HELP": 20006,
+            "SHOW": 1,
+            "COMMANDS": {4: ".uno:RenameTable"},
+            "show_error": show_error,
+            "tr": str,
         },
     )
-
-    def complete() -> None:
-        if not defer(menu, complete):
-            restored.append(True)
-
-    def native_dispatch(url: Any, arguments: object) -> None:
-        # A modal dialog pumps the queued completion while the command is still on the stack.
-        complete()
-        assert not restored
-        begin(menu, ".uno:SelectTables")  # A nested dispatch cannot change the command's intent.
-        end(menu)
-        assert menu.command == ".uno:Remove" and not queued
-        if failure:
-            raise RuntimeError("native command failed")
-
-    def starting(command: str) -> None:
-        begin(menu, command)
-
-    guard = SimpleNamespace(
-        _verify=lambda: True,
-        _refused=Mock(),
-        _begin=starting,
-        _end=lambda: end(menu),
-        _real=SimpleNamespace(dispatch=native_dispatch),
-    )
-    dispatch = method("src/sheet_manager/uno_menu.py", "_GuardedDispatch", "dispatch", {})
-    if failure:
-        with pytest.raises(RuntimeError, match="native command failed"):
-            dispatch(guard, SimpleNamespace(Complete=".uno:Remove"), ())
-    else:
-        dispatch(guard, SimpleNamespace(Complete=".uno:Remove"), ())
-    assert not restored and len(queued) == 1 and menu._dispatch_depth == 0
-    queued[0]()
-    assert restored == [True] and menu._completion is None
+    observed, unchanged = object(), Mock()
+    refs = [Ref("Delta", object())]
+    action(owner, 4, observed, refs, 0, unchanged)
+    # The targets are the refs' names when the menu opened; `run` checks them again.
+    menu.run.assert_called_once_with(4, observed, ["Delta"], unchanged)
+    assert shown == ([refusal] if refusal else [])
+    assert owner.refresh.call_count == (1 if refusal else 0)
 
 
 @pytest.mark.parametrize("newer_context", [False, True])
@@ -155,54 +129,6 @@ def test_right_release_keeps_the_press_intent_before_newer_keyboard_input() -> N
     release(owner, SimpleNamespace(Buttons=2, X=10, Y=20))
     owner.post.call_args.args[0]()
     owner._open_menu.assert_called_once_with(10, 20, seen=3)
-
-
-@pytest.mark.parametrize("closed", [False, True])
-def test_failed_menu_restore_refreshes_and_notifies_unless_the_view_closed(closed: bool) -> None:
-    class ClosedView(Exception):
-        pass
-
-    logged, shown = Mock(), Mock()
-    failure = ClosedView("closed") if closed else RuntimeError("restore refused")
-    owner = SimpleNamespace(
-        _disposed=False,
-        _view_stopped=False,
-        _activating=True,
-        _menu_context=True,
-        _context_target=object(),
-        _menu=SimpleNamespace(restore_view=Mock(side_effect=failure), command=None),
-        refresh=Mock(),
-        _selection=SimpleNamespace(revalidate=Mock()),
-        _apply_selection=Mock(),
-        _acknowledge_view=Mock(),
-        peer=object(),
-    )
-    finish = method(
-        "src/sheet_manager/uno_list.py",
-        "SheetList",
-        "_finish_menu",
-        {
-            "MenuView": Any,
-            "DisposedException": ClosedView,
-            "SELECT_COMMANDS": set(),
-            "report": logged,
-            "show_error": shown,
-            "tr": str,
-        },
-    )
-    finish(owner, object(), lambda: True)
-    assert not owner._activating and not owner._menu_context and owner._context_target is None
-    owner._acknowledge_view.assert_called_once()
-    if closed:
-        assert owner._view_stopped
-        owner.refresh.assert_not_called()
-        shown.assert_not_called()
-        logged.assert_not_called()
-    else:
-        owner.refresh.assert_called_once()
-        owner._apply_selection.assert_called_once()
-        assert "could not restore" in shown.call_args.args[2]
-        logged.assert_called_once()
 
 
 def test_move_request_keeps_its_snapshot_refs_and_proof_while_queued() -> None:

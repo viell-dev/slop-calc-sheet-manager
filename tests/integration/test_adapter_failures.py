@@ -8,6 +8,7 @@ from com.sun.star.awt import KeyEvent
 from main_thread import close_after
 
 from sheet_manager.keys import MOD1
+from sheet_manager.uno_calc import select_tabs, selected_tabs
 from sheet_manager.uno_keys import ListKeyHandler
 from sheet_manager.uno_list import SheetList
 from sheet_manager.uno_menu import SheetMenu
@@ -17,7 +18,7 @@ from sheet_manager.uno_structure import StructureMonitor, monitor_for
 
 
 class Tracked:
-    """Forward real UNO calls, retaining only listener/interceptor registration evidence."""
+    """Forward real UNO calls, retaining only listener registration evidence."""
 
     def __init__(self, real):
         self.real = real
@@ -97,43 +98,29 @@ def check_failed_list(context, document):
 
 
 def check_failed_menu(context, document):
-    real_frame = document.getCurrentController().getFrame()
-    registered = []
-    frame: Any = Tracked(real_frame)
-
-    def register(guard):
-        real_frame.registerDispatchProviderInterceptor(guard)
-        registered.append(guard)
-
-    def release(guard):
-        real_frame.releaseDispatchProviderInterceptor(guard)
-        registered.remove(guard)
-
-    frame.registerDispatchProviderInterceptor = register
-    frame.releaseDispatchProviderInterceptor = release
-    posted = []
-    menu: Any = SheetMenu(
-        context, frame, document, document.getCurrentController(), posted.append, lambda: None
-    )
+    """A popup that fails to open leaves the menu closed and Calc's view as it was."""
+    controller = document.getCurrentController()
+    frame = controller.getFrame()
+    sheets = document.getSheets()
+    sheets.insertNewByName("Sheet2", 1)
+    select_tabs(context, frame, [0, 1])
+    before = controller.getActiveSheet().getName(), selected_tabs(context, controller)
+    menu: Any = SheetMenu(context, frame, document, controller)
     observed = snapshot(document)
 
     def fail_popup():
         raise RuntimeError("injected popup failure")
 
-    try:
-        with patch.object(menu, "_popup", fail_popup):
-            try:
-                menu._native(frame.getContainerWindow(), 0, 0, observed, ["Sheet1"], lambda: True)
-            except RuntimeError as error:
-                assert "injected popup" in str(error), error
-            else:
-                raise AssertionError("The menu setup failure did not propagate")
-        assert not registered, "A failed menu left its interceptor registered"
-        assert not posted, "No command was posted; setup failure must release immediately"
-    finally:
-        # Keep a failed baseline probe from contaminating later checks in this private office.
-        for guard in list(registered):
-            release(guard)
+    with patch.object(menu, "_popup", fail_popup):
+        try:
+            menu.show(frame.getContainerWindow(), 0, 0, observed, ["Sheet2"])
+        except RuntimeError as error:
+            assert "injected popup" in str(error), error
+        else:
+            raise AssertionError("The menu setup failure did not propagate")
+    assert not menu.is_open, "A failed menu stayed open"
+    after = controller.getActiveSheet().getName(), selected_tabs(context, controller)
+    assert after == before, ("A failed menu changed Calc's view", before, after)
 
 
 def check_key_failure():

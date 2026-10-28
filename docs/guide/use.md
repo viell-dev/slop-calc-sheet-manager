@@ -74,29 +74,50 @@ popup rendering can hide unavailable actions and their reasons; see the
 Right-click a row to open its context menu without selecting it. If the row is already picked,
 actions target the picked set; otherwise they target just that row. Menu or Shift+F10 targets the
 list's picks.
-Move actions appear directly in it. Choose **Sheet actions…** to open Calc's full sheet-tab menu,
-including your customizations. Hidden-only targets offer Show Sheet where safe.
 
 **Context view.** <Unreleased since="0.0.4" /> Opening this menu leaves the viewed sheet and
 Calc's selected tabs unchanged.
 
+**Sheet commands.** <Unreleased /> The menu offers four of Calc's sheet commands directly, under
+Calc's own names:
+
+| Command | Acts on |
+| --- | --- |
+| Insert Sheet… | One sheet: Calc's dialog inserts before or after it |
+| Delete Sheet… | Every target: Calc asks first when a sheet holds data |
+| Rename Sheet… | One sheet |
+| Hide Sheet | Every target, while another sheet stays visible |
+
+A command is unavailable where it cannot act on exactly its targets: Insert and Rename when the
+menu targets several sheets, every command for hidden sheets, and Delete for protected sheets.
+They are also unavailable in a read-only document or one whose sheet structure is protected,
+Rename for a protected sheet, Delete while changes are recorded, and Delete and Hide when no other
+sheet would stay visible. Calc's own sheet tabs keep their full menu, including your
+customizations, for every other command. Duplicate Sheet and Move or Copy Sheet are only there;
+see [Known issues](./known-issues.md). Test builds up to 0.0.4 offer **Sheet actions…** instead,
+which opens Calc's customized menu.
+
+**Choosing a command.** <Unreleased /> Closing the menu without choosing anything changes
+nothing. A chosen command first checks its sheets again: if one was renamed, replaced or hidden
+since the menu opened, or became protected where the command does not allow that, nothing runs
+and a message explains why. Calc's selected tabs are then set to exactly the targets, and Calc
+stays on them afterwards, as it does after its own tab menu, even if you cancel the command's
+dialog. If Calc reports an error once the command has started, Calc also stays on the targets
+and a message asks you to check them. Insert Sheet and Rename Sheet apply to the viewed sheet
+when you confirm them. When several sheets were targeted, they stay grouped and the footer shows
+the group. Built-in commands keep Calc's confirmation and undo behaviour. Opening the menu leaves
+the list's picks unchanged; a command's result can still clear them under the sheet-identity
+rules, such as when a picked sheet is renamed or deleted.
+
 **Mixed visibility.** <Unreleased since="0.0.4" /> When visible and hidden sheets are picked
-together, **Sheet actions…** offers safe Show and move actions instead. Calc's built-in menu is
-offered only when every context target is visible.
+together, Calc's commands are unavailable for them; Show Sheet and the move actions remain.
 
-Calc's built-in commands require its native tabs to match the context targets, so choosing
-**Sheet actions…** can change Calc's tab group and viewed sheet. Opening the menu leaves the list's
-picks unchanged; a command's result can still clear them under the sheet-identity rules, such as
-when a picked sheet is renamed or deleted.
-If you close Calc's menu without choosing a command, the previous view and group are restored
-where their sheet identities and visibility can still be proved; deleting or hiding those sheets
-can prevent restoration.
+**Hidden sheets.** <Unreleased /> When any target is hidden, **Show Sheet** takes Hide's place
+and shows the hidden targets in one undo step where safe. Calc's commands are unavailable for
+these targets, because Calc cannot view a hidden sheet.
 
-**After a command.** <Unreleased /> Once you choose a command, Calc stays on the sheets the command
-targeted, as it does after its own tab menu, even if you cancel that command's dialog. Some
-dialogs, such as Rename Sheet, apply to the viewed sheet only when you confirm them. When several
-sheets were targeted, they stay grouped and the footer shows the group. Built-in commands keep
-Calc's confirmation and undo behaviour. A changed target is refused before dispatch.
+The move actions follow the commands. Native popup rendering can hide unavailable entries and
+their reasons; see the [known issue](./known-issues.md).
 
 **Sheet Manager Help** opens this guide. The header's native `?` uses an unavailable LibreOffice
 help topic; see [Known issues](./known-issues.md).

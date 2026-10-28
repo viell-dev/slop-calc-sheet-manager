@@ -6,8 +6,9 @@ and tested; no stable release is scheduled. The
 the build this guide describes.
 
 The [alpha backlog](https://github.com/viell-dev/slop-calc-sheet-manager/issues/93) tracks priorities
-and current work. Planned changes include a focused context menu and batch rename with replacement
-preview. These are requests under development, not features available in the published build.
+and current work. Planned changes include batch rename with replacement preview, a request under
+development rather than a feature of the published build. The focused context menu is in the
+development version and marked **Unreleased** below.
 
 ## What Sheet Manager includes
 
@@ -26,10 +27,10 @@ preview. These are requests under development, not features available in the pub
 - **Move controls.** <Unreleased since="0.0.4" /> Use the top buttons or menu to move to top, up,
   down, or bottom in one undo step, with Alt+Home/Up/Down/End shortcuts and availability checks.
   Right-click targets the pointed row or existing picked set without changing picks or the viewed
-  sheet. **Sheet actions…** opens
-  Calc's customized menu;
-  native grouping is restored on dismissal where safe. <Unreleased /> A chosen command leaves
-  Calc on its targets. The menu also links to Help.
+  sheet. Test builds up to 0.0.4 open Calc's customized menu through **Sheet actions…**.
+  <Unreleased /> The menu also runs Calc's Insert, Delete, Rename and Hide sheet commands
+  on exactly its targets, and leaves Calc on them; Calc's sheet tabs keep their full menu. It
+  links to Help as well.
 - **Manual-install downloads and update feeds.** Each published build includes an OXT and checksum.
   Installed copies use the stable feed; later test builds are downloaded manually.
 

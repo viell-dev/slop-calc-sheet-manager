@@ -1,150 +1,126 @@
 """The sheet tab menu for the sheets selected in the list.
 
-The outer movement menu leaves Calc's tabs unchanged. Choosing Sheet actions… groups its
-visible targets and opens Calc's customized tab menu only after exact readback. Hidden or
-mixed-visibility targets use safe extension actions instead. While the native menu is open,
-a dispatch interceptor checks sheet identity and exact tab membership before every command.
-Dismissing it restores the previous view; a dispatched command leaves Calc on its targets.
+The menu offers a few of Calc's sheet commands directly (Insert, Delete, Rename and Hide), the
+list's own Show and moves, and Help. Opening or dismissing it leaves Calc's view and tabs
+unchanged. A chosen built-in command is checked again when it runs, whatever the menu showed:
+its targets' identity and permissions; then Calc's selected tabs are set to exactly those targets,
+and Calc's own state for the command is read. Grouping and that query can run other code, so
+every check is repeated after them, with only reads before the dispatch. Calc stays on its targets
+afterwards: its dialogs can outlive the dispatch and act on the viewed sheet when confirmed
+(#100). A refusal after grouping restores the previous view.
 """
 
 import time
 from collections.abc import Callable
-from contextlib import suppress
 from dataclasses import dataclass
 from typing import cast
 
-import unohelper
 from com.sun.star.awt import Rectangle
-from com.sun.star.frame import XDispatch, XDispatchProviderInterceptor
 from com.sun.star.lang import DisposedException
 
 from sheet_manager.i18n import tr
 from sheet_manager.reorder import Action, plan_move
 from sheet_manager.selection import Ref
-from sheet_manager.uno_calc import MainThread, prop, select_tabs, selected_tabs
+from sheet_manager.uno_calc import (
+    command_label,
+    command_state,
+    query_command,
+    report,
+    select_tabs,
+    selected_tabs,
+)
 from sheet_manager.uno_reorder import Snapshot, move_availability, plan_availability
 from sheet_manager.uno_show import hidden_targets, show_refusal
 
 REPEAT_GUARD_SECONDS = 0.3  # gtk3 can deliver one menu request twice in a row.
 SHOW = 1
+INSERT, DELETE, RENAME, HIDE = 2, 3, 4, 5
+# Calc's commands offered directly. Duplicate Sheet and Move or Copy Sheet are left to Calc's tab
+# bar: they copy formulas wrongly in 26.8.0 and 26.8.1 (tdf#173608, #33), and the list moves
+# sheets itself (#3).
+COMMANDS = {
+    INSERT: ".uno:Insert",
+    DELETE: ".uno:Remove",
+    RENAME: ".uno:RenameTable",
+    HIDE: ".uno:Hide",
+}
 ACTIONS = ("top", "up", "down", "bottom")
 MOVE_IDS = {20001 + index: action for index, action in enumerate(ACTIONS)}
 HELP = 20006
-NATIVE = 20000
-SELECT_COMMANDS = {".uno:TableSelectAll", ".uno:TableDeselectAll"}
+
+
+def _stale() -> str:
+    return tr("The sheets changed while the menu was open. The command was not run.")
+
+
+def _labels() -> dict[int, str]:
+    return {
+        INSERT: tr("Insert Sheet..."),
+        DELETE: tr("Delete Sheet..."),
+        RENAME: tr("Rename Sheet..."),
+        HIDE: tr("Hide Sheet"),
+    }
+
+
+def command_refusal(document, observed: Snapshot, item: int, picked: list[str]) -> str:
+    """Why Calc's command cannot run on exactly these sheets now, or an empty string.
+
+    Calc's own command state describes its current tabs, not these targets, so this applies its
+    state rules (`ScTabViewShell::GetStateTable`) to the targets. It also refuses where Calc's
+    command would act on other sheets than these: Insert and Rename anchor on one viewed sheet,
+    Calc cannot view a hidden sheet (#43), and Delete skips protected sheets.
+    """
+    try:
+        names = (sheet.name for sheet in observed.sheets)
+        handles = dict(zip(names, observed.handles, strict=True))
+        targets = set(picked)
+        if not targets or not targets <= handles.keys():
+            return _stale()
+        if any(handles[name].getName() != name for name in targets):
+            return _stale()
+        if item == INSERT and len(targets) != 1:
+            return tr("Choose one sheet to insert a sheet next to it.")
+        if item == RENAME and len(targets) != 1:
+            return tr("Choose one sheet to rename it.")
+        if any(not handles[name].IsVisible for name in targets):
+            return tr("Show the hidden sheets first.")
+        if document.isReadonly():
+            return tr("This document is read-only.")
+        if document.isProtected():
+            return tr("The document's sheet structure is protected.")
+        if item == RENAME and handles[picked[0]].isProtected():
+            return tr("This sheet is protected.")
+        if item == DELETE:
+            if document.getPropertyValue("RecordChanges"):
+                return tr("Sheets cannot be deleted while changes are being recorded.")
+            if any(handles[name].isProtected() for name in targets):
+                return tr("Protected sheets cannot be deleted.")
+        if item in (DELETE, HIDE) and not any(
+            handle.IsVisible for name, handle in handles.items() if name not in targets
+        ):
+            return tr("At least one other sheet must stay visible.")
+        return ""
+    except Exception:
+        return tr("Sheet Manager could not verify that this is safe.")
 
 
 @dataclass(frozen=True)
 class MenuView:
-    """The native view before temporary context targeting, as retained sheet identities."""
+    """The native view before a command's targeting, as retained sheet identities."""
 
     active: Ref
     tabs: tuple[Ref, ...]
     visible: frozenset[str]
 
 
-class _GuardedDispatch(unohelper.Base, XDispatch):
-    """Runs a command only if the menu's targets are still exactly Calc's selected sheets."""
-
-    def __init__(self, real, verify, refused, begin, end):
-        self._real = real
-        self._verify = verify
-        self._refused = refused
-        self._begin = begin
-        self._end = end
-
-    def dispatch(self, URL, Arguments):
-        if self._verify():
-            self._begin(URL.Complete)
-            try:
-                self._real.dispatch(URL, Arguments)
-            finally:
-                self._end()
-        else:
-            self._refused()
-
-    def addStatusListener(self, Control, URL):
-        self._real.addStatusListener(Control, URL)
-
-    def removeStatusListener(self, Control, URL):
-        self._real.removeStatusListener(Control, URL)
-
-
-class _MenuGuard(unohelper.Base, XDispatchProviderInterceptor):
-    """Registered on the frame only while the built-in menu is open."""
-
-    def __init__(self, verify, refused, begin, end):
-        self._verify = verify
-        self._refused = refused
-        self._begin = begin
-        self._end = end
-        self._slave = None
-        self._master = None
-
-    def queryDispatch(self, URL, TargetFrameName, SearchFlags):
-        real = None
-        if self._slave is not None:
-            real = self._slave.queryDispatch(URL, TargetFrameName, SearchFlags)
-        # The wrapper keeps checking even after the menu has closed: the menu dispatches its
-        # command from a user event posted after it returns.
-        return (
-            None
-            if real is None
-            else _GuardedDispatch(real, self._verify, self._refused, self._begin, self._end)
-        )
-
-    def queryDispatches(self, Requests):
-        return tuple(
-            self.queryDispatch(request.FeatureURL, request.FrameName, request.SearchFlags)
-            for request in Requests
-        )
-
-    def getSlaveDispatchProvider(self):
-        return self._slave
-
-    def setSlaveDispatchProvider(self, NewDispatchProvider):
-        self._slave = NewDispatchProvider
-
-    def getMasterDispatchProvider(self):
-        return self._master
-
-    def setMasterDispatchProvider(self, NewSupplier):
-        self._master = NewSupplier
-
-
 class SheetMenu:
-    def __init__(self, context, frame, document, controller, post, report_refusal):
+    def __init__(self, context, frame, document, controller):
         self._context = context
         self._frame = frame
         self._document = document
         self._controller = controller
-        self._post = post  # Runs work later on the main thread.
-        self._report_refusal = report_refusal
         self.is_open = False
         self._closed_at = 0.0
-        self.command: str | None = None
-        self._targeted_native = False
-        self.view: MenuView | None = None
-        self._dispatch_depth = 0
-        self._completion: Callable[[], None] | None = None
-
-    def defer_completion(self, work: Callable[[], None]) -> bool:
-        """A native modal dialog can run queued callbacks before its command finishes."""
-        if not self._dispatch_depth:
-            return False
-        self._completion = work
-        return True
-
-    def _begin_command(self, command: str) -> None:
-        if self.command is None:
-            self.command = command
-        self._dispatch_depth += 1
-
-    def _end_command(self) -> None:
-        self._dispatch_depth -= 1
-        if self._dispatch_depth == 0 and self._completion is not None:
-            work, self._completion = self._completion, None
-            self._post(work)
 
     def capture_view(self, observed: Snapshot) -> MenuView | None:
         names = [sheet.name for sheet in observed.sheets]
@@ -159,13 +135,8 @@ class SheetMenu:
         )
 
     def restore_view(self, view: MenuView, unchanged: Callable[[], bool]) -> None:
-        """Restore a dismissed native menu's view to provable sheets with unchanged visibility.
-
-        A dispatched command keeps Calc on its targets. Calc can still be running it: Rename
-        Sheet's dialog is asynchronous and renames the sheet viewed when it is confirmed (#100),
-        and Qt dialogs report no modal state, so no restoration can safely wait for the end.
-        """
-        if not self._targeted_native or self.command is not None or not unchanged():
+        """Restore the view from before a refused command, to provable sheets only."""
+        if not unchanged():
             return
         refs = (view.active, *view.tabs)
         if any(ref.token.getName() != ref.name for ref in refs):
@@ -187,159 +158,151 @@ class SheetMenu:
         ):
             raise RuntimeError(tr("Calc could not restore the view after the sheet menu."))
 
-    def _tabs(self) -> list[str]:
-        order = list(self._document.getSheets().getElementNames())
-        return [order[index] for index in selected_tabs(self._context, self._controller)]
-
     def group_calc_tabs(self, picked: list[str]) -> bool:
-        """Select exactly the picked sheets as Calc's tabs and confirm Calc did so."""
+        """Select exactly the picked sheets as Calc's tabs and confirm Calc did so.
+
+        The caller restores the previous view otherwise, through retained sheet identities:
+        selecting runs Calc's activation listeners, which can move sheets, so the indices of
+        the earlier selection may no longer name its sheets.
+        """
         order = list(self._document.getSheets().getElementNames())
         if not picked or not set(picked) <= set(order):
             return False
         indices = sorted(order.index(name) for name in picked)
-        active = self._controller.getActiveSheet().getName()
-        before = selected_tabs(self._context, self._controller)
         select_tabs(self._context, self._frame, indices)
-        if selected_tabs(self._context, self._controller) == indices:
-            return True
-        # Calc did not take exactly these sheets: leave its selection as the user had it.
-        if self._controller.getActiveSheet().getName() != active:
-            self._controller.setActiveSheet(self._document.getSheets().getByName(active))
-        if selected_tabs(self._context, self._controller) != before:
-            select_tabs(self._context, self._frame, before)
-        return False
+        order = list(self._document.getSheets().getElementNames())
+        return set(picked) <= set(order) and selected_tabs(self._context, self._controller) == (
+            sorted(order.index(name) for name in picked)
+        )
 
-    def show(
-        self,
-        peer,
-        x: int,
-        y: int,
-        observed: Snapshot,
-        picked: list[str],
-        unchanged: Callable[[], bool] = lambda: True,
-    ) -> int | None:
-        """Show the menu for the picked sheets; returns the chosen safe action, if any.
+    def show(self, peer, x: int, y: int, observed: Snapshot, picked: list[str]) -> int | None:
+        """Show the menu for the picked sheets; returns the chosen enabled entry, if any.
 
-        The caller has checked that the picked sheets are still the ones `observed` holds;
-        `unchanged` says whether that still holds as far as the caller can tell (no sheet was
-        inserted or deleted since), and is checked again when a command runs.
+        The caller has checked that the picked sheets are still the ones `observed` holds. The
+        menu changes nothing itself; a chosen built-in command runs through `run`.
         """
-        if self.is_open:
-            return None
-        # A refused reopen must not reuse the previous popup's transition state.
-        self._targeted_native = False
-        self.view = None
-        self.command = None
-        if time.monotonic() - self._closed_at < REPEAT_GUARD_SECONDS:
+        if self.is_open or time.monotonic() - self._closed_at < REPEAT_GUARD_SECONDS:
             return None
         self.is_open = True
         try:
-            hidden = set(hidden_targets(observed, picked))
-            if set(picked) - hidden:
-                menu = self._popup()
-                self._add_actions(menu, observed, picked)
-                menu.insertSeparator(len(ACTIONS))
-                menu.insertItem(NATIVE, tr("Sheet actions…"), 0, len(ACTIONS) + 1)
-                chosen = menu.execute(peer, Rectangle(x, y, 1, 1), 0)
-                if chosen != NATIVE:
-                    return chosen if chosen in MOVE_IDS or chosen == HELP else None
-                if not unchanged():
-                    self._report_refusal()
-                    return None
-                if hidden_targets(observed, picked):
-                    # Calc can report hidden indices as selected too. Do not mistake
-                    # that for a visible tab context; keep mixed targets on safe actions.
-                    return self._safe(peer, x, y, observed, picked)
-                self.view = self.capture_view(observed)
-                if self.view is None or not unchanged():
-                    self._report_refusal()
-                    return None
-                self._targeted_native = True
-                if self.group_calc_tabs(picked):
-                    return self._native(peer, x, y, observed, picked, unchanged)
-            return self._safe(peer, x, y, observed, picked)
+            popup, enabled = self.build(observed, picked)
+            chosen = popup.execute(peer, Rectangle(x, y, 1, 1), 0)
+            return chosen if chosen in enabled else None
         finally:
             self.is_open = False
             self._closed_at = time.monotonic()
+
+    def build(self, observed: Snapshot, picked: list[str]):
+        """The popup for these targets, and its enabled entries."""
+        popup = self._popup()
+        enabled = self._add_commands(popup, observed, picked)
+        popup.insertSeparator(popup.getItemCount())
+        enabled |= self._add_actions(popup, observed, picked)
+        popup.insertSeparator(popup.getItemCount())
+        popup.insertItem(HELP, tr("Sheet Manager Help"), 0, popup.getItemCount())
+        return popup, enabled | {HELP}
+
+    def run(self, item: int, observed: Snapshot, picked: list[str], unchanged) -> str:
+        """Run Calc's command on exactly the picked sheets; returns why it did not run, or ''.
+
+        `unchanged` says whether the picked sheets are still the ones `observed` holds, as far
+        as the caller can tell (no sheet was inserted or deleted since). Call on the UI thread.
+        """
+        if not unchanged():
+            return _stale()
+        reason = command_refusal(self._document, observed, item, picked)
+        if reason:
+            return reason
+        view = self.capture_view(observed)
+        if view is None:
+            return _stale()
+        # Grouping activates a target, and querying the command runs the frame's interceptors:
+        # either can run other code, which can move, rename, hide or protect a sheet. So after
+        # both, every check is made again, and only reads run between them and the dispatch.
+        dispatcher = url = None
+        try:
+            if not self.group_calc_tabs(picked):
+                reason = tr("Calc could not select exactly these sheets.")
+            else:
+                url, dispatcher = query_command(self._context, self._frame, COMMANDS[item])
+                if dispatcher is None or not command_state(dispatcher, url):
+                    reason = tr("Calc does not allow this command for these sheets now.")
+                else:
+                    reason = self._dispatch_refusal(item, observed, picked, unchanged)
+        except DisposedException:
+            raise  # The window closed; there is no view left to restore.
+        except Exception:
+            # Nothing was dispatched yet, so restoring the earlier view is safe.
+            report("checking a sheet command before running it")
+            reason = tr("Sheet Manager could not verify that this is safe.")
+        if not reason and dispatcher is not None:
+            try:
+                dispatcher.dispatch(url, ())
+            except DisposedException:
+                raise
+            except Exception:
+                # Calc may already have opened the command's dialog or acted. Restoring the
+                # earlier view could send that dialog to another sheet (#100): stay on the
+                # targets and say that the outcome is uncertain.
+                report("running a sheet command")
+                return tr(
+                    "Calc reported an error while running the command, which may have started. "
+                    "Calc stays on the targeted sheets; check them before editing."
+                )
+            return ""
+        try:
+            self.restore_view(view, unchanged)
+        except DisposedException:
+            raise
+        except Exception:
+            report("restoring the view after a refused command")
+            reason += " " + tr(
+                "Calc's previous viewed sheet and selected tabs could not be restored. "
+                "Check them before editing."
+            )
+        return reason
+
+    def _dispatch_refusal(self, item: int, observed: Snapshot, picked: list[str], unchanged) -> str:
+        """Why the grouped command must not be dispatched now, or an empty string."""
+        if not unchanged():
+            return _stale()
+        reason = command_refusal(self._document, observed, item, picked)
+        if reason:
+            return reason
+        order = list(self._document.getSheets().getElementNames())
+        indices = sorted(order.index(name) for name in picked)
+        if selected_tabs(self._context, self._controller) != indices:
+            return tr("Calc could not select exactly these sheets.")
+        # Insert and Rename act on the viewed sheet when their dialogs are confirmed.
+        if len(picked) == 1 and self._controller.getActiveSheet().getName() != picked[0]:
+            return tr("Calc could not select exactly these sheets.")
+        return ""
 
     def _popup(self):
         manager = self._context.ServiceManager
         return manager.createInstanceWithContext("com.sun.star.awt.PopupMenu", self._context)
 
-    def _native(self, peer, x, y, observed, picked, unchanged):
-        handles = dict(
-            zip((sheet.name for sheet in observed.sheets), observed.handles, strict=True)
-        )
+    def _add_commands(self, popup, observed, picked) -> set[int]:
+        """Add Calc's commands, and Show in place of Hide for hidden targets."""
+        popup.hideDisabledEntries(False)
+        hidden = hidden_targets(observed, picked)
+        labels = _labels()
+        enabled: set[int] = set()
+        for item in (INSERT, DELETE, RENAME, SHOW if hidden else HIDE):
+            if item == SHOW:
+                label = tr("Show Sheet") if len(hidden) == 1 else tr("Show Sheets")
+                reason = show_refusal(self._context, self._document, observed, hidden)
+            else:
+                label = command_label(self._context, COMMANDS[item], labels[item])
+                reason = command_refusal(self._document, observed, item, picked)
+            popup.insertItem(item, label, 0, popup.getItemCount())
+            popup.enableItem(item, not reason)
+            popup.setTipHelpText(item, reason)
+            if not reason:
+                enabled.add(item)
+        return enabled
 
-        def verify() -> bool:
-            try:
-                same = unchanged() and all(handles[name].getName() == name for name in picked)
-                return same and sorted(self._tabs()) == sorted(picked)
-            except Exception:
-                return False
-
-        guard = _MenuGuard(verify, self._report_refusal, self._begin_command, self._end_command)
-        self._frame.registerDispatchProviderInterceptor(guard)
-        controller = None
-        executing = False
-        try:
-            popup = self._popup()
-            controller = self._context.ServiceManager.createInstanceWithArgumentsAndContext(
-                "com.sun.star.comp.framework.ResourceMenuController",
-                (
-                    prop("Value", "sheettab"),
-                    prop("Frame", self._frame),
-                    prop("IsContextMenu", True),
-                ),
-                self._context,
-            )
-            controller.setPopupMenu(popup)
-            executing = True
-            popup.execute(peer, Rectangle(x, y, 1, 1), 0)
-            return None
-        finally:
-            try:
-                if controller is not None:
-                    controller.dispose()
-            finally:
-
-                def release():
-                    # A closed frame no longer has dispatches to protect.
-                    with suppress(DisposedException):
-                        self._frame.releaseDispatchProviderInterceptor(guard)
-
-                if executing:
-                    # The native command is posted while its menu closes; release after it.
-                    # Panel disposal closes the list's queue even inside this nested loop.
-                    # Guard cleanup belongs to the surviving frame, not to the list lifetime.
-                    try:
-                        MainThread(self._context).post(release, "releasing the sheet menu guard")
-                    except BaseException:
-                        release()
-                        raise
-                else:
-                    release()
-
-    def _safe(self, peer, x, y, observed, picked):
-        targets = hidden_targets(observed, picked)
-        popup = self._popup()
-        popup.insertItem(SHOW, tr("Show Sheet") if len(targets) <= 1 else tr("Show Sheets"), 0, 0)
-        reason = show_refusal(self._context, self._document, observed, targets)
-        if not targets:
-            # Calc did not take exactly these sheets, and none of them is hidden.
-            reason = tr("Calc could not select exactly these sheets.")
-        if reason:
-            popup.enableItem(SHOW, False)
-            popup.setTipHelpText(SHOW, reason)
-        self._add_actions(popup, observed, picked)
-        chosen = popup.execute(peer, Rectangle(x, y, 1, 1), 0)
-        return (
-            chosen
-            if chosen in MOVE_IDS or chosen == HELP or chosen == SHOW and not reason
-            else None
-        )
-
-    def _add_actions(self, popup, observed, picked):
+    def _add_actions(self, popup, observed, picked) -> set[int]:
         popup.hideDisabledEntries(False)
         labels = (
             tr("⤒  Move to top (Alt+Home)"),
@@ -348,6 +311,7 @@ class SheetMenu:
             tr("⤓  Move to bottom (Alt+End)"),
         )
         permission = move_availability(self._context, self._document)
+        enabled: set[int] = set()
         for (item, action), label in zip(MOVE_IDS.items(), labels, strict=True):
             popup.insertItem(item, label, 0, popup.getItemCount())
             try:
@@ -360,4 +324,6 @@ class SheetMenu:
             else:
                 popup.enableItem(item, state.allowed)
                 popup.setTipHelpText(item, state.reason)
-        popup.insertItem(HELP, tr("Sheet Manager Help"), 0, popup.getItemCount())
+                if state.allowed:
+                    enabled.add(item)
+        return enabled

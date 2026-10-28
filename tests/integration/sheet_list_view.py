@@ -7,20 +7,15 @@ nodes carry the sheet names. No test hook exists in the extension.
 import threading
 import time
 import traceback
-import xml.etree.ElementTree as ET
-from pathlib import Path
 
 import unohelper
 from com.sun.star.awt import XCallback
-from com.sun.star.frame import XStatusListener
 from com.sun.star.lang import IllegalArgumentException
-from com.sun.star.util import URL
 from teardown import record_stalled_callback
 
 DECK = "SheetManagerDeck"
 PANEL = "SheetManagerPanel"
 TREE = "com.sun.star.awt.tree.XTreeControl"
-MENU_NS = "{http://openoffice.org/2001/menu}"
 
 
 class _OnMain(unohelper.Base, XCallback):
@@ -253,37 +248,17 @@ def selected_tabs(context, controller):
     return sorted(method.invoke(controller, ())[0])
 
 
-class _State(unohelper.Base, XStatusListener):
-    def __init__(self):
-        self.enabled = None
+def menu_entries(context, document, picked):
+    """The list menu's enabled entries for these targets, in the order keys reach them.
 
-    def statusChanged(self, State):
-        self.enabled = State.IsEnabled
-
-    def disposing(self, Source):
-        pass
-
-
-def enabled_menu_items(context, frame, program: Path):
-    """The sheet tab menu's commands that are enabled now, in menu order.
-
-    The built-in menu hides disabled entries, so this is the order keyboard navigation sees.
+    Built by the same code as the menu the list shows. LibreOffice's popup does not show
+    disabled entries (#84), and keyboard navigation skips them and separators too.
     """
-    menu = program.parent / "share/config/soffice.cfg/modules/scalc/popupmenu/sheettab.xml"
-    transformer = context.ServiceManager.createInstanceWithContext(
-        "com.sun.star.util.URLTransformer", context
-    )
-    enabled = []
-    for item in ET.parse(menu).getroot().iter(f"{MENU_NS}menuitem"):
-        url = URL()
-        url.Complete = item.attrib[f"{MENU_NS}id"]
-        url = transformer.parseStrict(url)[1]
-        dispatcher = frame.queryDispatch(url, "", 0)
-        if dispatcher is None:
-            continue
-        state = _State()
-        dispatcher.addStatusListener(state, url)
-        dispatcher.removeStatusListener(state, url)
-        if state.enabled:
-            enabled.append(url.Complete)
-    return enabled
+    from sheet_manager.uno_menu import SheetMenu
+    from sheet_manager.uno_reorder import snapshot
+
+    controller = document.getCurrentController()
+    menu = SheetMenu(context, controller.getFrame(), document, controller)
+    popup, enabled = menu.build(snapshot(document), list(picked))
+    ids = [popup.getItemId(position) for position in range(popup.getItemCount())]
+    return [item for item in ids if item in enabled]

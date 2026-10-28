@@ -4,10 +4,9 @@ from typing import cast
 
 from com.sun.star.beans import PropertyValue
 from main_thread import close_after
-from sheet_list_view import names, open_list, poll, row_point, selection
+from sheet_list_view import menu_entries, names, open_list, poll, row_point, selection
 from test_sheet_list import VCL_MOD1, VCL_RIGHT, Robot
 
-from sheet_manager import keys
 from sheet_manager.reorder import Action, Sheet, target_order
 from sheet_manager.uno_menu import MOVE_IDS, SheetMenu
 from sheet_manager.uno_reorder import snapshot
@@ -28,9 +27,7 @@ class MenuProbe(SheetMenu):
 def move_states(context, document, picked):
     """Build the same real UNO popup used by the panel, against the document's permissions."""
     controller = document.CurrentController
-    menu = MenuProbe(
-        context, controller.Frame, document, controller, lambda work: work(), lambda: None
-    )
+    menu = MenuProbe(context, controller.Frame, document, controller)
     return menu.states(snapshot(document), picked)
 
 
@@ -61,11 +58,9 @@ def exercise(context, desktop, directory, output, *, headless):
                 expected = list(
                     target_order([Sheet(n) for n in SIX], [SIX[2], SIX[4]], cast(Action, action))
                 )
+                entries = menu_entries(context, document, [SIX[2], SIX[4]])
                 robot.click(tree, row_point(tree, 4), buttons=VCL_RIGHT)
-                robot.key(tree, keys.HOME)
-                for _ in range(index):
-                    robot.key(tree, keys.DOWN)
-                robot.key(tree, keys.RETURN)
+                robot.choose(tree, entries, list(MOVE_IDS)[index])
                 poll(lambda e=expected: list(sheets.ElementNames) == e, "the menu's move")
                 poll(lambda e=expected: selection(tree, e) == [SIX[2], SIX[4]], "picks after move")
                 poll(

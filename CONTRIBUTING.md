@@ -158,8 +158,12 @@ after each real mutation, and a silently ineffective undo.
 and unrecorded batches, held locks, Undo, and shared-monitor disposal. It verifies that closing one
 list view keeps other views and held snapshots protected until the document closes.
 `test_move_menu.py` checks real UNO popup enablement, refusal reasons, robot menu actions, and one
-Undo per action. The real-input UI suite exercises every move action and Alt shortcut, separated
-picks, repeated moves, edges, and permission refusals.
+Undo per action. `test_sheet_commands.py` checks the menu's Calc commands: their enablement,
+reasons and Calc's own labels, Calc's command state for grouped tabs, Hide and Delete on exactly
+their targets with one undo step, refusal of changed targets without touching the view, and
+restoration of the view after a refusal that follows grouping. The real-input UI suite exercises
+every move action and Alt shortcut, separated picks, repeated moves, edges, and permission
+refusals.
 Cursor checks cover Ctrl navigation outside the picks, Home/End, page navigation, and rebuilding
 the list. Selection keys are consumed before native forwarding, share a retained range anchor,
 and accumulate logical intent before a coalesced UI write. Boundary regressions cover a paused
@@ -313,10 +317,11 @@ the batch's outer lock is still held and check that neither activates nor hides 
 and save with Ctrl+S from the list and from a cell and check that the picks stay. While a
 far sheet's colour keeps changing, so that the list waits to refresh, they click a sheet hidden
 just before activation, and Ctrl+click after a double-click, and check that nothing acts on the old rows.
-They rename a right-clicked row through **Sheet actions…** while another sheet is viewed and
-others are picked, confirming, cancelling, and using the Menu key, and check which sheet's
-identifying cell the new name carries. Inside the container, `tests/ui/run_ui.py --check NAME`
-(repeatable) runs only the named checks.
+They rename a right-clicked row and insert a sheet next to it from the menu while another sheet
+is viewed and others are picked, confirming, cancelling, and using the Menu key, and check which
+sheet's identifying cell the new name carries and where the new sheet goes. They delete two picked
+sheets, cancelling and accepting Calc's confirmation, and check that no second menu opens.
+Inside the container, `tests/ui/run_ui.py --check NAME` (repeatable) runs only the named checks.
 Results and screenshots are in `test-results/<lane>/ui-gtk3/` and `ui-gen/`. LibreOffice's
 synthetic input on Windows bypasses key handlers and cannot start a native drag; those checks are
 in the [human usability and desktop tests](docs/manual-tests.md), with a synthetic workbook from

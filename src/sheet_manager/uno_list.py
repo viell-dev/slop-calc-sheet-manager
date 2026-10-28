@@ -4,7 +4,8 @@ A single click selects a row; a double click or Enter goes to that sheet and lea
 only selected tab. Ctrl+click and Shift+click change the list's own selection. Picks can be dragged
 to another place in the list through the reorder layer (``uno_reorder``). The list's selection
 follows changes to this window's native tab selection, but the list groups Calc's tabs only to
-open the sheet tab menu (see ``uno_menu``). A status line distinguishes that group from list picks.
+run one of Calc's commands from its menu (see ``uno_menu``). A status line distinguishes that group
+from list picks.
 
 The list keeps the reorder layer's snapshot of the sheets it shows. A selected row survives a
 refresh only while the sheet handle retained for it still has that row's name, so a sheet that
@@ -66,15 +67,7 @@ from sheet_manager.uno_calc import (
     start_thread,
 )
 from sheet_manager.uno_keys import ListKeyHandler, Shortcuts
-from sheet_manager.uno_menu import (
-    ACTIONS,
-    HELP,
-    MOVE_IDS,
-    SELECT_COMMANDS,
-    SHOW,
-    MenuView,
-    SheetMenu,
-)
+from sheet_manager.uno_menu import ACTIONS, COMMANDS, HELP, MOVE_IDS, SHOW, SheetMenu
 from sheet_manager.uno_moves import MoveButtons
 from sheet_manager.uno_reorder import (
     Availability,
@@ -388,14 +381,7 @@ class SheetList:
         self._generation = 0
         self._user_picks = False  # Whether the picks came from the user rather than from Calc.
         self._busy = False
-        self._menu = SheetMenu(
-            context,
-            frame,
-            self.document,
-            self.controller,
-            lambda work: self.post(work, "releasing the menu guard"),
-            lambda: self.post(self._command_refused, "refusing a stale command"),
-        )
+        self._menu = SheetMenu(context, frame, self.document, self.controller)
         self._keys = ListKeyHandler(self, Shortcuts(context, self.document))
         self._changed_at = 0.0  # The last document change.
         self._stale_since: float | None = None  # The first change not yet shown.
@@ -1553,19 +1539,19 @@ class SheetList:
         chosen = None
 
         def complete() -> None:
-            if self._menu.defer_completion(complete):
-                return
             try:
                 self._menu_action(chosen, observed, refs, structure, unchanged)
+            except DisposedException:
+                self._view_stopped = True  # The view closed while its command ran.
             finally:
-                self._finish_menu(self._menu.view, unchanged)
+                self._finish_menu()
 
         try:
-            chosen = self._menu.show(self.peer, x, y, observed, picked, unchanged)
+            chosen = self._menu.show(self.peer, x, y, observed, picked)
         finally:
-            # Native commands and guard release are queued while the popup closes.
-            # Extension actions follow release so their own SelectTables dispatch is not
-            # mistaken for another native menu command.
+            # Act once the popup has closed. A built-in command runs inside this completion,
+            # after every check; its synchronous dialogs, such as Delete's confirmation, return
+            # before the list refreshes.
             self.post(complete, "completing the sheet menu")
 
     def _menu_action(self, chosen, observed, refs, structure, unchanged) -> None:
@@ -1584,28 +1570,17 @@ class SheetList:
             self.refresh()
             if result.status != "done":
                 show_error(self.peer, tr("Sheet Manager"), result.message)
+        elif chosen in COMMANDS:
+            message = self._menu.run(chosen, observed, [ref.name for ref in refs], unchanged)
+            if message:
+                self.refresh()
+                show_error(self.peer, tr("Sheet Manager"), message)
 
-    def _finish_menu(self, view: MenuView | None, unchanged) -> None:
-        message = ""
+    def _finish_menu(self) -> None:
         try:
-            if self._disposed:
-                return
-            try:
-                if view is not None:
-                    self._menu.restore_view(view, unchanged)
-            except DisposedException:
-                self._view_stopped = True  # The view closed while its native command ran.
-                return
-            except Exception:
-                report("restoring the view after the sheet menu")
-                message = tr(
-                    "The sheet menu could not restore the previous viewed sheet and selected "
-                    "Calc tabs. Check the sheet and tab selection before editing."
-                )
-            self.refresh()
-            if self._menu.command in SELECT_COMMANDS:
-                self.follow_calc_selection()
-            else:
+            if not self._disposed and not self._view_stopped:
+                # A command's result can still drop picks under the identity rules.
+                self.refresh()
                 self._selection.revalidate()
                 self._apply_selection()
         finally:
@@ -1613,8 +1588,6 @@ class SheetList:
             self._menu_context = False
             self._context_target = None
             self._acknowledge_view()
-        if message:
-            show_error(self.peer, tr("Sheet Manager"), message)
 
     def _command_refused(self) -> None:
         self.refresh()
