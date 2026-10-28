@@ -6,7 +6,7 @@ owner's standing approval. Readiness includes the checks below and the independe
 the owner's sign-in; prepare the listing text, screenshots, compatibility information, and files
 before asking them to sign in. Do not put that account's credentials in CI.
 
-The current source is an unpublished `0.1.0` test build preparation. Development is in alpha:
+The current source is the `0.0.5` alpha. Development is in alpha:
 features and workflows remain unsettled, and there is no scheduled stable release. Publish only
 prereleases during this phase. A future stable release needs an agreed scope as well as the human
 testing and defect-resolution gates below. Published builds are

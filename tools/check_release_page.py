@@ -60,7 +60,7 @@ class Paragraphs(HTMLParser):
             self.text = None
 
 
-def check_instructions(html: str, *, marked: bool, notice_marked: bool) -> str:
+def check_instructions(html: str, *, marked: bool, alpha_marked: bool) -> str:
     paragraphs = Paragraphs()
     paragraphs.feed(html)
     for instruction in (
@@ -79,16 +79,19 @@ def check_instructions(html: str, *, marked: bool, notice_marked: bool) -> str:
             f"Publication marker disagrees with history: {instruction}",
             markers,
         )
-    notice = [
-        (text, markers)
-        for text, markers in paragraphs.paragraphs
-        if "This explanation appears within the panel" in text
-    ]
-    assert len(notice) == 1, notice
-    text, markers = notice[0]
-    assert (
-        markers == (["0.1.0"] if notice_marked else []) and ("Unreleased" in text) == notice_marked
-    ), ("Selection notice publication marker disagrees with history", notice)
+    for instruction in (
+        "This explanation appears within the panel",
+        "The menu offers four of Calc's sheet commands",
+    ):
+        matches = [
+            (text, markers) for text, markers in paragraphs.paragraphs if instruction in text
+        ]
+        assert len(matches) == 1, (instruction, matches)
+        text, markers = matches[0]
+        assert (
+            markers == (["0.0.5"] if alpha_marked else [])
+            and ("Unreleased" in text) == alpha_marked
+        ), ("0.0.5 publication marker disagrees with history", instruction, markers)
     for instruction in ("Right-click a row", "The four move shortcuts"):
         published = [
             (text, markers) for text, markers in paragraphs.paragraphs if instruction in text
@@ -129,8 +132,9 @@ def main() -> None:
             "published": "2026-10-25T00:00:00Z",
         }
         next_build = {**candidate, "version": "0.0.4", "published": "2026-10-26T00:00:00Z"}
+        alpha = {**candidate, "version": "0.0.5", "published": "2026-10-28T00:00:00Z"}
         first_stable = {**next_build, "version": "0.1.0", "prerelease": False}
-        for name, builds, marked, notice_marked, notice in (
+        for name, builds, marked, alpha_marked, notice in (
             ("empty", [], True, True, "Sheet Manager has no release yet."),
             # Merged preparation, a failed publication and an abandoned draft all have the same
             # published history. The newer source must not silently become released instructions.
@@ -141,6 +145,13 @@ def main() -> None:
                 False,
                 True,
                 "0.0.4, the newest test build",
+            ),
+            (
+                "alpha-published",
+                [candidate, next_build, alpha],
+                False,
+                False,
+                "0.0.5, the newest test build",
             ),
             (
                 "stable-with-candidate",
@@ -189,7 +200,7 @@ def main() -> None:
             )
             html = (output / "guide/releases.html").read_text(encoding="utf-8")
             instructions = (output / "guide/use.html").read_text(encoding="utf-8")
-            plain = check_instructions(instructions, marked=marked, notice_marked=notice_marked)
+            plain = check_instructions(instructions, marked=marked, alpha_marked=alpha_marked)
             assert notice in plain, (name, notice)
             tables = Tables()
             tables.feed(html)
@@ -201,6 +212,9 @@ def main() -> None:
                 expected = [links("0.1.90"), links("0.1.91") + links("0.0.2")]
                 assert tables.links[:2] == expected, tables.links[:2]
                 assert "No test builds have been published yet." not in html
+            elif name == "alpha-published":
+                assert "No stable releases have been published yet." in html
+                assert links("0.0.5") + links("0.0.4") + links("0.0.3") in tables.links
             elif name == "first-stable-published":
                 assert tables.links[:2] == [links("0.1.0"), links("0.0.4") + links("0.0.3")]
         print("Release pages: downloads, preparation, publication and no-history markers passed")
