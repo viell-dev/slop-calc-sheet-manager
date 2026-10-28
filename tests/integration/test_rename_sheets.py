@@ -345,29 +345,33 @@ def check_capacities(context, desktop):
                     assert result.status == "refused" and "Enable undo" in reason, result
                     assert names(document) == SIX and titles(document) == history
                     evidence[steps] = reason
-                    continue
-                plan, result = rename(context, document, renames)
-                assert result.status == "done" and len(plan.steps) == 5, result
-                found = titles(document)
-                assert found[0] == TITLE and len(found) <= steps, found
-                document.UndoManager.undo()
-                assert names(document) == SIX, names(document)
-                assert document.Sheets.getByName("Alfa").getCellRangeByName("C1").Value == 7
-                document.UndoManager.redo()
-                assert names(document) == ["Bravo", "Charlie", "Alfa", "D", "Echo", "Foxtrot"]
-                document.UndoManager.undo()
-                # A failure after real calls at this capacity still recovers the whole batch.
-                observed = snapshot(document)
-                plan = plan_renames(names(document), renames)
-                result = apply_renames(context, document, failing(observed, after=3), plan)
-                assert result.status == "failed-restored", result
-                assert names(document) == SIX and not document.UndoManager.AllRedoActionTitles
-                evidence[steps] = "one step"
+                else:
+                    evidence[steps] = one_step_at_capacity(context, document, renames, steps)
             except BaseException as failure:
                 close_after(context, document, failure)
                 raise
             close_after(context, document)
     return evidence
+
+
+def one_step_at_capacity(context, document, renames, steps):
+    """A batch is one undo step at this capacity, and a failure part-way still recovers."""
+    plan, result = rename(context, document, renames)
+    assert result.status == "done" and len(plan.steps) == 5, result
+    found = titles(document)
+    assert found[0] == TITLE and len(found) <= steps, found
+    document.UndoManager.undo()
+    assert names(document) == SIX, names(document)
+    assert document.Sheets.getByName("Alfa").getCellRangeByName("C1").Value == 7
+    document.UndoManager.redo()
+    assert names(document) == ["Bravo", "Charlie", "Alfa", "D", "Echo", "Foxtrot"]
+    document.UndoManager.undo()
+    observed = snapshot(document)
+    plan = plan_renames(names(document), renames)
+    result = apply_renames(context, document, failing(observed, after=3), plan)
+    assert result.status == "failed-restored", result
+    assert names(document) == SIX and not document.UndoManager.AllRedoActionTitles
+    return "one step"
 
 
 class Handle:

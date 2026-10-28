@@ -169,8 +169,9 @@ such as in `INDIRECT("'WIP North'.A1")`, is not changed; see
 Rename Sheets is unavailable, with the reason in its help text, in a read-only document, when the
 sheet structure is protected, when a target sheet is protected, or when undo is off. If the sheets
 change while the dialog is open, Rename refuses and says so in the dialog; cancel and try again.
-If Calc refuses a name part-way, every name is put back, and a message says which name Calc
-refused.
+If Calc refuses a name part-way, Rename Sheets undoes its own step, checks that every sheet has
+its old name again, and says which name Calc refused. If it cannot confirm that, a message asks
+you to check the sheet names.
 
 The dialog opens with Find focused. Tab and Shift+Tab move through its fields, list, and buttons,
 and Alt with a control's underlined letter goes straight to it. Enter in a field does not rename:

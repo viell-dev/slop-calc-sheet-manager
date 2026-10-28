@@ -13,9 +13,10 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   shows each problem before anything changes: empty names, characters Calc refuses, an
   apostrophe at either end, and names that another sheet has, will have, or that Calc can treat
   as the same. Swaps and cycles of names work. Rename is one undo step; it checks the sheets and
-  permissions again before changing a name, reads every rename back, and puts every name back
-  if Calc refuses one. The viewed sheet and Calc's selected tabs stay as they were, and the
-  renamed sheets stay picked under their new names. Formulas, named ranges and charts follow the
+  permissions again before changing a name and reads every rename back. If Calc refuses a name,
+  it undoes its own step and checks the old names, or says that it could not. The viewed sheet
+  and Calc's selected tabs stay as they were, and the renamed sheets stay picked under their new
+  names. Formulas, named ranges and charts follow the
   new names; sheet names written as text, such as in `INDIRECT`, do not change.
 
 ## 0.0.5 - 2026-10-28
