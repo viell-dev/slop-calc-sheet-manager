@@ -113,6 +113,7 @@ rules, such as when a picked sheet is renamed or deleted.
 
 **Mixed visibility.** <Unreleased since="0.0.4" /> When visible and hidden sheets are picked
 together, Calc's commands are unavailable for them; Show Sheet and the move actions remain.
+<Unreleased /> So does Rename Sheets…, which renames hidden sheets too.
 
 **Hidden sheets.** <Unreleased since="0.0.5" /> When any target is hidden, **Show Sheet** takes
 Hide's place and shows the hidden targets in one undo step where safe. Calc's commands are

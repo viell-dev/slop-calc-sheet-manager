@@ -43,6 +43,7 @@ from sheet_manager.uno_menu import (  # noqa: E402
     MOVE_IDS,
     RENAME,
     RENAME_SHEETS,
+    SHOW,
 )
 
 NATO = [
@@ -1272,9 +1273,13 @@ def check_menu_mixed_visibility(book):
         book.lab.input.tap("Menu", pause=0.4)
         assert (book.active(), book.calc_tabs()) == before, "The open menu changed the view"
         book.lab.screenshot("menu-mixed-visibility")
-        # Show takes Hide's place and is the first available entry; Calc's commands cannot
-        # target a hidden sheet. Down reaches it in gtk3 and gen alike (#84).
-        book.lab.input.tap("Down")
+        # Show takes Hide's place; Calc's commands cannot target a hidden sheet. The list's
+        # Rename Sheets comes first among the available entries. Down skips unavailable
+        # entries in gtk3 and gen alike (#84).
+        entries = book.entries(picked)
+        assert RENAME_SHEETS in entries and SHOW in entries, entries
+        for _ in range(entries.index(SHOW) + 1):
+            book.lab.input.tap("Down")
         book.lab.input.tap("Return", pause=0.5)
         wait_until(lambda: sheet.IsVisible, "safe Show to show the hidden target")
         assert book.undo_titles() == ["Show Sheet", *history]

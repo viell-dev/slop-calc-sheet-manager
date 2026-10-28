@@ -119,7 +119,7 @@ instead. Take screenshots only of this workbook.
     Expected: Calc's active sheet does not change; Show Sheet shows Hotel as one undo step.
     The menu also offers guarded movement and Help, and none of Calc's commands. Undo, then
     select Charlie and Hotel together and open their menu: it offers Show Sheet in place of Hide,
-    guarded moves and Help. Show Sheet shows only Hotel in one undo step.
+    guarded moves and Help. <Unreleased /> It also offers Rename Sheets… (step 30). Show Sheet shows only Hotel in one undo step.
 21. **Other windows.** Open a second workbook, type in its cells, and use its shortcuts; then
     return to the first workbook and click a row of its list.
     Expected: the second workbook behaves exactly as without the extension; the first list still

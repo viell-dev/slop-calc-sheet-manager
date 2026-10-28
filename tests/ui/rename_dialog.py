@@ -10,6 +10,8 @@ import time
 from typing import Any
 
 import uno
+import unohelper
+from com.sun.star.awt import XMouseMotionListener
 from run import wait_for
 from sheet_list_view import on_main_thread
 from xinput import Pointer
@@ -17,7 +19,21 @@ from xinput import Pointer
 from sheet_manager.uno_calc import select_tabs
 from sheet_manager.uno_menu import RENAME, RENAME_SHEETS
 
-LIST_ITEM = "com.sun.star.accessibility.AccessibleRole.LIST_ITEM"
+
+class Tracker(unohelper.Base, XMouseMotionListener):
+    """Records where a window last saw the pointer, in its own coordinates."""
+
+    def __init__(self):
+        self.last = None
+
+    def mouseMoved(self, e):
+        self.last = (e.X, e.Y)
+
+    def mouseDragged(self, e):
+        self.last = (e.X, e.Y)
+
+    def disposing(self, Source):
+        pass
 
 
 def _types(window):
@@ -43,7 +59,12 @@ def find_dialog(book):
 
 
 class Dialog:
-    """The open Rename Sheets dialog's controls, by kind and position."""
+    """The open Rename Sheets dialog, seen through its child windows and its accessible tree.
+
+    The edits' and the list's child peers are plain border windows without their controls'
+    interfaces, so their text and items are read from the accessible tree, where each control
+    has its role. Their places come from those child windows, in the dialog's own coordinates.
+    """
 
     def __init__(self, book):
         self.book = book
@@ -54,20 +75,13 @@ class Dialog:
             size = window.getPosSize()
             return size.Y, size.X
 
-        lists = [c for c in children if "com.sun.star.awt.XListBox" in _types(c)]
-        assert len(lists) == 1, [sorted(_types(c)) for c in children]
-        self.rows = lists[0]
-        edits = sorted(
-            (
-                c
-                for c in children
-                if "com.sun.star.awt.XTextComponent" in _types(c)
-                and "com.sun.star.awt.XListBox" not in _types(c)
-            ),
+        kinds = {"com.sun.star.awt.XButton", "com.sun.star.awt.XFixedText"}
+        plain = sorted(
+            (c for c in children if not _types(c) & {*kinds, "com.sun.star.awt.XScrollBar"}),
             key=top,
         )
-        assert len(edits) == 3, len(edits)
-        self.find, self.replace, self.name = edits
+        assert len(plain) == 4, [sorted(_types(c)) for c in children]
+        self.find, self.replace, self.rows, self.name = plain
         self.buttons = {
             self.accessible_name(c): c for c in children if "com.sun.star.awt.XButton" in _types(c)
         }
@@ -80,63 +94,95 @@ class Dialog:
     def accessible_name(window):
         return window.getProperty("XAccessible").getAccessibleContext().getAccessibleName()
 
+    def _accessible(self, role_name):
+        """The dialog's accessible descendants with this role, top to bottom."""
+        role = uno.getConstantByName(f"com.sun.star.accessibility.AccessibleRole.{role_name}")
+        root = self.window.getProperty("XAccessible").getAccessibleContext()
+        found = []
+
+        def walk(node, depth):
+            for index in range(node.getAccessibleChildCount()):
+                child = node.getAccessibleChild(index).getAccessibleContext()
+                if child.getAccessibleRole() == role:
+                    found.append(child)
+                elif depth < 4:
+                    walk(child, depth + 1)
+
+        walk(root, 0)
+        return sorted(found, key=lambda c: (c.getLocationOnScreen().Y, c.getLocationOnScreen().X))
+
+    def text(self, window):
+        """An edit field's text, from the accessible text field at the same height."""
+        fields = self._accessible("TEXT")
+        assert len(fields) == 3, [field.getAccessibleName() for field in fields]
+        return fields[(self.find, self.replace, self.name).index(window)].getText()
+
+    def _items(self):
+        return self._accessible("LIST_ITEM")
+
     def items(self):
-        return list(self.rows.getItems())
+        return [item.getAccessibleName() for item in self._items()]
 
     def state(self) -> dict[str, Any]:
         return {
             "rows": self.items(),
-            "selected": self.rows.getSelectedItemPos(),
-            "name": self.name.getText(),
+            "name": self.text(self.name),
             "status": self.status.getText(),
             "rename_enabled": bool(self.buttons["Rename"].isEnabled()),
         }
 
     def labels(self):
         """Accessible names, as a screen reader announces the controls."""
+        fields = self._accessible("TEXT")
+        lists = self._accessible("LIST")
         return {
-            "find": self.accessible_name(self.find),
-            "replace": self.accessible_name(self.replace),
-            "name": self.accessible_name(self.name),
-            "rows": self.accessible_name(self.rows),
+            "fields": [field.getAccessibleName() for field in fields],
+            "lists": [item.getAccessibleName() for item in lists],
+            "buttons": sorted(self.buttons),
         }
 
     def calibrate(self):
-        if self.pointer is None:
-            offset = self.book.lab.calibrate(self.rows, self.window)
-            place = self.rows.getPosSize()
-            self.pointer = Pointer(self.book.lab.input, (offset[0] - place.X, offset[1] - place.Y))
-        return self.pointer
+        """Find the dialog's screen offset: move the pointer over its background."""
+        if self.pointer is not None:
+            return self.pointer
+        tracker = Tracker()
+        self.window.addMouseMotionListener(tracker)
+        try:
+            root = self.window.getProperty("XAccessible").getAccessibleContext()
+            origin, size = root.getLocationOnScreen(), root.getSize()
+            # Between the rows of controls the dialog's own background takes the pointer.
+            for y in range(origin.Y + 2, origin.Y + size.Height, 3):
+                for x in (origin.X + 4, origin.X + size.Width // 2, origin.X + size.Width - 5):
+                    tracker.last = None
+                    self.book.lab.input.move(x, y)
+                    deadline = time.monotonic() + 0.15
+                    while tracker.last is None and time.monotonic() < deadline:
+                        time.sleep(0.01)
+                    if tracker.last is not None:
+                        local = tracker.last
+                        self.pointer = Pointer(self.book.lab.input, (x - local[0], y - local[1]))
+                        return self.pointer
+            raise AssertionError("The pointer never reached the dialog's background")
+        finally:
+            self.window.removeMouseMotionListener(tracker)
 
     def click(self, window):
         place = window.getPosSize()
         self.calibrate().click(place.X + place.Width // 2, place.Y + place.Height // 2, pause=0.4)
 
     def click_row(self, index):
-        """Click a row of the list where its accessible item says it is.
-
-        Item positions are taken relative to the list's own accessible position, so that both
-        come from the same coordinate system; the calibrated pointer places the list itself.
-        """
-        role = uno.getConstantByName(LIST_ITEM)
-        context = self.rows.getProperty("XAccessible").getAccessibleContext()
-        items = []
-
-        def walk(node):
-            for child in range(node.getAccessibleChildCount()):
-                item = node.getAccessibleChild(child).getAccessibleContext()
-                if item.getAccessibleRole() == role:
-                    items.append(item)
-                else:
-                    walk(item)
-
-        walk(context)
-        item = items[index]
-        here, there = item.getLocationOnScreen(), context.getLocationOnScreen()
+        """Click a row of the list where its accessible item says it is, relative to the list."""
+        lists = self._accessible("LIST")
+        assert lists, "The dialog's list has no accessible list"
+        item = self._items()[index]
+        here, there = item.getLocationOnScreen(), lists[0].getLocationOnScreen()
         size, place = item.getSize(), self.rows.getPosSize()
+        inner = lists[0].getSize()
+        # The accessible list can sit inside the list window's border.
+        border = (place.Width - inner.Width) // 2, (place.Height - inner.Height) // 2
         self.calibrate().click(
-            place.X + here.X - there.X + min(size.Width // 2, 40),
-            place.Y + here.Y - there.Y + size.Height // 2,
+            place.X + border[0] + here.X - there.X + min(size.Width // 2, 40),
+            place.Y + border[1] + here.Y - there.Y + size.Height // 2,
             pause=0.4,
         )
 
@@ -215,18 +261,21 @@ def check_keyboard(book):
     evidence = {}
     try:
         dialog = open_dialog(book, picks, lambda: book.lab.input.tap("Menu", pause=0.4))
+        book.lab.screenshot("rename-sheets-opened")
         evidence["opened"] = dialog.state()
         evidence["accessible_names"] = dialog.labels()
+        # Each field and the list are named by their labels for screen readers.
+        assert dialog.labels()["fields"] == ["Find:", "Replace with:", "New name:"], evidence
+        assert dialog.labels()["lists"] == ["Sheets:"], evidence
         assert dialog.items() == [f"{name}   (unchanged)" for name in picks], dialog.state()
         assert not dialog.state()["rename_enabled"], dialog.state()
         assert (book.active(), book.calc_tabs(), book.selection()) == (*view, picks)
         assert book.order() == names and not book.undo_titles()
-        book.lab.screenshot("rename-sheets-opened")
         type_text(book.lab, "a")  # The Find field has the focus first.
-        wait_for(lambda: dialog.find.getText() == "a", "Find to take the typed text")
+        wait_for(lambda: dialog.text(dialog.find) == "a", "Find to take the typed text")
         book.lab.input.tap("Tab", pause=0.2)
         type_text(book.lab, "4")
-        wait_for(lambda: dialog.replace.getText() == "4", "Replace with to take the text")
+        wait_for(lambda: dialog.text(dialog.replace) == "4", "Replace with to take the text")
         book.lab.input.tap("Return", pause=0.6)  # No default button: nothing is applied.
         assert find_dialog(book) is not None and book.order() == names, "Enter applied the batch"
         book.lab.input.tap("a", ("Alt_L",), pause=0.4)  # Replace All.
@@ -236,7 +285,7 @@ def check_keyboard(book):
         assert dialog.state()["rename_enabled"], dialog.state()
         book.lab.input.tap("s", ("Alt_L",), pause=0.3)  # The Sheets list.
         book.lab.input.tap("Down", pause=0.3)
-        wait_for(lambda: dialog.name.getText() == "Ch4rlie", "the second row in the name field")
+        wait_for(lambda: dialog.text(dialog.name) == "Ch4rlie", "the second row in the name field")
         book.lab.input.tap("n", ("Alt_L",), pause=0.3)  # The New name field.
         book.lab.input.tap("a", ("Control_L",), pause=0.1)
         type_text(book.lab, "a/b")
@@ -299,7 +348,7 @@ def check_mouse(book):
         expected = ["Echo   →   Ech0", "Foxtrot   →   F0xtr0t"]
         wait_for(lambda: dialog.items() == expected, "proposals replaced by a click")
         dialog.click_row(1)
-        wait_for(lambda: dialog.name.getText() == "F0xtr0t", "the clicked row in the name field")
+        wait_for(lambda: dialog.text(dialog.name) == "F0xtr0t", "the clicked row in the name field")
         dialog.click(dialog.name)
         book.lab.input.tap("a", ("Control_L",), pause=0.1)
         type_text(book.lab, "fox")
@@ -351,7 +400,7 @@ def check_stale(book):
         book.document.getSheets().getByName(names[3]).Name = "Elsewhere"  # Another program.
         history = book.undo_titles()
         book.lab.input.tap("r", ("Alt_L",), pause=0.8)
-        wait_for(lambda: "changed" in dialog.state()["status"], "the refusal in the dialog")
+        wait_for(lambda: "changed while this dialog" in dialog.state()["status"], "the refusal")
         evidence["refused"] = dialog.state()
         assert find_dialog(book) is not None, "A refused batch closed the dialog"
         assert book.order() == [n if n != names[3] else "Elsewhere" for n in names]

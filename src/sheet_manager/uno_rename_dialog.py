@@ -31,6 +31,7 @@ from sheet_manager.rename import Batch, Plan, quoted, row_label, summary
 from sheet_manager.uno_calc import MainThread
 
 CANCEL = 2  # com.sun.star.awt.PushButtonType.CANCEL: closes the dialog without a result.
+POS = 3  # com.sun.star.awt.PosSize.POS: move without resizing.
 FEW_ROWS = 8  # Up to this many changed rows are replaced one by one, keeping the scroll position.
 
 
@@ -161,6 +162,15 @@ class RenameDialog:
             dialog.setModel(model)
             toolkit = manager.createInstanceWithContext("com.sun.star.awt.Toolkit", self._context)
             dialog.createPeer(toolkit, self._parent)
+            # Over the middle of the document window, rather than at its corner.
+            parent, size = self._parent.getPosSize(), dialog.getPosSize()
+            dialog.setPosSize(
+                parent.X + max((parent.Width - size.Width) // 2, 0),
+                parent.Y + max((parent.Height - size.Height) // 3, 0),
+                0,
+                0,
+                POS,
+            )
             dialog.getControl("name").addTextListener(_Post(self, self._edited, "edit"))
             dialog.getControl("rows").addItemListener(_Post(self, self._selected, "row"))
             for name, work in (

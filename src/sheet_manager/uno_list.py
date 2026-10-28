@@ -1711,7 +1711,7 @@ class SheetList:
         changed = tr("The sheets changed while this dialog was open. Cancel and try again.")
 
         def check(plan) -> str:
-            if not unchanged():
+            if not unchanged() or not is_current(self.document, observed):
                 return changed
             return preflight(self.context, self.document, observed, plan)
 
