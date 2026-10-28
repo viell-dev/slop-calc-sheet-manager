@@ -209,6 +209,9 @@ main thread, then reacquires the panel before establishing its group-status base
 Correct rows alone do not establish readiness: Calc's first-paint page-break timer can still report
 a modify notification that conservatively clears picks (#88). This does not waive the product's
 identity checks or promise that input during initialization is retained.
+Each synchronization case closes its workbooks before the next starts, while keeping all windows
+needed by its own assertions. Retaining unrelated workbooks across cases can make native window
+creation fail on Windows (#45); the multi-window case still exercises simultaneous views.
 `test_view_observation.py` makes queued-observation/input races and cancelled callbacks
 deterministic without pretending its adapters verify native visibility or selection behaviour.
 Every workbook is synthetic and loaded visibly, even when the office process itself is headless.

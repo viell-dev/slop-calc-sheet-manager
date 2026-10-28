@@ -284,14 +284,22 @@ def check_reload(context, desktop, directory):
 
 
 def exercise(context, desktop, directory, output, *, headless):
-    return run_checks(
-        (
-            ("tabs", lambda: check_tabs(context, desktop)),
-            ("hidden", lambda: check_hidden(context, desktop, headless)),
-            ("views", lambda: check_views(context, desktop)),
-            ("reload", lambda: check_reload(context, desktop, directory)),
-        ),
-        _CREATED,
-        lambda document: close_document(context, document),
-        label="view synchronization check",
+    checks = (
+        ("tabs", lambda: check_tabs(context, desktop)),
+        ("hidden", lambda: check_hidden(context, desktop, headless)),
+        ("views", lambda: check_views(context, desktop)),
+        ("reload", lambda: check_reload(context, desktop, directory)),
     )
+    results = {}
+    for check in checks:
+        # Keep every window needed by one case, then release it before the next case.
+        # Accumulating unrelated workbooks can exhaust native window resources (#45).
+        results.update(
+            run_checks(
+                (check,),
+                _CREATED,
+                lambda document: close_document(context, document),
+                label="view synchronization check",
+            )
+        )
+    return results
