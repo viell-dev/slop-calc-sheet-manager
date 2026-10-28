@@ -2,10 +2,11 @@
 
 The tests close Calc documents on Windows, and run UI steps, through callbacks on
 LibreOffice's main thread (`main_thread.py`). When such a callback does not finish in time, the
-main thread is stuck and its outcome is unknown (#50): no further callback is tried, the session
-fails, and the runner stops its office instead of asking it to terminate, which would wait for
-the stuck thread too (#40). An earlier failure stays the one raised, with the timeout as a note,
-so that neither hides the other.
+main thread is stuck and its outcome is unknown (#50): no further close, check, suite, or
+settings restore is tried (#51), the UI runner stops too (#52), the session fails, and the runner
+stops its own office process tree instead of asking it to terminate, which would wait for the
+stuck thread too (#40). An earlier failure stays the one raised, with the timeout as a note, so
+that neither hides the other.
 """
 
 from collections.abc import Callable, Iterable

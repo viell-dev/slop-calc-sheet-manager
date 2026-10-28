@@ -1,4 +1,20 @@
-"""Guarded UNO adapter for the pure reorder planner. Call synchronously on the UI thread."""
+"""Guarded UNO adapter for the pure reorder planner. Call synchronously on the UI thread.
+
+`reorder` plans the target order and the fewest individual moves without UNO. This adapter takes
+snapshots, checks permissions and stale handles, applies a plan as one undo step, and verifies
+the result or its recovery. docs/reordering.md is the contract the panel relies on.
+
+- The panel stays busy and defers refresh while a plan is applied: consecutive individual moves
+  of a scenario block split it in between.
+- Never pass an interior scenario gap through as a raw move destination, and never use Calc's
+  native multi-sheet Move.
+- Keep balanced nested undo contexts. Calc limits the current context to the configured undo
+  steps, so a flat context silently loses the earliest moves above that capacity (#16). The tests
+  cover a capacity of two.
+- Snapshots carry the shared `uno_structure` monitor's identity and generation, and
+  `is_current`, `preflight` and `apply_order` check both. Undo and Redo invalidate a held
+  snapshot even when they restore the original order, so recovery tests take fresh ones.
+"""
 
 from dataclasses import dataclass
 from typing import Any, Literal, cast

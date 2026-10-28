@@ -1,4 +1,23 @@
-"""Full-width row decoration on the native tree, retaining its input and accessibility."""
+"""Full-width row decoration on the native tree, retaining its input and accessibility.
+
+Backgrounds and separate gutter markers are painted before the native labels; borders are posted
+and coalesced after them, because the label backgrounds can cover dividers. Backgrounds,
+dividers and drop markers fill the viewport, while the arrow and swatch scroll with the label so
+that they cannot overlap its text. Keep native text and accessibility, wheel input, and
+multi-sheet drag support: compound controls do not provide the same drag path.
+
+- Row geometry comes from native `getNodeRect()` Y and Height, because VCL can enlarge the
+  requested RowHeight for its font and DPI. Its Y and Height span the entry; its X and Width
+  follow the label.
+- Native hit testing supplies the content bounds, excluding scrollbars; the peer's output size
+  includes them.
+- Never put fixed frame lines on the scrolling surface: VCL's pixel scrolling copies them into
+  rows. Keep the screenshot-pixel wheel, thumb and native-height check.
+- XGraphics inherits the tree's horizontal map origin, which the label-sized right edge cannot
+  reveal. Find the hit interval's left pixel edge, including negative X, and compare it with the
+  rectangle's logical left edge minus VCL's four-pixel hit tolerance for icon-free rows. Keep the
+  long-name coverage with both scrollbars and the source-pinned hit-tolerance assumption.
+"""
 
 from typing import Any
 

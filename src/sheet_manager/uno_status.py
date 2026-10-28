@@ -1,4 +1,9 @@
-"""Separate footer messages for grouped editing and transient selection clearing."""
+"""Separate footer messages for grouped editing and transient selection clearing.
+
+One label warns while several Calc tabs are grouped; the other shows the list's transient notice
+that its picks were cleared. The notice expiring leaves the group warning intact. Native adjusted
+text sizing follows the available width, and height changes below the tree keep its row origin.
+"""
 
 from com.sun.star.awt import Size
 

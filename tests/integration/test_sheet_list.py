@@ -1,12 +1,15 @@
 """The sheet list in a live office: contents, refresh, identity, clicks, the menu, and Show.
 
 This feature suite runs in every integration session, on Linux and Windows, against the
-packaged modules. LibreOffice's XToolkitRobot posts mouse and key events into VCL's own queue.
+packaged modules. LibreOffice's XToolkitRobot posts mouse and key events into VCL's own queue,
+so they reach the list ahead of its delayed refresh, as clicks on rows not yet refreshed do.
 Robot key events bypass key handlers and robot input cannot carry a native drag, so the key
 handler and drag and drop are covered by the real-input UI tests and the manual checklist.
 Robot input reaches the sheet tab menu only where VCL draws it, in headless sessions; a painted
 gtk3 session opens a native GTK menu, so there the suite skips its menu steps and the real-input
-UI tests cover the menu. Moving sheets is covered by ``test_reorder.py``.
+UI tests cover the menu. Moving sheets is covered by ``test_reorder.py``. After a failure, the
+suite closes the workbooks it left open: a painted office asks to save them when the runner
+terminates it, which blocks the run (#40).
 """
 
 import time

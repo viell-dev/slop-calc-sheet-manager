@@ -19,7 +19,9 @@ What LibreOffice reports (measured with 26.2.1.2 and 26.8.1.1; docs/reordering.m
 - Saving reports several modify notifications and no undo action, all between the document
   events `OnSave` and `OnSaveDone` (`OnSaveAs`, `OnSaveAsDone` for Save As). LibreOffice may run
   posted work during a save, and modify notifications are disabled meanwhile; copies, exports,
-  and autosave's recovery file (`OnCopyTo` to `OnCopyToDone`) report no modification.
+  and autosave's recovery file (`OnCopyTo` to `OnCopyToDone`) report no modification. A save
+  window lasts from its start event to its `Done` or `Failed` event, or to the next undo
+  notification, since a failed save may leave it open.
 
 So the generation moves:
 
@@ -36,14 +38,17 @@ So the generation moves:
   so the list acts on nothing until the lock is released and the report arrives. The exceptions
   are the extension's own move and, for modify notifications being off, a save window.
 
-Out of scope, as decided by the maintainer: a structural edit that LibreOffice does not report
-at all, because undo recording and modify notifications were both off, or whose only report a
-save window absorbs. A program can still make its report look like an ordinary edit's: if it
-records an edit inside an undo context and, in the same main-thread call, makes unrecorded
-structural edits inside a lock and turns undo recording back on before releasing the lock, the
-last modify notification follows an explaining undo notification, exactly as typed input's
-does. That needs a sequence built to hide the edits, and such a program could hide or delete
-any sheet directly anyway.
+Over-clearing is the accepted cost: undo and redo, document property changes, and other changes
+LibreOffice does not record for undo move the generation too, and so clear the list's picks.
+
+The threat model, decided by the maintainer: everything LibreOffice reports must be caught. Out
+of scope: a structural edit that LibreOffice does not report at all, because undo recording and
+modify notifications were both off, or whose only report a save window absorbs. A program can
+still make its report look like an ordinary edit's: if it records an edit inside an undo context
+and, in the same main-thread call, makes unrecorded structural edits inside a lock and turns undo
+recording back on before releasing the lock, the last modify notification follows an explaining
+undo notification, exactly as typed input's does. That needs a sequence built to hide the edits,
+and such a program could hide or delete any sheet directly anyway.
 """
 
 from dataclasses import dataclass, field

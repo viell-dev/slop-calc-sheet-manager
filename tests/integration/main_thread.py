@@ -13,6 +13,10 @@ could run inside the nested main loop of a clipboard read (#30).
 
 A close that times out leaves the main thread's state unknown; it is recorded in `teardown`, and
 the session then fails without further closes (#50).
+
+Close every Calc document in the tests and the workbook generator through `close_document`, and
+use `close_after` in place of a `finally` clause that closes one. A suite closes its leftovers
+through `teardown.run_checks` and sets office settings for a block with `teardown.Configured`.
 """
 
 import os

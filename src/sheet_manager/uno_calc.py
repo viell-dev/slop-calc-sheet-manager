@@ -49,8 +49,8 @@ def start_thread(function: Callable[[], None], where: str) -> None:
     `threading.Thread.start` waits until the new thread runs. That thread's first Python steps
     can run the garbage collector, which can release UNO objects whose destructors wait for
     LibreOffice's main lock. Listeners and the main thread hold that lock, so a thread they
-    started that way never started, and neither side went on: Calc hung. A thread started here
-    waits for the lock instead, until its holder is done.
+    started that way never started, and neither side went on: Calc hung (#55). A thread started
+    here waits for the lock instead, until its holder is done. Never start one with `threading`.
     """
 
     def run() -> None:
