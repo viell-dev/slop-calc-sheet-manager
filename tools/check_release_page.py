@@ -63,7 +63,9 @@ class Paragraphs(HTMLParser):
 
 
 # Guide instructions for behaviour first published in each version. A rendered marker must show
-# exactly when the published baseline (`baseline`) is older than that version.
+# exactly when the published baseline (`baseline`) is older than that version. A paragraph may
+# also carry a later version's marker for an addition, so other markers are allowed beside it;
+# "Unreleased" must appear exactly when some marker is shown.
 FIRST_PUBLISHED = {
     "0.0.4": (
         "buttons above the list",

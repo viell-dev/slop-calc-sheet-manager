@@ -90,11 +90,12 @@ instead. Take screenshots only of this workbook.
     indicator in the status bar clears.
 15. **Menu by right click.** Click "Charlie", Ctrl+click "Echo", and right-click "Echo".
     Expected: Delete Sheet, Hide Sheet, the move actions and Help appear in one menu; Insert
-    and Rename are not offered for two sheets. <Unreleased since="0.0.6" /> Rename Sheets… is
-    offered in Rename's place instead (step 30). Picks, viewed sheet and Calc tab group stay
-    unchanged while the menu is open. Choose Hide Sheet: exactly Charlie and Echo are hidden, and
-    no second menu opens. Press Ctrl+Z. Right-click an unpicked row and press Esc: picks, view and
-    Calc tab group remain unchanged throughout. Sheet Manager Help opens the guide.
+    and Rename are unavailable for two sheets (greyed out, or left out of the menu on some
+    desktops). <Unreleased since="0.0.6" /> Rename Sheets… is offered in Rename's place instead
+    (step 30). Picks, viewed sheet and Calc tab group stay unchanged while the menu is open.
+    Choose Hide Sheet: exactly Charlie and Echo are hidden, and no second menu opens. Press
+    Ctrl+Z. Right-click an unpicked row and press Esc: picks, view and Calc tab group remain
+    unchanged throughout. Sheet Manager Help opens the guide.
 16. **Menu by keyboard.** Click "Golf" and press the Menu key; press Esc. Then press Shift+F10.
     Expected: the same menu opens each time, positioned at the Golf row, with Insert Sheet,
     Delete Sheet, Rename Sheet and Hide Sheet available.
