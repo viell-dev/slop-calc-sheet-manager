@@ -52,16 +52,16 @@ def rename_refusal(context: Any, document: Any, observed: Snapshot, targets: lis
 
 
 def _refusal(context: Any, document: Any, observed: Snapshot, targets: list[str]) -> str:
+    # Permissions first, for the most useful reason: undo that is off or locked also makes the
+    # snapshot unprovable. Every check is a read, and all of them must pass.
     try:
         handles = _handles(observed)
-        if not set(targets) <= handles.keys() or not is_current(document, observed):
+        if not set(targets) <= handles.keys():
             return _stale()
         if document.isReadonly():
             return tr("This document is read-only.")
         if document.isProtected():
             return tr("The document's sheet structure is protected.")
-        if any(handles[name].isProtected() for name in targets):
-            return tr("Protected sheets cannot be renamed.")
         undo = document.getUndoManager()
         if not document.getPropertyValue("IsUndoEnabled") or undo.isLocked():
             return tr("Enable undo before renaming sheets.")
@@ -69,6 +69,10 @@ def _refusal(context: Any, document: Any, observed: Snapshot, targets: list[str]
             return tr("Enable undo before renaming sheets.")
         if undo.getAllUndoActionTitles() and not undo.isUndoPossible():
             return tr("Finish the current undo action before renaming sheets.")
+        if not is_current(document, observed):
+            return _stale()
+        if any(handles[name].isProtected() for name in targets):
+            return tr("Protected sheets cannot be renamed.")
         return ""
     except Exception:
         return tr("Sheet Manager could not verify that this is safe.")

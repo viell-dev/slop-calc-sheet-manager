@@ -19,7 +19,16 @@ from sheet_list_view import on_main_thread
 
 from sheet_manager import uno_menu
 from sheet_manager.uno_calc import command_state, query_command, select_tabs, selected_tabs
-from sheet_manager.uno_menu import COMMANDS, DELETE, HIDE, INSERT, RENAME, SHOW, SheetMenu
+from sheet_manager.uno_menu import (
+    COMMANDS,
+    DELETE,
+    HIDE,
+    INSERT,
+    RENAME,
+    RENAME_SHEETS,
+    SHOW,
+    SheetMenu,
+)
 from sheet_manager.uno_reorder import snapshot
 from sheet_manager.uno_structure import monitor_for
 
@@ -88,7 +97,8 @@ def check_states(context, document, directory, desktop):
         assert "~" in one[item][2], "Not Calc's label: the English fallback has no mnemonic"
     two = states(context, document, ["Charlie", "Delta"])
     assert not two[INSERT][0] and "one sheet" in two[INSERT][1], two
-    assert not two[RENAME][0] and "one sheet" in two[RENAME][1], two
+    # The list's own Rename Sheets takes Calc's one-sheet Rename's place (#102).
+    assert RENAME not in two and two[RENAME_SHEETS][0], two
     assert two[DELETE][0] and two[HIDE][0], two
     everything = states(context, document, SIX)
     assert not everything[DELETE][0] and "visible" in everything[DELETE][1], everything
@@ -104,7 +114,8 @@ def check_states(context, document, directory, desktop):
     sheets.getByName("Foxtrot").IsVisible = False
     mixed = states(context, document, ["Charlie", "Foxtrot"])
     assert HIDE not in mixed and mixed[SHOW][0], mixed
-    assert not any(mixed[item][0] for item in (INSERT, DELETE, RENAME)), mixed
+    assert not any(mixed[item][0] for item in (INSERT, DELETE)), mixed
+    assert RENAME not in mixed and mixed[RENAME_SHEETS][0], mixed
     assert "hidden" in mixed[DELETE][1], mixed
     hidden = states(context, document, ["Foxtrot"])
     assert HIDE not in hidden and hidden[SHOW][0], hidden
