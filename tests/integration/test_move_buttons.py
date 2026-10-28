@@ -46,10 +46,19 @@ def exercise(context, desktop, directory, output):
             assert tuple(document.UndoManager.AllUndoActionTitles) == ("Move Sheets", *before)
             document.UndoManager.undo()
             poll(lambda: list(sheets.ElementNames) == SIX, "one undo restoring the order")
-        document.protect("synthetic")
+        poll(lambda: names(tree) == SIX, "the list after the final undo")
         robot.click(tree, row_point(tree, 2))
-        poll(lambda: all(not button.isEnabled() for button in buttons.values()), "disabled moves")
-        assert all("protected" in button.getProperty("HelpText") for button in buttons.values())
+        poll(lambda: selection(tree, SIX) == [SIX[2]], "the pick before protecting the document")
+        document.protect("synthetic")
+        # Undo can already have disabled every button by clearing the picks. Wait for the
+        # protection feedback itself, not that earlier disabled state while input is queued.
+        poll(
+            lambda: all(
+                not button.isEnabled() and "protected" in button.getProperty("HelpText")
+                for button in buttons.values()
+            ),
+            "disabled moves with the protection reason",
+        )
         document.unprotect("synthetic")
         path = directory / "move-controls-readonly.ods"
         document.storeToURL(path.as_uri(), ())
@@ -60,10 +69,12 @@ def exercise(context, desktop, directory, output):
             readonly_panel, _ = open_list(context, readonly)
             readonly_buttons = move_buttons(readonly_panel)
             poll(
-                lambda: all(not b.isEnabled() for b in readonly_buttons.values()),
-                "read-only move controls",
+                lambda: all(
+                    not b.isEnabled() and "read-only" in b.getProperty("HelpText")
+                    for b in readonly_buttons.values()
+                ),
+                "disabled moves with the read-only reason",
             )
-            assert all("read-only" in b.getProperty("HelpText") for b in readonly_buttons.values())
         except BaseException as failure:
             close_after(context, readonly, failure)
             raise
