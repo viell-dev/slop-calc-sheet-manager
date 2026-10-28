@@ -10,9 +10,10 @@ from html.parser import HTMLParser
 from pathlib import Path
 
 from build import ROOT
-from release_data import version_parts
+from release_data import package_metadata, version_parts
 
 RELEASES = "https://github.com/viell-dev/slop-calc-sheet-manager/releases"
+SOURCE = package_metadata((ROOT / "extension" / "description.xml").read_bytes())[0]
 
 
 class Tables(HTMLParser):
@@ -64,7 +65,8 @@ class Paragraphs(HTMLParser):
 
 # Guide instructions for behaviour first published in each version. A rendered marker must show
 # exactly when the published baseline (`baseline`) is older than that version. A paragraph may
-# also carry a later version's marker for an addition, so other markers are allowed beside it;
+# also carry a marker for a later addition: any other marker shown must be unversioned
+# ("pending") or for a version after the instruction's own and no later than the source's, and
 # "Unreleased" must appear exactly when some marker is shown.
 FIRST_PUBLISHED = {
     "0.0.4": (
@@ -100,7 +102,16 @@ def check_instructions(html: str, *, described: str | None) -> str:
             ]
             assert len(matches) == 1, (instruction, matches)
             text, markers = matches[0]
-            assert (version in markers) == marked and ("Unreleased" in text) == bool(markers), (
+            others = [marker for marker in markers if marker != version]
+            assert (
+                (version in markers) == marked
+                and ("Unreleased" in text) == bool(markers)
+                and all(
+                    other == "pending"
+                    or version_parts(version) < version_parts(other) <= version_parts(SOURCE)
+                    for other in others
+                )
+            ), (
                 f"Publication marker disagrees with history: {instruction}",
                 version,
                 described,
