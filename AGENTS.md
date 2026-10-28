@@ -425,8 +425,12 @@ reconsider. The owner may report a defect themselves, in their own words.
   of which can move, rename, hide or protect a sheet, so after both it repeats the generation,
   `command_refusal` and an exact tab readback (a single target viewed), then dispatches through
   the dispatcher already found, without arguments, as Calc's menu does: only reads run in
-  between. A refusal after grouping, including a failed grouping, restores the saved view against
-  fresh indices, retained identities, proof, and original visibility, never by raw indices.
+  between. A refusal after grouping, including a failed grouping or a UNO error before the
+  dispatch, restores the saved view against fresh indices, retained identities, proof, and
+  original visibility, never by raw indices. An error raised by the dispatch itself is different:
+  Calc may already have opened the command's dialog or acted, so the view stays on the targets
+  and the message says the outcome is uncertain; restoring could send a Rename or Insert dialog
+  to another sheet (#100). `DisposedException` propagates: the view is gone.
   A dispatched command keeps Calc on its targets: Calc's asynchronous dialogs outlive the
   dispatch, and Insert and Rename act on the sheet viewed at confirmation (#100). The document's
   `OnModeChanged` reports dialog lifetime on VCL and gtk3 dialogs, but native Qt dialogs never

@@ -133,7 +133,7 @@ instead. Take screenshots only of this workbook.
     an affected sheet and the list follows, so select both rows again before the next button.
     Use Shift+Tab from the list to reach Bottom, Down, Up and Top. Enter/Space activate a focused
     button; ordinary letters do not edit cells. Tab at the end of the controls returns to Calc.
-23. **Sheets added during a selection.** Click "Charlie" and Ctrl+click "Echo". Then choose
+24. **Sheets added during a selection.** Click "Charlie" and Ctrl+click "Echo". Then choose
     Sheet ▸ Insert Sheet at End and confirm.
     Expected: the list no longer selects Charlie and Echo, and an information bar above the sheet
     says that the selection was cleared because sheets may have been added, removed, or renamed.
@@ -143,18 +143,18 @@ instead. Take screenshots only of this workbook.
     in the list; typing a letter searches the list rather than editing a cell. If Calc tabs are
     grouped, their separate warning remains. Repeat in another document while the first notice
     expires; the first document must not become active.
-24. **Top.** Click Charlie and Ctrl+click Echo, then choose Move to top from the context menu.
+25. **Top.** Click Charlie and Ctrl+click Echo, then choose Move to top from the context menu.
     Expected: Charlie and Echo become the first two sheets, in that order, remain selected, and
     Calc keeps its active sheet. One Undo restores the original order.
-25. **Up.** Select Charlie and Echo again and choose Move up twice, reopening the menu each time.
+26. **Up.** Select Charlie and Echo again and choose Move up twice, reopening the menu each time.
     Expected: each separate selected run moves one place per action, stopping at an edge. Each
     action is one undo step and keeps the same sheets selected. Undo twice.
-26. **Down.** Select Charlie and Echo and choose Move down twice, then undo twice.
+27. **Down.** Select Charlie and Echo and choose Move down twice, then undo twice.
     Expected: each run moves one place per press, with the gaps preserved until runs meet an
     edge or each other; the same sheets stay selected and each action is one undo step.
-27. **Bottom.** Select Charlie and Echo and choose Move to bottom, then undo.
+28. **Bottom.** Select Charlie and Echo and choose Move to bottom, then undo.
     Expected: Charlie and Echo are the last two sheets, in that order, still selected.
-28. **Move shortcuts and focus.** Repeat steps 24–27 with Alt+Home, Alt+Up,
+29. **Move shortcuts and focus.** Repeat steps 25–28 with Alt+Home, Alt+Up,
     Alt+Down, and Alt+End while the list is focused. Use Menu or Shift+F10 to reach move actions
     by keyboard, then cancel and use Tab or Shift+Tab to leave the list.
     Expected: shortcuts match the context actions, a successful move returns focus to the list,

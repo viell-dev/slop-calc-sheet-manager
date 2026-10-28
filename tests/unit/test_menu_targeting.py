@@ -81,6 +81,8 @@ class Calc:
         # dispatch interceptors and status queries while the command is looked up.
         self.on_select: Callable[[], None] | None = None
         self.on_state: Callable[[], None] | None = None
+        # Where a UNO call fails: "query", "state", or "dispatch" (after Calc began the command).
+        self.fail: str | None = None
 
     def by_name(self, name: str) -> Sheet:
         return next(sheet for sheet in self.sheets if sheet.name == name)
@@ -130,6 +132,10 @@ class Calc:
         )
 
 
+class Disposed(Exception):
+    """Stands in for UNO's DisposedException."""
+
+
 @dataclass(frozen=True)
 class View:
     active: Ref
@@ -145,13 +151,19 @@ def bound_menu(
 
     def record(url: str, arguments: object) -> None:
         calc.dispatched.append(url)
+        if calc.fail == "dispatch":
+            raise RuntimeError("injected failure inside the command")
 
     def query(context: object, frame: object, command: str) -> tuple[str, object]:
+        if calc.fail == "query":
+            raise RuntimeError("injected failure looking up the command")
         dispatcher = SimpleNamespace(dispatch=record)
         # None: the frame had no dispatcher for the command.
         return command, dispatcher if dispatches else None
 
     def state(dispatcher: object, url: str) -> bool:
+        if calc.fail == "state":
+            raise RuntimeError("injected failure reading the command's state")
         if calc.on_state is not None:
             hook, calc.on_state = calc.on_state, None
             hook()
@@ -169,6 +181,7 @@ def bound_menu(
         "query_command": query,
         "command_state": state,
         "report": report or Mock(),
+        "DisposedException": Disposed,
         "select_tabs": calc.select,
         "selected_tabs": calc.selected,
     }
@@ -350,6 +363,67 @@ def test_sheet_moved_while_grouping(taken: str) -> None:
     else:
         assert reason == "" and calc.dispatched == [COMMANDS[DELETE]], reason
         assert sorted(calc.tabs) == ["Charlie", "Echo"]
+
+
+@pytest.mark.parametrize("where", ["query", "state"])
+def test_failure_before_dispatch_restores_the_view(where: str) -> None:
+    """A UNO error after grouping but before the command was dispatched: nothing ran."""
+    calc = fresh()
+    calc.fail = where
+    logged = Mock()
+    menu = bound_menu(calc, logged)
+    before = calc.view()
+    reason = menu.run(RENAME, calc.snapshot(), ["Delta"], lambda: True)
+    assert reason and not calc.dispatched, reason
+    assert calc.view() == before, "The view from before the failed command was not restored"
+    logged.assert_called_once()
+
+
+@pytest.mark.parametrize("item", [RENAME, INSERT, DELETE])
+def test_failure_inside_dispatch_keeps_calc_on_its_targets(item: int) -> None:
+    """A UNO error once Calc began the command: it may have opened a dialog or acted already.
+
+    Restoring the earlier view could send an open Rename or Insert dialog to the wrong sheet
+    (#100), so Calc stays on the targets and the outcome is reported as uncertain.
+    """
+    calc = fresh()
+    calc.fail = "dispatch"
+    logged = Mock()
+    menu = bound_menu(calc, logged)
+    picked = ["Charlie", "Echo"] if item == DELETE else ["Delta"]
+    reason = menu.run(item, calc.snapshot(), picked, lambda: True)
+    assert calc.dispatched == [COMMANDS[item]]
+    assert "may have" in reason, reason
+    assert calc.view() == (picked[0], picked), "The view moved away from a started command"
+    logged.assert_called_once()
+
+
+def test_failed_restoration_after_a_failure_before_dispatch_is_reported() -> None:
+    calc = fresh()
+    calc.fail = "state"
+    logged = Mock()
+    menu = bound_menu(calc, logged)
+
+    def broken(sheet: Sheet) -> None:
+        raise RuntimeError("injected UNO error while restoring")
+
+    menu._controller.setActiveSheet = broken
+    reason = menu.run(RENAME, calc.snapshot(), ["Delta"], lambda: True)
+    assert "could not verify" in reason and "could not be restored" in reason, reason
+    assert logged.call_count == 2 and not calc.dispatched
+
+
+def test_closed_view_during_a_command_is_not_reported_as_a_refusal() -> None:
+    calc = fresh()
+    menu = bound_menu(calc)
+
+    def closed() -> None:
+        raise Disposed("the window closed")
+
+    calc.on_state = closed
+    with pytest.raises(Disposed):
+        menu.run(RENAME, calc.snapshot(), ["Delta"], lambda: True)
+    assert not calc.dispatched
 
 
 def test_partial_grouping_restores_the_users_tabs() -> None:

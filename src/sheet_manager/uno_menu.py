@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from typing import cast
 
 from com.sun.star.awt import Rectangle
+from com.sun.star.lang import DisposedException
 
 from sheet_manager.i18n import tr
 from sheet_manager.reorder import Action, plan_move
@@ -218,20 +219,42 @@ class SheetMenu:
         # Grouping activates a target, and querying the command runs the frame's interceptors:
         # either can run other code, which can move, rename, hide or protect a sheet. So after
         # both, every check is made again, and only reads run between them and the dispatch.
-        if not self.group_calc_tabs(picked):
-            reason = tr("Calc could not select exactly these sheets.")
-        else:
-            url, dispatcher = query_command(self._context, self._frame, COMMANDS[item])
-            if dispatcher is None or not command_state(dispatcher, url):
-                reason = tr("Calc does not allow this command for these sheets now.")
+        dispatcher = url = None
+        try:
+            if not self.group_calc_tabs(picked):
+                reason = tr("Calc could not select exactly these sheets.")
             else:
-                reason = self._dispatch_refusal(item, observed, picked, unchanged)
-                if not reason:
-                    dispatcher.dispatch(url, ())
-                    return ""
+                url, dispatcher = query_command(self._context, self._frame, COMMANDS[item])
+                if dispatcher is None or not command_state(dispatcher, url):
+                    reason = tr("Calc does not allow this command for these sheets now.")
+                else:
+                    reason = self._dispatch_refusal(item, observed, picked, unchanged)
+        except DisposedException:
+            raise  # The window closed; there is no view left to restore.
+        except Exception:
+            # Nothing was dispatched yet, so restoring the earlier view is safe.
+            report("checking a sheet command before running it")
+            reason = tr("Sheet Manager could not verify that this is safe.")
+        if not reason and dispatcher is not None:
+            try:
+                dispatcher.dispatch(url, ())
+            except DisposedException:
+                raise
+            except Exception:
+                # Calc may already have opened the command's dialog or acted. Restoring the
+                # earlier view could send that dialog to another sheet (#100): stay on the
+                # targets and say that the outcome is uncertain.
+                report("running a sheet command")
+                return tr(
+                    "Calc reported an error while running the command, which may have started. "
+                    "Calc stays on the targeted sheets; check them before editing."
+                )
+            return ""
         try:
             self.restore_view(view, unchanged)
-        except RuntimeError:
+        except DisposedException:
+            raise
+        except Exception:
             report("restoring the view after a refused command")
             reason += " " + tr(
                 "Calc's previous viewed sheet and selected tabs could not be restored. "
