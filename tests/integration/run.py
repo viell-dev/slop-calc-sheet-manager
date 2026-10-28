@@ -67,12 +67,23 @@ IDENTIFIER = "dev.viell.sheetmanager"
 # and releases LibreOffice's lock while it waits; closing the document from this process during
 # that wait crashes the office (#8). Closing 100 ms or more after loading never crashed.
 WRITER_SETTLE_SECONDS = 1.0
+# Suites run in one office session, in file-name order, except these, which run after all others
+# in this order because they leave session-wide native state behind. test_rename_sheets ends with
+# a Find & Replace, after which Calc's sheet-name comparison ignores character width until the
+# office restarts (#112).
+LAST_SUITES = ("test_rename_sheets",)
 
 
 def property_value(name, value):
     item = PropertyValue()
     item.Name, item.Value = name, value
     return item
+
+
+def suite_order(path: Path) -> tuple[int, str]:
+    """File-name order, with `LAST_SUITES` after every other suite."""
+    last = LAST_SUITES.index(path.stem) + 1 if path.stem in LAST_SUITES else 0
+    return last, path.stem
 
 
 def close_writer(writer):
@@ -735,7 +746,9 @@ def main():
                             exercise(context, desktop, directory, output, screenshot=not headless)
                         )
                         if arguments.suites == "all":
-                            for suite_path in sorted(Path(__file__).parent.glob("test_*.py")):
+                            for suite_path in sorted(
+                                Path(__file__).parent.glob("test_*.py"), key=suite_order
+                            ):
                                 if stalled_callbacks():  # No suite runs on a stuck office (#50).
                                     raise TimeoutError(stalled_callbacks()[0])
                                 spec = importlib.util.spec_from_file_location(
