@@ -26,8 +26,9 @@ acting on the document through held handles, the list brings the generation up t
 (`StructureMonitor.check()`) and refuses refs proved at a different one; a refresh that observes
 the change drops every ref and voids any held press. Selection keys and control enablement,
 which change no document, only compare with the monitor's `generation`, which does not consume
-pending notification evidence (#66). The keyboard cursor and `Selection.anchor`, which pointer and keyboard ranges share, are
-refs too: they survive ordinary rebuilds and are dropped by the same rules.
+pending notification evidence (#66). The keyboard cursor and `Selection.anchor`, which pointer
+and keyboard ranges share, are refs too: they survive ordinary rebuilds and are dropped by the
+same rules.
 """
 
 from collections.abc import Callable, Iterable, Mapping, Sequence
