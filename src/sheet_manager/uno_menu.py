@@ -1,13 +1,13 @@
 """The sheet tab menu for the sheets selected in the list.
 
 The menu offers a few of Calc's sheet commands directly (Insert, Delete, Rename and Hide), the
-list's own Show, Rename Sheets and moves, and Help. Opening or dismissing it leaves Calc's view and tabs
-unchanged. A chosen built-in command is checked again when it runs, whatever the menu showed:
-its targets' identity and permissions; then Calc's selected tabs are set to exactly those targets,
-and Calc's own state for the command is read. Grouping and that query can run other code, so
-every check is repeated after them, with only reads before the dispatch. Calc stays on its targets
-afterwards: its dialogs can outlive the dispatch and act on the viewed sheet when confirmed
-(#100). A refusal after grouping restores the previous view.
+list's own Show, Rename Sheets and moves, and Help. Opening or dismissing it leaves Calc's view
+and tabs unchanged. A chosen built-in command is checked again when it runs, whatever the menu
+showed: its targets' identity and permissions; then Calc's selected tabs are set to exactly those
+targets, and Calc's own state for the command is read. Grouping and that query can run other code,
+so every check is repeated after them, with only reads before the dispatch. Calc stays on its
+targets afterwards: its dialogs can outlive the dispatch and act on the viewed sheet when
+confirmed (#100). A refusal after grouping restores the previous view.
 
 This module owns context targeting, native tab grouping and restoration, and move enablement.
 

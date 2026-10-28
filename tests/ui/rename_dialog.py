@@ -7,6 +7,7 @@ against a motion listener on the dialog's list, as the sheet list itself is cali
 """
 
 import time
+from typing import Any
 
 import uno
 from run import wait_for
@@ -68,14 +69,10 @@ class Dialog:
         assert len(edits) == 3, len(edits)
         self.find, self.replace, self.name = edits
         self.buttons = {
-            self.accessible_name(c): c
-            for c in children
-            if "com.sun.star.awt.XButton" in _types(c)
+            self.accessible_name(c): c for c in children if "com.sun.star.awt.XButton" in _types(c)
         }
         assert set(self.buttons) == {"Replace All", "Reset All", "Rename", "Cancel"}, self.buttons
-        texts = sorted(
-            (c for c in children if "com.sun.star.awt.XFixedText" in _types(c)), key=top
-        )
+        texts = sorted((c for c in children if "com.sun.star.awt.XFixedText" in _types(c)), key=top)
         self.status = texts[-1]
         self.pointer = None
 
@@ -86,7 +83,7 @@ class Dialog:
     def items(self):
         return list(self.rows.getItems())
 
-    def state(self):
+    def state(self) -> dict[str, Any]:
         return {
             "rows": self.items(),
             "selected": self.rows.getSelectedItemPos(),
@@ -149,7 +146,9 @@ def type_text(lab, text):
         if char.isupper():
             lab.input.tap(char.lower(), ("Shift_L",), pause=0.03)
         else:
-            lab.input.tap({" ": "space", "/": "slash", "4": "4", "0": "0"}.get(char, char), pause=0.03)
+            lab.input.tap(
+                {" ": "space", "/": "slash", "4": "4", "0": "0"}.get(char, char), pause=0.03
+            )
 
 
 def wait_closed(book):
