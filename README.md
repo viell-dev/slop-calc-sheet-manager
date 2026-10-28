@@ -108,9 +108,9 @@ explains the model; [RELEASING.md](RELEASING.md) gives the maintainer rules and 
   **Sheet Manager Help** in the context menu for the project guide (#81).
 - In LibreOffice 26.8.0 and 26.8.1, Calc's own Duplicate Sheet and Move or Copy Sheet copy
   formulas with relative sheet references incorrectly
-  ([tdf#173608](https://bugs.documentfoundation.org/show_bug.cgi?id=173608)). The development
-  version's menu leaves both commands to Calc's sheet tabs; the published test builds still offer
-  them through **Sheet actions…**. LibreOffice's fix is due in 26.8.2.
+  ([tdf#173608](https://bugs.documentfoundation.org/show_bug.cgi?id=173608)). From 0.0.5, the
+  list's menu leaves both commands to Calc's sheet tabs; test builds up to 0.0.4 offer them through
+  **Sheet actions…**. LibreOffice's fix is due in 26.8.2.
 - Defects in LibreOffice that affect Sheet Manager, and how each is handled, are listed in
   [#33](https://github.com/viell-dev/slop-calc-sheet-manager/issues/33).
 

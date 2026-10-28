@@ -73,4 +73,7 @@ If Sheet Manager does not work in an environment where it is expected to, please
   keep their order.
 - **Other LibreOffice defects.** Defects in LibreOffice that affect Sheet Manager, and how each is
   handled, are listed in
-  [issue #33](https://github.com/viell-dev/slop-calc-sheet-manager/issues/33).
+  [issue #33](https://github.com/viell-dev/slop-calc-sheet-manager/issues/33). Among them, Hide
+  Sheet keeps Calc's own undo, whether chosen from Calc's tabs or the list's menu: LibreOffice
+  skips undoing it when no Calc window is current, as can happen when a macro undoes it, yet uses
+  up the undo step ([#108](https://github.com/viell-dev/slop-calc-sheet-manager/issues/108)).

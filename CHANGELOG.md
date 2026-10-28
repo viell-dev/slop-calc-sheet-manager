@@ -31,8 +31,10 @@ Requires LibreOffice 26.2.1 or later with Python support.
   keeps keyboard focus, current picks, and Calc's separate grouped-editing warning unchanged.
   Undo/Redo still clears picks conservatively; preserving verified move selections is tracked
   in [#91](https://github.com/viell-dev/slop-calc-sheet-manager/issues/91).
-- Keep the Calc window working when Sheet Manager's panel closes while its menu is open
-  ([#63](https://github.com/viell-dev/slop-calc-sheet-manager/issues/63)).
+- Drop the guard that **Sheet actions…** placed on Calc's commands while its menu was open. In
+  0.0.4 it could be left in place if the panel closed during the menu
+  ([#63](https://github.com/viell-dev/slop-calc-sheet-manager/issues/63)); the list's menu now
+  drops its pending command instead.
 - Describe current development as alpha iteration, with no settled feature scope or scheduled
   stable release. Builds without an agreed stable target are titled with their own version and
   **alpha**, as this one is.
@@ -44,7 +46,7 @@ selection clearing on Undo/Redo and LibreOffice's own defect in Duplicate Sheet 
 Sheet, are in the
 [known issues](https://viell-dev.github.io/slop-calc-sheet-manager/guide/known-issues).
 
-## 0.1.0 - Unpublished preparation
+## Unpublished 0.1.0 preparation
 
 This preparation was not published. Development continues in alpha; the earlier stable-release
 plan is superseded. Its changes since 0.0.4 were first published in 0.0.5. Requires LibreOffice
