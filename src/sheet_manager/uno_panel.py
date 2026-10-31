@@ -1,12 +1,20 @@
 """UNO sidebar adapter: the panel factory and the panel that holds the sheet list.
 
-The panel's window is a `"tabcontrol"` peer: a plain `"window"` does not consume mouse-down
-events, so VCL takes a click as the start of undocking the sidebar. The tab control sits inside a
-plain `"window"` of the same size, because on every Shift, Ctrl, or Alt change VCL's access-key
-walk enters each tab control's current page and crashes on a tab control without pages (#18); it
-does not descend into plain windows. Keep any page-less tab control out of that walk, keep the
-integration tests' tab-control interface assertion when adding controls and the painted
-modifier-key test, and keep the panel filling its container on resize.
+The panel's window is a plain `"window"` peer that holds the list's controls directly. Its
+accessible context lists them as children, so a screen reader, or the gtk3 bridge tracking focus,
+reaches them by walking down from the sidebar (#133). Behind them lies a disabled plain
+`"window"` of the panel's size, the backdrop: VCL swallows a mouse press on a disabled window,
+whereas an enabled plain window leaves it unhandled and VCL takes a press in the panel's margins
+as the start of undocking the sidebar (measured with the `win` interface; gtk3's embedded sidebar
+does not undock). VCL hit-tests children in creation order, so the backdrop is created after the
+list's controls and lies below them; create every control before it.
+
+Until #133 the panel was a page-less tab control, which consumes presses but whose accessible
+context lists only tabs, so its children were unreachable. It also crashed VCL's access-key walk on
+every Shift, Ctrl, or Alt change (#18, #31) unless it sat inside a plain window. Keep any
+page-less tab control out of the window tree; keep the integration accessibility walk, the
+margin-press checks and the painted modifier-key test; and keep the panel filling its container on
+resize.
 """
 
 from contextlib import suppress
@@ -44,8 +52,8 @@ def _create_window(toolkit, service, parent, bounds):
 class SheetPanel(
     unohelper.Base, XUIElement, XToolPanel, XSidebarPanel, XComponent, XWindowListener
 ):
-    """A tab-control peer in a plain window, sized by the sidebar's panel container, holding the
-    sheet list."""
+    """A plain window, sized by the sidebar's panel container, holding the sheet list's controls
+    over a disabled backdrop."""
 
     def __init__(self, context, resource_url, arguments):
         self.ResourceURL = resource_url
@@ -56,13 +64,8 @@ class SheetPanel(
         self._disposed = False
         bounds = self._parent.getPosSize()
         toolkit = self._parent.getToolkit()
-        # On every Shift, Ctrl, or Alt change, VCL's access-key walk enters each tab control's
-        # current page and crashes on a tab control without pages (#18). It does not descend into
-        # a plain window.
-        self._container = _create_window(toolkit, "window", self._parent, bounds)
-        # A plain "window" leaves clicks unhandled: VCL starts undocking the sidebar.
-        self.Window = _create_window(toolkit, "tabcontrol", self._container, bounds)
-        # The list sits inside the tab control, so a click never reaches the plain window.
+        # The controls are the window's own children, so that its accessible context lists them.
+        self.Window = _create_window(toolkit, "window", self._parent, bounds)
         self.list = None
         try:
             self.list = SheetList(context, self.Frame, self.Window)
@@ -74,6 +77,10 @@ class SheetPanel(
                 self.list = None
             # An empty panel is better than a sidebar that fails to open.
             report("creating the sheet list")
+        # An enabled plain window leaves a press unhandled, and VCL starts undocking the sidebar;
+        # a disabled one swallows it. Created last, so that it lies below every control.
+        self._backdrop = _create_window(toolkit, "window", self.Window, bounds)
+        self._backdrop.setEnable(False)
         self._parent.addWindowListener(self)
 
     def getRealInterface(self):
@@ -100,8 +107,8 @@ class SheetPanel(
                 self.list.dispose()
             except Exception:
                 report("disposing the sheet list")
+        self._backdrop.dispose()
         self.Window.dispose()
-        self._container.dispose()
         listeners, self._listeners = self._listeners, []
         for listener in listeners:
             listener.disposing(EventObject(self))
@@ -118,8 +125,8 @@ class SheetPanel(
 
     def windowResized(self, event):
         if not self._disposed:
-            self._container.setPosSize(0, 0, event.Width, event.Height, POSSIZE)
             self.Window.setPosSize(0, 0, event.Width, event.Height, POSSIZE)
+            self._backdrop.setPosSize(0, 0, event.Width, event.Height, POSSIZE)
             if self.list is not None:
                 self.list.set_bounds(event.Width, event.Height)
 

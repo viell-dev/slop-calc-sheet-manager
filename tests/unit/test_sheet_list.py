@@ -3,6 +3,7 @@
 from sheet_manager.sheet_list import (
     RowGeometry,
     SheetRow,
+    list_name,
     ordered,
     row_label,
     tab_color,
@@ -54,3 +55,9 @@ def test_empty_geometry() -> None:
 
 def test_ordered() -> None:
     assert ordered(["a", "b", "c", "d"], {"d", "b"}) == ["b", "d"]
+
+
+def test_list_name_names_the_viewed_sheet() -> None:
+    assert list_name("Bravo") == "Sheets, current sheet: Bravo"
+    assert list_name("Old (hidden)") == "Sheets, current sheet: Old (hidden)"
+    assert list_name(None) == "Sheets"

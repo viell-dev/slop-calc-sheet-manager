@@ -48,6 +48,7 @@ from typing import Any, cast
 
 import uno
 import unohelper
+from com.sun.star.awt import MouseEvent
 from com.sun.star.beans import PropertyValue
 from com.sun.star.lang import XEventListener
 from main_thread import close_after, close_document
@@ -58,6 +59,7 @@ from office_process import (
     normal_startup_restart,
     retain_crash_dumps,
 )
+from sheet_list_view import move_buttons, tree_of
 from teardown import stalled_callbacks, start_session
 
 FACTORY = "dev.viell.sheetmanager.PanelFactory"
@@ -335,12 +337,70 @@ def assert_panel(context, document):
         lambda: panels.getByName("SheetManagerPanel").getDialog(), "the public panel dialog"
     )
     peer_types = [item.typeName for item in window.getTypes()]
-    assert "com.sun.star.awt.XSimpleTabController" in peer_types, peer_types
+
+    # The panel holds the list's controls itself (#133). A page-less tab control anywhere in it,
+    # at any depth, crashes LibreOffice on Shift, Ctrl, or Alt (#18, #31).
+    def peers(peer):
+        types = [item.typeName for item in peer.getTypes()]
+        yield peer, types
+        if "com.sun.star.awt.XVclContainer" in types:
+            for child in peer.getWindows():
+                yield from peers(child)
+
+    for _peer, types in peers(window):
+        assert "com.sun.star.awt.XSimpleTabController" not in types, types
     wait_for(lambda: window.getPosSize().Height > 100, "a full-height panel")
     assert window.getPosSize().Width >= 150
     listener = DisposalListener()
     window.addEventListener(listener)
     return window, listener, peer_types
+
+
+def drag_from_margins(context, panel):
+    """Press in the panel's empty margins and drag away: the sidebar must stay docked (#133).
+
+    `XToolkitRobot` posts its events through VCL's own mouse handling, so a press nothing handles
+    starts undocking as a real one does: with an enabled plain window behind the controls, this
+    drag made the sidebar float (Windows 26.8.1.1, headless). gtk3's embedded sidebar does not
+    undock either way; the real-input check covers gen and Windows.
+    """
+    toolkit = context.ServiceManager.createInstanceWithContext("com.sun.star.awt.Toolkit", context)
+    tree = tree_of(panel)
+    assert tree is not None, "No tree control in the panel"
+    buttons = move_buttons(panel)
+    top, up = buttons["Top"].getPosSize(), buttons["Up"].getPosSize()
+    points = {
+        "left of the list": (1, tree.getPosSize().Y + 60),
+        "between buttons": ((top.X + top.Width + up.X) // 2, top.Y + top.Height // 2),
+    }
+    location = panel.getProperty("XAccessible").getAccessibleContext().getLocationOnScreen
+
+    def event(x, y, buttons):
+        item = MouseEvent()
+        item.Source = panel
+        item.Buttons, item.Modifiers, item.ClickCount, item.X, item.Y = buttons, 0, 1, x, y
+        return item
+
+    evidence = {}
+    for name, (x, y) in points.items():
+        before = location(), toolkit.getTopWindowCount()
+        toolkit.mouseMove(event(x, y, 0))
+        toolkit.mousePress(event(x, y, 1))
+        for step in range(1, 31):
+            toolkit.mouseMove(event(x - 10 * step, y + 3 * step, 1))
+            time.sleep(0.02)
+        toolkit.mouseRelease(event(x - 300, y + 90, 1))
+        time.sleep(1.5)
+        after = location(), toolkit.getTopWindowCount()
+        evidence[name] = {
+            "point": (x, y),
+            "panel_on_screen": [(point.X, point.Y) for point, _ in (before, after)],
+            "top_windows": [count for _, count in (before, after)],
+        }
+        assert (after[0].X, after[0].Y, after[1]) == (before[0].X, before[0].Y, before[1]), (
+            f"A drag from the panel's margin ({name}) moved the sidebar: {evidence[name]}"
+        )
+    return evidence
 
 
 def press_modifiers(document):
@@ -431,6 +491,7 @@ def exercise(context, desktop, directory, output, *, screenshot):
     wait_for(lambda: panel.getPosSize().Height == before.Height + 150, "panel resize by 150px")
     resized = panel.getPosSize()
     assert resized.Height > 100 and resized.Width >= 150
+    margins = drag_from_margins(context, panel)
 
     # Decode the packaged SVG using this minimum-version GraphicProvider, not a browser.
     provider = context.ServiceManager.createInstanceWithContext(
@@ -492,6 +553,7 @@ def exercise(context, desktop, directory, output, *, screenshot):
         "python": sys.version,
         "screenshot": screenshot,
         "modifier_keys": screenshot,
+        "margin_drags": margins,
     }
 
 

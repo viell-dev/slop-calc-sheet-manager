@@ -218,9 +218,11 @@ To retain copies for inspection, run the generator with the tested office's bund
 The generator uses a separate private profile and saves only its newly created synthetic workbooks.
 
 The integration runner installs the built OXT into a fresh temporary profile, connects over a
-unique local UNO pipe, and checks the factory, tab-control peer, exact panel resizing and disposal,
-read-only Calc documents, Writer exclusion, and SVG decoding. Painted gtk3 sessions also press
-real Shift, Ctrl, and Alt keys with `xdotool` while the panel is shown. The sheet list's feature
+unique local UNO pipe, and checks the factory, that the panel holds no tab control, exact panel
+resizing and disposal, read-only Calc documents, Writer exclusion, and SVG decoding. It presses
+in the panel's empty margins with LibreOffice's synthetic input and drags away, and checks that
+the sidebar stays docked (#133). Painted gtk3 sessions also press real Shift, Ctrl, and Alt keys
+with `xdotool` while the panel is shown. The sheet list's feature
 suite checks its rows and their states, refreshing after sheet changes, following the active sheet,
 dropping replaced or renamed sheets from the selection, clicks and the sheet tab menu through
 LibreOffice's synthetic input, clicks that meet rows not yet refreshed, picks dropped after
@@ -245,6 +247,19 @@ the same resource limit on an interactive desktop or CI runner. The multi-window
 exercises simultaneous views.
 `test_view_observation.py` makes queued-observation/input races and cancelled callbacks
 deterministic without pretending its adapters verify native visibility or selection behaviour.
+`test_accessibility.py` (#83) reads the list through LibreOffice's accessibility interface: the
+tree's accessible name, which names the viewed sheet while another row is picked, after Calc's
+and the list's own activations, a rebuilding refresh, and a headless menu move, and the
+`NAME_CHANGED` events a bridge would receive. It also selects a row through
+`XAccessibleSelection`, as a screen reader does, just before a refresh rebuilds the rows. It
+holds the main thread past the refresh delay, so the refresh is queued before the list's intake.
+Its hierarchy check (#133) walks the panel's accessible children, which must be the move
+buttons, the tree, any shown footer label and the disabled backdrop, at their own indices in that
+order, checks that every ancestor up to the top is listed by its parent, and walks down from the
+top to the tree without knowing the path.
+These are metadata checks; no screen reader runs. The real-input `viewed_sheet_name` check reads
+the same name in gtk3, gen and on the Windows desktop, and `test_assistive_selection.py` covers
+the pure rules.
 Every workbook is synthetic and loaded visibly, even when the office process itself is headless.
 It retries only startup, up to three times, to tolerate a Windows crash just after connecting. It
 never attaches to an existing office or uses the normal LibreOffice profile.
@@ -319,7 +334,8 @@ descheduled between a flushed key press and release can turn an intended tap int
 A real-input regression pauses for one second with Down pressed and still expects one cursor
 step. These tests exercise explicit key events, not the operating system's timed repeat behavior.
 
-They click, Ctrl+click, and Shift+click rows, drag two separate sheets above and below a row's
+They click, Ctrl+click, and Shift+click rows, press in the panel's empty margins and drag away
+and check that the sidebar stays docked, drag two separate sheets above and below a row's
 midpoint and check the order and the single undo step, cancel a drag with Esc, auto-scroll and
 wheel-scroll the list, type into the focused list and check that no cell changes, use Ctrl+Page
 Down, Ctrl+Z, and Ctrl+S from the list and check that the list keeps the focus, so that a typed
@@ -422,7 +438,8 @@ runs the checks of `run_ui.py` and `rename_dialog.py` themselves rather than cop
 results back through public UNO as on Linux. Window and screen geometry are read from the live
 desktop; nothing assumes the runner's present 1024×768 screen at 96 DPI.
 
-The checks click, Ctrl+click and Shift+click rows; type into the focused list and check that no
+The checks click, Ctrl+click and Shift+click rows; drag from the panel's empty margins and check
+that the sidebar stays docked; type into the focused list and check that no
 cell changes; use Ctrl+Page Down, Ctrl+Page Up, Ctrl+Z and Ctrl+S from the list and the Alt move
 shortcuts; drag two picked sheets above and below a row's midpoint with one undo step, drop in
 place, cancel a drag with Esc and auto-scroll; turn the wheel; open the menu by right click, the

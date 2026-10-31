@@ -5,6 +5,26 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Name the list after the sheet Calc shows, for assistive technology
+  ([#83](https://github.com/viell-dev/slop-calc-sheet-manager/issues/83)). The list is now
+  named after the viewed sheet, for example "Sheets, current sheet: Bravo", and the name changes
+  when another sheet is shown. Until now only the painted arrow showed it, and the selected rows
+  could be different sheets. Rows still read the plain sheet name with its hidden, protected or
+  scenario state; tab colours are not announced.
+- Report the sheet list and its move buttons to assistive technology through the sidebar's
+  hierarchy ([#133](https://github.com/viell-dev/slop-calc-sheet-manager/issues/133)). The
+  panel kept its controls in a container that did not list them, so moving through the sidebar
+  never reached them, and with LibreOffice's gtk3 interface on Linux the accessibility bridge
+  reported nothing from the list: neither its focus nor its rows nor the name of the viewed
+  sheet. The buttons, the list and the footer messages are now listed in the order they
+  appear, and the gtk3 bridge reports their focus, rows and name changes; what a particular
+  screen reader announces is not verified. Clicking or dragging in the panel's empty margins
+  still leaves the sidebar where it is.
+- Keep a row selected through a screen reader when the list refreshes at the same moment
+  ([#83](https://github.com/viell-dev/slop-calc-sheet-manager/issues/83)). If a sheet's
+  protection, visibility or colour changed just before, the refresh could put back the
+  previous selection.
+
 ## 0.0.8 - 2026-10-31
 
 Second beta towards the stable release 0.1.0, following 0.0.7. It fixes two defects in the

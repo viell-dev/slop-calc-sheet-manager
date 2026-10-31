@@ -65,6 +65,18 @@ deliver it more than once; never return a key unconsumed after updating the owne
 Consumed key intent is recorded synchronously and the UI write coalesced, and native focus and
 selection are ignored while that write or a pointer gesture is pending.
 
+Accessibility (#83). The tree's accessible name names the sheet Calc shows (`list_name`), from the
+refreshed rows that paint the arrow and never from the picks. It is set through the toolkit's
+`AccessibleName` window property only when it changes, which raises `NAME_CHANGED`. Rows keep
+the plain name and textual states: measured with 26.8.1.1 and 26.8.2.2, UNO offers no per-row
+description, state or relation setter, toolkit has no `AccessibleDescription`, and `HelpText` is
+only a tooltip. Native selection made without an owned handler, such as through
+`XAccessibleSelection`, waits for the queued intake; a refresh that rebuilds the rows first shows
+that selection again (`_show_native`) under the proof, drop count and order the intake checks,
+so the intake still decides. The panel window lists the move buttons, the tree and the shown
+footer labels as its accessible children in creation order, which is their visual order, so
+create them in that order (#133, `uno_panel`).
+
 Following Calc's tabs. Calc sends no reliable notification for a tab selection that keeps the
 same active sheet, so each list caches the reflected `getSelectedSheets` method and samples its
 retained controller on the UI thread every `VIEW_INTERVAL`. Never run that getter in a timer
@@ -144,7 +156,7 @@ from sheet_manager.keys import (
 from sheet_manager.rename import Batch
 from sheet_manager.reorder import Action, plan_move
 from sheet_manager.selection import Ref, Selection, structure_kept
-from sheet_manager.sheet_list import RowGeometry, SheetRow, ordered, row_label
+from sheet_manager.sheet_list import RowGeometry, SheetRow, list_name, ordered, row_label
 from sheet_manager.uno_calc import (
     Later,
     MainThread,
@@ -516,6 +528,7 @@ class SheetList:
         self._menu_context = False
         self._page_rows = 10
         self._decoration_pending = False
+        self._viewed_name: str | None = None  # The tree's accessible name, once set.
         self._drag: _Drag | None = None
         self._gap: int | None = None
         self._pointer_y = 0
@@ -524,6 +537,22 @@ class SheetList:
         self._scroll_pending = False
         self._type_ahead = TypeAhead()
 
+        self._listeners = {
+            "mouse": _Mouse(self),
+            "focus": _Focus(self),
+            "cursor": _Cursor(self),
+            "paint": _Paint(self),
+            "gesture": _Gesture(self),
+            "source": _Source(self),
+            "target": _Target(self),
+            "document": _Document(self),
+        }
+        # The panel lists its children in creation order, which assistive technology follows:
+        # the buttons above the list come first, the footer below it last (#133).
+        self._moves = MoveButtons(
+            context, parent_window, self.queue_move, self._listeners["focus"], self.note_input
+        )
+        self._release_with(self._moves.dispose)
         manager = context.ServiceManager
         model = manager.createInstanceWithContext("com.sun.star.awt.tree.TreeControlModel", context)
         model.SelectionType = MULTI
@@ -542,22 +571,8 @@ class SheetList:
         self._row_height = self._row_paint.row_height()
         model.RowHeight = self._row_height
 
-        self._listeners = {
-            "mouse": _Mouse(self),
-            "focus": _Focus(self),
-            "cursor": _Cursor(self),
-            "paint": _Paint(self),
-            "gesture": _Gesture(self),
-            "source": _Source(self),
-            "target": _Target(self),
-            "document": _Document(self),
-        }
         self._status = CalcStatus(context, parent_window)
         self._release_with(self._status.dispose)
-        self._moves = MoveButtons(
-            context, parent_window, self.queue_move, self._listeners["focus"], self.note_input
-        )
-        self._release_with(self._moves.dispose)
         self.tree.addMouseListener(self._listeners["mouse"])
         self.tree.addFocusListener(self._listeners["focus"])
         self.tree.addPaintListener(self._listeners["paint"])
@@ -678,8 +693,14 @@ class SheetList:
         change: a refresh that only renews the handles behind unchanged rows must still drop a
         pick whose sheet was replaced under the same name (#28).
         """
-        if self._press is None:
-            self._take_tree_selection(defer=True)  # Let queued owned input run first.
+        # Let queued owned input run first. A native selection still waiting for that intake,
+        # such as one made through accessibility, is shown again after a rebuild (`_show_native`).
+        pending = (
+            tuple(self.selected_names())
+            if self._press is None and self._take_tree_selection(defer=True)
+            else None
+        )
+        order, drops, proof = tuple(self.names()), self._generation, self._proven
         previous = self._observed
         observed = snapshot(self.document)
         rows = read_rows(self.controller, observed)
@@ -700,6 +721,15 @@ class SheetList:
             self._rebuild(rows)
         elif dropped or tuple(self._selection.names()) != self._shown:
             self._apply_selection()
+        if (
+            pending is not None
+            and self._generation == drops
+            and generation == proof
+            and tuple(self.names()) == order
+        ):
+            # The queued intake checks the same proof, drops and order before taking it.
+            self._show_native(pending)
+        self._name_viewed()
         self._update_moves()
 
         if self._view_generation != generation or self._view_names != frozenset(self.names()):
@@ -804,6 +834,31 @@ class SheetList:
             self._apply_selection()
         finally:
             self._restoring_cursor = restoring
+
+    def _show_native(self, names: tuple[str, ...]) -> None:
+        """Show a native selection that awaits intake again over rebuilt rows, keeping the cursor.
+
+        Only the queued intake adopts it, after its own checks (`_take_tree_selection`).
+        """
+        if tuple(self.selected_names()) == names:
+            return
+        restoring = self._restoring_cursor
+        self._restoring_cursor = True
+        try:
+            self.tree.clearSelection()  # Keeps the cursor where it is.
+            for index, name in enumerate(self.names()):
+                if name in names:
+                    self.tree.addSelection(self._nodes[index])
+        finally:
+            self._restoring_cursor = restoring
+        self.peer.invalidate(0)
+
+    def _name_viewed(self) -> None:
+        """Name the tree after the sheet Calc shows, which the painted arrow marks (#83)."""
+        name = list_name(next((row.name for row in self.rows if row.active), None))
+        if name != self._viewed_name:
+            self._viewed_name = name
+            self.peer.setProperty("AccessibleName", name)
 
     def _select(self, names: list[str], cursor: str | None = None) -> None:
         """Pick these rows as they show now and put the keyboard cursor on `cursor`."""

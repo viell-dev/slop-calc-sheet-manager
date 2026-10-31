@@ -1,4 +1,4 @@
-"""The sheet list's rows and geometry, independent of UNO."""
+"""The sheet list's rows, its accessible name, and geometry, independent of UNO."""
 
 from dataclasses import dataclass
 
@@ -26,6 +26,17 @@ def row_label(row: SheetRow) -> str:
         states.append(tr("scenario"))
     label = row.name
     return f"{label} ({', '.join(states)})" if states else label
+
+
+def list_name(active: str | None) -> str:
+    """The list's accessible name, naming the sheet Calc shows, which the painted arrow marks.
+
+    Assistive technology reads it for the list itself; the list's picks cannot stand in for the
+    viewed sheet, and row names stay plain (#83).
+    """
+    if active is None:
+        return tr("Sheets")
+    return tr("Sheets, current sheet: {name}").format(name=active)
 
 
 def tab_color(value: int) -> int | None:
