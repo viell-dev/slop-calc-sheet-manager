@@ -60,9 +60,9 @@ describes that gate and how its results are tracked.
 
 | Environment                                                                       | Status                                             |
 | --------------------------------------------------------------------------------- | -------------------------------------------------- |
-| Linux x86-64, libreoffice.org 26.2.1.2, 26.2.6.3, and 26.8.1.1: headless and gtk3 | Verified in CI for every change                    |
-| Windows x86-64, libreoffice.org 26.8.1.1: headless                                | Verified in CI for every change                    |
-| Windows x86-64, libreoffice.org 26.8.1.1: a visible window with real input        | Checked on extension changes; not a required check |
+| Linux x86-64, libreoffice.org 26.2.1.2, 26.2.6.3, and 26.8.2.2: headless and gtk3 | Verified in CI for every change                    |
+| Windows x86-64, libreoffice.org 26.8.2.2: headless                                | Verified in CI for every change                    |
+| Windows x86-64, libreoffice.org 26.8.2.2: a visible window with real input        | Checked on extension changes; not a required check |
 | Other 26.2 and 26.8 releases, and later versions, from libreoffice.org            | Expected to work, not verified                     |
 | Distribution packages, other interfaces such as kf6 or gtk4, Wayland, macOS       | Expected to work, not verified                     |
 | Flatpak, Snap, and Arm builds                                                     | Expected to work, not verified                     |
@@ -98,9 +98,10 @@ Installing one keeps stable updates enabled; later test builds are downloaded ma
 Versions are **not full SemVer** because LibreOffice itself treats `0.1.0-rc.1` as newer than
 `0.1.0`: the final would not be offered as an update, and manually installing it would be shown
 as a downgrade. This is independent of the extension directory. We use increasing numeric
-versions instead. Alpha builds do not reserve a final version or imply readiness. GitHub's explicit
-**Pre-release** flag identifies test builds; no patch numbers are reserved, so `0.1.90` can be
-an ordinary stable patch. The
+versions instead. GitHub's explicit **Pre-release** flag identifies test builds, and the release
+title names their stage: alpha, beta, or release candidate, as in `0.1.0 beta (0.0.7)`, a beta for
+0.1.0 whose own version is 0.0.7. Alpha builds do not reserve a final version or imply readiness.
+No patch numbers are reserved, so `0.1.90` can be an ordinary stable patch. The
 [version guide](https://viell-dev.github.io/slop-calc-sheet-manager/guide/releases#version-numbers)
 explains the model; [RELEASING.md](RELEASING.md) gives the maintainer rules and evidence.
 
@@ -114,9 +115,9 @@ explains the model; [RELEASING.md](RELEASING.md) gives the maintainer rules and 
   **Sheet Manager Help** in the context menu for the project guide (#81).
 - In LibreOffice 26.8.0 and 26.8.1, Calc's own Duplicate Sheet and Move or Copy Sheet copy
   formulas with relative sheet references incorrectly
-  ([tdf#173608](https://bugs.documentfoundation.org/show_bug.cgi?id=173608)). From 0.0.5, the
-  list's menu leaves both commands to Calc's sheet tabs; test builds up to 0.0.4 offer them through
-  **Sheet actions…**. LibreOffice's fix is due in 26.8.2.
+  ([tdf#173608](https://bugs.documentfoundation.org/show_bug.cgi?id=173608)). LibreOffice 26.8.2
+  fixes this. From 0.0.5, the list's menu leaves both commands to Calc's sheet tabs; test builds up
+  to 0.0.4 offer them through **Sheet actions…**.
 - Defects in LibreOffice that affect Sheet Manager, and how each is handled, are listed in
   [#33](https://github.com/viell-dev/slop-calc-sheet-manager/issues/33).
 

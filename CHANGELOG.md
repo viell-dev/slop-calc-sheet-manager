@@ -5,6 +5,25 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Test with LibreOffice 26.8.2.2 instead of 26.8.1.1 on Linux and Windows. LibreOffice 26.8.2
+  fixes Calc's own Duplicate Sheet and Move or Copy Sheet, which in 26.8.0 and 26.8.1 copy
+  formulas with relative sheet references incorrectly
+  ([tdf#173608](https://bugs.documentfoundation.org/show_bug.cgi?id=173608)); the known issues
+  now say so. The list's menu still leaves both commands to Calc's sheet tabs.
+- Sheets whose names Calc's own lookup cannot tell apart, such as `ﬁ` beside `fi`, or `ı` beside
+  `I`, now show their own hidden, protected and colour states, and the list acts on them instead
+  of refusing every action with "The sheet list has changed"
+  ([#113](https://github.com/viell-dev/slop-calc-sheet-manager/issues/113)). Calc can move a
+  sheet only by its name, so a move that would need the name of the sheet that does not come
+  first is refused, with the two names it confuses. Calc's formulas still find the first of the
+  two; renaming one of them avoids that.
+- Name each test build's stage in its GitHub release title
+  ([#121](https://github.com/viell-dev/slop-calc-sheet-manager/issues/121)): alpha, beta, or
+  release candidate, as in `0.1.0 beta (0.0.7)` and `0.1.0 rc (0.0.9)`, where the number in
+  brackets is the build's own version. Versions, the **Pre-release** flag, and the update feeds
+  work as before, and earlier titles such as `0.1.0 test build (0.0.4)` are unchanged. The
+  [releases page](https://viell-dev.github.io/slop-calc-sheet-manager/guide/releases#test-builds)
+  explains the stages.
 - Check real keyboard and mouse input in a visible Windows window
   ([#114](https://github.com/viell-dev/slop-calc-sheet-manager/issues/114)). A new workflow, not
   yet required for merging, runs the real-input checks on GitHub's hosted Windows Server 2025

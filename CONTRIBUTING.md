@@ -117,7 +117,8 @@ Unit tests need no LibreOffice and run as part of the checks. To run them alone:
 .venv/bin/python -m pytest
 ```
 
-Release tests cover version ordering, candidate policy, changelog extraction, and update feeds.
+Release tests cover version ordering, release stages and titles, the Release workflow's `stage`
+input, changelog extraction, and update feeds.
 The integration runner also sends generated loopback HTTP feeds through LibreOffice's update
 parser and checks candidate compatibility through its deployment API. The painted Linux lanes
 also run `tests/ui/update_dialog.py` with the gen interface: actual offered and refused updates,
@@ -156,7 +157,9 @@ feature suites additive and keep failure injection in test-only forwarding adapt
 cover active-sheet and native selection preservation, one undo and redo, permission refusals, stale
 handles, hidden sheets, scenario ownership, failures after each real mutation, and a silently
 ineffective undo. `test_reorder_identity.py` checks adapter snapshots across kept-count sheet
-replacements, recorded and unrecorded batches, held locks, Undo, and shared-monitor disposal. It
+replacements, recorded and unrecorded batches, held locks, Undo, and shared-monitor disposal, and
+two pairs of names that Calc's lookup confuses: rows, Show, the menu's Hide, moves and their
+refusal, and batch renames act on exactly their sheets (#113). It
 verifies that closing one list view keeps other views and held snapshots protected until the
 document closes. `test_move_menu.py` checks real UNO popup enablement, refusal reasons, robot menu
 actions, and one Undo per action. `test_sheet_commands.py` checks the menu's Calc commands: their

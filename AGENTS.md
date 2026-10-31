@@ -280,7 +280,9 @@ Breaking one of these has hung or crashed LibreOffice, or let an action reach th
   handle turns to another sheet and can later report the deleted sheet's name. Whatever holds
   handles across user time keeps refs made at the user's input, never from a name later, and
   checks the shared structure monitor's generation when it acts (`selection.py`, `structure.py`).
-  Every action checks its sheets when it runs, never against the list's cached rows.
+  Every action checks its sheets when it runs, never against the list's cached rows. Read handles
+  by index: Calc's lookup by name can find another sheet (`uno_reorder.py`,
+  [#113](https://github.com/viell-dev/slop-calc-sheet-manager/issues/113)).
 - **Listeners** can be called on other threads or in the middle of a change. They only record
   state or post work to the main thread (`uno_calc.MainThread`, an `AsyncCallback`). The structure
   monitor's state reads are the one documented exception (`uno_structure.py`).

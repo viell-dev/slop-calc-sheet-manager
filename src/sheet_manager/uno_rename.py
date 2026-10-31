@@ -10,8 +10,10 @@ undo context, verifies the result, and on failure undoes only its own group and 
   call returning normally proves nothing (#102).
 - The result is verified as a whole: the complete order of names, every target handle's name,
   and that every final name looks up its own sheet. Calc accepts some names that its own lookup
-  confuses with another sheet's (#113); snapshots read handles by name, so such a pair must never
-  be created.
+  confuses with another sheet's, and then resolves both, also in formulas, to the first (#113).
+  The list reads handles by index, but a batch must never create such a pair, so these lookups
+  by name are deliberate: they exist to detect it. A name that already looked up another sheet
+  before the batch, and that the batch leaves unchanged, is exempt: Calc made that pair.
 - Measured with 26.2.1.2 and 26.8.1.1: a flat undo context keeps every rename, whatever the undo
   steps setting (unlike moves, #16), so no nesting is needed. With 0 steps, entering a context does
   nothing and leaving it fails, so 0 steps are refused like undo that is off or locked.
@@ -99,10 +101,20 @@ def _names(document: Any) -> tuple[str, ...]:
     return tuple(document.getSheets().getElementNames())
 
 
-def _verify(document: Any, handles: dict[str, Any], expected: dict[str, str]) -> None:
+def _confused(document: Any, names: tuple[str, ...]) -> frozenset[str]:
+    """The names that Calc's lookup gives another sheet now (#113)."""
+    sheets = document.getSheets()
+    return frozenset(name for name in names if sheets.getByName(name).getName() != name)
+
+
+def _verify(
+    document: Any, handles: dict[str, Any], expected: dict[str, str], confused: frozenset[str]
+) -> None:
     """The document has exactly the expected names, each on its own sheet, in the same order.
 
     `expected` maps each sheet's name before the batch to the name it must have now, in order.
+    `confused` holds the names that looked up another sheet before the batch: those left
+    unchanged may still do so.
     """
     if _names(document) != tuple(expected.values()):
         raise RuntimeError("The sheet names do not match the plan")
@@ -110,8 +122,8 @@ def _verify(document: Any, handles: dict[str, Any], expected: dict[str, str]) ->
         if handles[sheet].getName() != name:
             raise RuntimeError("A sheet does not have its planned name")
     sheets = document.getSheets()
-    for name in expected.values():
-        if sheets.getByName(name).getName() != name:
+    for sheet, name in expected.items():
+        if not (name == sheet and sheet in confused) and sheets.getByName(name).getName() != name:
             raise RuntimeError("A sheet name looks up another sheet")
 
 
@@ -125,6 +137,12 @@ def apply_renames(context: Any, document: Any, observed: Snapshot, plan: Plan) -
     if reason:
         return Result("refused", reason)
     handles = _handles(observed)
+    try:
+        confused = _confused(document, plan.before)
+    except Exception as error:
+        return Result(
+            "refused", tr("Sheet Manager could not verify that this is safe."), 0, str(error)
+        )
     undo = document.getUndoManager()
     title = tr("Rename Sheets")
     before = {name: name for name in plan.before}
@@ -146,7 +164,7 @@ def apply_renames(context: Any, document: Any, observed: Snapshot, plan: Plan) -
         finally:
             undo.leaveUndoContext()
             left = True
-        _verify(document, handles, after)
+        _verify(document, handles, after, confused)
         if not undo.isUndoPossible() or undo.getCurrentUndoActionTitle() != title:
             raise RuntimeError("Renaming the sheets was not recorded as one undo action")
         return Result("done", tr("Sheets renamed."), completed)
@@ -164,7 +182,7 @@ def apply_renames(context: Any, document: Any, observed: Snapshot, plan: Plan) -
                 if not undo.isUndoPossible() or undo.getCurrentUndoActionTitle() != title:
                     raise RuntimeError("The undo action for renaming the sheets is unavailable")
                 undo.undo()
-            _verify(document, handles, before)
+            _verify(document, handles, before, confused)
             if recorded:
                 if tuple(undo.getAllRedoActionTitles()) != (title,):
                     raise RuntimeError("Unexpected redo history after recovery")
