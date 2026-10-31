@@ -87,7 +87,7 @@ def test_minimum_version_agrees_everywhere() -> None:
             assert stated == refused_text, (page.name, stated)
 
 
-def test_current_build_and_package_examples_match_the_manifest_version() -> None:
+def test_package_examples_and_source_version_claims_match_the_manifest_version() -> None:
     node = description().find("d:version", NAMESPACES)
     assert node is not None
     version = node.attrib["value"]
@@ -99,8 +99,9 @@ def test_current_build_and_package_examples_match_the_manifest_version() -> None
         ROOT / "README.md",
         ROOT / "RELEASING.md",
     ):
+        # Source-version snapshots are optional; any explicit claim must still match the manifest.
         builds = re.findall(r"`(\d+\.\d+\.\d+)` (?:alpha|beta|rc|test build|release)", text(page))
-        assert builds == [version], (page.name, builds, version)
+        assert all(build == version for build in builds), (page.name, builds, version)
 
     # The public guide follows published history, not the source package's prepared version.
     for name in ("status.md", "use.md"):

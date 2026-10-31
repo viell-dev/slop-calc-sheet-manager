@@ -13,18 +13,17 @@ updates, removal, use, known issues, troubleshooting, and reporting a problem.
 
 ## Status
 
-Source version: `0.0.9` beta towards the first stable release, 0.1.0. Sheet Manager is in
-**beta**: the features planned for 0.1.0 are complete, and the remaining work is fixing the
-logged defects and polishing. No stable release date is set. Stable publication requires the
-agreed release goal ([#120](https://github.com/viell-dev/slop-calc-sheet-manager/issues/120)),
-human usability testing, and resolution of release blockers.
 See [Releases and test builds](https://viell-dev.github.io/slop-calc-sheet-manager/guide/releases)
-for currently published downloads. Sheet Manager lists the workbook's sheets, supports selection,
-drag and drop, and move actions with keyboard shortcuts,
-handles keyboard navigation, and runs Calc's common sheet commands from its own menu. Each
-extension move or batch rename is one undo step.
-It follows this window's Calc tab selection and shows grouped-editing feedback separately from
-the list's own picks. Its features include:
+for published downloads and their release stage, and the
+[release tracker](https://github.com/viell-dev/slop-calc-sheet-manager/issues/93) for work towards
+0.1.0. The [release procedure](RELEASING.md) defines readiness, including the agreed scope,
+human usability testing, and resolution of release blockers. The source package's version is in
+[`extension/description.xml`](extension/description.xml).
+
+## Features
+
+Sheet Manager follows this window's Calc tab selection and shows grouped-editing feedback
+separately from the list's own picks. It includes:
 
 - every sheet in document order, kept in sync with changes from anywhere, with the active sheet,
   hidden sheets, tab colours, and protection shown;
@@ -108,21 +107,11 @@ explains the model; [RELEASING.md](RELEASING.md) gives the maintainer rules and 
 
 ## Known issues
 
-- Changes made outside the list are observed periodically, so they can appear after a short delay.
-- With LibreOffice's gtk3 interface, a save moves keyboard focus from the sidebar to the sheet.
-  Test builds up to 0.0.7 leave it there after Ctrl+S from the list; later builds give it back
-  to the list (#23).
-- A change that may replace a sheet clears the list's selection conservatively. Large lists are
-  rebuilt after changes, which can delay the active-sheet marker (#22).
-- The sidebar header's `?` opens LibreOffice's unavailable help topic for this extension. Use
-  **Sheet Manager Help** in the context menu for the project guide (#81).
-- In LibreOffice 26.8.0 and 26.8.1, Calc's own Duplicate Sheet and Move or Copy Sheet copy
-  formulas with relative sheet references incorrectly
-  ([tdf#173608](https://bugs.documentfoundation.org/show_bug.cgi?id=173608)). LibreOffice 26.8.2
-  fixes this. From 0.0.5, the list's menu leaves both commands to Calc's sheet tabs; test builds up
-  to 0.0.4 offer them through **Sheet actions…**.
-- Defects in LibreOffice that affect Sheet Manager, and how each is handled, are listed in
-  [#33](https://github.com/viell-dev/slop-calc-sheet-manager/issues/33).
+Read [Compatibility and known issues](https://viell-dev.github.io/slop-calc-sheet-manager/guide/known-issues)
+before choosing a build. It covers selection clearing, refresh delays, accessibility, and
+LibreOffice defects with their workarounds and upgrade advice.
+[#33](https://github.com/viell-dev/slop-calc-sheet-manager/issues/33) tracks dependency defects
+and local handling.
 
 ## Contributing, security, and licence
 

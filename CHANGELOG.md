@@ -5,6 +5,10 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Simplify contributor and agent guidance, consolidate the verification map, and separate current
+  limitations from upgrade advice. Release procedures and safety requirements are unchanged
+  ([#139](https://github.com/viell-dev/slop-calc-sheet-manager/issues/139)).
+
 ## 0.0.9 - 2026-10-31
 
 Third beta towards the stable release 0.1.0, following 0.0.8. It exposes the list, its controls
