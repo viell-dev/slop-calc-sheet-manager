@@ -343,9 +343,10 @@ while the dialog is open and check that Rename is refused in the dialog and that
 changes nothing.
 Inside the container, `tests/ui/run_ui.py --check NAME` (repeatable) runs only the named checks.
 Results and screenshots are in `test-results/<lane>/ui-gtk3/` and `ui-gen/`. LibreOffice's
-synthetic input on Windows bypasses key handlers and cannot start a native drag; those checks are
-in the [human usability and desktop tests](docs/manual-tests.md), with a synthetic workbook from
-`python tools/manual_workbook.py`.
+synthetic input on Windows bypasses key handlers and cannot start a native drag, so the required
+Windows job cannot exercise them; the [visible Windows desktop](#visible-windows-desktop) workflow
+does. The [human usability and desktop tests](docs/manual-tests.md) cover what no automated check
+does, with a synthetic workbook from `python tools/manual_workbook.py`.
 
 Logs, actual office/Python versions, package inventory, and results are in `test-results/` and in
 CI artifacts. The runner records the exit status of each office session and rejects nonzero exits,
@@ -383,13 +384,67 @@ abort of [issue #8](https://github.com/viell-dev/slop-calc-sheet-manager/issues/
 LibreOffice crash when a test closed Writer within milliseconds of opening it
 ([#30](https://github.com/viell-dev/slop-calc-sheet-manager/issues/30)); the runner now waits a
 second before closing Writer.
-Windows CI verifies a pinned MSI before silently installing it; this installation script is for
-disposable CI runners, not a contributor's existing installation.
+Windows CI and the Windows desktop workflow verify a pinned MSI before silently installing it;
+this installation script is for disposable CI runners, not a contributor's existing installation.
 
 `Linux (LibreOffice …)` jobs run the headless checks and `Linux gtk3 (LibreOffice …)` jobs the
 painted checks and the real-input UI tests under Xvfb; both are required for merging. Every job
 fails on any test or shutdown failure and uploads its artifacts; no error message is treated as an
 allowed crash.
+
+### Visible Windows desktop
+
+The **Windows desktop** workflow (`.github/workflows/windows-desktop.yml`) runs real-input checks
+in a visible Calc window on a GitHub-hosted `windows-2025` runner. The runner's job runs in the
+active console session, where input reaches a visible LibreOffice, unlike an agent shell in
+Windows session 0. The workflow installs the MSI pinned in `ci/libreoffice.json` with
+`ci/install-windows.ps1`, builds the OXT with LibreOffice's Python, and runs
+`tests/ui/run_windows_ui.py`: one private office with the `win` interface, a fresh profile with
+Tip of the Day and the first-start dialog turned off, and the synthetic 80-sheet workbook
+maximised to the desktop with the Sheet Manager deck shown. `tests/ui/winput.py` sends keys and
+pointer input through Windows' `SendInput` with the same interface as the X11 helper, so the suite
+runs the checks of `run_ui.py` and `rename_dialog.py` themselves rather than copies, and reads the
+results back through public UNO as on Linux. Window and screen geometry are read from the live
+desktop; nothing assumes the runner's present 1024×768 screen at 96 DPI.
+
+The checks click, Ctrl+click and Shift+click rows; type into the focused list and check that no
+cell changes; use Ctrl+Page Down, Ctrl+Page Up, Ctrl+Z and Ctrl+S from the list and the Alt move
+shortcuts; drag two picked sheets above and below a row's midpoint with one undo step, drop in
+place, cancel a drag with Esc and auto-scroll; turn the wheel; open the menu by right click, the
+Menu key and Shift+F10 and hide through it; rename, insert and delete from the menu on the
+right-clicked row while another sheet is viewed and others are picked
+([#100](https://github.com/viell-dev/slop-calc-sheet-manager/issues/100)); use the Rename Sheets
+dialog by keyboard and by mouse; and undo and redo Hide Sheet with Ctrl+Z and Ctrl+Y from the list,
+also after a read-only workbook was opened and closed
+([#108](https://github.com/viell-dev/slop-calc-sheet-manager/issues/108)).
+
+It runs on pull requests that change `src/`, `extension/` (which includes release preparation,
+since the version is there), `tests/ui/`, the integration helpers it shares, `tools/build.py`,
+`ci/`, or the workflow itself, and by manual dispatch, whose `checks` input names checks to run,
+separated by spaces. Once the workflow is on `main`, dispatch it for a branch with
+`gh workflow run windows-desktop.yml --ref <branch> -f checks="keys_stay_in_list wheel"`.
+
+The `windows-desktop` artifact holds `ui-results.json`, with the desktop the run saw (session,
+screen, DPI, keyboard layout), each check's result, and the office's exit status, forced shutdown
+and crash dumps; `ui-win/checks.json`, with each check's evidence or traceback and its duration;
+screenshots taken at menus, dialogs and drags; and the office log and the built OXT. A failed
+check also leaves `failed-<check>.png`, and its entry in `checks.json` records the foreground
+window, the pointer position and the office's visible top-level windows. The job fails on a failed
+check, an extension error in the office log, a nonzero exit, a forced shutdown, a fatal message or
+a crash dump, as the integration runner does; only startup is retried.
+
+Never run the suite on your own computer: its input goes to whatever has the focus.
+`winput.WinInput` refuses to start unless `SHEET_MANAGER_REAL_DESKTOP=1` is set, which only the
+workflow does, and the runner refuses session 0, a desktop it cannot open for input, and a
+keyboard layout other than en-US.
+
+The workflow is not a required check yet. Its evidence is limited to Windows Server 2025, not
+Windows 11; one 1024×768 desktop at 96 DPI with the en-US layout; the `win` interface; the
+Windows pin of `ci/libreoffice.json`; and no screen reader or input method. Promote it, by moving
+the job into `ci.yml` and adding its name to the main ruleset's required contexts, once at least
+ten consecutive runs on pull requests have passed, with every failure in between classified from
+its artifacts as a product defect rather than the harness or the runner, and while a run stays
+within about fifteen minutes.
 
 ### Soak painted sessions
 

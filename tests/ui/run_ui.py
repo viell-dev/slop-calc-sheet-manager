@@ -4,6 +4,11 @@ Run inside the Linux test image with LibreOffice's bundled Python, normally thro
 ``tools/linux_integration.py <lane> --ui``. Each VCL plugin gets its own private office and
 profile. The tests drive only real X input and observe only public UNO: the panel's
 ``XPanel.getDialog()`` window, its child tree control, the document, and its undo manager.
+
+``run_windows_ui.py`` runs many of these checks on a visible Windows desktop (#114), so a check
+reaches the desktop only through its lab: ``lab.input`` (keysym names, ``popup_windows``,
+``modal_dialog``), ``lab.place``, ``lab.screenshot`` and ``lab.failure_evidence``, never through
+X11 tools directly. ``run_named`` is the loop both runners share.
 """
 
 import argparse
@@ -26,6 +31,7 @@ import sheet_list_view as view  # noqa: E402
 import uno  # noqa: E402
 import unohelper  # noqa: E402
 from com.sun.star.awt import XMouseListener, XMouseMotionListener  # noqa: E402
+from main_thread import close_document  # noqa: E402
 from menu_lifetime import check_menu_queue_disposal  # noqa: E402
 from rename_dialog import check_keyboard as check_rename_keyboard  # noqa: E402
 from rename_dialog import check_mouse as check_rename_mouse  # noqa: E402
@@ -121,8 +127,7 @@ class Workbook:
         self.controller = document.getCurrentController()
         self.frame = self.controller.getFrame()
         self.window = self.frame.getContainerWindow()
-        self.window.IsMaximized = False
-        self.window.setPosSize(0, 0, 1500, 950, 15)
+        lab.place(self.window)
         self.controller.setActiveSheet(sheets.getByIndex(0))
         self.panel, self.tree = view.open_list(lab.context, document)
         wait_for(lambda: len(self.nodes()) == len(names), "every sheet in the list")
@@ -200,7 +205,7 @@ class Workbook:
         return entries
 
     def close(self):
-        self.document.close(True)
+        close_document(self.lab.context, self.document)
 
 
 class Lab:
@@ -210,6 +215,15 @@ class Lab:
         self.directory = directory
         self.output = output
         self.input = XInput()
+
+    def place(self, window):
+        """Give a document window the lab's fixed size on the private display."""
+        window.IsMaximized = False
+        window.setPosSize(0, 0, 1500, 950, 15)
+
+    def failure_evidence(self):
+        """Desktop state worth keeping beside a failed check's screenshot; none under Xvfb."""
+        return {}
 
     def screenshot(self, name):
         environment = {
@@ -265,24 +279,9 @@ def wait_until(function, what, timeout=10):
     return wait_for(function, what, timeout=timeout)
 
 
-def native_modal():
-    """Read native dialog identity: GTK can omit UNO exposure; gen omits the modal state hint."""
-    active = subprocess.check_output(["xprop", "-root", "_NET_ACTIVE_WINDOW"], text=True)
-    window = active.split()[-1]
-    if window == "0x0":
-        return False
-    state = subprocess.check_output(
-        ["xprop", "-id", window, "_NET_WM_WINDOW_TYPE", "WM_TRANSIENT_FOR"], text=True
-    )
-    return (
-        "_NET_WM_WINDOW_TYPE_DIALOG" in state
-        and "WM_TRANSIENT_FOR(WINDOW): window id # 0x" in state
-    )
-
-
 def native_dialog(book):
-    """A dialog over the frame: GTK's is found through X11, gen's as a shown VCL dialog."""
-    if native_modal():
+    """A dialog over the frame: GTK's is found natively, gen's as a shown VCL dialog."""
+    if book.lab.input.modal_dialog():
         return True
     toolkit = book.lab.context.ServiceManager.createInstanceWithContext(
         "com.sun.star.awt.Toolkit", book.lab.context
@@ -1041,7 +1040,7 @@ def check_context_preserves_view_and_picks(book):
     history = book.undo_titles()  # Includes the edit that gives Golf data to confirm.
     book.pointer.click(*book.point(6), button=RIGHT, pause=0.4)
     book.choose(DELETE, entries)
-    wait_until(native_modal, "native delete confirmation")
+    wait_until(book.lab.input.modal_dialog, "native delete confirmation")
     # Calc's tabs are set on the target only once its command runs.
     assert book.calc_tabs() == [NAMES[6]], "Delete must target exactly the right-clicked row"
     assert not book.lab.input.popup_windows(), "A second menu opened after choosing Delete"
@@ -1294,13 +1293,13 @@ def check_context_delete_targets(book):
             view_first_sheet(book, picks)
             book.pointer.click(*book.point(4), button=RIGHT, pause=0.5)
             book.choose(DELETE, entries)
-            wait_until(native_modal, "Calc's delete confirmation")
+            wait_until(book.lab.input.modal_dialog, "Calc's delete confirmation")
             evidence[f"{label}_confirmation"] = book.active(), book.calc_tabs()
             assert book.calc_tabs() == picks, evidence
             assert not book.lab.input.popup_windows(), "A second menu opened after Delete"
             book.lab.screenshot(f"context-delete-{label}")
             book.lab.input.tap(key, pause=0.5)
-            wait_until(lambda: not native_modal(), "the confirmation to close")
+            wait_until(lambda: not book.lab.input.modal_dialog(), "the confirmation to close")
             view.on_main_thread(book.lab.context, lambda: None)
             if label == "cancel":
                 assert book.order() == order and not book.undo_titles(), "Cancel deleted"
@@ -1318,7 +1317,7 @@ def check_context_delete_targets(book):
                 wait_until(lambda: book.order() == order, "one undo of the delete")
                 assert identities(book) == original
     finally:
-        if native_modal():
+        if book.lab.input.modal_dialog():
             book.lab.input.tap("Escape", pause=0.5)
         while book.undo_titles():
             undo.undo()
@@ -2285,6 +2284,17 @@ def run_checks(lab, output, only=()):
         ("other_document", lambda: check_other_document(lab, book)),
         ("row_paint_long_names", lambda: check_row_paint_long_names(lab)),
     ]
+    results = run_named(lab, book, output, checks, only)
+    book.close()
+    return results
+
+
+def run_named(lab, book, output, checks, only=()):
+    """Run `checks`, (name, function) pairs, each from a reset workbook; `only` selects some.
+
+    A failure keeps a screenshot and the lab's own evidence, and the next check still runs,
+    unless LibreOffice's main thread is stuck.
+    """
     if only:
         unknown = set(only) - {name for name, _ in checks}
         if unknown:
@@ -2299,6 +2309,9 @@ def run_checks(lab, output, only=()):
         except Exception:
             results[name] = {"pass": False, "error": traceback.format_exc()}
             lab.screenshot(f"failed-{name}")
+            failure = lab.failure_evidence()
+            if failure:
+                results[name]["desktop"] = failure
             for _ in range(2):
                 lab.input.tap("Escape", pause=0.3)
         results[name]["seconds"] = round(time.monotonic() - started, 2)
@@ -2306,7 +2319,6 @@ def run_checks(lab, output, only=()):
         (output / "checks.json").write_text(json.dumps(results, indent=2) + "\n", "utf-8")
         if stalled_callbacks():  # The main thread is stuck: no reset, check, or close (#52).
             raise TimeoutError(stalled_callbacks()[0])
-    book.close()
     return results
 
 

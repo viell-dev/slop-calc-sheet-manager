@@ -1,11 +1,16 @@
 # Human usability and desktop tests
 
-Automated tests cover the sheet list with real mouse and keyboard input only on Linux, under a
-virtual X display with the gtk3 and gen interfaces. On Windows they can send only LibreOffice's
-own synthetic events, which bypass the key handler and cannot start a native drag. These checks
-cover observations outside the automated evidence: real keys and drags on Windows, input in an
-explicit Wayland session, and the list's appearance. A focused human usability pass is required
-before the first stable release and after substantial interface or workflow changes, as
+Automated tests cover the sheet list with real mouse and keyboard input on Linux, under a virtual X
+display with the gtk3 and gen interfaces, and in a visible Windows window on GitHub's hosted Windows
+Server 2025 runners, in a workflow that is not yet required. The Windows run covers the behaviour of
+steps 2 and 3, the wheel in step 4, steps 5 to 9, 11, 13, 14 and 16, step 15 apart from Help, the
+commands of step 17, the Alt shortcuts of step 29, and step 30, on one 1024×768 desktop at 96 DPI
+with the en-US layout and no screen reader. Most of its undo steps are made through LibreOffice's
+API rather than Ctrl+Z; Hide Sheet's is made with Ctrl+Z and Ctrl+Y. These checks cover what that
+evidence does not: whether the controls, layout, feedback and recovery make sense to a person;
+Windows 11 and other displays, scaling, themes and keyboard layouts; dragging out of the list; input
+in an explicit Wayland session; and the list's appearance. A focused human usability pass is
+required before the first stable release and after substantial interface or workflow changes, as
 [RELEASING.md](https://github.com/viell-dev/slop-calc-sheet-manager/blob/main/RELEASING.md#human-release-testing)
 describes. Select the relevant tasks below and ask whether the controls, layout, feedback, and
 recovery make sense in ordinary use.

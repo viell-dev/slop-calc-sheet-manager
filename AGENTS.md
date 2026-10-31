@@ -261,7 +261,9 @@ before changing the module, and update it in the same pull request when a rule c
   structure monitor; `uno_calc.py` shared Calc and threading helpers.
 - **Tests:** `tests/unit/`; `tests/integration/run.py` and its `test_*.py` suites, with
   `main_thread.py` and `teardown.py` for closing documents and stalls; `tests/ui/run_ui.py` for
-  real input under Xvfb; `tools/linux_integration.py` for the Docker lab. CONTRIBUTING.md says what
+  real input under Xvfb; `tests/ui/run_windows_ui.py` and `winput.py` for real input on a visible
+  Windows desktop, in the Windows desktop workflow; `tools/linux_integration.py` for the Docker
+  lab. CONTRIBUTING.md says what
   each covers. Human usability tasks and additional platform observations are in
   [docs/manual-tests.md](docs/manual-tests.md); keep it current.
 - **Releases:** `tools/release_data.py` owns version policy, changelog extraction, and feed XML;
