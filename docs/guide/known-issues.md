@@ -28,35 +28,20 @@ If Sheet Manager does not work in an environment where it is expected to, please
   **Sheet Manager Help** in the context menu for this guide. Header hover sizing is also controlled
   by LibreOffice and its theme
   ([#81](https://github.com/viell-dev/slop-calc-sheet-manager/issues/81)).
-- **Save focus.** Ctrl+S from the list saves through Calc. With LibreOffice's gtk3 interface on
-  Linux, a save moves the keyboard focus from any sidebar control to the sheet, Calc's own panels
-  included. <Unreleased since="0.0.8" /> The list takes the focus back once the save has finished,
-  after any Save As, file format, or error dialog has closed, unless you have used the list or
-  another window meanwhile. Earlier builds leave the focus in the sheet; click the list to return to
-  it ([#23](https://github.com/viell-dev/slop-calc-sheet-manager/issues/23)).
 - **Unavailable menu actions.** Native popup rendering can hide disabled commands and move
   actions, and their help text. In the gen backend, use Down to highlight the first available
   entry; Home can leave no entry highlighted when the leading actions are unavailable. Alt move
   shortcuts still apply the same permission and edge checks
   ([#84](https://github.com/viell-dev/slop-calc-sheet-manager/issues/84)).
-- **Conservative selection clearing.** Inserting or deleting sheets, undoing or redoing, and
-  modifications whose continuity cannot be established can clear the list's selection. A notice
-  explains conservative clearing of a user-made selection. Ordinary refreshes retain the list's
-  range anchor while its sheet identity remains valid. Native Undo and Redo can also activate an
-  affected sheet; the list then follows Calc's new tab selection. A grouped move can activate the
-  sheet above the returned group, whereas a single move can activate the returned sheet. **What Undo
-  now keeps.** <Unreleased since="0.0.8" /> Undo and Redo of the list's own move keep its picks, the
-  viewed sheet and Calc's tab selection
-  ([#91](https://github.com/viell-dev/slop-calc-sheet-manager/issues/91)). They still clear the
-  picks when undo history is set to one step, after an Undo or Redo of anything else in between,
-  after a new window of the workbook was opened in between, after another program or macro adds
-  actions to the move's undo step, and when LibreOffice reports anything unexpected while it replays
-  the move. If a move fails before it moves any sheet, Redo history from before the move is lost.
-  **Selection feedback.** <Unreleased since="0.0.5" /> The clearing notice expires within the panel
-  after ten seconds, preserving focus. An immediate selection after Reload or during concurrent
-  document changes can remain empty or clear again, including during some recorded changes. Select
-  the desired rows again once loading or concurrent edits finish; the cause of this intermittent
-  observation is still under investigation
+- **Conservative selection clearing.** The list clears picks when it cannot prove that they
+  still refer to the same sheets. A notice explains the clearing and expires after ten seconds.
+  Undo/Redo of the list's own move normally keeps picks and view, but still clears them with
+  one-step undo history, intervening structural changes or foreign undo actions, a new workbook
+  window, or unexpected replay notifications. See
+  [When the list clears its selection](./use.md#when-the-list-clears-its-selection) for the rules.
+  A move that fails before moving any sheet loses earlier Redo history. Immediately after Reload
+  or during concurrent edits, selection can remain empty or clear again; select the rows again
+  once loading or edits finish
   ([#88](https://github.com/viell-dev/slop-calc-sheet-manager/issues/88)).
 - **Assistive technology.** Rows give the sheet name and its hidden, protected, and scenario states;
   the current-sheet arrow and tab colours are painted only. <Unreleased since="0.0.9" /> The list's
@@ -66,9 +51,8 @@ If Sheet Manager does not work in an environment where it is expected to, please
   sidebar, and with LibreOffice's gtk3 interface on Linux the accessibility bridge reports nothing
   from the list. <Unreleased since="0.0.9" /> They can now, and the gtk3 bridge reports the list's
   focus, rows and name changes
-  ([#133](https://github.com/viell-dev/slop-calc-sheet-manager/issues/133)). After its controls the
-  panel holds an empty, unnamed, unavailable pane, which keeps clicks in its margins from undocking
-  the sidebar. No screen reader runs in the checks: they read LibreOffice's accessibility interface,
+  ([#133](https://github.com/viell-dev/slop-calc-sheet-manager/issues/133)). No screen reader runs
+  in the checks: they read LibreOffice's accessibility interface,
   and the gtk3 bridge was probed once. Windows screen readers have not been tried.
 - **Large lists.** The list rebuilds after changes. During rapid sheet switches the active-sheet
   marker, and <Unreleased since="0.0.9" /> the list's accessible name, can lag; timing measurements
@@ -95,9 +79,7 @@ If Sheet Manager does not work in an environment where it is expected to, please
   characters, such as `ﬁ` (a single ligature character) and `fi`, or `ı` and `I`, but then finds
   whichever of them comes first for either name, also in formulas: while `ﬁ` comes first,
   `='fi'.A1` refers to a cell of `ﬁ`. This is a limit of LibreOffice; renaming one of the sheets
-  avoids it ([#113](https://github.com/viell-dev/slop-calc-sheet-manager/issues/113)). Test
-  builds up to 0.0.6 show the second sheet with the first one's hidden, protected, or colour
-  state, and refuse to move, show, or rename sheets until one of them is renamed.
+  avoids it ([#113](https://github.com/viell-dev/slop-calc-sheet-manager/issues/113)).
   <Unreleased since="0.0.7" /> The list shows each sheet's own state, and Show, the menu's
   commands, moves, and Rename Sheets act on the sheet you picked. Calc moves a sheet only by its
   name, so the list refuses a move that would need the name of the sheet that does not come first,
@@ -111,10 +93,8 @@ If Sheet Manager does not work in an environment where it is expected to, please
 - **A LibreOffice defect in two commands.** In LibreOffice 26.8.0 and 26.8.1, Calc's own
   Duplicate Sheet and Move or Copy Sheet copy formulas with relative sheet references incorrectly
   ([tdf#173608](https://bugs.documentfoundation.org/show_bug.cgi?id=173608)). LibreOffice 26.8.2
-  fixes this; update to it before using these commands on such formulas. Test builds up to 0.0.4
-  offer both through **Sheet actions…**.
-  <Unreleased since="0.0.5" /> The list's menu leaves them to Calc's sheet tabs. Calc's Move or
-  Copy also reverses several sheets moved to the right
+  fixes this; update to it before using these commands on such formulas. Both commands are on
+  Calc's sheet tabs. Calc's Move or Copy also reverses several sheets moved to the right
   ([#3](https://github.com/viell-dev/slop-calc-sheet-manager/issues/3)); the list's own moves
   keep their order.
 - **Other LibreOffice defects.** Defects in LibreOffice that affect Sheet Manager, and how each is
@@ -123,3 +103,19 @@ If Sheet Manager does not work in an environment where it is expected to, please
   Sheet keeps Calc's own undo, whether chosen from Calc's tabs or the list's menu: LibreOffice
   skips undoing it when no Calc window is current, as can happen when a macro undoes it, yet uses
   up the undo step ([#108](https://github.com/viell-dev/slop-calc-sheet-manager/issues/108)).
+
+## Upgrading older builds
+
+See the [changelog](https://github.com/viell-dev/slop-calc-sheet-manager/blob/main/CHANGELOG.md)
+for the complete change history and [Releases and test builds](./releases.md) for downloads.
+These older behaviours can affect how you use an existing installation:
+
+- **Before 0.0.8:** on gtk3, Ctrl+S leaves focus in the sheet; click the list before typing there.
+  From 0.0.8 the list restores focus after the save and its dialogs finish
+  ([#23](https://github.com/viell-dev/slop-calc-sheet-manager/issues/23)). Undo/Redo of the list's
+  own moves also clears picks and can change the viewed sheet in those older builds; 0.0.8 keeps
+  them under the identity rules above
+  ([#91](https://github.com/viell-dev/slop-calc-sheet-manager/issues/91)).
+- **Through 0.0.6:** names Calc confuses can show another sheet's hidden, protected or colour state
+  and block actions. Upgrade Sheet Manager to at least 0.0.7 for independent row state and guarded
+  operations; renaming one of the pair remains the workaround for Calc's own lookup defect (#113).

@@ -117,168 +117,41 @@ Unit tests need no LibreOffice and run as part of the checks. To run them alone:
 .venv/bin/python -m pytest
 ```
 
-Release tests cover version ordering, release stages and titles, the Release workflow's `stage`
-input, changelog extraction, and update feeds.
-The integration runner also sends generated loopback HTTP feeds through LibreOffice's update
-parser and checks candidate compatibility through its deployment API. The painted Linux lanes
-also run `tests/ui/update_dialog.py` with the gen interface: actual offered and refused updates,
-download/install clicks, and a same-profile restart that verifies the new version and deck.
-See [RELEASING.md](RELEASING.md#verification-boundary) for the tested boundary and its limits.
-Release dry runs and publication follow
-[RELEASING.md](RELEASING.md).
+### Integration suites
 
-The sheet list's selection model has a property test: random sequences of picks, refreshes,
-insertions, deletions, renames, moves, same-name replacements, a deleted sheet's name passed to
-another sheet, undo and redo (also unreported, under `disableSetModified`), the list's own moves
-with their marker actions and their Undo and Redo, hidden undo contexts adding actions to the top
-step, other groups with the own move's title, and ordinary edits and saves, checking that nothing
-the list holds ever resolves to a sheet it was not picked as. Its workbook reproduces how
-LibreOffice's retained handles behave (a deleted sheet's handle turns to the previous sheet) and
-how LibreOffice reports changes, each with the document's state at that moment: undo
-notifications for every recorded action, modify notifications per change, once when a lock
-ends, or none under `disableSetModified`, only modify notifications while undo recording is off,
-undo contexts grouped into one undo step, and saves between their save events, with a refresh
-inside some of them; some batches keep their lock held across later steps, while the list acts.
-Companion tests show that per-handle name checks alone, and the sheet
-count without the state, fail there, as does trusting the own move's undo title alone, that
-ordinary edits, saves, and the list's own moves and their Undo and Redo keep the picks, that an own
-move without markers, an intervening edit, or a hidden context clears them, and document the two
-out-of-scope cases (`sheet_manager.structure`): with undo
-recording and modify notifications both off nothing is reported, and a sequence built to report
-like typed input passes.
+The integration runner installs the built OXT into a fresh temporary profile and connects over a
+unique local UNO pipe. It never attaches to an existing office or uses the normal LibreOffice
+profile. Every workbook is synthetic and loaded visibly, even in a headless office. Logs, actual
+versions, package inventories, performance measurements and results go into `test-results/` and
+CI artifacts.
 
-The reorder suite exhausts all permutations through seven sheets and all scenario partitions and
-block orders through seven. It checks the minimum call count against an independent
-longest-common-subsequence oracle. The panel-facing contract is in
-[docs/reordering.md](docs/reordering.md).
+Feature suites are `tests/integration/test_*.py` modules with an
+`exercise(context, desktop, directory, output)` entry point; the runner passes `headless=` when
+accepted. They run in filename order, except suites with session-wide native state run last
+(`LAST_SUITES` in `run.py`). They import the built OXT through zipimport, so a missing packaged
+module fails integration. Keep suites additive and failure injection in test-only forwarding
+adapters, never in the shipped extension.
 
-The runner also discovers `tests/integration/test_*.py` modules with an
-`exercise(context, desktop, directory, output)` entry point, and passes `headless=` too when the
-entry point takes that keyword. It runs them in one office session in file-name order, except that
-suites leaving session-wide native state behind run last (`LAST_SUITES` in `run.py`). These suites
-import the built OXT's modules through zipimport, so allowlist omissions fail integration. Keep
-feature suites additive and keep failure injection in test-only forwarding adapters. Reorder checks
-cover active-sheet and native selection preservation, one undo and redo, permission refusals, stale
-handles, hidden sheets, scenario ownership, failures after each real mutation, and a silently
-ineffective undo. `test_reorder_identity.py` checks adapter snapshots across kept-count sheet
-replacements, recorded and unrecorded batches, held locks, Undo, and shared-monitor disposal, and
-two pairs of names that Calc's lookup confuses: rows, Show, the menu's Hide, moves and their
-refusal, and batch renames act on exactly their sheets (#113). It
-verifies that closing one list view keeps other views and held snapshots protected until the
-document closes, and that the Undo of an own move keeps the proof while any other Undo
-invalidates it. `test_undo_moves.py` (#91) drives the packaged panel through Undo and Redo of its
-own moves, dispatched and from a bridge thread, at undo capacities 100 and 2 (nested groups),
-checking that the picks, the viewed sheet and the tab group stay, including a view changed just
-before a Redo. It checks that an insertion undone in between, an unrecorded replacement (which
-clears Calc's history), a hidden context adding to the move's step, Calc's own move with the same
-title, and a replacement in a group with that title undone under `disableSetModified` all clear
-the picks with the notice. Adapter checks cover held snapshots across own replays, rolled-back
-failures at both capacities, a failure before the first move, a one-step capacity without markers,
-two windows each keeping their own view whichever window undoes, Undo with the sidebar closed, and
-closing the document straight after Undo and Redo. `test_move_menu.py` checks real UNO popup enablement, refusal reasons, robot menu
-actions, and one Undo per action. `test_sheet_commands.py` checks the menu's Calc commands: their
-enablement, reasons and Calc's own labels, Calc's command state for grouped tabs, Hide and Delete on
-exactly their targets with one undo step, refusal of changed targets without touching the view, and
-restoration of the view after a refusal that follows grouping. `test_rename_sheets.py` checks the
-list's batch rename: the menu entry's enablement and reasons, names Calc keeps exactly and names
-refused before any change, swaps and cycles with formulas, named ranges, charts and `INDIRECT` text,
-one undo step at undo capacities 0, 1 and 2 (also for a 31-call cycle at 1), failures before, after
-and instead of each real call, a broken undo, Calc's own refusals (structure protected part-way, and
-a name refused after a Find & Replace, #112), stale, replaced and newly protected targets, another
-window's view, the main thread, and timings at 200 and 1,000 populated sheets, written to
-`rename-performance-headless.json`. The real-input UI suite exercises every move action and Alt
-shortcut, separated picks, repeated moves, edges, and permission refusals, and `undo_own_move`
-repeats the reported #91 sequence with a real drag, Ctrl+Z and Ctrl+Y. Cursor checks cover Ctrl
-navigation outside the picks, Home/End, page navigation, and rebuilding the list. Selection keys are
-consumed before native forwarding, share a retained range anchor, and accumulate logical intent
-before a coalesced UI write. Boundary regressions cover a paused UI queue, ignored intermediate
-restoration events and failure cleanup; the native failure adapter also checks cursor-listener
-removal. The failure suite also runs with two configured undo steps, forcing nested groups, and
-checks zero and one-step settings. Full-stack tests put both native and extension moves above 99
-inputs and fail before mutation, checking that recovery never undoes either preceding move.
-View-restoration failures preserve verified move/rollback outcomes and report a separate warning.
-All configuration changes belong to the runner's private profile. Pure planning has a five-second
-regression budget at 10,000 sheets for both one-call and reverse-order plans.
+The [verification map](docs/verification.md) owns current coverage and evidence limits, including
+identity, recovery, performance, accessibility and real input. The
+[reordering contract](docs/reordering.md) describes the panel/adapter boundary.
+[RELEASING.md](RELEASING.md#verification-boundary) explains update testing and the live checks that
+publication still requires.
 
-The reorder suite generates 200- and 1,000-sheet workbooks with a cross-sheet formula and named
-range per sheet plus charts referencing distant sheets. It measures first-sheet, half-selection,
-all-but-last, and alternating-selection moves to the bottom, three times each, and verifies direct
-references before and after undo. `reorder-performance-<session>.json` records median milliseconds. Move
-timing includes snapshot, planning, preflight, application, and final verification; undo timing
-covers Calc's undo call, followed by separate integrity assertions. Workbooks use only synthetic
-data and stay in memory; the benchmark does not save workbook files.
+When adding or changing fixtures:
 
-To retain copies for inspection, run the generator with the tested office's bundled Python:
-
-```powershell
-& "$lo\python.exe" tests/integration/generate_workbooks.py --program $lo `
-  --oxt dist/sheet-manager-0.0.9.oxt --output test-results/workbooks --sheets 200 1000
-```
-
-The generator uses a separate private profile and saves only its newly created synthetic workbooks.
-
-The integration runner installs the built OXT into a fresh temporary profile, connects over a
-unique local UNO pipe, and checks the factory, that the panel holds no tab control, exact panel
-resizing and disposal, read-only Calc documents, Writer exclusion, and SVG decoding. It presses
-in the panel's empty margins with LibreOffice's synthetic input and drags away, and checks that
-the sidebar stays docked (#133). Painted gtk3 sessions also press real Shift, Ctrl, and Alt keys
-with `xdotool` while the panel is shown. The sheet list's feature
-suite checks its rows and their states, refreshing after sheet changes, following the active sheet,
-dropping replaced or renamed sheets from the selection, clicks and the sheet tab menu through
-LibreOffice's synthetic input, clicks that meet rows not yet refreshed, picks dropped after
-structural edits (also batched on the main thread, with undo recording off inside a lock, and
-the out-of-scope silenced case recorded as such), a click while such a batch's outer lock is
-still held, restoring the view when Calc sends an activation elsewhere, and Show's undo and
-recovery rules. Synthetic input cannot reach gtk3's native menus, so painted sessions skip the
-menu steps, which the real-input UI tests cover.
-`test_sync_sheet_list.py` checks same-active tab selection, independent list picks, logical
-membership across reordering, grouped-editing status, hidden-panel pause/resume, separate windows,
-document switching, and reload. Minimize needs a painted window; the other cases run headlessly
-too. The Reload fixture observes the replacement's `OnLoad`, drains queued native events and idles
-on the main thread, then reacquires the panel before establishing its group-status baseline and
-clicking. The drain alone is not a guarantee that a future timer cannot report another change.
-Correct rows alone do not establish readiness: Calc's first-paint page-break timer can still report
-a modify notification that conservatively clears picks (#88). This does not waive the product's
-identity checks or promise that input during initialization is retained.
-Each synchronization case closes its workbooks before the next starts, while keeping all windows
-needed by its own assertions. Retaining unrelated workbooks reproduced native window-creation
-failure in the Windows agent's non-interactive session 0 environment (#45); this does not establish
-the same resource limit on an interactive desktop or CI runner. The multi-window case still
-exercises simultaneous views.
-`test_view_observation.py` makes queued-observation/input races and cancelled callbacks
-deterministic without pretending its adapters verify native visibility or selection behaviour.
-`test_accessibility.py` (#83) reads the list through LibreOffice's accessibility interface: the
-tree's accessible name, which names the viewed sheet while another row is picked, after Calc's
-and the list's own activations, a rebuilding refresh, and a headless menu move, and the
-`NAME_CHANGED` events a bridge would receive. It also selects a row through
-`XAccessibleSelection`, as a screen reader does, just before a refresh rebuilds the rows. It
-holds the main thread past the refresh delay, so the refresh is queued before the list's intake.
-Its hierarchy check (#133) walks the panel's accessible children, which must be the move
-buttons, the tree, any shown footer label and the disabled backdrop, at their own indices in that
-order, checks that every ancestor up to the top is listed by its parent, and walks down from the
-top to the tree without knowing the path.
-These are metadata checks; no screen reader runs. The real-input `viewed_sheet_name` check reads
-the same name in gtk3, gen and on the Windows desktop, and `test_assistive_selection.py` covers
-the pure rules.
-Every workbook is synthetic and loaded visibly, even when the office process itself is headless.
-It retries only startup, up to three times, to tolerate a Windows crash just after connecting. It
-never attaches to an existing office or uses the normal LibreOffice profile.
-
-Once per run that includes a headless session, with the extension installed and all suites
-enabled, the runner also checks the extension's lifecycle in a profile of its own:
-
-1. It installs the OXT with `unopkg`.
-2. It converts a synthetic CSV file with `soffice --headless --convert-to ods`, with the extension
-   installed.
-3. It confirms the deck and the panel factory in a new office.
-4. It removes the extension.
-5. It confirms that a new office has neither. It also confirms that no installed copy is left
-   outside LibreOffice's own staging area, `user/extensions/tmp`. A copy is found by its
-   description naming the extension's identifier, whatever its file name, and the same search must
-   find the copy before removal.
-
-Its logs are in `lifecycle/` in the runner's output directory, `test-results/<lane>/` for the
-Linux lanes.
+- Close documents through `main_thread.close_document`, on LibreOffice's main thread. Release
+  unrelated workbooks between cases while retaining the simultaneous windows a case needs.
+- After Reload, wait for the replacement's `OnLoad`, drain queued native events and idles on the
+  main thread, then reacquire the panel and establish a fresh baseline before input. Correct rows
+  alone do not establish readiness; later native timers can still conservatively clear picks.
+  Never weaken the identity checks to make an initialization race pass
+  ([#88](https://github.com/viell-dev/slop-calc-sheet-manager/issues/88)).
+- Use `Workbook.hold` for a held-press precondition: the tree's native selection precedes the
+  list's mouse listener. Wait for the listener and its main-thread round trip before changing the
+  workbook ([#134](https://github.com/viell-dev/slop-calc-sheet-manager/issues/134)).
+- Keep profile and configuration changes isolated to the runner. Only startup is retried, up to
+  three times; assertions and shutdown are never retried.
 
 On Windows, build and test the installed LibreOffice with its bundled Python:
 
@@ -334,52 +207,23 @@ descheduled between a flushed key press and release can turn an intended tap int
 A real-input regression pauses for one second with Down pressed and still expects one cursor
 step. These tests exercise explicit key events, not the operating system's timed repeat behavior.
 
-They click, Ctrl+click, and Shift+click rows, press in the panel's empty margins and drag away
-and check that the sidebar stays docked, drag two separate sheets above and below a row's
-midpoint and check the order and the single undo step, cancel a drag with Esc, auto-scroll and
-wheel-scroll the list, type into the focused list and check that no cell changes, use Ctrl+Page
-Down, Ctrl+Z, and Ctrl+S from the list and check that the list keeps the focus, so that a typed
-letter after the save searches the list. They press Ctrl+S from the list on a new document and
-cancel Save As with Esc, and on a read-only file and close the write error, and check that the
-dialog keeps the focus while it is open and the list has it afterwards. They open the sheet tab
-menu by right click, Menu key, and
-Shift+F10, check that double-click activation leaves one selected tab so that typing edits
-one sheet, keep the keyboard position across a refresh, refuse a drop after a sheet was replaced
-during the drag, and switch documents. They release a press after its sheet was replaced or moved
-and check that no activation follows and that the release selects nothing new; after the
-replacement, the Menu key then does nothing. They hold a press while the list gets a newer pick,
-by following Calc to another sheet or by typing its first letter, move the pressed sheet away,
-release, and check that the Menu key's Hide hides the newer pick. A held press is complete only
-once the list's own mouse listener has run (`Workbook.hold`), and that check records the list's
-selection, Calc's view, the focus and the press at each step (#134). They pick Bravo, then delete it
-and give its name to another sheet, directly or after inserting one so that the count is kept,
-replace it while it is held, or run the insert-delete-rename batch on LibreOffice's main thread
-inside `lockControllers`, `addActionLock`, or `disableSetModified`, or with undo recording off
-inside either lock and an empty undo history, and check that the picks are dropped and that the
-Menu key then hides nothing. The deletion and name-reuse cases also assert the notice. They hold a
-drag of Bravo while that
-unrecorded batch runs and check that the drop moves nothing, press Enter or the Menu key while
-the batch's outer lock is still held and check that neither activates nor hides the replacement,
-and save with Ctrl+S from the list and from a cell and check that the picks stay. While a
-far sheet's colour keeps changing, so that the list waits to refresh, they click a sheet hidden
-just before activation, and Ctrl+click after a double-click, and check that nothing acts on the old rows.
-They rename a right-clicked row and insert a sheet next to it from the menu while another sheet
-is viewed and others are picked, confirming, cancelling, and using the Menu key, and check which
-sheet's identifying cell the new name carries and where the new sheet goes. They delete two picked
-sheets, cancelling and accepting Calc's confirmation, and check that no second menu opens.
-They open Rename Sheets for three picks by the Menu key, use Find, Replace with and Replace All,
-check that Enter applies nothing, select a row, type a refused name and then a valid one, rename
-with Alt+R, and check the new names, the identifying cells, one undo step, the unchanged view, and
-the picks carried to the new names. By mouse they do the same through the fields, the buttons and
-a clicked row, use Reset All and Cancel, and rename. They rename a target from another program
-while the dialog is open and check that Rename is refused in the dialog and that Cancel then
-changes nothing.
-Inside the container, `tests/ui/run_ui.py --check NAME` (repeatable) runs only the named checks.
-Results and screenshots are in `test-results/<lane>/ui-gtk3/` and `ui-gen/`. LibreOffice's
-synthetic input on Windows bypasses key handlers and cannot start a native drag, so the required
-Windows job cannot exercise them; the [visible Windows desktop](#visible-windows-desktop) workflow
-does. The [human usability and desktop tests](docs/manual-tests.md) cover what no automated check
-does, with a synthetic workbook from `python tools/manual_workbook.py`.
+Inside the container, `tests/ui/run_ui.py --check NAME` (repeatable) selects checks.
+Results and screenshots are in `test-results/<lane>/ui-gtk3/` and `ui-gen/`.
+Windows synthetic input bypasses key handlers and cannot start a native drag; use the
+[visible Windows desktop](#visible-windows-desktop) workflow for those paths. Human usability
+and additional platform observations follow [docs/manual-tests.md](docs/manual-tests.md).
+
+To retain the synthetic performance workbooks for inspection, run the generator with the tested
+office's bundled Python (set `$lo` to its `program` directory as above):
+
+```powershell
+& "$lo\python.exe" tests/integration/generate_workbooks.py --program $lo `
+  --oxt dist/sheet-manager-0.0.9.oxt --output test-results/workbooks --sheets 200 1000
+```
+
+It uses a separate private profile and saves only the synthetic workbooks it creates.
+
+### Failures and shutdown
 
 Logs, actual office/Python versions, package inventory, and results are in `test-results/` and in
 CI artifacts. The runner records the exit status of each office session and rejects nonzero exits,
@@ -399,24 +243,19 @@ $symbols = "srv*$cache*https://dev-downloads.libreoffice.org/symstore/symbols;sr
 & $cdb -z $dump -y $symbols -c '.ecxr; !analyze -v; ~* kp; q'
 ```
 
-On Windows the tests close Calc documents on LibreOffice's main thread, as its user
-interface does: closing one from the test's own thread crashed LibreOffice when a toolbar update
-was pending
-([#47](https://github.com/viell-dev/slop-calc-sheet-manager/issues/47)). If such a close does not
-finish within 60 seconds, the session fails, no further close is tried, and the runner stops its
-own office instead of asking it to terminate
-([#50](https://github.com/viell-dev/slop-calc-sheet-manager/issues/50)). A terminate request that
-does not return within 30 seconds, for example because a painted office asks whether to save a
-workbook that a failed check left open, also ends in a forced shutdown and a failed session,
-rather than a run that hangs until the job's time limit
-([#40](https://github.com/viell-dev/slop-calc-sheet-manager/issues/40)). The painted resize check
-repeats its initial geometry request when the new window is maximized after it, and records every
-request and measurement in `resize-initial-*.json`
-([#9](https://github.com/viell-dev/slop-calc-sheet-manager/issues/9)). The intermittent gtk3
-abort of [issue #8](https://github.com/viell-dev/slop-calc-sheet-manager/issues/8) was a
-LibreOffice crash when a test closed Writer within milliseconds of opening it
-([#30](https://github.com/viell-dev/slop-calc-sheet-manager/issues/30)); the runner now waits a
-second before closing Writer.
+A document close that takes more than 60 seconds fails the session. After a stalled callback,
+try no further closes or configuration restores: stop only the runner's own office. A terminate
+request held for 30 seconds also fails and forces shutdown. The runner must produce failed results
+instead of hanging or reporting success. The safeguards and investigations are in
+[#47](https://github.com/viell-dev/slop-calc-sheet-manager/issues/47),
+[#50](https://github.com/viell-dev/slop-calc-sheet-manager/issues/50), and
+[#40](https://github.com/viell-dev/slop-calc-sheet-manager/issues/40).
+
+The painted resize check repeats the initial request if a late maximize changes its geometry;
+`resize-initial-*.json` retains requests and measurements
+([#9](https://github.com/viell-dev/slop-calc-sheet-manager/issues/9)). Keep the one-second delay
+between opening and closing the Writer fixture to avoid its native teardown race
+([#30](https://github.com/viell-dev/slop-calc-sheet-manager/issues/30)).
 Windows CI and the Windows desktop workflow verify a pinned MSI before silently installing it;
 this installation script is for disposable CI runners, not a contributor's existing installation.
 
@@ -440,22 +279,14 @@ runs the checks of `run_ui.py` and `rename_dialog.py` themselves rather than cop
 results back through public UNO as on Linux. Window and screen geometry are read from the live
 desktop; nothing assumes the runner's present 1024×768 screen at 96 DPI.
 
-The checks click, Ctrl+click and Shift+click rows; drag from the panel's empty margins and check
-that the sidebar stays docked; type into the focused list and check that no
-cell changes; use Ctrl+Page Down, Ctrl+Page Up, Ctrl+Z and Ctrl+S from the list and the Alt move
-shortcuts; drag two picked sheets above and below a row's midpoint with one undo step, drop in
-place, cancel a drag with Esc and auto-scroll; turn the wheel; open the menu by right click, the
-Menu key and Shift+F10 and hide through it; rename, insert and delete from the menu on the
-right-clicked row while another sheet is viewed and others are picked
-([#100](https://github.com/viell-dev/slop-calc-sheet-manager/issues/100)); use the Rename Sheets
-dialog by keyboard and by mouse; and undo and redo Hide Sheet with Ctrl+Z and Ctrl+Y from the list,
-also after a read-only workbook was opened and closed
-([#108](https://github.com/viell-dev/slop-calc-sheet-manager/issues/108)).
+The [verification map](docs/verification.md#the-visible-windows-desktop) identifies the shared
+checks this workflow runs and the paths it does not cover. Its artifacts establish functional
+behaviour on that desktop; they do not satisfy human usability testing.
 
 It runs on pull requests that change `src/`, `extension/` (which includes release preparation,
 since the version is there), `tests/ui/`, the integration helpers it shares, `tools/build.py`,
 `ci/`, or the workflow itself, and by manual dispatch, whose `checks` input names checks to run,
-separated by spaces. Once the workflow is on `main`, dispatch it for a branch with
+separated by spaces. Dispatch it for a branch with
 `gh workflow run windows-desktop.yml --ref <branch> -f checks="keys_stay_in_list wheel"`.
 
 The `windows-desktop` artifact holds `ui-results.json`, with the desktop the run saw (session,
@@ -493,7 +324,7 @@ every attempted session contributes to the measurement. The absent-extension con
 Calc/save/reopen-read-only/Writer lifecycle and frame requests, but cannot exercise the panel or
 its disposal. It is a control, not equivalent extension coverage.
 
-Once `gtk3-soak.yml` exists on the default branch, dispatch it on the branch to measure:
+Dispatch the soak on the branch to measure:
 
 ```text
 gh workflow run gtk3-soak.yml --ref <branch> -f sessions=20

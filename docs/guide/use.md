@@ -99,8 +99,7 @@ They are also unavailable in a read-only document or one whose sheet structure i
 Rename for a protected sheet, Delete while changes are recorded, and Delete and Hide when no other
 sheet would stay visible. Calc's own sheet tabs keep their full menu, including your
 customizations, for every other command. Duplicate Sheet and Move or Copy Sheet are only there;
-see [Known issues](./known-issues.md). Test builds up to 0.0.4 offer **Sheet actions…** instead,
-which opens Calc's customized menu.
+see [Known issues](./known-issues.md).
 
 **Choosing a command.** <Unreleased since="0.0.5" /> Closing the menu without choosing anything
 changes nothing. A chosen command first checks its sheets again: if one was renamed, replaced or
@@ -212,8 +211,7 @@ F6, F10, Esc, and unbound
 Alt menu mnemonics retain LibreOffice's behaviour. Keys used by the list do not type into cells.
 Other documents keep their
 own keyboard handling. <Unreleased since="0.0.8" /> After Ctrl+S, the list keeps or gets back the
-focus; before 0.0.8, with the gtk3 interface, it moved to the sheet
-([#23](https://github.com/viell-dev/slop-calc-sheet-manager/issues/23)).
+focus. See [upgrade advice](./known-issues.md#upgrading-older-builds) for earlier builds.
 
 Rows use LibreOffice's native tree control and its accessible names: the sheet name, with hidden,
 protected, and scenario states written in text. The current-sheet arrow and tab-colour square are
@@ -244,7 +242,7 @@ clear the picks as before.
 
 **Panel notice.** <Unreleased since="0.0.5" /> This explanation appears within the panel and
 disappears after ten seconds, without changing keyboard focus or dismissing a grouped-editing
-warning. In 0.0.4, the notice is an infobar that you close yourself.
+warning.
 
 Calc's Undo may also change the active sheet and native tab selection. After a grouped move, it can
 activate the sheet immediately above the restored group; after a single move, it can activate the

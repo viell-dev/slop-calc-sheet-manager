@@ -6,14 +6,23 @@ owner's standing approval. Readiness includes the checks below and the independe
 the owner's sign-in; prepare the listing text, screenshots, compatibility information, and files
 before asking them to sign in. Do not put that account's credentials in CI.
 
-The current source is the `0.0.9` beta towards 0.1.0. Development is in beta: on the owner's
-direction of 2026-10-31, the feature set is frozen at what 0.0.6 delivers, and the remaining
-work is fixes and polish. Publish betas, then release candidates once the stable release goal
-proposed in [#120](https://github.com/viell-dev/slop-calc-sheet-manager/issues/120) is agreed
-and the blockers it names are resolved, then 0.1.0 after the human testing and
-defect-resolution gates below. Published builds are
-listed on [Releases and test builds](https://viell-dev.github.io/slop-calc-sheet-manager/guide/releases).
-The changelog's development-history section records unpublished work before 0.0.2.
+Published builds and their stages are listed on
+[Releases and test builds](https://viell-dev.github.io/slop-calc-sheet-manager/guide/releases).
+Read the version from `extension/description.xml`; a prepared version does not establish
+publication.
+
+## First stable release
+
+Work towards 0.1.0 is limited to fixes and polish of the feature set delivered in 0.0.6.
+Additional capabilities need an owner scope decision. The
+[release goal](https://github.com/viell-dev/slop-calc-sheet-manager/issues/120) owns the scope
+agreement and release conditions; the
+[release tracker](https://github.com/viell-dev/slop-calc-sheet-manager/issues/93) owns progress.
+Betas may deliver subsets of the fixes. A release candidate waits for the goal agreement,
+the required [human usability pass](https://github.com/viell-dev/slop-calc-sheet-manager/issues/130),
+and resolution of its blockers. Stable publication also requires the human-testing and
+defect-resolution gates below. Check those issues before preparing either stage; neither a
+prepared package nor a merged preparation PR settles an unanswered request.
 
 ## Versions and titles
 
@@ -169,10 +178,7 @@ its platform inventory is not a requirement to make one person test every host.
    `<Unreleased />` or plain **Unreleased** labels. Keep the markers: published release history
    hides them automatically when that version reaches the guide's baseline (latest stable, or
    newest test build before the first stable release). Preparation, a reserved tag, and a draft do
-   not hide them, including when publication fails or is abandoned. For the first release, also
-   rewrite the statements that no release exists, which
-   `git grep -n -i -E "no (release|build|download)|published yet|until then" -- docs README.md`
-   finds.
+   not hide them, including when publication fails or is abandoned.
 2. Run `python tools/check.py` and the relevant LibreOffice integration checks described in
    [CONTRIBUTING.md](CONTRIBUTING.md). Apply the [human-testing gate](#human-release-testing),
    link its assigned request and relevant open-defect dispositions in the preparation PR, and
