@@ -1,4 +1,4 @@
-"""The sheet list's rows and geometry, independent of UNO."""
+"""The sheet list's rows, its accessible name, and geometry, independent of UNO."""
 
 from dataclasses import dataclass
 

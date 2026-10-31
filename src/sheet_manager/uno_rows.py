@@ -4,7 +4,8 @@ Backgrounds and separate gutter markers are painted before the native labels; bo
 and coalesced after them, because the label backgrounds can cover dividers. Backgrounds,
 dividers and drop markers fill the viewport, while the arrow and swatch scroll with the label so
 that they cannot overlap its text. Keep native text and accessibility, wheel input, and
-multi-sheet drag support: compound controls do not provide the same drag path.
+multi-sheet drag support: compound controls do not provide the same drag path. The arrow and swatch
+are painted only; the tree's accessible name carries the viewed sheet (`uno_list`, #83).
 
 - Row geometry comes from native `getNodeRect()` Y and Height, because VCL can enlarge the
   requested RowHeight for its font and DPI. Its Y and Height span the entry; its X and Width

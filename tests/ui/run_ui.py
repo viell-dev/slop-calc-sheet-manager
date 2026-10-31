@@ -41,6 +41,7 @@ from teardown import stalled_callbacks  # noqa: E402
 from xinput import RIGHT, Pointer, XInput  # noqa: E402
 
 from sheet_manager.reorder import Action, Sheet, target_order  # noqa: E402
+from sheet_manager.sheet_list import list_name  # noqa: E402
 from sheet_manager.uno_calc import dispatch, select_tabs  # noqa: E402
 from sheet_manager.uno_menu import (  # noqa: E402
     DELETE,
@@ -318,6 +319,42 @@ def check_click_activates(book):
     assert book.selection() == [NAMES[4]]
     assert book.labels()[4] == NAMES[4]
     return {"single_clicks": evidence, "double_click_active": book.active()}
+
+
+def check_viewed_sheet_name(book):
+    """The list's accessible name follows the sheet Calc shows, never the picks (#83).
+
+    Real input picks a row, runs Calc's next-sheet command from the list, activates a row and
+    moves through the real menu; a property change rebuilds the rows in between. This reads the
+    same metadata as the integration suite, in a painted session; no screen reader runs.
+    """
+
+    def name():
+        return book.tree.getProperty("XAccessible").getAccessibleContext().getAccessibleName()
+
+    names = {}
+    wait_until(lambda: name() == list_name(NAMES[0]), "the name of the viewed sheet")
+    book.click(3)
+    wait_until(lambda: book.selection() == [NAMES[3]], "a click to pick Delta")
+    names["picked_elsewhere"] = name()
+    assert names["picked_elsewhere"] == list_name(NAMES[0]), names
+    book.lab.input.tap("Next", ("Control_L",), pause=0.6)  # Calc's next-sheet command.
+    wait_until(lambda: book.active() == NAMES[1], "Ctrl+Page Down to show Bravo")
+    wait_until(lambda: name() == list_name(NAMES[1]), "the name to follow Calc")
+    book.document.getSheets().getByName(NAMES[9]).IsVisible = False
+    wait_until(lambda: f"{NAMES[9]} (hidden)" in book.labels(), "a refresh that rebuilds the rows")
+    names["after_rebuild"] = name()
+    assert names["after_rebuild"] == list_name(NAMES[1]), names
+    book.double_click(4)
+    wait_until(lambda: book.active() == NAMES[4], "double-click activation")
+    wait_until(lambda: name() == list_name(NAMES[4]), "the name after the list's activation")
+    book.click(0)
+    wait_until(lambda: book.selection() == [NAMES[0]], "a click to pick Alfa")
+    book.move_action("down")
+    wait_until(lambda: book.order()[:2] == [NAMES[1], NAMES[0]], "the menu's move")
+    names["after_menu"] = name()
+    assert names["after_menu"] == list_name(NAMES[4]) and book.active() == NAMES[4], names
+    return names
 
 
 def check_ctrl_shift_selection(book):
@@ -2284,6 +2321,7 @@ def run_checks(lab, output, only=()):
         ("move_focus_and_queued_navigation", lambda: check_move_focus_and_queued_navigation(book)),
         ("click_activates", lambda: check_click_activates(book)),
         ("ctrl_shift_selection", lambda: check_ctrl_shift_selection(book)),
+        ("viewed_sheet_name", lambda: check_viewed_sheet_name(book)),
         ("row_paint_scroll", lambda: check_row_paint_scroll(book)),
         ("tab_selection_sync", lambda: check_tab_selection_sync(book)),
         ("selection_notice", lambda: check_selection_notice(book)),

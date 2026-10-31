@@ -152,6 +152,7 @@ def checks_for(lab, book):
     return [
         ("click_activates", lambda: ui.check_click_activates(book)),
         ("ctrl_shift_selection", lambda: ui.check_ctrl_shift_selection(book)),
+        ("viewed_sheet_name", lambda: ui.check_viewed_sheet_name(book)),
         ("keys_stay_in_list", lambda: ui.check_keys_stay_in_list(book)),
         ("shortcuts_reach_calc", lambda: ui.check_shortcuts(book)),
         ("move_shortcuts", lambda: ui.check_move_controls(book, True)),

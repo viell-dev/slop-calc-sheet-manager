@@ -245,6 +245,15 @@ the same resource limit on an interactive desktop or CI runner. The multi-window
 exercises simultaneous views.
 `test_view_observation.py` makes queued-observation/input races and cancelled callbacks
 deterministic without pretending its adapters verify native visibility or selection behaviour.
+`test_accessibility.py` (#83) reads the list through LibreOffice's accessibility interface: the
+tree's accessible name, which names the viewed sheet while another row is picked, after Calc's
+and the list's own activations, a rebuilding refresh, and a headless menu move, and the
+`NAME_CHANGED` events a bridge would receive. It also selects a row through
+`XAccessibleSelection`, as a screen reader does, just before a refresh rebuilds the rows. It
+holds the main thread past the refresh delay, so the refresh is queued before the list's intake.
+These are metadata checks; no screen reader runs. The real-input `viewed_sheet_name` check reads
+the same name in gtk3, gen and on the Windows desktop, and `test_assistive_selection.py` covers
+the pure rules.
 Every workbook is synthetic and loaded visibly, even when the office process itself is headless.
 It retries only startup, up to three times, to tolerate a Windows crash just after connecting. It
 never attaches to an existing office or uses the normal LibreOffice profile.

@@ -65,6 +65,16 @@ deliver it more than once; never return a key unconsumed after updating the owne
 Consumed key intent is recorded synchronously and the UI write coalesced, and native focus and
 selection are ignored while that write or a pointer gesture is pending.
 
+Accessibility (#83). The tree's accessible name names the sheet Calc shows (`list_name`), from the
+refreshed rows that paint the arrow and never from the picks. It is set through the toolkit's
+`AccessibleName` window property only when it changes, which raises `NAME_CHANGED`. Rows keep
+the plain name and textual states: measured with 26.8.1.1 and 26.8.2.2, UNO offers no per-row
+description, state or relation setter, toolkit has no `AccessibleDescription`, and `HelpText` is
+only a tooltip. Native selection made without an owned handler, such as through
+`XAccessibleSelection`, waits for the queued intake; a refresh that rebuilds the rows first shows
+that selection again (`_show_native`) under the proof, drop count and order the intake checks,
+so the intake still decides.
+
 Following Calc's tabs. Calc sends no reliable notification for a tab selection that keeps the
 same active sheet, so each list caches the reflected `getSelectedSheets` method and samples its
 retained controller on the UI thread every `VIEW_INTERVAL`. Never run that getter in a timer

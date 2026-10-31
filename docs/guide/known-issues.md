@@ -59,9 +59,17 @@ If Sheet Manager does not work in an environment where it is expected to, please
   clear again, including during some recorded changes. Select the desired rows again once loading
   or concurrent edits finish; the cause of this intermittent observation is still under
   investigation ([#88](https://github.com/viell-dev/slop-calc-sheet-manager/issues/88)).
+- **Assistive technology.** Rows give the sheet name and its hidden, protected, and scenario
+  states; the current-sheet arrow and tab colours are painted only. <Unreleased /> The list's
+  accessible name says which sheet Calc shows
+  ([#83](https://github.com/viell-dev/slop-calc-sheet-manager/issues/83)). The panel's controls
+  are reached by keyboard focus, but walking the accessibility hierarchy down from the sidebar
+  does not reach them
+  ([#133](https://github.com/viell-dev/slop-calc-sheet-manager/issues/133)). The checks read
+  LibreOffice's accessibility interface; no screen reader runs in them.
 - **Large lists.** The list rebuilds after changes. During rapid sheet switches the active-sheet
-  marker can lag; timing measurements and the remaining work are in
-  [#22](https://github.com/viell-dev/slop-calc-sheet-manager/issues/22).
+  marker, and <Unreleased /> the list's accessible name, can lag; timing measurements and the
+  remaining work are in [#22](https://github.com/viell-dev/slop-calc-sheet-manager/issues/22).
 - **Final row divider.** At the end of a long list, the last row's lower divider can be absent.
   The painter leaves an ambiguous boundary pixel clear to keep decorations off scrollbars
   ([#86](https://github.com/viell-dev/slop-calc-sheet-manager/issues/86)).
