@@ -1188,7 +1188,7 @@ class SheetList:
         own = self._activating
         # Calc activates the sheets an Undo or Redo moves back; during an own move's replay and
         # the restoration after it, the switch belongs to the replay (`structure`, #91).
-        replay = self._monitor.events.view_replay
+        replay = self._monitor.events.viewing_replay()
         self.post(lambda: self.active_sheet_changed(own, seen, replay), "following a sheet switch")
 
     def active_sheet_changed(
@@ -1366,7 +1366,7 @@ class SheetList:
             return
         if self.document.hasControllersLocked() or self.document.isActionLocked():
             return
-        if self._monitor.events.view_replay is not None:
+        if self._monitor.events.viewing_replay() is not None:
             return  # Calc's view during an own move's replay, until it is restored (#91).
         generation = self._monitor.generation  # Never consume pending modify evidence (#66).
         if generation != self._proven:

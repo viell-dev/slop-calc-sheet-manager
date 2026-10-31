@@ -185,7 +185,11 @@ current controller, so every window is restored, not only the initiating one. Th
 run inside LibreOffice's replay, possibly on another thread: they only update the shared state,
 read the count and those view getters, and post the restoration; they never raise into the
 replay. Views ignore Calc's activations during a proved replay and the restoration after it, and
-do not sample the tab selection until the restoration is done.
+do not sample the tab selection until the restoration is done. Because the restoration is posted
+work, that suppression is bounded: five seconds after the proof (`VIEW_RESTORE_LIMIT` in
+`sheet_manager.structure`), views follow Calc's activations and sample its tabs again whether or
+not the restoration has run, and a restoration that runs later leaves Calc's view as it is. The
+bound trusts nothing more; it only ends the suppression.
 
 ## Limits and native semantics
 

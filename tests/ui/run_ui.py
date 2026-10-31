@@ -2358,6 +2358,7 @@ def run_named(lab, book, output, checks, only=()):
             failure = lab.failure_evidence()
             if failure:
                 results[name]["desktop"] = failure
+            lab.input.release_held()  # A press held across the failure would drag in the next.
             for _ in range(2):
                 lab.input.tap("Escape", pause=0.3)
         results[name]["seconds"] = round(time.monotonic() - started, 2)

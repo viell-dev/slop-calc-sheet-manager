@@ -25,7 +25,13 @@ from dataclasses import dataclass, field
 
 from sheet_manager.rename import plan_renames
 from sheet_manager.selection import Ref, Selection, structure_kept
-from sheet_manager.structure import History, OwnMove, Quiet, StructureEvents
+from sheet_manager.structure import (
+    VIEW_RESTORE_LIMIT,
+    History,
+    OwnMove,
+    Quiet,
+    StructureEvents,
+)
 
 
 class Handle:
@@ -1279,3 +1285,42 @@ def test_structure_events_own_replays():
         assert not events.own_recorded(move, 3, events.count)
         events.own_move_finished()
         assert move.state == "revoked"
+
+
+def test_a_proved_replays_view_ends_although_its_restoration_never_runs():
+    """#91: the view's restoration is posted work. Should it never run, views take Calc's view
+    back a bounded time after the proof, and nothing is trusted more for it."""
+    now = [100.0]
+    events = StructureEvents(count=3, history=(0, None), clock=lambda: now[0])
+    move = OwnMove()
+    events.own_move_started(Quiet.NONE)
+    events.context_entered(3, Quiet.CONTROLLERS_LOCKED)
+    for _ in range(3):  # A marker, a move, a marker.
+        events.action_added(3, Quiet.CONTROLLERS_LOCKED)
+    events.context_left(3, Quiet.CONTROLLERS_LOCKED)
+    events.modified(3, Quiet.NONE)
+    assert events.own_recorded(move, 3, 3)
+    events.own_move_finished()
+
+    serial = events.replay_started(move, False, 3)
+    now[0] += 60  # However long the replay itself takes, its view is the replay's meanwhile.
+    assert serial is not None and events.viewing_replay() == serial
+    events.replay_finished(move, False, 3)
+    assert events.undone_or_redone(3) and events.viewing_replay() == serial
+    now[0] += VIEW_RESTORE_LIMIT
+    assert events.viewing_replay() == serial
+    now[0] += 0.01  # The restoration never ran.
+    assert events.viewing_replay() is None and events.view_replay is None
+    assert events.replay_proven(serial) and move.state == "undone" and events.generation == 0
+    events.view_restored(serial)  # A late restoration changes nothing.
+    assert events.viewing_replay() is None
+
+    # The next replay gets its own bound, from its own proof.
+    redo = events.replay_started(move, True, 3)
+    assert redo is not None and events.viewing_replay() == redo
+    events.replay_finished(move, True, 3)
+    assert events.undone_or_redone(3, redo=True)
+    now[0] += VIEW_RESTORE_LIMIT / 2
+    assert events.viewing_replay() == redo
+    events.view_restored(redo)
+    assert events.viewing_replay() is None

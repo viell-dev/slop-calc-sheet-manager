@@ -63,8 +63,12 @@ when all of this holds:
 
 Anything else revokes the group for good, and the undo or redo moves the generation as before.
 An own move's replay can only move sheets, so the handles retained before it still denote their
-sheets after it. `view_replay` and `replay_proven` let a view tell Calc's activations during a
-proved replay, and the adapter's restoration of the view after it, from the user's own.
+sheets after it. `viewing_replay` and `replay_proven` let a view tell Calc's activations during a
+proved replay, and the adapter's restoration of the view after it, from the user's own. The
+restoration is posted work, so the view stops being the replay's `VIEW_RESTORE_LIMIT` seconds
+after the proof whether or not the restoration has run: views never stay without following
+Calc's activations and sampling its tabs for longer than that. This only ends a suppression;
+it never trusts anything more.
 
 The threat model, decided by the maintainer: everything LibreOffice reports must be caught. Out
 of scope: a structural edit that LibreOffice does not report at all, because undo recording and
@@ -76,6 +80,8 @@ undo notification, exactly as typed input's does. That needs a sequence built to
 and such a program could hide or delete any sheet directly anyway.
 """
 
+import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Flag, auto
 from typing import Literal
@@ -128,6 +134,7 @@ class Replay:
 
 
 OUTCOMES_KEPT = 32  # Replay outcomes kept for views whose posted work runs after the replay.
+VIEW_RESTORE_LIMIT = 5.0  # Seconds after its proof that a replay's view restoration may take.
 
 
 @dataclass
@@ -148,6 +155,8 @@ class StructureEvents:
     replay: Replay | None = None
     serial: int = 0  # Numbers own replays.
     view_replay: int | None = None  # A running or proved own replay whose view is not restored.
+    view_proved: float | None = None  # When `view_replay` was proved, by `clock`.
+    clock: Callable[[], float] = field(default=time.monotonic, repr=False)
     outcomes: dict[int, bool] = field(default_factory=dict[int, bool])
 
     def _bump(self) -> None:
@@ -157,8 +166,11 @@ class StructureEvents:
         self.outcomes[serial] = proven
         while len(self.outcomes) > OUTCOMES_KEPT:
             del self.outcomes[next(iter(self.outcomes))]
-        if not proven and self.view_replay == serial:
-            self.view_replay = None
+        if self.view_replay == serial:
+            if proven:
+                self.view_proved = self.clock()
+            else:
+                self.view_replay = None
 
     def _abort(self) -> None:
         """Anything reported during an own replay, other than its own steps, ends its proof."""
@@ -305,7 +317,7 @@ class StructureEvents:
             return None
         self.serial += 1
         self.replay = Replay(move, redo, self.serial)
-        self.view_replay = self.serial
+        self.view_replay, self.view_proved = self.serial, None
         return self.serial
 
     def replay_finished(self, move: OwnMove, redo: bool, count: int | None) -> None:
@@ -333,7 +345,20 @@ class StructureEvents:
     def view_restored(self, serial: int) -> None:
         """The adapter is done with the view after this replay, restored or not."""
         if self.view_replay == serial:
-            self.view_replay = None
+            self.view_replay, self.view_proved = None, None
+
+    def viewing_replay(self) -> int | None:
+        """The replay whose view is still the adapter's: Calc's view is not the user's then.
+
+        That is `view_replay` until the restoration is done, or until `VIEW_RESTORE_LIMIT`
+        seconds after the proof, should the posted restoration never run or finish. A late
+        restoration then finds the replay over and leaves Calc's view as it is.
+        """
+        serial, proved = self.view_replay, self.view_proved
+        if serial is not None and proved is not None and self.clock() - proved > VIEW_RESTORE_LIMIT:
+            self.view_restored(serial)
+            return None
+        return serial
 
     def replay_settled(self, serial: int) -> bool:
         """Whether that replay has ended, proved or not; posted work waits for it."""

@@ -48,6 +48,7 @@ LEFT, RIGHT, WHEEL_UP, WHEEL_DOWN = 1, 3, 4, 5
 
 class XInput:
     def __init__(self):
+        self.held = set()  # Buttons pressed and not yet released.
         if os.environ.get("SHEET_MANAGER_PRIVATE_DISPLAY") != "1" or not os.environ.get("DISPLAY"):
             raise RuntimeError("XTEST input needs the private Xvfb launcher's explicit opt-in")
         self._x11, self._xtst = _libraries()
@@ -105,6 +106,12 @@ class XInput:
     def button(self, button, down):
         self._xtst.XTestFakeButtonEvent(self._display, button, 1 if down else 0, 0)
         self._sync()
+        (self.held.add if down else self.held.discard)(button)
+
+    def release_held(self):
+        """Release any button a failed check left pressed, so that the next check starts clean."""
+        for button in sorted(self.held):
+            self.button(button, False)
 
     def key(self, keysym, down):
         code = self._x11.XKeysymToKeycode(self._display, self._x11.XStringToKeysym(keysym.encode()))

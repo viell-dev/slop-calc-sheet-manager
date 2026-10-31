@@ -318,7 +318,8 @@ class _Ends:
 
         Posted work can run before the undo notification: when the replay runs on another
         thread, or when Calc's progress display lets the main loop run. It waits for the outcome
-        then, and gives up after `REPLAY_WAITS`, leaving Calc's view.
+        then, and gives up after `REPLAY_WAITS`, leaving Calc's view. It leaves Calc's view too
+        when it runs so late that the views have taken it back (`viewing_replay`).
         """
         events = self._monitor.events
         if not events.replay_settled(serial) and waits < REPLAY_WAITS:
@@ -332,7 +333,7 @@ class _Ends:
             document = self._monitor.document
             if (
                 document is None
-                or events.view_replay != serial
+                or events.viewing_replay() != serial
                 or not events.replay_proven(serial)
                 or self._monitor.generation != self.move.generation
                 or document.hasControllersLocked()
