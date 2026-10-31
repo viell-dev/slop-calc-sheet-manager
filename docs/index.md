@@ -25,11 +25,10 @@ features:
     details:
       Lists sheets top to bottom in the sidebar, with full-width selection, drag and drop,
       move actions, keyboard navigation, and Calc's common sheet commands.
-  - title: Where it is now
+  - title: Before installing
     details:
-      In beta towards the first stable release, 0.1.0. The features are complete, and the
-      remaining work is fixes and polish.
-      Check the release page for test builds and the compatibility guide for known limits.
+      Check the release page for published builds and their stages, and the compatibility guide
+      for supported environments, known limits and upgrade advice.
 ---
 
 Sheet Manager is written and maintained by AI agents, and no person reviews the code. Changes are

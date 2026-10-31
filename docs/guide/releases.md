@@ -19,11 +19,9 @@ for installation and checksum instructions.
 
 ## Test builds
 
-Current test builds are betas towards 0.1.0: the planned features are complete, and each beta
-fixes some of the logged defects. Download and install their OXT
-packages manually. Installing one keeps the stable update feed: it will offer a newer final
-release, but does not offer later test builds. An extension-directory listing is not needed to
-install these GitHub assets.
+Download and install test builds' OXT packages manually. Installing one keeps the stable update
+feed: it will offer a newer final release, but does not offer later test builds. An
+extension-directory listing is not needed to install these GitHub assets.
 
 Every test build is marked **Pre-release**, and its GitHub release title names its stage:
 

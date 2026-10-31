@@ -82,6 +82,7 @@ FIRST_PUBLISHED = {
     ),
     "0.0.6": ("When the menu targets two or more sheets",),
     "0.0.8": ("Undo and Redo of a move the list made",),
+    "0.0.9": ("The list itself is named after the sheet Calc shows",),
 }
 
 
@@ -162,6 +163,7 @@ def main() -> None:
         next_alpha = {**candidate, "version": "0.0.6", "published": "2026-10-29T00:00:00Z"}
         beta = {**candidate, "version": "0.0.7", "published": "2026-10-31T00:00:00Z"}
         second_beta = {**candidate, "version": "0.0.8", "published": "2026-10-31T12:00:00Z"}
+        third_beta = {**candidate, "version": "0.0.9", "published": "2026-10-31T18:00:00Z"}
         first_stable = {**next_build, "version": "0.1.0", "prerelease": False}
         for name, builds, notice in (
             ("empty", [], "Sheet Manager has no release yet."),
@@ -193,6 +195,11 @@ def main() -> None:
                 "second-beta-published",
                 [candidate, next_build, alpha, next_alpha, beta, second_beta],
                 "0.0.8, the newest test build",
+            ),
+            (
+                "third-beta-published",
+                [candidate, next_build, alpha, next_alpha, beta, second_beta, third_beta],
+                "0.0.9, the newest test build",
             ),
             (
                 "stable-with-candidate",

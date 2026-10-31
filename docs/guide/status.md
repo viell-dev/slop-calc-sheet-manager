@@ -1,14 +1,12 @@
 # Status and plans
 
-Sheet Manager is in **beta** towards its first stable release, 0.1.0. The features planned for
-0.1.0 are complete, and the remaining work is fixing the logged defects and polishing. No stable
-release date is set. The [release page](./releases.md) lists currently published downloads; the
-notice above identifies the build this guide describes.
-
-The [beta tracker](https://github.com/viell-dev/slop-calc-sheet-manager/issues/93) lists the
-planned fixes, and the
-[stable release goal](https://github.com/viell-dev/slop-calc-sheet-manager/issues/120) what
-0.1.0 includes and leaves out.
+The [release page](./releases.md) lists published builds and their stages; the notice above
+identifies the build this guide describes. Work towards 0.1.0 is limited to fixes and polish of
+the existing feature set. The [release tracker](https://github.com/viell-dev/slop-calc-sheet-manager/issues/93)
+owns progress, and the [release goal](https://github.com/viell-dev/slop-calc-sheet-manager/issues/120)
+owns the scope agreement and release conditions. The required
+[human usability request](https://github.com/viell-dev/slop-calc-sheet-manager/issues/130)
+tracks the practical pass needed before a release candidate or stable publication.
 
 ## What Sheet Manager includes
 
@@ -27,7 +25,7 @@ planned fixes, and the
 - **Move controls.** <Unreleased since="0.0.4" /> Use the top buttons or menu to move to top, up,
   down, or bottom in one undo step, with Alt+Home/Up/Down/End shortcuts and availability checks.
   Right-click targets the pointed row or existing picked set without changing picks or the viewed
-  sheet. Test builds up to 0.0.4 open Calc's customized menu through **Sheet actions…**.
+  sheet.
   <Unreleased since="0.0.5" /> The menu also runs Calc's Insert, Delete, Rename and Hide sheet
   commands on exactly its targets, and leaves Calc on them; Calc's sheet tabs keep their full
   menu. It links to Help as well.

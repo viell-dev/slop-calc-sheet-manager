@@ -1,21 +1,16 @@
 # Human usability and desktop tests
 
-Automated tests cover the sheet list with real mouse and keyboard input on Linux, under a virtual X
-display with the gtk3 and gen interfaces, and in a visible Windows window on GitHub's hosted Windows
-Server 2025 runners, in a workflow that is not yet required. The Windows run covers the behaviour of
-steps 2 and 3, the wheel in step 4, steps 5 to 9, 11, 13, 14 and 16, step 15 apart from Help, the
-commands of step 17, the Alt shortcuts of step 29, and step 30, on one 1024×768 desktop at 96 DPI
-with the en-US layout and no screen reader. Most of its undo steps are made through LibreOffice's
-API rather than Ctrl+Z; Hide Sheet's is made with Ctrl+Z and Ctrl+Y. These checks cover what that
-evidence does not: whether the controls, layout, feedback and recovery make sense to a person;
-Windows 11 and other displays, scaling, themes and keyboard layouts; dragging out of the list; input
-in an explicit Wayland session; and the list's appearance. A focused human usability pass is
-required before the first stable release and after substantial interface or workflow changes, as
-[RELEASING.md](https://github.com/viell-dev/slop-calc-sheet-manager/blob/main/RELEASING.md#human-release-testing)
-describes. Select the relevant tasks below and ask whether the controls, layout, feedback, and
-recovery make sense in ordinary use.
-Additional platform coverage is optional unless the release identifies it as required; one tester
-need not exercise every host. An X11 result does not establish Wayland input behaviour.
+Use these tasks to prepare a focused human usability pass. Ask whether the controls, layout,
+feedback and recovery make sense in ordinary use. A person must try a representative candidate
+before the first stable release and after substantial interface or workflow changes, under
+[RELEASING.md](https://github.com/viell-dev/slop-calc-sheet-manager/blob/main/RELEASING.md#human-release-testing).
+An agent running these steps does not satisfy that gate.
+
+The [verification map](./verification.md) identifies automated coverage and platform limits.
+Additional platform observations are optional unless the release makes them required; one tester
+need not exercise every host. Windows Server input does not establish Windows 11 usability, and
+X11 input does not establish Wayland behaviour. Select a small relevant task set from below;
+maintainers prepare the build and fixtures rather than assigning that engineering work to a tester.
 
 The maintaining agent supplies the named installable build and a ready-made synthetic workbook
 in an assigned GitHub issue, with a short task list, expected results, and release impact. The
@@ -140,15 +135,13 @@ instead. Take screenshots only of this workbook.
     Before testing each top move button, select Charlie and Echo. Click the button, then undo once.
     Expected: each move preserves the picked order, selection and view. <Unreleased since="0.0.8" />
     Undo keeps Charlie and Echo picked and the viewed sheet as it was, so the next button can be
-    tested without picking again. In 0.0.6, Calc's Undo can activate an affected sheet and the list
-    follows, so select both rows again before the next button. Use Shift+Tab from the list to reach
+    tested without picking again. Use Shift+Tab from the list to reach
     Bottom, Down, Up and Top. Enter/Space activate a focused button; ordinary letters do not edit
     cells. Tab at the end of the controls returns to Calc.
 24. **Sheets added during a selection.** Click "Charlie" and Ctrl+click "Echo". Then choose
     Sheet ▸ Insert Sheet at End and confirm.
-    Expected: the list no longer selects Charlie and Echo, and an information bar above the sheet
-    says that the selection was cleared because sheets may have been added, removed, or renamed.
-    Close the bar and delete the new sheet.
+    Expected: the list no longer selects Charlie and Echo, and a notice explains that sheets may
+    have been added, removed, or renamed. Delete the new sheet.
     <Unreleased since="0.0.5" /> The explanation appears inside the panel and disappears after
     ten seconds. Before it expires, click another row. Expected: expiration leaves that row picked
     and focus in the list; typing a letter searches the list rather than editing a cell. If Calc

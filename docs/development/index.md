@@ -37,20 +37,6 @@ together with the extension's update feeds.
 
 ## Building the guide
 
-The guide's tools are its only Node.js dependencies. Use the Node.js version in `.nvmrc`; `nvm use`
-or `fnm use` in the repository selects it. Then run:
-
-```sh
-npm ci
-npm run docs:dev
-```
-
-`npm run docs:build` builds the site as CI does, and fails on a broken link between pages.
-After installing the Node dependencies, `python tools/check_release_page.py` checks the rendered
-release page and use instructions with empty and synthetic histories, including channel separation,
-asset links, and availability markers before and after publication.
-Its disposable outputs use the operating system's temporary directory; it makes no publication
-changes.
-
-VitePress 2 is still a prerelease. The repository pins an exact version, and every pull request
-builds the site with it.
+Follow the [documentation setup and checks](https://github.com/viell-dev/slop-calc-sheet-manager/blob/main/CONTRIBUTING.md#documentation)
+for Node selection, development, builds and synthetic-history verification. VitePress 2 is still a
+prerelease; `package.json` pins the exact version and CI builds every pull request with it.

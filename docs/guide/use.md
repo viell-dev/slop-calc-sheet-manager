@@ -99,8 +99,7 @@ They are also unavailable in a read-only document or one whose sheet structure i
 Rename for a protected sheet, Delete while changes are recorded, and Delete and Hide when no other
 sheet would stay visible. Calc's own sheet tabs keep their full menu, including your
 customizations, for every other command. Duplicate Sheet and Move or Copy Sheet are only there;
-see [Known issues](./known-issues.md). Test builds up to 0.0.4 offer **Sheet actions…** instead,
-which opens Calc's customized menu.
+see [Known issues](./known-issues.md).
 
 **Choosing a command.** <Unreleased since="0.0.5" /> Closing the menu without choosing anything
 changes nothing. A chosen command first checks its sheets again: if one was renamed, replaced or
@@ -211,20 +210,21 @@ button, Enter or Space runs that move; typing letters cannot enter cell content.
 F6, F10, Esc, and unbound
 Alt menu mnemonics retain LibreOffice's behaviour. Keys used by the list do not type into cells.
 Other documents keep their
-own keyboard handling. After Ctrl+S, focus moves to the sheet; use the focus cycle to return.
+own keyboard handling. <Unreleased since="0.0.8" /> After Ctrl+S, the list keeps or gets back the
+focus. See [upgrade advice](./known-issues.md#upgrading-older-builds) for earlier builds.
 
-Rows use LibreOffice's native tree control and its accessible names: the sheet name, with
-hidden, protected, and scenario states written in text. The current-sheet arrow and tab-colour
-square are painted only. <Unreleased /> The list itself is named after the sheet Calc shows, for
-example "Sheets, current sheet: Bravo", so assistive technology can tell the viewed sheet from
-the selected rows; the name changes when another sheet is shown
+Rows use LibreOffice's native tree control and its accessible names: the sheet name, with hidden,
+protected, and scenario states written in text. The current-sheet arrow and tab-colour square are
+painted only. <Unreleased since="0.0.9" /> The list itself is named after the sheet Calc shows, for
+example "Sheets, current sheet: Bravo", so assistive technology can tell the viewed sheet from the
+selected rows; the name changes when another sheet is shown
 ([#83](https://github.com/viell-dev/slop-calc-sheet-manager/issues/83)). Tab colours are not
-announced. <Unreleased /> The move buttons, the list and the footer messages are reported to
-assistive technology in the order they appear, so it can reach them by moving through the
-sidebar as well as by keyboard focus
-([#133](https://github.com/viell-dev/slop-calc-sheet-manager/issues/133)).
-Automated checks read this information through LibreOffice's accessibility interface; what a
-particular screen reader announces is not verified (see [Known issues](./known-issues.md)).
+announced. <Unreleased since="0.0.9" /> The move buttons, the list and the footer messages are
+reported to assistive technology in the order they appear, so it can reach them by moving through
+the sidebar as well as by keyboard focus
+([#133](https://github.com/viell-dev/slop-calc-sheet-manager/issues/133)). Automated checks read
+this information through LibreOffice's accessibility interface; what a particular screen reader
+announces is not verified (see [Known issues](./known-issues.md)).
 
 ## When the list clears its selection
 
@@ -242,7 +242,7 @@ clear the picks as before.
 
 **Panel notice.** <Unreleased since="0.0.5" /> This explanation appears within the panel and
 disappears after ten seconds, without changing keyboard focus or dismissing a grouped-editing
-warning. In 0.0.4, the notice is an infobar that you close yourself.
+warning.
 
 Calc's Undo may also change the active sheet and native tab selection. After a grouped move, it can
 activate the sheet immediately above the restored group; after a single move, it can activate the

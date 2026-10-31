@@ -74,8 +74,9 @@ where they can:
 ## Verification
 
 - [docs/verification.md](docs/verification.md) maps each promise to the checks that show it, where
-  they run, their limits, and the checks shown to fail when deliberately broken. Change it in the
-  same pull request as a promise or a check.
+  they run, and their limits, with links to investigation evidence. Change it in the same pull
+  request as a promise or a check; record run results and deliberate-break receipts in the issue
+  or pull request.
 - Before implementing an issue, reproduce or measure its claim on `main` and record, with the
   evidence, whether it is accepted, narrowed, or declined. Reports from agents get the same
   scrutiny as any other.
@@ -197,7 +198,7 @@ reconsider. The owner may report a defect themselves, in their own words.
   - `ci/libreoffice.json`: the tested LibreOffice builds;
   - GitHub Releases, and the feeds and `releases.json` that Pages generates from them: what is
     published;
-  - the README's Status section: what exists and what is planned.
+  - the user guide: how the published baseline behaves; issues own scope decisions and plans.
 
   The surfaces that repeat these facts are:
   - the README;
@@ -210,6 +211,11 @@ reconsider. The owner may report a defect themselves, in their own words.
   `tests/unit/test_consistency.py` compares what can be compared mechanically. Prose is reviewed
   for meaning. After a change that affects the About text or the homepage, read the live settings
   and correct them.
+- **Document ownership.** Keep the README focused on purpose, capabilities, compatibility and entry
+  points. Contributor commands belong in CONTRIBUTING.md, current coverage and limits in
+  docs/verification.md, and release procedures in RELEASING.md. This file holds agent instructions
+  and non-obvious safeguards. Issues and PRs own decisions, progress and detailed verification
+  receipts; do not duplicate their history here or create a replacement ledger.
 - **Which version the guide describes** follows
   [About this site](docs/development/index.md#which-version-it-describes): the latest stable
   release, the newest test build while only prereleases exist, or the development version before
@@ -236,41 +242,19 @@ reconsider. The owner may report a defect themselves, in their own words.
   Keep the main ruleset's required contexts identical to CI's job names, and its strict
   up-to-date policy off.
 
-## Code map
+## Working with the code
 
 Each module's docstring, or the comment at the top of a command-line tool, holds the rules for
 changing that module, with the measured LibreOffice behaviour and the issues behind them. Read it
 before changing the module, and update it in the same pull request when a rule changes.
 [docs/reordering.md](docs/reordering.md) is the contract between the list and the move operation.
 
-- **Packaging.** `extension/description.xml` is the version source.
-  `extension/sheet-manager.components` and `registration.py` provide passive Python registration;
-  `Factories.xcu` maps tool-panel URLs to that factory, and `Sidebar.xcu` registers the Calc-only
-  deck and panel. `tools/build.py` allowlists every packaged file and includes the root licence as
-  `LICENSE.txt`. `src/sheet_manager/` ships as `pythonpath/sheet_manager/`.
-- **Pure logic,** importable without `uno`: `keys.py` key routing, `sheet_list.py` rows and
-  geometry, `selection.py` the list's picks and cursor, `structure.py` the structural generation,
-  `reorder.py` the move planner, `rename.py` the batch rename planner, and `i18n.py` the
-  translation boundary.
-- **UNO adapters:** `uno_panel.py` the factory and panel window; `uno_list.py` the tree, its
-  refresh, input, drag and drop, and observation of Calc's tabs; `uno_rows.py` row painting;
-  `uno_keys.py` the key handler; `uno_menu.py` the context menu and Calc's commands;
-  `uno_moves.py` the move buttons; `uno_status.py` the footer; `uno_show.py` Show;
-  `uno_rename.py` batch renames, their undo and recovery; `uno_rename_dialog.py` the Rename
-  Sheets dialog; `uno_reorder.py` moves, undo and recovery; `uno_structure.py` the per-document
-  structure monitor; `uno_calc.py` shared Calc and threading helpers.
-- **Tests:** `tests/unit/`; `tests/integration/run.py` and its `test_*.py` suites, with
-  `main_thread.py` and `teardown.py` for closing documents and stalls; `tests/ui/run_ui.py` for
-  real input under Xvfb; `tests/ui/run_windows_ui.py` and `winput.py` for real input on a visible
-  Windows desktop, in the Windows desktop workflow; `tools/linux_integration.py` for the Docker
-  lab. CONTRIBUTING.md says what
-  each covers. Human usability tasks and additional platform observations are in
-  [docs/manual-tests.md](docs/manual-tests.md); keep it current.
-- **Releases:** `tools/release_data.py` owns version policy, changelog extraction, and feed XML;
-  `tools/github_release.py` validates history and exact-commit CI, publishes, and generates Pages
-  from published OXT metadata. `release.yml` publishes only by dispatch on `main` and checks
-  workflow changes on pull requests without writing; `pages.yml` is the only workflow that deploys
-  Pages. RELEASING.md describes them.
+Pure logic and `uno_` adapters live in [`src/sheet_manager/`](src/sheet_manager/).
+[CONTRIBUTING.md](CONTRIBUTING.md#tests) explains the runners and suite conventions;
+[docs/verification.md](docs/verification.md) maps behaviours to their tests, and
+[docs/manual-tests.md](docs/manual-tests.md) supplies human usability tasks. Keep these documents
+current when their procedures or coverage change. [RELEASING.md](RELEASING.md) owns packaging,
+publication and feed procedures.
 
 ### Rules for all code
 
@@ -306,21 +290,13 @@ Breaking one of these has hung or crashed LibreOffice, or let an action reach th
 
 ## Releases
 
-- The current phase is beta towards 0.1.0, from the owner's direction of 2026-10-31: the feature
-  set is frozen at what 0.0.6 delivers, and each beta fixes a chosen subset of the open defects.
-  The stable release goal is proposed in
-  [#120](https://github.com/viell-dev/slop-calc-sheet-manager/issues/120); a release candidate
-  waits for its agreement and for the blockers it names, and
-  [#93](https://github.com/viell-dev/slop-calc-sheet-manager/issues/93) tracks the work. This
-  does not waive the human usability gate or required defect dispositions for the stable release.
-- The owner has given standing approval for agents to publish releases, prereleases and stable
-  versions alike, with their release notes, whenever the agents judge a build ready. Only the
-  listing on extensions.libreoffice.org needs the owner's sign-in.
-- Follow [RELEASING.md](RELEASING.md) for version numbers, channels, changelog sections, dry runs,
-  publication, and recovery. Its guarantees hold without exception: published files, tags, and
-  channels never change, update feeds never lose history or move backwards, and a bad release is
-  fixed by a newer version. Keep GitHub release immutability disabled during early development;
-  do not enable it without the owner's direction.
+Follow [RELEASING.md](RELEASING.md) for publication authority, versioning, channels, readiness,
+human testing, dry runs and recovery. Its
+[first-stable-release rules](RELEASING.md#first-stable-release)
+link the scope agreement, tracker and outstanding human request. Published files, tags and
+channels never change, feeds never lose history or move backwards, and a bad release is fixed by
+a newer version. Keep GitHub release immutability disabled unless the owner expressly approves
+enabling it; repository administration authority does not waive that approval.
 
 ## Ongoing maintenance
 
