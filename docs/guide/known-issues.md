@@ -70,11 +70,16 @@ If Sheet Manager does not work in an environment where it is expected to, please
   few names that Calc accepts, such as `ss` beside `ß`, because LibreOffice can confuse them. Other
   windows on the same workbook clear their list's selection after a rename of several sheets.
 - **Names that LibreOffice confuses.** Calc accepts two sheets whose names differ only in some
-  characters, such as `ﬁ` (a single ligature character) and `fi`, but then finds the first one
-  for either name, also in formulas. The list then shows the second sheet with the first one's
-  hidden, protected, or colour state, and refuses to move, show, or rename sheets until one of
-  them is renamed in Calc
-  ([#113](https://github.com/viell-dev/slop-calc-sheet-manager/issues/113)).
+  characters, such as `ﬁ` (a single ligature character) and `fi`, or `ı` and `I`, but then finds
+  whichever of them comes first for either name, also in formulas: while `ﬁ` comes first,
+  `='fi'.A1` refers to a cell of `ﬁ`. This is a limit of LibreOffice; renaming one of the sheets
+  avoids it ([#113](https://github.com/viell-dev/slop-calc-sheet-manager/issues/113)). Test
+  builds up to 0.0.6 show the second sheet with the first one's hidden, protected, or colour
+  state, and refuse to move, show, or rename sheets until one of them is renamed.
+  <Unreleased /> The list shows each sheet's own state, and Show, the menu's commands, moves, and
+  Rename Sheets act on the sheet you picked. Calc moves a sheet only by its name, so the list
+  refuses a move that would need the name of the sheet that does not come first, and says which
+  two names Calc confuses. Rename Sheets still refuses to create such a pair.
 - **Macros that suppress notifications.** The list cannot detect structural edits for which
   LibreOffice reports nothing, or a deliberately constructed edit indistinguishable from ordinary
   typed input. The reorder adapter uses the same structural monitor and has the same boundary.

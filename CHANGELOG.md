@@ -5,6 +5,14 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Sheets whose names Calc's own lookup cannot tell apart, such as `ﬁ` beside `fi`, or `ı` beside
+  `I`, now show their own hidden, protected and colour states, and the list acts on them instead
+  of refusing every action with "The sheet list has changed"
+  ([#113](https://github.com/viell-dev/slop-calc-sheet-manager/issues/113)). Calc can move a
+  sheet only by its name, so a move that would need the name of the sheet that does not come
+  first is refused, with the two names it confuses. Calc's formulas still find the first of the
+  two; renaming one of them avoids that.
+
 ## 0.0.6 - 2026-10-28
 
 Alpha build following 0.0.5, adding batch rename.
