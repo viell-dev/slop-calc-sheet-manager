@@ -12,6 +12,13 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   sheet only by its name, so a move that would need the name of the sheet that does not come
   first is refused, with the two names it confuses. Calc's formulas still find the first of the
   two; renaming one of them avoids that.
+- Name each test build's stage in its GitHub release title
+  ([#121](https://github.com/viell-dev/slop-calc-sheet-manager/issues/121)): alpha, beta, or
+  release candidate, as in `0.1.0 beta (0.0.7)` and `0.1.0 rc (0.0.9)`, where the number in
+  brackets is the build's own version. Versions, the **Pre-release** flag, and the update feeds
+  work as before, and earlier titles such as `0.1.0 test build (0.0.4)` are unchanged. The
+  [releases page](https://viell-dev.github.io/slop-calc-sheet-manager/guide/releases#test-builds)
+  explains the stages.
 
 ## 0.0.6 - 2026-10-28
 

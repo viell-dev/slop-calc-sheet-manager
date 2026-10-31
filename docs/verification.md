@@ -16,9 +16,11 @@ are in
 
 The jobs use official libreoffice.org builds pinned in `ci/libreoffice.json`.
 
-Release-title tests in `tests/unit/test_release_data.py` distinguish untargeted alpha builds from
-explicit next-minor/major test targets and stable releases. They retain numeric-order and feed-history
-checks; a number or passing checks do not establish feature completeness or human usability.
+Release-stage tests in `tests/unit/test_release_data.py` and `tests/unit/test_github_release.py`
+title every stage, refuse beta and rc builds without their next-minor/major target and stable
+releases with one, keep earlier title schemes valid in history and feeds, and check that the
+Release workflow never defaults to stable. They retain numeric-order and feed-history checks; a
+stage, a number or passing checks do not establish feature completeness or human usability.
 
 ## What `main` does today
 
@@ -156,6 +158,7 @@ These checks were shown to fail when the behaviour they guard was deliberately b
 | Historical native cursor tracking (#69, 0.0.2) | Test-only package invokes main `d9335e6`'s tracking twice for each one native Ctrl+Down | Native focus reaches Delta but the old predictor restores Foxtrot. 0.0.2's observer fixed that path. 0.0.3 consumes selection keys before native forwarding and uses the owned-cursor checks listed above. |
 | Update compatibility offers (#57) | A loopback fixture lowers the incompatible candidate's declared minimum from 999.0.0 to 26.2.1 | The painted check fails on the unexpected checked `Sheet Manager Version 1.1.0` offer; the correct floor produces no installable offer and exposes its dependency reason under Show all updates. |
 | Human release downloads (#73) | Test-only template returns a `.zip` asset URL instead of the OXT | The rendered release-page check fails on the actual asset links; the correct OXT template passes. |
+| Release stages are explicit | `release_title` returns the bare version for an untargeted beta or rc, so a stage without its target is titled as stable; separately, the plan's Pre-release flag follows the target instead of the stage | The first fails four `test_a_missing_or_invalid_stage_stops_before_reading_github` cases and both untargeted cases of `test_invalid_stage_and_target_combinations`; the second fails the untargeted alpha dry run and both of its publication cases, which would otherwise publish an alpha as the latest stable release. |
 | Newer panel input (#5) | A frozen source copy disables the observer's input watermark | Queued Enter/menu/type-ahead ordering cases fail because an older sample replaces the picks. The toolbar returned in 0.0.4; the current key-intent regression again covers native button Enter/Space before their queued actions, plus newer-input rejection for posted focus. |
 | Full-width selection (#80) | Published 0.0.2 with the current real-input click check, official LibreOffice 26.2.6.3 / gtk3 | The leading-space click fails `full-row selection`: Bravo becomes viewed while Alfa remains picked. The 0.0.3 check also verifies selection without activation at four horizontal positions, followed by explicit double-click activation. |
 | One Ctrl toggle despite queued native delivery (#85) | 086c9ec's package with a controlled early view acknowledgement, official LibreOffice 26.8.1.1 headless | The first Ctrl-click loses Bravo because native intake and the owned handler toggle it twice. The revised package preserves the pick under the same ordering; deterministic checks cover superseded input, stale proof/names and reentrant pointer cleanup. Removing deferral from either observation caller fails its wiring assertion. An unforced full-workload trace also catches the old double toggle in the existing delayed-refresh integration check. |

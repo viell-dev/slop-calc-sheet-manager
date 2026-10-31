@@ -25,6 +25,18 @@ packages manually. Installing one keeps the stable update feed: it will offer a 
 release, but does not offer later test builds. An extension-directory listing is not needed to
 install these GitHub assets.
 
+Every test build is marked **Pre-release**, and its GitHub release title names its stage:
+
+- **Alpha**, such as `0.0.6 alpha`: features and workflows are still changing.
+- **Beta**, such as `0.1.0 beta (0.0.7)`: the features planned for the named release, here 0.1.0,
+  are complete, and work has turned to fixes and polish.
+- **Release candidate**, such as `0.1.0 rc (0.0.9)`: the build intended to become that release,
+  changed only in its version number unless another candidate follows.
+
+The number in brackets is the build's own version, the one LibreOffice shows. Builds 0.0.2 to
+0.0.4 were titled `0.1.0 test build (0.0.2)` and so on, before stages were named; they are alpha
+builds.
+
 <ReleaseDownloads :prerelease="true" />
 
 ## Version numbers
@@ -36,15 +48,18 @@ be offered as an update to those test builds; manually installing it would be sh
 This is a host-application constraint, independent of GitHub and the extension directory.
 
 We keep the same version in the OXT, Git tag, release and asset names. Test builds use increasing
-numbers, with their status recorded by GitHub's **Pre-release** flag. Alpha builds have no
-implied final target; a future stable version must exceed all preceding builds.
+numbers, with their status recorded by GitHub's **Pre-release** flag and their stage by the
+release title. Alpha builds have no implied final target; beta builds and release candidates
+name theirs. A stable version must exceed all preceding builds.
 No patch numbers are reserved for testing. For example:
 
 | GitHub release title | OXT version and Git tag | Build type |
 | --- | --- | --- |
-| 0.1.1 alpha | `0.1.1` | Pre-release |
-| 0.1.2 alpha | `0.1.2` | Pre-release |
-| 0.2.0 | `0.2.0` | Stable, only once ready |
+| 0.0.6 alpha | `0.0.6` | Pre-release: alpha |
+| 0.1.0 beta (0.0.7) | `0.0.7` | Pre-release: beta for 0.1.0 |
+| 0.1.0 beta (0.0.8) | `0.0.8` | Pre-release: a later beta for 0.1.0 |
+| 0.1.0 rc (0.0.9) | `0.0.9` | Pre-release: release candidate for 0.1.0 |
+| 0.1.0 | `0.1.0` | Stable, only once ready |
 
 These are examples; the download lists above show what is actually published. A stable series
 can continue through `0.1.89`, `0.1.90`, `0.1.91`, and higher. A test build is identified by its

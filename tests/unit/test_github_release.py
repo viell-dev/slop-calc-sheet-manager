@@ -9,10 +9,36 @@ from typing import Any
 from unittest.mock import Mock
 
 import pytest
+import yaml
 
 from tools import github_release as cli
-from tools.build import build, version
-from tools.release_data import PublishedBuild
+from tools.build import ROOT, build, version
+from tools.release_data import STAGES, PublishedBuild, release_title, version_parts
+
+
+def next_minor() -> str:
+    major, minor, _ = version_parts(version())
+    return f"{major}.{minor + 1}.0"
+
+
+def next_major() -> str:
+    return f"{version_parts(version())[0] + 1}.0.0"
+
+
+# Each stage with the targets it accepts; test_release_data.py has the expected titles.
+STAGE_REQUESTS = [
+    ("stable", ""),
+    ("alpha", ""),
+    ("alpha", "minor"),
+    ("beta", "minor"),
+    ("rc", "minor"),
+    ("beta", "major"),
+    ("rc", "major"),
+]
+
+
+def target_for(kind: str) -> str:
+    return {"": "", "minor": next_minor(), "major": next_major()}[kind]
 
 
 def test_ci_gate_requires_exact_commit_and_main_push_for_publication(
@@ -76,19 +102,23 @@ def test_ci_gate_waits_for_a_native_matrix_longer_than_twenty_minutes(
     assert elapsed == 25 * 60
 
 
-@pytest.mark.parametrize("candidate", [False, True])
+@pytest.mark.parametrize(("stage", "target_kind"), STAGE_REQUESTS)
 def test_dry_run_builds_assets_and_prospective_feeds_without_api_writes(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-    candidate: bool,
+    stage: str,
+    target_kind: str,
 ) -> None:
+    target = target_for(target_kind)
     monkeypatch.setattr(
-        sys, "argv", ["release", "release", "--version", version(), "--output", str(tmp_path)]
+        sys,
+        "argv",
+        ["release", "release", "--version", version(), "--stage", stage, "--output", str(tmp_path)],
     )
+    if target:
+        sys.argv += ["--target", target]
     monkeypatch.setenv("RELEASE_COMMIT", "a" * 40)
     monkeypatch.setenv("GITHUB_EVENT_NAME", "pull_request")
-    if candidate:
-        sys.argv.append("--prerelease")
     monkeypatch.setattr(cli.subprocess, "check_output", Mock(return_value="a" * 40))
     monkeypatch.setattr(cli, "paginated", Mock(return_value=[]))
     monkeypatch.setattr(cli, "previous_builds", Mock(return_value=[]))
@@ -104,10 +134,72 @@ def test_dry_run_builds_assets_and_prospective_feeds_without_api_writes(
     plan = json.loads((tmp_path / "release-plan.json").read_text(encoding="utf-8"))
     assert plan["release"]["target_commitish"] == "a" * 40
     assert plan["release"]["draft"] is True
-    assert plan["release"]["prerelease"] is candidate
+    assert plan["stage"] == stage and plan["target"] == target
+    assert plan["release"]["name"] == release_title(version(), stage, target)
+    assert plan["release"]["prerelease"] is (stage != "stable")
     assert plan["release"]["body"] == (tmp_path / "release-notes.md").read_text(encoding="utf-8")
-    assert (tmp_path / "site/updates/stable.xml").exists()
-    assert (tmp_path / "site/updates/prerelease.xml").exists()
+    offered = f'value="{version()}"'.encode()
+    assert offered in (tmp_path / "site/updates/prerelease.xml").read_bytes()
+    assert (offered in (tmp_path / "site/updates/stable.xml").read_bytes()) is (stage == "stable")
+    history = json.loads((tmp_path / "site/releases.json").read_text(encoding="utf-8"))
+    assert [item["prerelease"] for item in history] == [stage != "stable"]
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        [],
+        ["--prerelease"],
+        ["--stage", "beta"],
+        ["--stage", "rc"],
+        ["--stage", "stable", "--target", "NEXT"],
+        ["--stage", "beta", "--target", "0.0.99"],
+        ["--stage", "candidate", "--target", "NEXT"],
+    ],
+)
+@pytest.mark.parametrize("event", ["pull_request", "workflow_dispatch"])
+def test_a_missing_or_invalid_stage_stops_before_reading_github(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, arguments: list[str], event: str
+) -> None:
+    arguments = [next_minor() if item == "NEXT" else item for item in arguments]
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["release", "release", "--version", version(), "--output", str(tmp_path), *arguments],
+    )
+    monkeypatch.setenv("GITHUB_EVENT_NAME", event)
+    monkeypatch.setenv("RELEASE_COMMIT", "a" * 40)
+    monkeypatch.setattr(cli.subprocess, "check_output", Mock(return_value="a" * 40))
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        pytest.fail("An invalid release request reached GitHub")
+
+    for name in ("api", "paginated", "previous_builds", "require_ci", "download"):
+        monkeypatch.setattr(cli, name, forbidden)
+    with pytest.raises((SystemExit, ValueError)):
+        cli.main()
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_release_workflow_offers_each_stage_and_never_defaults_to_stable() -> None:
+    workflow = yaml.safe_load((ROOT / ".github/workflows/release.yml").read_text("utf-8"))
+    # PyYAML reads the bare key `on` as True.
+    inputs = workflow[True]["workflow_dispatch"]["inputs"]
+    assert "prerelease" not in inputs
+    assert inputs["stage"]["type"] == "choice"
+    assert tuple(inputs["stage"]["options"]) == STAGES
+    assert inputs["stage"]["default"] == "alpha"
+    runs = [
+        step["run"]
+        for job in workflow["jobs"].values()
+        for step in job.get("steps", [])
+        if "github_release.py" in step.get("run", "")
+    ]
+    assert len(runs) == 2
+    for run in runs:
+        calls = [line for line in run.splitlines() if "release --version" in line]
+        assert calls and all("--stage" in line for line in calls), run
+        assert "--prerelease" not in run
 
 
 def test_existing_draft_and_mismatched_metadata_stop_preparation(
@@ -118,9 +210,9 @@ def test_existing_draft_and_mismatched_metadata_stop_preparation(
         cli, "paginated", Mock(return_value=[{"tag_name": version(), "draft": True}])
     )
     with pytest.raises(ValueError, match="draft already exists"):
-        cli.prepare(version(), False, "", tmp_path)
+        cli.prepare(version(), "stable", "", tmp_path)
     with pytest.raises(ValueError, match="description.xml contains"):
-        cli.prepare("999.0.0", False, "", tmp_path)
+        cli.prepare("999.0.0", "stable", "", tmp_path)
     assert list(tmp_path.iterdir()) == []
 
 
@@ -134,7 +226,10 @@ def test_only_prs_skip_release_planning_for_an_already_published_metadata_versio
     draft: bool,
 ) -> None:
     monkeypatch.setattr(
-        sys, "argv", ["release", "release", "--version", version(), "--output", str(tmp_path)]
+        sys,
+        "argv",
+        ["release", "release", "--version", version(), "--stage", "stable"]
+        + ["--output", str(tmp_path)],
     )
     monkeypatch.setenv("GITHUB_EVENT_NAME", event)
     monkeypatch.setenv("RELEASE_COMMIT", "a" * 40)
@@ -167,7 +262,9 @@ def test_noncanonical_published_release_tags_fail_loudly() -> None:
 
 
 def test_publishing_is_refused_from_a_pr_or_branch(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(sys, "argv", ["release", "release", "--version", version(), "--publish"])
+    monkeypatch.setattr(
+        sys, "argv", ["release", "release", "--version", version(), "--stage", "alpha", "--publish"]
+    )
     for event, ref in (
         ("pull_request", "refs/heads/main"),
         ("workflow_dispatch", "refs/heads/task"),
@@ -178,9 +275,22 @@ def test_publishing_is_refused_from_a_pr_or_branch(monkeypatch: pytest.MonkeyPat
             cli.main()
 
 
+@pytest.mark.parametrize(
+    ("title", "prerelease"),
+    [
+        (f"0.1.0 test build ({version()})", True),
+        (f"{version()} alpha", True),
+        (f"0.1.0 beta ({version()})", True),
+        (f"0.1.0 rc ({version()})", True),
+        (version(), False),
+        ("A title in no scheme", False),
+    ],
+)
 def test_published_metadata_comes_from_checksummed_oxt_and_drafts_are_ignored(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    title: str,
+    prerelease: bool,
 ) -> None:
     package = build(tmp_path)
     base = f"https://github.com/{cli.REPOSITORY}/releases/download/{version()}/"
@@ -191,7 +301,8 @@ def test_published_metadata_comes_from_checksummed_oxt_and_drafts_are_ignored(
     monkeypatch.setattr(cli, "download", Mock(side_effect=assets.__getitem__))
     release: dict[str, Any] = {
         "tag_name": version(),
-        "prerelease": False,
+        "name": title,
+        "prerelease": prerelease,
         "draft": False,
         "published_at": "2026-10-19T00:00:00Z",
         "assets": [{"name": url.rsplit("/", 1)[1], "browser_download_url": url} for url in assets],
@@ -311,20 +422,23 @@ def test_missing_history_only_bootstraps_before_any_version_was_reserved(
 
 
 @pytest.mark.parametrize("missing_asset", [False, True])
-@pytest.mark.parametrize("candidate", [False, True])
+@pytest.mark.parametrize(("stage", "target_kind"), STAGE_REQUESTS)
 def test_publication_attaches_both_assets_to_draft_before_publishing(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     missing_asset: bool,
-    candidate: bool,
+    stage: str,
+    target_kind: str,
 ) -> None:
+    target = target_for(target_kind)
+    candidate = stage != "stable"
     monkeypatch.setattr(
         sys,
         "argv",
-        ["release", "release", "--version", version(), "--publish", "--output", str(tmp_path)],
+        ["release", "release", "--version", version(), "--stage", stage, "--publish"]
+        + ["--output", str(tmp_path)]
+        + (["--target", target] if target else []),
     )
-    if candidate:
-        sys.argv.append("--prerelease")
     monkeypatch.setenv("GITHUB_REF", "refs/heads/main")
     monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
     monkeypatch.setenv("RELEASE_COMMIT", "a" * 40)
@@ -342,6 +456,7 @@ def test_publication_attaches_both_assets_to_draft_before_publishing(
             assert data is not None and data["draft"] is True
             assert data["target_commitish"] == "a" * 40
             assert data["prerelease"] == candidate
+            assert data["name"] == release_title(version(), stage, target)
             return {"id": 37}
         if path.endswith("/assets"):
             names = [f"sheet-manager-{version()}.oxt", f"sheet-manager-{version()}.oxt.sha256"]
