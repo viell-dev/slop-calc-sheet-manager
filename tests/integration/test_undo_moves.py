@@ -34,6 +34,7 @@ from test_sheet_list import VCL_SHIFT, Robot
 from sheet_manager.reorder import Action, plan_move
 from sheet_manager.uno_calc import select_tabs
 from sheet_manager.uno_reorder import apply_order, is_current, snapshot
+from sheet_manager.uno_structure import monitor_for
 
 TWELVE = [
     "Alfa",
@@ -101,6 +102,41 @@ def make_current(document, controller):
     poll(lambda: document.CurrentController == controller, "the window to be current")
 
 
+def structure_monitor(context, document):
+    """This process's structure monitor of the document: it sees what the list's monitor sees."""
+    held = []
+    on_main_thread(context, lambda: held.append(monitor_for(document)))
+    return held[0]
+
+
+def settle_new_window(context, monitor, timeout=20):
+    """Let a new window's late native initialization finish; return the generations seen.
+
+    Neither the dispatch's return nor the new controller guarantees that a window's native
+    initialization has finished: after a Reload, the first paint's page-break timer restores
+    the clean flag, which Calc reports as a modify notification (#88, `test_sync_sheet_list`).
+    Such a notification moves the generation, so the list drops its picks conservatively: a
+    click before it is lost, and a move made before it is no longer provable. On CI's Linux
+    headless lanes the first pick after `.uno:NewWindow` lost its anchor, as such a clear
+    does; the same lanes run locally measured no move. Drain the queued work, then wait until
+    the generation has been stable for longer than the list's refresh delay. The generations
+    seen go into the results.
+    """
+    toolkit = context.ServiceManager.createInstanceWithContext("com.sun.star.awt.Toolkit", context)
+    start = time.monotonic()
+    generations = [monitor.generation]
+    on_main_thread(context, toolkit.processEventsToIdle)
+    generations.append(monitor.generation)
+    since = time.monotonic()
+    while time.monotonic() - since < SETTLE:
+        assert time.monotonic() - start < timeout, f"The generation kept moving: {generations}"
+        time.sleep(0.05)
+        if monitor.generation != generations[-1]:
+            generations.append(monitor.generation)
+            since = time.monotonic()
+    return generations
+
+
 def view(context, controller):
     """The view as names: the active sheet and Calc's selected tabs."""
     sheets = list(controller.Model.Sheets.ElementNames)
@@ -134,7 +170,12 @@ class Panel:
         try:
             poll(lambda: self.picks() == wanted, f"the picks {wanted}")
         except AssertionError as error:
-            shown = {"picks": self.picks(), "rows": names(self.tree), "focus": self.tree.hasFocus()}
+            shown = {
+                "picks": self.picks(),
+                "rows": names(self.tree),
+                "focus": self.tree.hasFocus(),
+                "notice": self.notice(),
+            }
             raise AssertionError(f"{error}: {shown}") from None
 
     def move(self, label, expected):
@@ -421,9 +462,12 @@ def check_windows_and_disposal(context, desktop):
     document = workbook(desktop)
     panel = Panel(context, document)
     first = document.CurrentController
+    monitor = structure_monitor(context, document)
+    before = monitor.generation
     # Opening a window can move the generation (`test_sync_sheet_list`): a move made before it
     # is no longer provable, so the windows exist before the move.
     dispatch(context, first.Frame, ".uno:NewWindow")
+    dispatched = monitor.generation
     controllers = []
     enumeration = document.getControllers()
     while enumeration.hasMoreElements():
@@ -434,10 +478,18 @@ def check_windows_and_disposal(context, desktop):
     shown = SimpleNamespace(getCurrentController=lambda: second, Sheets=document.Sheets)
     other = Panel(context, shown)
     make_current(document, first)
+    settled = settle_new_window(context, monitor)
+    say(f"generations: {before} before the window, {dispatched} after it, then {settled}")
     panel = Panel(context, document)  # Opening a window can replace this one's panel window.
     poll(lambda: not panel.notice(), "a notice from opening the window to expire", timeout=15)
-    panel.pick("Echo", "Hotel")
+    try:
+        panel.pick("Echo", "Hotel")
+    except AssertionError as error:
+        error.add_note(f"Generation at the failed pick: {monitor.generation}, settled {settled}")
+        raise
+    say(f"generation after the picks: {monitor.generation}")
     panel.move("Up", UP)
+    results["generations"] = [before, dispatched, *settled]
     other.pick("Golf")
     picks = panel.picks()
     assert picks == PICKS
@@ -478,6 +530,7 @@ def check_windows_and_disposal(context, desktop):
         document.UndoManager.undo()
         document.close(True)
 
+    monitor.dispose()
     _CREATED.remove(document)
     on_main_thread(context, replay_and_close)
     time.sleep(SETTLE)  # The posted restorations find the document gone.
