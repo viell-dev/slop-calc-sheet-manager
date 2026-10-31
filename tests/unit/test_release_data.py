@@ -18,6 +18,7 @@ from tools.release_data import (
     check_new_version,
     compare_versions,
     feed,
+    is_prerelease,
     package_metadata,
     release_title,
     validate_history,
@@ -56,32 +57,89 @@ def test_noncanonical_versions_are_refused(version: str) -> None:
         version_parts(version)
 
 
-def test_test_build_titles_and_target_boundaries() -> None:
-    assert release_title("0.0.2", True) == "0.0.2 alpha"
-    assert release_title("0.0.91", True) == "0.0.91 alpha"
-    assert release_title("0.1.1", True) == "0.1.1 alpha"
-    assert release_title("0.0.2", True, "0.1.0") == "0.1.0 test build (0.0.2)"
-    assert release_title("0.8.90", True, "1.0.0") == "1.0.0 test build (0.8.90)"
-    assert release_title("0.1.89", False) == "0.1.89"
-    for version, prerelease, target in [
-        ("0.0.90", True, "0.1.1"),
-        ("0.0.90", True, "2.0.0"),
-        ("0.1.0", False, "0.2.0"),
-    ]:
-        with pytest.raises(ValueError):
-            release_title(version, prerelease, target)
+@pytest.mark.parametrize(
+    ("version", "stage", "target", "title"),
+    [
+        ("0.0.2", "alpha", "", "0.0.2 alpha"),
+        ("0.0.91", "alpha", "", "0.0.91 alpha"),
+        ("0.1.1", "alpha", "", "0.1.1 alpha"),
+        ("0.0.4", "alpha", "0.1.0", "0.1.0 alpha (0.0.4)"),
+        ("0.0.7", "beta", "0.1.0", "0.1.0 beta (0.0.7)"),
+        ("0.0.9", "rc", "0.1.0", "0.1.0 rc (0.0.9)"),
+        ("0.8.90", "beta", "1.0.0", "1.0.0 beta (0.8.90)"),
+        ("0.8.91", "rc", "1.0.0", "1.0.0 rc (0.8.91)"),
+        ("0.1.89", "stable", "", "0.1.89"),
+        ("0.1.0", "stable", "", "0.1.0"),
+    ],
+)
+def test_stage_titles(version: str, stage: str, target: str, title: str) -> None:
+    assert release_title(version, stage, target) == title
+    assert is_prerelease(stage) is (stage != "stable")
+
+
+@pytest.mark.parametrize(
+    ("version", "stage", "target", "message"),
+    [
+        ("0.0.7", "beta", "", "needs its agreed"),
+        ("0.0.9", "rc", "", "needs its agreed"),
+        ("0.1.0", "stable", "0.2.0", "no candidate target"),
+        ("0.0.90", "alpha", "0.1.1", "next minor or next major"),
+        ("0.0.90", "beta", "0.1.1", "next minor or next major"),
+        ("0.0.90", "rc", "2.0.0", "next minor or next major"),
+        ("0.0.7", "beta", "0.0.8", "next minor or next major"),
+        ("0.0.7", "beta", "v0.1.0", "three plain dotted numbers"),
+        ("0.0.7", "rc", "0.1.0-rc.1", "three plain dotted numbers"),
+        ("0.1.0-rc.1", "rc", "0.2.0", "three plain dotted numbers"),
+        ("0.0.7", "", "", "stage must be one of"),
+        ("0.0.7", "Beta", "0.1.0", "stage must be one of"),
+        ("0.0.7", "test build", "0.1.0", "stage must be one of"),
+    ],
+)
+def test_invalid_stage_and_target_combinations(
+    version: str, stage: str, target: str, message: str
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        release_title(version, stage, target)
 
 
 def test_patch_ninety_and_above_do_not_imply_a_test_build() -> None:
-    assert release_title("0.1.90", False) == "0.1.90"
-    assert release_title("0.1.100", False) == "0.1.100"
-    assert release_title("0.1.4", True) == "0.1.4 alpha"
+    assert release_title("0.1.90", "stable") == "0.1.90"
+    assert release_title("0.1.100", "stable") == "0.1.100"
+    assert release_title("0.1.4", "alpha") == "0.1.4 alpha"
     stable = published("0.1.90", 18)
     test = published("0.1.91", 19, prerelease=True)
     validate_history([stable, test], [])
     assert feed([stable, test], stable=True) == feed([stable], stable=True)
     assert b'value="0.1.90"' in feed([stable, test], stable=True)
     assert b'value="0.1.91"' not in feed([stable, test], stable=True)
+
+
+def test_every_stage_joins_history_and_feeds_after_earlier_title_schemes() -> None:
+    # 0.0.2-0.0.4 were published as "0.1.0 test build (...)" and 0.0.5-0.0.6 as "... alpha".
+    # History carries only the channel, so later beta, rc and stable builds append to it.
+    earlier = [published(f"0.0.{patch}", patch, prerelease=True) for patch in range(2, 7)]
+    stages = (("0.0.7", "beta", 7), ("0.0.9", "rc", 9), ("0.1.0", "stable", 10))
+    later = [
+        published(version, day, prerelease=is_prerelease(stage)) for version, stage, day in stages
+    ]
+    validate_history(earlier + later, earlier)
+    for builds in (earlier + later[:1], earlier + later[:2], earlier + later):
+        check_new_version("0.1.1", builds, [])
+    stable = ET.fromstring(feed(earlier + later, stable=True))
+    everything = ET.fromstring(feed(earlier + later, stable=False))
+    path = f"{{{ATOM}}}entry/{{{ATOM}}}content/{{{UPDATE}}}description/{{{UPDATE}}}version"
+    assert [item.attrib["value"] for item in stable.findall(path)] == ["0.1.0"]
+    assert [item.attrib["value"] for item in everything.findall(path)] == [
+        "0.1.0",
+        "0.0.9",
+        "0.0.7",
+        "0.0.6",
+        "0.0.5",
+        "0.0.4",
+        "0.0.3",
+        "0.0.2",
+    ]
+    assert feed(earlier + later[:2], stable=True) == feed([], stable=True)
 
 
 def test_new_build_must_exceed_every_channel_and_orphan_tag() -> None:

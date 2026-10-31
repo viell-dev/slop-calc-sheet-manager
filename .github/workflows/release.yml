@@ -13,12 +13,21 @@ on:
         description: Exact plain dotted version in description.xml and CHANGELOG.md
         required: true
         type: string
-      prerelease:
-        description: Test build; set GitHub's Pre-release flag (never inferred from the version)
-        default: true
-        type: boolean
+      stage:
+        description: >-
+          Release stage, never inferred from the version. alpha, beta and rc are test builds with
+          GitHub's Pre-release flag; stable must be chosen explicitly
+        default: alpha
+        type: choice
+        options:
+          - alpha
+          - beta
+          - rc
+          - stable
       target:
-        description: Optional agreed next-minor/major target; leave empty for alpha development
+        description: >-
+          Agreed next-minor or next-major .0 release; required for beta and rc, optional for
+          alpha, empty for stable
         default: ""
         type: string
       dry_run:
@@ -44,7 +53,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       RELEASE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
       REQUESTED_VERSION: ${{ inputs.version }}
-      PRERELEASE: ${{ inputs.prerelease || false }}
+      STAGE: ${{ inputs.stage }}
       TARGET: ${{ inputs.target }}
     steps:
       - name: Refuse a publication request outside main
@@ -74,13 +83,15 @@ jobs:
           if [[ -z "$version" ]]; then
             version=$(python -c 'import sys; sys.path.insert(0, "tools"); from build import version; print(version())')
           fi
-          args=(release --version "$version")
-          if [[ "$PRERELEASE" == true ]]; then args+=(--prerelease); fi
-          if [[ -n "$TARGET" ]]; then args+=(--target "$TARGET"); fi
-          .venv/bin/python tools/github_release.py "${args[@]}"
           if [[ "$GITHUB_EVENT_NAME" == pull_request ]]; then
-            .venv/bin/python tools/github_release.py release --version "$version" --prerelease \
+            # A PR has no inputs: preview both channels, each with an explicit stage.
+            .venv/bin/python tools/github_release.py release --version "$version" --stage stable
+            .venv/bin/python tools/github_release.py release --version "$version" --stage alpha \
               --output dist/release/prerelease-preview
+          else
+            args=(release --version "$version" --stage "$STAGE")
+            if [[ -n "$TARGET" ]]; then args+=(--target "$TARGET"); fi
+            .venv/bin/python tools/github_release.py "${args[@]}"
           fi
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -103,7 +114,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       RELEASE_COMMIT: ${{ github.sha }}
       REQUESTED_VERSION: ${{ inputs.version }}
-      PRERELEASE: ${{ inputs.prerelease }}
+      STAGE: ${{ inputs.stage }}
       TARGET: ${{ inputs.target }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -116,8 +127,7 @@ jobs:
       - name: Revalidate, tag exact commit, attach both assets to draft, then publish
         shell: bash
         run: |
-          args=(release --version "$REQUESTED_VERSION" --publish)
-          if [[ "$PRERELEASE" == true ]]; then args+=(--prerelease); fi
+          args=(release --version "$REQUESTED_VERSION" --stage "$STAGE" --publish)
           if [[ -n "$TARGET" ]]; then args+=(--target "$TARGET"); fi
           python tools/github_release.py "${args[@]}"
 
