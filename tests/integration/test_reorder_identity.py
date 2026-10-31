@@ -296,16 +296,21 @@ def check_confusable_names(context, desktop, first, second):
         assert len(undo.AllUndoActionTitles) == 1
         undo.clear()
 
-        # A pair that Calc made already does not fail the batch rename's lookup of final names.
-        observed = snapshot(document)
-        plan = plan_renames(names, [(second, "Other"), ("Last", "End")])
-        renamed = apply_renames(context, document, observed, plan)
-        assert renamed.status == "done", renamed
-        assert tuple(sheets.ElementNames) == (first, "Other", "End")
-        assert identities() == ["first", "second", "last"]
-        assert list(undo.AllUndoActionTitles) == ["Rename Sheets"]
-        undo.undo()
-        assert tuple(sheets.ElementNames) == names
+        # A pair that Calc made already does not fail the batch rename's lookup of final names,
+        # whether the batch keeps the pair or renames one of it.
+        for renames, after in (
+            ([("Last", "End")], (first, second, "End")),
+            ([(second, "Other"), ("Last", "End")], (first, "Other", "End")),
+        ):
+            observed = snapshot(document)
+            renamed = apply_renames(context, document, observed, plan_renames(names, renames))
+            assert renamed.status == "done", renamed
+            assert tuple(sheets.ElementNames) == after
+            assert identities() == ["first", "second", "last"]
+            assert list(undo.AllUndoActionTitles) == ["Rename Sheets"]
+            undo.undo()
+            assert tuple(sheets.ElementNames) == names
+            undo.clear()
 
         # Calc's own limit, recorded rather than asserted: a formula naming the second sheet.
         cell = sheets.getByIndex(2).getCellRangeByName("B1")
