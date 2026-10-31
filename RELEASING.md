@@ -6,7 +6,7 @@ owner's standing approval. Readiness includes the checks below and the independe
 the owner's sign-in; prepare the listing text, screenshots, compatibility information, and files
 before asking them to sign in. Do not put that account's credentials in CI.
 
-The current source is the `0.0.8` beta towards 0.1.0. Development is in beta: on the owner's
+The current source is the `0.0.9` beta towards 0.1.0. Development is in beta: on the owner's
 direction of 2026-10-31, the feature set is frozen at what 0.0.6 delivers, and the remaining
 work is fixes and polish. Publish betas, then release candidates once the stable release goal
 proposed in [#120](https://github.com/viell-dev/slop-calc-sheet-manager/issues/120) is agreed

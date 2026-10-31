@@ -58,22 +58,22 @@ If Sheet Manager does not work in an environment where it is expected to, please
   the desired rows again once loading or concurrent edits finish; the cause of this intermittent
   observation is still under investigation
   ([#88](https://github.com/viell-dev/slop-calc-sheet-manager/issues/88)).
-- **Assistive technology.** Rows give the sheet name and its hidden, protected, and scenario
-  states; the current-sheet arrow and tab colours are painted only. <Unreleased /> The list's
+- **Assistive technology.** Rows give the sheet name and its hidden, protected, and scenario states;
+  the current-sheet arrow and tab colours are painted only. <Unreleased since="0.0.9" /> The list's
   accessible name says which sheet Calc shows
   ([#83](https://github.com/viell-dev/slop-calc-sheet-manager/issues/83)). Through version 0.0.8,
   the panel's controls cannot be reached by moving through the accessibility hierarchy from the
-  sidebar, and with LibreOffice's gtk3 interface on Linux the accessibility bridge reports
-  nothing from the list. <Unreleased /> They can now, and the gtk3 bridge reports the list's
+  sidebar, and with LibreOffice's gtk3 interface on Linux the accessibility bridge reports nothing
+  from the list. <Unreleased since="0.0.9" /> They can now, and the gtk3 bridge reports the list's
   focus, rows and name changes
   ([#133](https://github.com/viell-dev/slop-calc-sheet-manager/issues/133)). After its controls the
-  panel holds an empty, unnamed, unavailable pane, which keeps clicks in its margins from
-  undocking the sidebar. No screen reader runs in the checks: they read LibreOffice's
-  accessibility interface, and the gtk3 bridge was probed once. Windows screen readers have not
-  been tried.
+  panel holds an empty, unnamed, unavailable pane, which keeps clicks in its margins from undocking
+  the sidebar. No screen reader runs in the checks: they read LibreOffice's accessibility interface,
+  and the gtk3 bridge was probed once. Windows screen readers have not been tried.
 - **Large lists.** The list rebuilds after changes. During rapid sheet switches the active-sheet
-  marker, and <Unreleased /> the list's accessible name, can lag; timing measurements and the
-  remaining work are in [#22](https://github.com/viell-dev/slop-calc-sheet-manager/issues/22).
+  marker, and <Unreleased since="0.0.9" /> the list's accessible name, can lag; timing measurements
+  and the remaining work are in
+  [#22](https://github.com/viell-dev/slop-calc-sheet-manager/issues/22).
 - **Final row divider.** At the end of a long list, the last row's lower divider can be absent.
   The painter leaves an ambiguous boundary pixel clear to keep decorations off scrollbars
   ([#86](https://github.com/viell-dev/slop-calc-sheet-manager/issues/86)).

@@ -211,20 +211,22 @@ button, Enter or Space runs that move; typing letters cannot enter cell content.
 F6, F10, Esc, and unbound
 Alt menu mnemonics retain LibreOffice's behaviour. Keys used by the list do not type into cells.
 Other documents keep their
-own keyboard handling. After Ctrl+S, focus moves to the sheet; use the focus cycle to return.
+own keyboard handling. <Unreleased since="0.0.8" /> After Ctrl+S, the list keeps or gets back the
+focus; before 0.0.8, with the gtk3 interface, it moved to the sheet
+([#23](https://github.com/viell-dev/slop-calc-sheet-manager/issues/23)).
 
-Rows use LibreOffice's native tree control and its accessible names: the sheet name, with
-hidden, protected, and scenario states written in text. The current-sheet arrow and tab-colour
-square are painted only. <Unreleased /> The list itself is named after the sheet Calc shows, for
-example "Sheets, current sheet: Bravo", so assistive technology can tell the viewed sheet from
-the selected rows; the name changes when another sheet is shown
+Rows use LibreOffice's native tree control and its accessible names: the sheet name, with hidden,
+protected, and scenario states written in text. The current-sheet arrow and tab-colour square are
+painted only. <Unreleased since="0.0.9" /> The list itself is named after the sheet Calc shows, for
+example "Sheets, current sheet: Bravo", so assistive technology can tell the viewed sheet from the
+selected rows; the name changes when another sheet is shown
 ([#83](https://github.com/viell-dev/slop-calc-sheet-manager/issues/83)). Tab colours are not
-announced. <Unreleased /> The move buttons, the list and the footer messages are reported to
-assistive technology in the order they appear, so it can reach them by moving through the
-sidebar as well as by keyboard focus
-([#133](https://github.com/viell-dev/slop-calc-sheet-manager/issues/133)).
-Automated checks read this information through LibreOffice's accessibility interface; what a
-particular screen reader announces is not verified (see [Known issues](./known-issues.md)).
+announced. <Unreleased since="0.0.9" /> The move buttons, the list and the footer messages are
+reported to assistive technology in the order they appear, so it can reach them by moving through
+the sidebar as well as by keyboard focus
+([#133](https://github.com/viell-dev/slop-calc-sheet-manager/issues/133)). Automated checks read
+this information through LibreOffice's accessibility interface; what a particular screen reader
+announces is not verified (see [Known issues](./known-issues.md)).
 
 ## When the list clears its selection
 
