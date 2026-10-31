@@ -5,6 +5,12 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+## 0.0.9 - 2026-10-31
+
+Third beta towards the stable release 0.1.0, following 0.0.8. It makes the list reachable
+and understandable through assistive technology; the feature set and the visible behaviour are
+unchanged. Requires LibreOffice 26.2.1 or later with Python support.
+
 - Name the list after the sheet Calc shows, for assistive technology
   ([#83](https://github.com/viell-dev/slop-calc-sheet-manager/issues/83)). The list is now
   named after the viewed sheet, for example "Sheets, current sheet: Bravo", and the name changes
@@ -24,6 +30,15 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   ([#83](https://github.com/viell-dev/slop-calc-sheet-manager/issues/83)). If a sheet's
   protection, visibility or colour changed just before, the refresh could put back the
   previous selection.
+
+Install the OXT manually over 0.0.8 or an earlier build, restart LibreOffice when asked, and
+check its SHA-256 asset. LibreOffice's Extension Manager offers only stable releases, and there
+is none yet, so later test builds remain manual downloads. Known limits are in the
+[known issues](https://viell-dev.github.io/slop-calc-sheet-manager/guide/known-issues). The
+usability pass the stable release requires,
+[#130](https://github.com/viell-dev/slop-calc-sheet-manager/issues/130), was prepared on 0.0.8
+and applies to this build as well; the plan towards 0.1.0 is in
+[#93](https://github.com/viell-dev/slop-calc-sheet-manager/issues/93).
 
 ## 0.0.8 - 2026-10-31
 
