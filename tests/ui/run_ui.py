@@ -1722,39 +1722,104 @@ def check_press_then_change(book):
     return evidence
 
 
+class PressProbe(unohelper.Base, XMouseListener):
+    """When the tree's mouse listeners heard each button press and release.
+
+    Added after the list's own listener: VCL notifies a window's mouse listeners in one posted
+    callback, in the order they were added, so a press heard here was handled by the list too.
+    """
+
+    def __init__(self):
+        self.heard = []
+
+    def mousePressed(self, event):
+        self.heard.append(("pressed", time.monotonic()))
+
+    def mouseReleased(self, event):
+        self.heard.append(("released", time.monotonic()))
+
+    def mouseEntered(self, event):
+        pass
+
+    def mouseExited(self, event):
+        pass
+
+    def disposing(self, event):
+        pass
+
+
 def check_newer_pick_survives_voided_press(book):
     """A voided press brings back the list's newer pick, never what now sits in its row (#28).
 
     Two ways to a newer pick while Bravo is held: Calc goes to Delta and the list follows, or
     Bravo is moved away and the user types "d". Then the button is released over the row Bravo
     left. Delta stays picked, and the Menu key's Hide acts on Delta alone.
+
+    Each step records what the list showed, Calc's view, the tree's focus, the held buttons, and
+    when the list's mouse listeners heard the press, so that a timeout can be classified from
+    the evidence alone (#134).
     """
     sheets = book.document.getSheets()
     evidence = {}
-    for way in ("calc_switch", "typing"):
-        reset(book)
-        point = book.point(1)
-        book.pointer.press(*point)
-        wait_until(lambda: book.selection() == [NAMES[1]], "the press to select Bravo")
-        if way == "calc_switch":
-            book.controller.setActiveSheet(sheets.getByName(NAMES[3]))
-            wait_until(lambda: book.selection() == [NAMES[3]], "the list to follow Delta")
-            sheets.moveByName(NAMES[1], 6)
-            wait_until(lambda: view.names(book.tree)[1] == NAMES[2], "the list to show the move")
-        else:
-            sheets.moveByName(NAMES[1], 6)
-            wait_until(lambda: view.names(book.tree)[1] == NAMES[2], "the list to show the move")
-            book.lab.input.tap("d", pause=0.5)
-            wait_until(lambda: book.selection() == [NAMES[3]], "typing to pick Delta")
-        time.sleep(1)
-        book.pointer.release()
-        time.sleep(1)
-        state = {"selection": book.selection(), "active": book.active()}
-        evidence[way] = state
-        assert state["selection"] == [NAMES[3]], evidence
-        state["menu"] = hide_through_menu(
-            book, [NAMES[3]], lambda: book.lab.input.tap("Menu", pause=0.3)
-        )
+    probe = PressProbe()
+    book.tree.addMouseListener(probe)
+    try:
+        for way in ("calc_switch", "typing"):
+            reset(book)
+            probe.heard.clear()
+            started = time.monotonic()
+            steps = []
+            evidence[way] = {"steps": steps}
+
+            def step(what, condition=None, started=started, steps=steps):
+                failure = None
+                if condition is not None:
+                    try:
+                        wait_until(condition, what)
+                    except AssertionError as error:
+                        failure = error
+                steps.append(
+                    {
+                        "step": what,
+                        "at": round(time.monotonic() - started, 3),
+                        "met": failure is None,
+                        "selection": book.selection(),
+                        "active": book.active(),
+                        "calc_tabs": book.calc_tabs(),
+                        "tree_focus": book.tree.hasFocus(),
+                        "held": sorted(book.lab.input.held),
+                        "heard": [(kind, round(at - started, 3)) for kind, at in probe.heard],
+                    }
+                )
+                if failure is not None:
+                    raise AssertionError(f"{failure}; evidence: {json.dumps(evidence)}")
+
+            point = book.point(1)
+            book.pointer.press(*point)
+            step("the press to select Bravo", lambda: book.selection() == [NAMES[1]])
+            if way == "calc_switch":
+                book.controller.setActiveSheet(sheets.getByName(NAMES[3]))
+                step("Calc to go to Delta")
+                step("the list to follow Delta", lambda: book.selection() == [NAMES[3]])
+                sheets.moveByName(NAMES[1], 6)
+                step("the list to show the move", lambda: view.names(book.tree)[1] == NAMES[2])
+            else:
+                sheets.moveByName(NAMES[1], 6)
+                step("the list to show the move", lambda: view.names(book.tree)[1] == NAMES[2])
+                book.lab.input.tap("d", pause=0.5)
+                step("typing to pick Delta", lambda: book.selection() == [NAMES[3]])
+            time.sleep(1)
+            book.pointer.release()
+            time.sleep(1)
+            step("the release")
+            state = evidence[way]
+            state.update(selection=book.selection(), active=book.active())
+            assert state["selection"] == [NAMES[3]], evidence
+            state["menu"] = hide_through_menu(
+                book, [NAMES[3]], lambda: book.lab.input.tap("Menu", pause=0.3)
+            )
+    finally:
+        book.tree.removeMouseListener(probe)
     return evidence
 
 
