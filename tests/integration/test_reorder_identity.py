@@ -5,7 +5,6 @@ It also keeps each sheet's own handle when Calc's name lookup cannot tell two na
 
 from typing import Any
 
-import uno
 import unohelper
 from com.sun.star.sheet import XActivationEventListener
 from main_thread import close_after
@@ -373,49 +372,57 @@ def check_confusable_names(context, desktop, first, second):
         formula = {"formula": cell.Formula, "value": cell.String}
         cell.Formula = ""
 
-        # Calc's Delete, run from the list's menu, on the second of the pair while the first is
-        # viewed. Calc deletes an empty sheet without asking, so the second loses its cell, and
-        # keeps its tab colour to tell it apart after Undo. Last, because Calc's Undo cannot
-        # bring it back (#138).
-        second_sheet = sheets.getByIndex(1)
-        second_sheet.IsVisible = True
-        strings = uno.getConstantByName("com.sun.star.sheet.CellFlags.STRING")
-        second_sheet.getCellRangeByName("A1").clearContents(strings)
+        # Calc cannot undo deleting either sheet of this pair (#138). The list refuses before
+        # grouping, including when both are picked; a direct run must enforce the menu's refusal.
+        sheets.getByIndex(0).unprotect("")
+        sheets.getByIndex(1).IsVisible = True
+        controller.setActiveSheet(sheets.getByIndex(2))
+        undo.clear()
+        before = (identities(), tuple(sheets.ElementNames), selected_tabs(context, controller))
+        menu = SheetMenu(context, frame, document, controller)
+        refusals = []
+        for picked in ([first], [second], [first, second], [second, "Last"]):
+            observed = snapshot(document)
+            monitor, proof = observed.monitor, observed.generation
+            popup, enabled = menu.build(observed, picked)
+            assert DELETE not in enabled and not popup.isItemEnabled(DELETE)
+            reason = menu.run(DELETE, observed, picked, lambda m=monitor, p=proof: m.check() == p)
+            assert first in reason and second in reason and "undo" in reason, reason
+            assert popup.getTipHelpText(DELETE) == reason
+            assert before == (
+                identities(),
+                tuple(sheets.ElementNames),
+                selected_tabs(context, controller),
+            )
+            assert controller.ActiveSheet.Name == "Last" and not undo.AllUndoActionTitles
+            assert monitor.check() == proof
+            refusals.append(reason)
+
+        # Renaming the other sheet removes the unsafe pair. Delete now reaches exactly the
+        # second sheet, with the first viewed. An empty target avoids a confirmation dialog;
+        # its blue tab colour identifies it on Undo, and the surviving identifying cells stay.
+        sheets.getByIndex(0).Name = "Distinct"
+        sheets.getByIndex(1).getCellRangeByName("A1").String = ""
         controller.setActiveSheet(sheets.getByIndex(0))
         undo.clear()
         observed = snapshot(document)
         monitor, proof = observed.monitor, observed.generation
-        menu = SheetMenu(context, frame, document, controller)
         assert menu.run(DELETE, observed, [second], lambda: monitor.check() == proof) == ""
         deleted: dict[str, Any] = {
             "names": list(sheets.ElementNames),
             "undo": list(undo.AllUndoActionTitles),
+            "refusals_before_rename": refusals,
         }
-        assert tuple(sheets.ElementNames) == (first, "Last"), deleted
+        assert tuple(sheets.ElementNames) == ("Distinct", "Last"), deleted
         assert identities() == ["first", "last"], "Delete must delete exactly the second sheet"
         assert sheets.getByIndex(0).TabColor == 0xC00000 and len(undo.AllUndoActionTitles) == 1
         title = undo.CurrentUndoActionTitle
         undo.undo()
-        after_undo = {
-            "names": list(sheets.ElementNames),
-            "identities": identities(),
-            "colors": [sheets.getByIndex(i).TabColor for i in range(sheets.Count)],
-            "undo": list(undo.AllUndoActionTitles),
-            "redo": list(undo.AllRedoActionTitles),
-        }
-        # Calc's own Undo of Delete Sheet leaves such a sheet deleted, using up the step (#138):
-        # recorded, and the check fails if Calc's Undo starts to do anything else.
-        restored = {
-            "names": list(names),
-            "identities": ["first", "", "last"],
-            "colors": [0xC00000, 0x0070C0, -1],
-            "undo": [],
-            "redo": [title],
-        }
-        lost = {**restored, "names": [first, "Last"], "identities": ["first", "last"]}
-        lost["colors"] = [0xC00000, -1]
-        assert after_undo in (restored, lost), after_undo
-        deleted["undo_restored"] = after_undo == restored
+        assert tuple(sheets.ElementNames) == ("Distinct", second, "Last")
+        assert identities() == ["first", "", "last"]
+        assert [sheets.getByIndex(i).TabColor for i in range(3)] == [0xC00000, 0x0070C0, -1]
+        assert not undo.AllUndoActionTitles and list(undo.AllRedoActionTitles) == [title]
+        deleted["undo_restored"] = True
     except BaseException as failure:
         close_after(context, document, failure)
         raise

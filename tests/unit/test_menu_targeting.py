@@ -8,6 +8,7 @@ from unittest.mock import Mock
 
 import pytest
 
+from sheet_manager.rename import quoted
 from sheet_manager.selection import Ref
 from tests.unit.source_methods import method
 
@@ -37,6 +38,7 @@ def menu_function(name: str) -> Any:
     namespace: dict[str, Any] = {
         "Snapshot": object,
         "tr": str,
+        "quoted": quoted,
         "_stale": _stale,
         "INSERT": INSERT,
         "DELETE": DELETE,
@@ -77,6 +79,7 @@ class Calc:
         self.readonly = self.protected = self.recording = False
         self.dispatched: list[str] = []
         self.enabled = True
+        self.lookup_aliases: dict[str, str] = {}
         # Other code that Calc runs inside a step: activation listeners during selection, or
         # dispatch interceptors and status queries while the command is looked up.
         self.on_select: Callable[[], None] | None = None
@@ -86,6 +89,9 @@ class Calc:
 
     def by_name(self, name: str) -> Sheet:
         return next(sheet for sheet in self.sheets if sheet.name == name)
+
+    def lookup(self, name: str) -> Sheet:
+        return self.by_name(self.lookup_aliases.get(name, name))
 
     def order(self) -> list[str]:
         return [sheet.name for sheet in self.sheets]
@@ -116,7 +122,10 @@ class Calc:
 
     def document(self) -> SimpleNamespace:
         return SimpleNamespace(
-            getSheets=lambda: SimpleNamespace(getElementNames=self.order, getByName=self.by_name),
+            getSheets=lambda: SimpleNamespace(
+                getElementNames=self.order,
+                getByName=self.lookup,
+            ),
             isReadonly=lambda: self.readonly,
             isProtected=lambda: self.protected,
             getPropertyValue=self.property,
@@ -204,6 +213,43 @@ def bound_menu(
 
 
 NAMES = ["Alfa", "Bravo", "Charlie", "Delta", "Echo"]
+
+
+@pytest.mark.parametrize("pair", [("ﬁ", "fi"), ("I", "ı")])
+@pytest.mark.parametrize("indices", [(0,), (1,), (0, 1)])
+def test_delete_refuses_either_side_of_a_lookup_collision(
+    pair: tuple[str, str], indices: tuple[int, ...]
+) -> None:
+    first, second = pair
+    calc = Calc([first, second, "Last"], "Last", ["Last"])
+    calc.lookup_aliases[second] = first
+    menu = bound_menu(calc)
+    before = calc.view()
+    reason = menu.run(DELETE, calc.snapshot(), [pair[i] for i in indices], lambda: True)
+    assert quoted(first) in reason and quoted(second) in reason
+    assert "undo" in reason and "Rename" in reason
+    assert calc.view() == before and not calc.dispatched
+    # An unrelated sheet is still deletable in the same workbook.
+    assert menu.run(DELETE, calc.snapshot(), ["Last"], lambda: True) == ""
+    assert calc.dispatched == [COMMANDS[DELETE]]
+
+
+@pytest.mark.parametrize("when", ["grouping", "state"])
+def test_delete_rechecks_lookup_after_native_callbacks(when: str) -> None:
+    calc = Calc(["ﬁ", "fi", "Last"], "Last", ["Last"])
+    menu = bound_menu(calc)
+
+    def change_lookup() -> None:
+        calc.lookup_aliases["fi"] = "ﬁ"
+
+    if when == "grouping":
+        calc.on_select = change_lookup
+    else:
+        calc.on_state = change_lookup
+    before = calc.view()
+    reason = menu.run(DELETE, calc.snapshot(), ["ﬁ"], lambda: True)
+    assert "undo" in reason and not calc.dispatched
+    assert calc.view() == before
 
 
 def fresh() -> Calc:
