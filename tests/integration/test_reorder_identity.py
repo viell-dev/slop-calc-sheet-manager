@@ -5,6 +5,9 @@ It also keeps each sheet's own handle when Calc's name lookup cannot tell two na
 
 from typing import Any
 
+import uno
+import unohelper
+from com.sun.star.sheet import XActivationEventListener
 from main_thread import close_after
 from sheet_list_view import (
     BATCHES,
@@ -13,6 +16,7 @@ from sheet_list_view import (
     cover_batch,
     held_batch,
     on_main_thread,
+    poll,
     release,
     unrecorded_batch,
 )
@@ -22,9 +26,9 @@ from sheet_manager import uno_structure
 from sheet_manager.rename import plan_renames
 from sheet_manager.reorder import plan_move, plan_order
 from sheet_manager.sheet_list import tab_color
-from sheet_manager.uno_calc import read_rows
+from sheet_manager.uno_calc import read_rows, select_tabs, selected_tabs
 from sheet_manager.uno_list import SheetList
-from sheet_manager.uno_menu import HIDE, SheetMenu
+from sheet_manager.uno_menu import DELETE, HIDE, SheetMenu
 from sheet_manager.uno_rename import apply_renames
 from sheet_manager.uno_reorder import apply_order, is_current, preflight, snapshot
 from sheet_manager.uno_show import show_sheets
@@ -187,8 +191,23 @@ class _Lookup:
         return self.real.getByIndex(list(self.real.getElementNames()).index(name))
 
 
+class _Views(unohelper.Base, XActivationEventListener):
+    """The identifying cell of each sheet Calc views, in order; it only records."""
+
+    def __init__(self):
+        self.seen = []
+
+    def activeSpreadsheetChanged(self, aEvent):
+        sheet: Any = aEvent.ActiveSheet
+        self.seen.append(sheet.getCellRangeByName("A1").getString())
+
+    def disposing(self, Source):
+        pass
+
+
 def check_confusable_names(context, desktop, first, second):
-    """Rows, Show, Hide, moves and renames act on each sheet of a confusable pair (#113)."""
+    """Rows, Show, Hide, Delete, moves, their Undo, and renames act on each sheet of a confusable
+    pair (#113)."""
     document = desktop.loadComponentFromURL("private:factory/scalc", "_blank", 0, ())
     try:
         controller = document.CurrentController
@@ -216,7 +235,9 @@ def check_confusable_names(context, desktop, first, second):
         undo.clear()
 
         def identities():
-            return [sheets.getByIndex(i).getCellRangeByName("A1").String for i in range(3)]
+            return [
+                sheets.getByIndex(i).getCellRangeByName("A1").String for i in range(sheets.Count)
+            ]
 
         def shown():
             return [bool(sheets.getByIndex(i).IsVisible) for i in range(3)]
@@ -238,11 +259,45 @@ def check_confusable_names(context, desktop, first, second):
         assert result.status == "done", result
         assert shown() == [True, True, True] and list(undo.AllUndoActionTitles) == ["Show Sheet"]
 
-        # Moves restore the viewed sheet afterwards; view the second of the pair.
-        viewed_after_undo: list[str] = []
+        # Moves restore the viewed sheet and Calc's tab group afterwards; view the second of the
+        # pair with both grouped.
+        views_after_undo: list[list[str]] = []
         controller.setActiveSheet(observed.handles[1])
+        select_tabs(context, frame, [0, 1])
         assert controller.ActiveSheet.Name == second
+        assert selected_tabs(context, controller) == [0, 1]
         undo.clear()
+
+        def undo_move():
+            """Undo a move made with the second of the pair viewed, and wait for its view.
+
+            Calc's own Undo of a move views the sheets it moves back, here the first of the pair
+            last, and Calc's moves themselves never change the view. The restoration posted by
+            the move's markers (#91) then views the second again: `_restore_view`'s branch that
+            activates the viewed sheet by index, which by name would find the first. The first is
+            grouped too: Calc's tab selection then keeps viewing it, where a group of the second
+            alone would view the second again and hide an activation of the wrong sheet.
+            """
+            views = _Views()
+            controller.addActivationEventListener(views)
+            try:
+                undo.undo()
+                poll(
+                    lambda: (
+                        "first" in views.seen
+                        and views.seen[-1] == "second"
+                        and controller.ActiveSheet.getCellRangeByName("A1").String == "second"
+                    ),
+                    "Calc's Undo to view the first sheet and the restoration the second",
+                    timeout=5,
+                )
+            except AssertionError as error:
+                raise AssertionError(f"{error}; viewed {views.seen}") from None
+            finally:
+                controller.removeActivationEventListener(views)
+            assert controller.ActiveSheet.Name == second
+            assert selected_tabs(context, controller) == [0, 1], views.seen
+            views_after_undo.append(views.seen)
 
         # Calc moves a sheet only by its name, and this name finds the first of the pair.
         observed = snapshot(document)
@@ -270,11 +325,9 @@ def check_confusable_names(context, desktop, first, second):
         assert tuple(sheets.ElementNames) == (second, "Last", first)
         assert identities() == ["second", "last", "first"]
         assert list(undo.AllUndoActionTitles) == ["Move Sheets"]
-        undo.undo()
+        undo_move()
         assert tuple(sheets.ElementNames) == names and identities() == ["first", "second", "last"]
         undo.clear()
-        viewed_after_undo.append(controller.ActiveSheet.Name)
-        controller.setActiveSheet(observed.handles[1])  # Calc's undo views a sheet it moved.
 
         # The first sheet moves behind the second, which then comes first, and moves itself.
         observed = snapshot(document)
@@ -285,11 +338,9 @@ def check_confusable_names(context, desktop, first, second):
         assert controller.ActiveSheet.Name == second
         assert identities() == ["last", "second", "first"]
         assert list(undo.AllUndoActionTitles) == ["Move Sheets"]
-        undo.undo()
+        undo_move()
         assert tuple(sheets.ElementNames) == names and identities() == ["first", "second", "last"]
         undo.clear()
-        viewed_after_undo.append(controller.ActiveSheet.Name)
-        controller.setActiveSheet(observed.handles[1])  # Calc's undo views a sheet it moved.
 
         # Calc's Hide, run from the list's menu, on the second of the pair.
         observed = snapshot(document)
@@ -320,13 +371,59 @@ def check_confusable_names(context, desktop, first, second):
         cell = sheets.getByIndex(2).getCellRangeByName("B1")
         cell.Formula = f"='{second}'.A1"
         formula = {"formula": cell.Formula, "value": cell.String}
+        cell.Formula = ""
+
+        # Calc's Delete, run from the list's menu, on the second of the pair while the first is
+        # viewed. Calc deletes an empty sheet without asking, so the second loses its cell, and
+        # keeps its tab colour to tell it apart after Undo. Last, because Calc's Undo cannot
+        # bring it back (#138).
+        second_sheet = sheets.getByIndex(1)
+        second_sheet.IsVisible = True
+        strings = uno.getConstantByName("com.sun.star.sheet.CellFlags.STRING")
+        second_sheet.getCellRangeByName("A1").clearContents(strings)
+        controller.setActiveSheet(sheets.getByIndex(0))
+        undo.clear()
+        observed = snapshot(document)
+        monitor, proof = observed.monitor, observed.generation
+        menu = SheetMenu(context, frame, document, controller)
+        assert menu.run(DELETE, observed, [second], lambda: monitor.check() == proof) == ""
+        deleted: dict[str, Any] = {
+            "names": list(sheets.ElementNames),
+            "undo": list(undo.AllUndoActionTitles),
+        }
+        assert tuple(sheets.ElementNames) == (first, "Last"), deleted
+        assert identities() == ["first", "last"], "Delete must delete exactly the second sheet"
+        assert sheets.getByIndex(0).TabColor == 0xC00000 and len(undo.AllUndoActionTitles) == 1
+        title = undo.CurrentUndoActionTitle
+        undo.undo()
+        after_undo = {
+            "names": list(sheets.ElementNames),
+            "identities": identities(),
+            "colors": [sheets.getByIndex(i).TabColor for i in range(sheets.Count)],
+            "undo": list(undo.AllUndoActionTitles),
+            "redo": list(undo.AllRedoActionTitles),
+        }
+        # Calc's own Undo of Delete Sheet leaves such a sheet deleted, using up the step (#138):
+        # recorded, and the check fails if Calc's Undo starts to do anything else.
+        restored = {
+            "names": list(names),
+            "identities": ["first", "", "last"],
+            "colors": [0xC00000, 0x0070C0, -1],
+            "undo": [],
+            "redo": [title],
+        }
+        lost = {**restored, "names": [first, "Last"], "identities": ["first", "last"]}
+        lost["colors"] = [0xC00000, -1]
+        assert after_undo in (restored, lost), after_undo
+        deleted["undo_restored"] = after_undo == restored
     except BaseException as failure:
         close_after(context, document, failure)
         raise
     close_after(context, document)
     return {
         "move_refusal": refused.message,
-        "viewed_after_undo": viewed_after_undo,
+        "views_after_undo": views_after_undo,
+        "delete": deleted,
         "formula_naming_second": formula,
     }
 
