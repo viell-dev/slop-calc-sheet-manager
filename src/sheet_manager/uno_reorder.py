@@ -15,6 +15,14 @@ the result or its recovery. docs/reordering.md is the contract the panel relies 
   `is_current`, `preflight` and `apply_order` check both. Undo and Redo invalidate a held
   snapshot even when they restore the original order, so recovery tests take fresh ones. The
   one exception is a proved Undo or Redo of a move made here (#91, below).
+- Read sheet handles by index, never by name. Calc accepts names that its own lookup cannot tell
+  apart, such as `ﬁ` (U+FB01) beside `fi`, or `ı` beside `I` in English locales, and the lookup
+  then finds the first of them for both (#113); measured with 26.2.1.2 and 26.8.1.1. Restoring
+  the view also activates the sheet by index.
+- `moveByName` is the only sheet move the API offers, and it uses that lookup: measured with
+  26.8.1.1, it moved `ﬁ` when asked to move `fi`. `preflight` therefore asks Calc's lookup for
+  the moved names and refuses a plan in which a move's name would find another sheet when it
+  runs (`reorder.lookup_conflict`), and each call checks the name again just before it moves.
 - Own-move markers (#91). With room for them (an undo capacity of two or more), a move group
   holds a `_Marker` before its first move and one after its last, inside the balanced contexts
   like the moves. `structure` states what they prove and when. Their `undo` and `redo` run inside
@@ -42,7 +50,8 @@ from com.sun.star.beans import PropertyValue
 from com.sun.star.document import XUndoAction
 
 from sheet_manager.i18n import tr
-from sheet_manager.reorder import Move, Plan, Sheet, ordered_blocks, plan_order
+from sheet_manager.rename import quoted
+from sheet_manager.reorder import Move, Plan, Sheet, lookup_conflict, ordered_blocks, plan_order
 from sheet_manager.structure import OwnMove
 from sheet_manager.uno_calc import MainThread, report, selected_tabs_method
 from sheet_manager.uno_structure import StructureMonitor, monitor_for
@@ -83,10 +92,13 @@ def snapshot(document: Any) -> Snapshot:
 
 
 def _read_sheets(document: Any) -> tuple[tuple[Sheet, ...], tuple[Any, ...]]:
-    """Read physical state without consuming the monitor's pending notification evidence."""
+    """Read physical state without consuming the monitor's pending notification evidence.
+
+    Handles are read by index: a lookup by name can find another sheet (#113).
+    """
     collection = document.getSheets()
     names = tuple(collection.getElementNames())
-    handles = tuple(collection.getByName(name) for name in names)
+    handles = tuple(collection.getByIndex(index) for index in range(len(names)))
     return (
         tuple(
             Sheet(name, bool(handle.getIsScenario()))
@@ -149,7 +161,19 @@ def preflight(context: Any, document: Any, observed: Snapshot, plan: Plan) -> Av
         # Validate against the canonical (cached) plan, including indices and scenario blocks.
         if plan_order(observed.sheets, plan.target) != plan:
             return Availability(False, tr("The move plan is invalid. Refresh it and try again."))
-        return plan_availability(move_availability(context, document), plan)
+        permission = plan_availability(move_availability(context, document), plan)
+        if not permission.allowed:
+            return permission
+        conflict = _lookup_conflict(document, plan)
+        if conflict is not None:
+            return Availability(
+                False,
+                tr(
+                    "Calc cannot move {name} by its name, because it takes the name for {other}. "
+                    "Rename one of them first."
+                ).format(name=quoted(conflict[0]), other=quoted(conflict[1])),
+            )
+        return permission
     except Exception as error:
         return Availability(
             False, tr("Sheet Manager could not verify that this move is safe."), str(error)
@@ -196,6 +220,21 @@ def plan_availability(permission: Availability, plan: Plan) -> Availability:
     return permission
 
 
+def _lookup_conflict(document: Any, plan: Plan) -> tuple[str, str] | None:
+    """A move whose name Calc's lookup would give another sheet, and that sheet's name.
+
+    When every moved name finds its own sheet, each moved sheet comes first among the sheets
+    Calc cannot tell apart from it, and no other moved sheet is among them. The sheets that stay
+    keep their order relative to it, so it is still first when it moves; a plan moves each sheet
+    once. Only otherwise are all names looked up and the plan simulated.
+    """
+    sheets = document.getSheets()
+    if all(sheets.getByName(move.name).getName() == move.name for move in plan.moves):
+        return None
+    finds = {sheet.name: str(sheets.getByName(sheet.name).getName()) for sheet in plan.before}
+    return lookup_conflict(plan, finds)
+
+
 def _selected_names(context: Any, controller: Any, names: tuple[str, ...]) -> tuple[str, ...]:
     reflection = context.ServiceManager.createInstanceWithContext(
         "com.sun.star.reflection.CoreReflection", context
@@ -208,9 +247,9 @@ def _selected_names(context: Any, controller: Any, names: tuple[str, ...]) -> tu
 
 def _restore_view(context: Any, controller: Any, active: str, selected: tuple[str, ...]) -> None:
     sheets = controller.getModel().getSheets()
-    if controller.getActiveSheet().getName() != active:
-        controller.setActiveSheet(sheets.getByName(active))
     names = tuple(sheets.getElementNames())
+    if controller.getActiveSheet().getName() != active:
+        controller.setActiveSheet(sheets.getByIndex(names.index(active)))
     if set(_selected_names(context, controller, names)) != set(selected):
         argument = PropertyValue()
         argument.Name = "Tables"
@@ -424,8 +463,12 @@ def _apply_order(
                 continue
             if not controller.getFrame().isActive():
                 raise RuntimeError("The document's window is no longer active")
+            sheets = document.getSheets()
+            # moveByName moves the sheet that Calc's lookup finds for the name (#113).
+            if sheets.getByName(move.name).getName() != move.name:
+                raise RuntimeError("Calc's lookup finds another sheet for a moved name")
             attempted = True
-            document.getSheets().moveByName(move.name, move.index)
+            sheets.moveByName(move.name, move.index)
             completed += 1
 
     try:
