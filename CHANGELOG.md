@@ -5,20 +5,6 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
-- Keep the keyboard focus in the sheet list after Ctrl+S
-  ([#23](https://github.com/viell-dev/slop-calc-sheet-manager/issues/23)). With LibreOffice's
-  gtk3 interface on Linux, a save moves the focus from any sidebar control to the sheet, Calc's
-  own panels included. The list now takes it back once the save has finished, after any Save As,
-  file format, or error dialog has closed, so typing goes on searching the list instead of
-  editing a cell. A dialog keeps the focus while it is open.
-- Keep the list's picks and the view through Undo and Redo of its own moves
-  ([#91](https://github.com/viell-dev/slop-calc-sheet-manager/issues/91)). After dragging sheets
-  or moving them with a button, the menu or a shortcut, Ctrl+Z and Ctrl+Y no longer clear the
-  picked rows, and the sheet you were viewing and Calc's selected tabs stay as they were instead
-  of jumping to a moved sheet. The list recognizes its own move only when nothing that could
-  change which sheet is which has happened since; otherwise Undo and Redo still clear the picks
-  and show the notice, as before. With undo history set to one step they always do. If a move
-  fails before it moves any sheet, Redo history from before the move is now lost.
 - Name the list after the sheet Calc shows, for assistive technology
   ([#83](https://github.com/viell-dev/slop-calc-sheet-manager/issues/83)). The list is now
   named after the viewed sheet, for example "Sheets, current sheet: Bravo", and the name changes
@@ -31,6 +17,36 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   ([#83](https://github.com/viell-dev/slop-calc-sheet-manager/issues/83)). If a sheet's
   protection, visibility or colour changed just before, the refresh could put back the
   previous selection.
+
+## 0.0.8 - 2026-10-31
+
+Second beta towards the stable release 0.1.0, following 0.0.7. It fixes two defects in the
+main workflow; the feature set is unchanged. Requires LibreOffice 26.2.1 or later with Python
+support.
+
+- Keep the list's picks and the view through Undo and Redo of its own moves
+  ([#91](https://github.com/viell-dev/slop-calc-sheet-manager/issues/91)). After dragging sheets
+  or moving them with a button, the menu or a shortcut, Ctrl+Z and Ctrl+Y no longer clear the
+  picked rows, and the sheet you were viewing and Calc's selected tabs stay as they were instead
+  of jumping to a moved sheet. The list recognizes its own move only when nothing that could
+  change which sheet is which has happened since; otherwise Undo and Redo still clear the picks
+  and show the notice, as before. With undo history set to one step they always do. If a move
+  fails before it moves any sheet, Redo history from before the move is now lost.
+- Keep the keyboard focus in the sheet list after Ctrl+S
+  ([#23](https://github.com/viell-dev/slop-calc-sheet-manager/issues/23)). With LibreOffice's
+  gtk3 interface on Linux, a save moves the focus from any sidebar control to the sheet, Calc's
+  own panels included. The list now takes it back once the save has finished, after any Save As,
+  file format, or error dialog has closed, so typing goes on searching the list instead of
+  editing a cell. A dialog keeps the focus while it is open.
+
+Install the OXT manually over 0.0.7 or an earlier build, restart LibreOffice when asked, and check
+its SHA-256 asset. LibreOffice's Extension Manager offers only stable releases, and there is none
+yet, so later test builds remain manual downloads. Known limits are in the [known
+issues](https://viell-dev.github.io/slop-calc-sheet-manager/guide/known-issues). This is the build
+for the usability pass that the stable release requires: the tasks are in
+[#130](https://github.com/viell-dev/slop-calc-sheet-manager/issues/130), and anyone familiar with
+Calc can do them. The plan towards 0.1.0 is in
+[#93](https://github.com/viell-dev/slop-calc-sheet-manager/issues/93).
 
 ## 0.0.7 - 2026-10-31
 

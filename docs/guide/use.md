@@ -61,17 +61,16 @@ so pressing Up or Down again moves the same sheets further.
 above the list run the same actions.
 
 A move is one **Move Sheets** undo step. The move preserves the active sheet and Calc's tab
-selection. Use Ctrl+Z to undo it. **Undo and Redo of a move.** <Unreleased /> Undo and Redo of
-the list's own move keep the list's picks, the viewed sheet and Calc's tab selection, so you can
-undo a move and try again with the same rows picked. With undo history set to one step, and after
-other changes described in [When the list clears its selection](#when-the-list-clears-its-selection),
-Undo and Redo still clear the picks and Calc's view can change; check the highlighted rows before
-the next move then.
-A stale selection or a move that cannot be fully undone is refused with
-an explanation. Unavailable menu actions are disabled, with a reason in their help text, such as a
-protected workbook structure, recorded changes, disabled undo, no selection, or an edge. Native
-popup rendering can hide unavailable actions and their reasons; see the
-[known issue](./known-issues.md).
+selection. Use Ctrl+Z to undo it. **Undo and Redo of a move.** <Unreleased since="0.0.8" /> Undo and
+Redo of the list's own move keep the list's picks, the viewed sheet and Calc's tab selection, so you
+can undo a move and try again with the same rows picked. With undo history set to one step, and
+after other changes described in [When the list clears its
+selection](#when-the-list-clears-its-selection), Undo and Redo still clear the picks and Calc's view
+can change; check the highlighted rows before the next move then. A stale selection or a move that
+cannot be fully undone is refused with an explanation. Unavailable menu actions are disabled, with a
+reason in their help text, such as a protected workbook structure, recorded changes, disabled undo,
+no selection, or an edge. Native popup rendering can hide unavailable actions and their reasons; see
+the [known issue](./known-issues.md).
 
 ## Open the sheet tab menu
 
@@ -231,22 +230,22 @@ its selection when it cannot establish that the picked sheets are still the same
 includes inserting or deleting sheets, undo and redo, and some macro or unrecorded changes.
 A notice explains conservative clearing of a user-made selection. Pick the sheets again before acting.
 
-**Undo and Redo of the list's moves.** <Unreleased /> Undo and Redo of a move the list made
-itself, by dragging, a move button, the menu or a shortcut, keep the picks and the view. The list
-recognizes its own move only when nothing that could change which sheet is which has happened
-since: Undo and Redo of anything else, an inserted, deleted or replaced sheet, a new window of
-the workbook, a macro adding actions to the move's undo step, or undo history set to one step
-still clear the picks as before.
+**Undo and Redo of the list's moves.** <Unreleased since="0.0.8" /> Undo and Redo of a move the list
+made itself, by dragging, a move button, the menu or a shortcut, keep the picks and the view. The
+list recognizes its own move only when nothing that could change which sheet is which has happened
+since: Undo and Redo of anything else, an inserted, deleted or replaced sheet, a new window of the
+workbook, a macro adding actions to the move's undo step, or undo history set to one step still
+clear the picks as before.
 
 **Panel notice.** <Unreleased since="0.0.5" /> This explanation appears within the panel and
 disappears after ten seconds, without changing keyboard focus or dismissing a grouped-editing
 warning. In 0.0.4, the notice is an infobar that you close yourself.
 
-Calc's Undo may also change the active sheet and native tab selection. After a grouped move,
-it can activate the sheet immediately above the restored group; after a single move, it can
-activate the restored sheet itself. When the list clears its picks, it follows that native
-selection. <Unreleased /> After Undo or Redo of the list's own move, the list puts back the
-active sheet and tab selection that each window of the workbook had just before
+Calc's Undo may also change the active sheet and native tab selection. After a grouped move, it can
+activate the sheet immediately above the restored group; after a single move, it can activate the
+restored sheet itself. When the list clears its picks, it follows that native selection. <Unreleased
+since="0.0.8" /> After Undo or Redo of the list's own move, the list puts back the active sheet and
+tab selection that each window of the workbook had just before
 ([#91](https://github.com/viell-dev/slop-calc-sheet-manager/issues/91)).
 
 The list keeps its range anchor through ordinary refreshes while that sheet identity remains

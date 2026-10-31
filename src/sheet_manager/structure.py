@@ -337,10 +337,21 @@ class StructureEvents:
         move.state = "revoked"
 
     def revoke(self, move: OwnMove) -> None:
-        """A marker could not follow its replay: the group is never trusted again."""
-        if self.replay is not None and self.replay.move is move:
-            self._abort()
-        move.state = "revoked"
+        """A marker could not follow its replay: the group is never trusted again.
+
+        Whatever happens on the way, the group ends revoked and no replay of it stays open.
+        """
+        replay = self.replay if self.replay is not None and self.replay.move is move else None
+        try:
+            if replay is not None:
+                self._abort()
+        finally:
+            move.state = "revoked"
+            if replay is not None:
+                if self.replay is replay:
+                    self.replay = None
+                if self.view_replay == replay.serial:
+                    self.view_replay = self.view_proved = None
 
     def view_restored(self, serial: int) -> None:
         """The adapter is done with the view after this replay, restored or not."""
