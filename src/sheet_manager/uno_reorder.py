@@ -41,6 +41,7 @@ the result or its recovery. docs/reordering.md is the contract the panel relies 
   history from before the move is lost.
 """
 
+import contextlib
 from dataclasses import dataclass
 from typing import Any, Literal, cast
 
@@ -295,8 +296,12 @@ class _Ends:
                 views = self._sample()
                 self._main.post(lambda: self._restore(serial, views), RESTORING)
         except Exception:
-            events.revoke(self.move)
-            report("following Undo or Redo of a sheet move")
+            # Nothing may escape into the replay: neither the revocation nor the report.
+            try:
+                events.revoke(self.move)
+            finally:
+                with contextlib.suppress(Exception):
+                    report("following Undo or Redo of a sheet move")
 
     def _sample(self) -> tuple[_View, ...]:
         """Every window's view as the replay found it, as handles: they denote the same sheets

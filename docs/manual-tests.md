@@ -89,7 +89,7 @@ instead. Take screenshots only of this workbook.
     Expected: the selection moves in the list only, Shift extends it, and Enter shows Mike.
 13. **Shortcuts.** With the list focused, press Ctrl+Page Down, then Ctrl+Page Up.
     Expected: Calc shows the next sheet, then the previous one, and the list follows.
-14. 14. **Undo and save from the list.** Type text into a cell and press Enter, click a row of the
+14. **Undo and save from the list.** Type text into a cell and press Enter, click a row of the
     list, press Ctrl+Z, type text into a cell again, click a row, and press Ctrl+S. Expected: Ctrl+Z
     removes the text; Ctrl+S saves without a dialog and the document's modified indicator in the
     status bar clears. <Unreleased since="0.0.8" /> After the save the list still has the focus:
@@ -135,7 +135,7 @@ instead. Take screenshots only of this workbook.
     works.
 22. **Another deck.** Switch the sidebar to the Properties deck and type into a cell.
     Expected: typing reaches the cell as usual.
-23. 23. **Look.** Repeat step 1 and step 5 with a dark theme and, if available, at 150 % or 200 %
+23. **Look.** Repeat step 1 and step 5 with a dark theme and, if available, at 150 % or 200 %
     display scaling. Expected: all text and swatches are readable and the insertion line is visible.
     Before testing each top move button, select Charlie and Echo. Click the button, then undo once.
     Expected: each move preserves the picked order, selection and view. <Unreleased since="0.0.8" />

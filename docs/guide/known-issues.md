@@ -28,7 +28,7 @@ If Sheet Manager does not work in an environment where it is expected to, please
   **Sheet Manager Help** in the context menu for this guide. Header hover sizing is also controlled
   by LibreOffice and its theme
   ([#81](https://github.com/viell-dev/slop-calc-sheet-manager/issues/81)).
-- - **Save focus.** Ctrl+S from the list saves through Calc. With LibreOffice's gtk3 interface on
+- **Save focus.** Ctrl+S from the list saves through Calc. With LibreOffice's gtk3 interface on
   Linux, a save moves the keyboard focus from any sidebar control to the sheet, Calc's own panels
   included. <Unreleased since="0.0.8" /> The list takes the focus back once the save has finished,
   after any Save As, file format, or error dialog has closed, unless you have used the list or
@@ -39,7 +39,7 @@ If Sheet Manager does not work in an environment where it is expected to, please
   entry; Home can leave no entry highlighted when the leading actions are unavailable. Alt move
   shortcuts still apply the same permission and edge checks
   ([#84](https://github.com/viell-dev/slop-calc-sheet-manager/issues/84)).
-- - **Conservative selection clearing.** Inserting or deleting sheets, undoing or redoing, and
+- **Conservative selection clearing.** Inserting or deleting sheets, undoing or redoing, and
   modifications whose continuity cannot be established can clear the list's selection. A notice
   explains conservative clearing of a user-made selection. Ordinary refreshes retain the list's
   range anchor while its sheet identity remains valid. Native Undo and Redo can also activate an

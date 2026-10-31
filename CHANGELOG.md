@@ -7,9 +7,9 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## 0.0.8 - 2026-10-31
 
-Second beta towards the stable release 0.1.0, following 0.0.7. It fixes the two remaining
-defects in the main workflow; the feature set is unchanged. Requires LibreOffice 26.2.1 or
-later with Python support.
+Second beta towards the stable release 0.1.0, following 0.0.7. It fixes two defects in the
+main workflow; the feature set is unchanged. Requires LibreOffice 26.2.1 or later with Python
+support.
 
 - Keep the list's picks and the view through Undo and Redo of its own moves
   ([#91](https://github.com/viell-dev/slop-calc-sheet-manager/issues/91)). After dragging sheets
