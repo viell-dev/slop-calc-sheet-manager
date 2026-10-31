@@ -20,7 +20,7 @@ from teardown import run_checks
 
 from sheet_manager import uno_structure
 from sheet_manager.rename import plan_renames
-from sheet_manager.reorder import plan_move
+from sheet_manager.reorder import plan_move, plan_order
 from sheet_manager.sheet_list import tab_color
 from sheet_manager.uno_calc import read_rows
 from sheet_manager.uno_list import SheetList
@@ -234,12 +234,10 @@ def check_confusable_names(context, desktop, first, second):
         assert result.status == "done", result
         assert shown() == [True, True, True] and list(undo.AllUndoActionTitles) == ["Show Sheet"]
 
-        observed = snapshot(document)
-        monitor, proof = observed.monitor, observed.generation
-        menu = SheetMenu(context, frame, document, controller)
-        assert menu.run(HIDE, observed, [second], lambda: monitor.check() == proof) == ""
-        assert shown() == [True, False, True], "Hide must hide exactly the second sheet"
-        assert len(undo.AllUndoActionTitles) == 2
+        # Moves restore the viewed sheet afterwards; view the second of the pair.
+        viewed_after_undo: list[str] = []
+        controller.setActiveSheet(observed.handles[1])
+        assert controller.ActiveSheet.Name == second
         undo.clear()
 
         # Calc moves a sheet only by its name, and this name finds the first of the pair.
@@ -263,12 +261,39 @@ def check_confusable_names(context, desktop, first, second):
         observed = snapshot(document)
         plan = plan_move(observed.sheets, [first], "bottom")
         moved = apply_order(context, document, observed, plan)
-        assert moved.status == "done", moved
+        assert moved.message == "Sheets moved.", moved
+        assert controller.ActiveSheet.Name == second
         assert tuple(sheets.ElementNames) == (second, "Last", first)
         assert identities() == ["second", "last", "first"]
         assert list(undo.AllUndoActionTitles) == ["Move Sheets"]
         undo.undo()
         assert tuple(sheets.ElementNames) == names and identities() == ["first", "second", "last"]
+        undo.clear()
+        viewed_after_undo.append(controller.ActiveSheet.Name)
+        controller.setActiveSheet(observed.handles[1])  # Calc's undo views a sheet it moved.
+
+        # The first sheet moves behind the second, which then comes first, and moves itself.
+        observed = snapshot(document)
+        plan = plan_order(observed.sheets, ("Last", second, first))
+        assert [move.name for move in plan.moves] == [first, second]
+        moved = apply_order(context, document, observed, plan)
+        assert moved.message == "Sheets moved.", moved
+        assert controller.ActiveSheet.Name == second
+        assert identities() == ["last", "second", "first"]
+        assert list(undo.AllUndoActionTitles) == ["Move Sheets"]
+        undo.undo()
+        assert tuple(sheets.ElementNames) == names and identities() == ["first", "second", "last"]
+        undo.clear()
+        viewed_after_undo.append(controller.ActiveSheet.Name)
+        controller.setActiveSheet(observed.handles[1])  # Calc's undo views a sheet it moved.
+
+        # Calc's Hide, run from the list's menu, on the second of the pair.
+        observed = snapshot(document)
+        monitor, proof = observed.monitor, observed.generation
+        menu = SheetMenu(context, frame, document, controller)
+        assert menu.run(HIDE, observed, [second], lambda: monitor.check() == proof) == ""
+        assert shown() == [True, False, True], "Hide must hide exactly the second sheet"
+        assert len(undo.AllUndoActionTitles) == 1
         undo.clear()
 
         # A pair that Calc made already does not fail the batch rename's lookup of final names.
@@ -290,7 +315,11 @@ def check_confusable_names(context, desktop, first, second):
         close_after(context, document, failure)
         raise
     close_after(context, document)
-    return {"move_refusal": refused.message, "formula_naming_second": formula}
+    return {
+        "move_refusal": refused.message,
+        "viewed_after_undo": viewed_after_undo,
+        "formula_naming_second": formula,
+    }
 
 
 def exercise(context, desktop, directory, output):
