@@ -104,7 +104,8 @@ class Tracker(unohelper.Base, XMouseMotionListener):
 
 
 class Workbook:
-    def __init__(self, lab, title, names):
+    def __init__(self, lab, title, names, stored=True):
+        """A synthetic workbook with the list open, stored unless `stored` is false."""
         self.lab = lab
         self.path = lab.directory / f"{title}.ods"
         document = lab.desktop.loadComponentFromURL("private:factory/scalc", "_blank", 0, ())
@@ -113,7 +114,8 @@ class Workbook:
         for index, name in enumerate(names[1:], start=1):
             sheets.insertNewByName(name, index)
         sheets.getByIndex(0).getCellRangeByName("A1").setString("keep")
-        document.storeAsURL(self.path.as_uri(), ())
+        if stored:
+            document.storeAsURL(self.path.as_uri(), ())
         document.getUndoManager().clear()
         self.document = document
         self.controller = document.getCurrentController()
@@ -822,17 +824,119 @@ def check_shortcuts(book):
     cell.setString("saved")
     assert book.document.isModified()
     stamp = book.path.stat().st_mtime_ns
-    with_list_focus("ctrl_s", "s")
+    book.focus_list()
+    wait_until(lambda: book.tree.hasFocus(), "the list to have the focus")
+    view_before = book.selection(), book.active(), book.calc_tabs()
+    keys.tap("s", ("Control_L",), pause=0.6)
     wait_until(lambda: not book.document.isModified(), "Ctrl+S to save", timeout=20)
+    # With gtk3, the save moves the focus to the sheet; the list takes it back (#23).
+    focus["ctrl_s"] = wait_for_list_focus(book)
     evidence = {
         "ctrl_page_down": next_sheet,
         "ctrl_page_up": previous_sheet,
         "undo": True,
         "saved": book.path.stat().st_mtime_ns != stamp,
         "list_has_focus_after": focus,
+        "view_kept": (book.selection(), book.active(), book.calc_tabs()) == view_before,
     }
     assert next_sheet == NAMES[1] and previous_sheet == NAMES[0], evidence
     assert evidence["saved"], evidence
+    assert all(focus.values()) and evidence["view_kept"], evidence
+    evidence["typed_after_save"] = typing_reaches_list(book, "k", "Kilo")
+    return evidence
+
+
+def wait_for_list_focus(book, timeout=10):
+    """Whether the tree has the focus within `timeout` and still has it a second later."""
+    deadline = time.monotonic() + timeout
+    while not book.tree.hasFocus():
+        if time.monotonic() > deadline:
+            return False
+        time.sleep(0.1)
+    time.sleep(1)
+    return bool(book.tree.hasFocus())
+
+
+def typing_reaches_list(book, letter, name):
+    """A typed letter selects `name` in the list, and Enter shows it; no cell changes."""
+    sheet = book.controller.getActiveSheet()
+    address = book.controller.getSelection().getRangeAddress()
+    cell = sheet.getCellByPosition(address.StartColumn, address.StartRow)
+    text, modified = cell.getString(), book.document.isModified()
+    book.lab.input.tap(letter, pause=0.4)
+    selected = book.selection()
+    book.lab.input.tap("Return", pause=0.8)
+    result = {
+        "selection": selected,
+        "active_after_enter": book.active(),
+        "cell_unchanged": cell.getString() == text,
+        "modified_unchanged": book.document.isModified() == modified,
+    }
+    assert result == {
+        "selection": [name],
+        "active_after_enter": name,
+        "cell_unchanged": True,
+        "modified_unchanged": True,
+    }, result
+    return result
+
+
+def save_with_prompt(book, answer, shot):
+    """Ctrl+S from the list opens a dialog, which keeps the focus while it is open (#23).
+
+    Returns what was seen while the dialog was open, and whether the list had the focus again
+    after `answer` closed it.
+    """
+    book.document.getSheets().getByIndex(0).getCellRangeByName("B2").setString("changed")
+    time.sleep(1)
+    book.focus_list()
+    wait_until(lambda: book.tree.hasFocus(), "the list to have the focus")
+    view_before = book.selection(), book.active(), book.calc_tabs()
+    book.lab.input.tap("s", ("Control_L",), pause=0.3)
+    wait_until(lambda: native_dialog(book), "the save dialog", timeout=20)
+    time.sleep(1.5)  # A focus request made too early would have reached the list by now.
+    state: dict[str, object] = {
+        "dialog_kept": native_dialog(book),
+        "list_focus_during": bool(book.tree.hasFocus()),
+    }
+    book.lab.screenshot(shot)
+    book.lab.input.tap(answer, pause=0.5)
+    wait_until(lambda: not native_dialog(book), "the dialog to close", timeout=20)
+    state["list_focus_after"] = wait_for_list_focus(book)
+    state["view_kept"] = (book.selection(), book.active(), book.calc_tabs()) == view_before
+    return state
+
+
+def check_save_prompts_keep_focus(lab):
+    """Save As cancelled with Escape, and a write error, both from the list (#23)."""
+    names = ["Alfa", "Bravo", "Charlie", "Delta"]
+    evidence = {}
+
+    unsaved = Workbook(lab, "unsaved", names, stored=False)
+    try:
+        state = save_with_prompt(unsaved, "Escape", "save-as-cancelled")
+        state["still_unsaved"] = not unsaved.document.hasLocation()
+        state["typed"] = typing_reaches_list(unsaved, "c", "Charlie")
+        evidence["save_as_cancelled"] = state
+    finally:
+        unsaved.close()
+
+    locked = Workbook(lab, "write-error", names)
+    try:
+        locked.path.chmod(0o444)
+        state = save_with_prompt(locked, "Return", "write-error")
+        state["still_modified"] = locked.document.isModified()
+        state["typed"] = typing_reaches_list(locked, "c", "Charlie")
+        evidence["write_error"] = state
+    finally:
+        locked.path.chmod(0o644)
+        locked.close()
+
+    for case in evidence.values():
+        assert case["dialog_kept"] and not case["list_focus_during"], evidence
+        assert case["list_focus_after"] and case["view_kept"], evidence
+    assert evidence["save_as_cancelled"]["still_unsaved"], evidence
+    assert evidence["write_error"]["still_modified"], evidence
     return evidence
 
 
@@ -2171,6 +2275,7 @@ def run_checks(lab, output, only=()):
             lambda: check_drop_refused_after_unrecorded_batch(book),
         ),
         ("save_keeps_picks", lambda: check_save_keeps_picks(book)),
+        ("save_prompts_keep_focus", lambda: check_save_prompts_keep_focus(lab)),
         ("actions_refused_while_lock_held", lambda: check_actions_refused_while_lock_held(book)),
         ("click_hidden_before_refresh", lambda: check_click_hidden_before_refresh(book)),
         ("newer_selection_kept", lambda: check_newer_selection_kept(book)),
