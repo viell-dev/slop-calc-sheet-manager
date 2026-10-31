@@ -94,13 +94,13 @@ frame's component window: native sidebar traversal alone neither reaches these c
 leaves them reliably. Posted focus requests are refused when focus or the active frame moved.
 
 Saving from the list (#23). With gtk3, a save moves the focus from every sidebar control to the
-sheet while it stores, Calc's own panels included (measured with 26.8.1.1; gen keeps it). A save
-or Save As forwarded from the list therefore runs synchronously, returning after any dialog it
-opened has closed, and a posted request then focuses the panel's own window and the control that
-had the focus. A focus request to the control alone has no effect after the save. The request is
-dropped after newer list input, and while another window or a dialog is active; no window is
-reported active until the document window has the focus again after a native gtk3 dialog, and
-the request takes effect then.
+sheet while it stores, Calc's own panels included (measured with 26.8.1.1 and 26.8.2.2; gen keeps
+it). A save or Save As forwarded from the list therefore runs synchronously, returning after any
+dialog it opened has closed, and a posted request then focuses the panel's own window and the
+control that had the focus. A focus request to the control alone has no effect after the save. The
+request is dropped after newer list input, and while another window or a dialog is active; no
+window is reported active until the document window has the focus again after a native gtk3 dialog,
+and the request takes effect then.
 `uno_moves` states the move buttons' rules, which `_update_moves` and `travel_focus` here, and
 `uno_keys` and `keys.move_action`, carry out.
 """
