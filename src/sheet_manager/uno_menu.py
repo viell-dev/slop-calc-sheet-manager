@@ -19,8 +19,9 @@ This module owns context targeting, native tab grouping and restoration, and mov
   only `SheetMenu.run` groups.
 - `command_refusal` applies Calc's state rules to the targets, because Calc's command state
   describes its current tabs. Insert's "after" uses the last selected tab.
-- Duplicate Sheet and Move or Copy Sheet stay off the menu: the supported 26.8.0 and 26.8.1 copy
-  formulas wrongly (tdf#173608, fixed in 26.8.2; #33), and the list moves sheets itself (#3).
+- Duplicate Sheet and Move or Copy Sheet stay off the menu: the supported releases 26.8.0 and
+  26.8.1 copy formulas wrongly (tdf#173608, fixed in 26.8.2; #33), and the list moves sheets
+  itself (#3).
 - `run` repeats every check in the list's posted completion: the generation, the targets'
   identity, and `command_refusal`. It sets and reads back exactly the targets, queries the
   dispatcher, and reads Calc's command state for that group. Grouping runs Calc's activation
