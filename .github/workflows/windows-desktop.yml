@@ -45,6 +45,13 @@ jobs:
           persist-credentials: false
       - name: Install the pinned LibreOffice MSI
         run: ./ci/install-windows.ps1
+      - name: DELIBERATE BREAK, reverted next commit - the list never registers its key handler
+        run: |
+          $path = 'src/sheet_manager/uno_list.py'
+          $text = Get-Content -LiteralPath $path -Raw
+          $broken = $text.Replace('self.toolkit.addKeyHandler(self._keys)', 'pass  # Deliberately broken')
+          if ($broken -eq $text) { throw 'The break did not apply' }
+          Set-Content -LiteralPath $path -Value $broken -NoNewline
       - name: Build the extension with LibreOffice's Python
         run: |
           & 'C:\Program Files\LibreOffice\program\python.exe' tools/build.py
