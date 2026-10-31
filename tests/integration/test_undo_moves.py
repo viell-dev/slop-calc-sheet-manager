@@ -131,7 +131,11 @@ class Panel:
             point = row_point(self.tree, rows.index(last))
             self.robot.click(self.tree, point, modifiers=VCL_SHIFT)
         wanted = rows[rows.index(first) : rows.index(last or first) + 1]
-        poll(lambda: self.picks() == wanted, f"the picks {wanted}")
+        try:
+            poll(lambda: self.picks() == wanted, f"the picks {wanted}")
+        except AssertionError as error:
+            shown = {"picks": self.picks(), "rows": names(self.tree), "focus": self.tree.hasFocus()}
+            raise AssertionError(f"{error}: {shown}") from None
 
     def move(self, label, expected):
         button = move_buttons(self.panel)[label]
@@ -430,6 +434,7 @@ def check_windows_and_disposal(context, desktop):
     shown = SimpleNamespace(getCurrentController=lambda: second, Sheets=document.Sheets)
     other = Panel(context, shown)
     make_current(document, first)
+    panel = Panel(context, document)  # Opening a window can replace this one's panel window.
     poll(lambda: not panel.notice(), "a notice from opening the window to expire", timeout=15)
     panel.pick("Echo", "Hotel")
     panel.move("Up", UP)
