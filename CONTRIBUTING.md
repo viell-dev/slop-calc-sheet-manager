@@ -333,7 +333,9 @@ during the drag, and switch documents. They release a press after its sheet was 
 and check that no activation follows and that the release selects nothing new; after the
 replacement, the Menu key then does nothing. They hold a press while the list gets a newer pick,
 by following Calc to another sheet or by typing its first letter, move the pressed sheet away,
-release, and check that the Menu key's Hide hides the newer pick. They pick Bravo, then delete it
+release, and check that the Menu key's Hide hides the newer pick. A held press is complete only
+once the list's own mouse listener has run (`Workbook.hold`), and that check records the list's
+selection, Calc's view, the focus and the press at each step (#134). They pick Bravo, then delete it
 and give its name to another sheet, directly or after inserting one so that the count is kept,
 replace it while it is held, or run the insert-delete-rename batch on LibreOffice's main thread
 inside `lockControllers`, `addActionLock`, or `disableSetModified`, or with undo recording off
