@@ -60,8 +60,8 @@ describes that gate and how its results are tracked.
 
 | Environment                                                                       | Status                                 |
 | --------------------------------------------------------------------------------- | -------------------------------------- |
-| Linux x86-64, libreoffice.org 26.2.1.2, 26.2.6.3, and 26.8.1.1: headless and gtk3 | Verified in CI for every change        |
-| Windows x86-64, libreoffice.org 26.8.1.1: headless                                | Verified in CI for every change        |
+| Linux x86-64, libreoffice.org 26.2.1.2, 26.2.6.3, and 26.8.2.2: headless and gtk3 | Verified in CI for every change        |
+| Windows x86-64, libreoffice.org 26.8.2.2: headless                                | Verified in CI for every change        |
 | Other 26.2 and 26.8 releases, and later versions, from libreoffice.org            | Expected to work, not verified         |
 | Distribution packages, other interfaces such as kf6 or gtk4, Wayland, macOS       | Expected to work, not verified         |
 | Flatpak, Snap, Arm builds, and the Windows interface in a visible window          | Expected to work, not verified         |
