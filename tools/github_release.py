@@ -24,14 +24,17 @@ from tools.build import build  # noqa: E402
 from tools.release_data import (  # noqa: E402
     REPOSITORY,
     SITE,
+    STAGES,
     VERSION,
     PublishedBuild,
     changelog_section,
     check_new_version,
     feed,
+    is_prerelease,
     package_metadata,
     release_title,
     validate_history,
+    version_parts,
 )
 
 
@@ -76,9 +79,10 @@ def published_builds(releases: list[dict[str, Any]]) -> list[PublishedBuild]:
     for release in releases:
         if release["draft"]:
             continue
+        # The channel is GitHub's flag. Titles are not read, so every earlier scheme stays valid.
         version = cast(str, release["tag_name"])
         prerelease = cast(bool, release["prerelease"])
-        release_title(version, prerelease)
+        version_parts(version)
         name = f"sheet-manager-{version}.oxt"
         assets = {asset["name"]: asset for asset in release["assets"]}
         base = f"https://github.com/{REPOSITORY}/releases/download/{version}/"
@@ -207,9 +211,9 @@ def require_ci(commit: str, *, publishing: bool, timeout: float = 3000) -> str:
 
 
 def prepare(
-    version: str, prerelease: bool, target: str, output: Path
+    version: str, stage: str, target: str, output: Path
 ) -> tuple[dict[str, object], list[PublishedBuild]]:
-    title = release_title(version, prerelease, target)
+    title = release_title(version, stage, target)
     actual, minimum = package_metadata((ROOT / "extension/description.xml").read_bytes())
     if actual != version:
         raise ValueError(f"Requested {version}, but description.xml contains {actual}")
@@ -231,7 +235,7 @@ def prepare(
         "name": title,
         "body": notes,
         "draft": True,
-        "prerelease": prerelease,
+        "prerelease": is_prerelease(stage),
     }
     return plan, builds
 
@@ -244,7 +248,11 @@ def main() -> None:
         "--offline", action="store_true", help="pages: write empty feeds without reading GitHub"
     )
     parser.add_argument("--version")
-    parser.add_argument("--prerelease", action="store_true")
+    parser.add_argument(
+        "--stage",
+        choices=STAGES,
+        help="release: required; every stage but stable sets GitHub's Pre-release flag",
+    )
     parser.add_argument("--target", default="")
     parser.add_argument("--publish", action="store_true", help="Default is a read-only dry run")
     parser.add_argument("--output", type=Path, default=ROOT / "dist/release")
@@ -265,8 +273,11 @@ def main() -> None:
         copied = combine_site(args.guide, args.output)
         print(f"Combined {len(copied)} user guide files with the update feeds in {args.output}")
         return
-    if not args.version:
-        parser.error("release requires --version")
+    if not args.version or not args.stage:
+        parser.error("release requires --version and --stage")
+    # Refuse a bad stage and target before reading GitHub, even when a PR skips planning below.
+    release_title(args.version, args.stage, args.target)
+    prerelease = is_prerelease(args.stage)
     if args.publish and (
         os.environ.get("GITHUB_REF") != "refs/heads/main"
         or os.environ.get("GITHUB_EVENT_NAME") != "workflow_dispatch"
@@ -287,18 +298,22 @@ def main() -> None:
                 "skipped for this PR. Current published feeds validated without deployment."
             )
             return
-    plan, builds = prepare(args.version, args.prerelease, args.target, args.output)
+    plan, builds = prepare(args.version, args.stage, args.target, args.output)
     ci_url = require_ci(commit, publishing=args.publish)
     plan["target_commitish"] = commit
     (args.output / "release-plan.json").write_text(
-        json.dumps({"release": plan, "ci": ci_url}, indent=2) + "\n", encoding="utf-8"
+        json.dumps(
+            {"stage": args.stage, "target": args.target, "release": plan, "ci": ci_url}, indent=2
+        )
+        + "\n",
+        encoding="utf-8",
     )
     # Exercise prospective feeds too, without changing the deployed site.
     _, minimum = package_metadata((ROOT / "extension/description.xml").read_bytes())
     timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     write_site(
         args.output / "site",
-        [*builds, PublishedBuild(args.version, args.prerelease, minimum, timestamp)],
+        [*builds, PublishedBuild(args.version, prerelease, minimum, timestamp)],
     )
     if not args.publish:
         print(f"Dry run passed for {commit}; no tag, draft, release, or deployment created")
@@ -337,7 +352,7 @@ def main() -> None:
     api(
         f"repos/{REPOSITORY}/releases/{release['id']}",
         method="PATCH",
-        data={"draft": False, "make_latest": "false" if args.prerelease else "true"},
+        data={"draft": False, "make_latest": "false" if prerelease else "true"},
     )
     print(f"Published {args.version} from {commit}; CI: {ci_url}")
 

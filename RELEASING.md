@@ -29,16 +29,41 @@ numeric tag. Completing an already-reserved draft follows the recovery procedure
 Never replace a published file, move a tag, delete a published release, or reclassify a prerelease
 as stable. Fix a bad build with a larger version.
 
+Every publication names its **stage** in the Release workflow's `stage` input. Stages describe a
+build's progress towards its target release, measured against that release's agreed scope:
+
+- **alpha:** features, formats, or workflows still change. Testing one does not imply that a
+  stable release is close.
+- **beta:** the target release's agreed features are complete, and work turns to fixes and
+  polish.
+- **rc** (release candidate): only for a build intended to become the target release. The stable
+  release then differs from the last candidate only in its version number and in the changelog
+  and documentation that name versions. Any other change needs another candidate first.
+- **stable:** an ordinary release. It is always chosen explicitly; it is never inferred from a
+  version number or an empty target, and the workflow defaults to `alpha`.
+
+The stage is release metadata, not part of the version. It appears in the GitHub release title,
+and every stage except `stable` sets GitHub's **Pre-release** flag, which selects the channel. The
+OXT, tag, and asset names carry only the plain number, so users tell a test build from a stable
+release by the title and the **Pre-release** flag. Record why a build enters beta or rc in its
+release preparation PR.
+
 - Stable patch numbers have no reserved range: `0.1.89`, `0.1.90`, `0.1.91` and `0.1.100` are
-  all valid stable versions. The workflow's `prerelease` input and GitHub's stored flag determine
+  all valid stable versions. The workflow's `stage` input and GitHub's stored flag determine
   the channel; no version digit implies test status.
-- Alpha builds use the next unused increasing numeric version, with `prerelease` selected and
-  `target` empty. For example, `0.1.1` produces the title `0.1.1 alpha`. No stable target or
-  feature-completeness claim is inferred. The workflow defaults to prerelease; check it explicitly.
-- Once a next-minor or next-major target is agreed, it can be supplied explicitly. For example,
-  package `0.0.2` with target `0.1.0` is titled `0.1.0 test build (0.0.2)`, and `0.8.91` with
-  target `1.0.0` is `1.0.0 test build (0.8.91)`. The target must exceed the package version.
-  Existing published titles, tags, and assets remain unchanged.
+- Alpha builds use the next unused increasing numeric version, normally with `target` empty. For
+  example, `0.1.1` produces the title `0.1.1 alpha`. No stable target or feature-completeness
+  claim is inferred. An alpha may name an agreed target: `0.0.4` with target `0.1.0` is
+  `0.1.0 alpha (0.0.4)`.
+- Beta and rc builds require their agreed `target`, the next-minor or next-major `.0` release of
+  the package version, which therefore always exceeds it. For example, `0.0.7` with target `0.1.0`
+  is titled `0.1.0 beta (0.0.7)`, `0.0.9` with the same target is `0.1.0 rc (0.0.9)`, and `0.8.91`
+  with target `1.0.0` is `1.0.0 rc (0.8.91)`. A stable release has no target and is titled with
+  its version alone, such as `0.1.0`.
+- Builds `0.0.2` to `0.0.4` were published before stages existed, as `0.1.0 test build (0.0.2)`
+  and so on; they are alpha builds. Published titles, tags, and assets remain unchanged. Release
+  history and the feeds read only GitHub's flag and the packaged metadata, never titles, so every
+  earlier title stays valid.
 - Every later publication, including a stable fix between test builds, takes a larger unused
   version. For example, after stable `0.1.90` and test build `0.1.91` for `0.2.0`, a stable fix
   can use `0.1.92`. The final `0.2.0` remains larger than all three. This preserves one increasing
@@ -57,14 +82,16 @@ unnecessary obstacle in the normal test-to-stable path.
 
 Keeping one version across the installed package, Git tag, release and asset names avoids a
 separate mapping between SemVer labels and native package numbers. Stable versions use
-major/minor/patch numbers, while test-build status is explicit metadata rather than a suffix or
+major/minor/patch numbers, while the stage is explicit metadata rather than a suffix or
 reserved numeric range. This differs from SemVer prerelease notation and precedence. Before 1.0,
 compatibility may change between feature releases.
 
 The pure comparator used by release checks and feed tests follows LibreOffice's rules, including
 zero and missing components. Release validation additionally refuses noncanonical strings and
-checks test-build targets and increasing versions across both channels. Revisit this policy if
-LibreOffice supports SemVer prerelease precedence.
+checks each stage's target and increasing versions across both channels. Revisit this policy if
+LibreOffice supports SemVer prerelease precedence in every supported version. Moving stages into
+the version, such as `0.1.0-beta.1`, would then still need a migration in which installed
+numeric builds keep receiving updates.
 
 ## Human release testing
 
@@ -151,12 +178,14 @@ its platform inventory is not a requirement to make one person test every host.
    Complete the release review that
    [AGENTS.md](AGENTS.md#review) requires, then merge the preparation PR and wait for **CI** on its
    exact `main` commit to succeed.
-3. In Actions, select **Release → Run workflow**, choose `main`, enter the exact version, select
-   `prerelease` for an alpha or candidate, and leave `dry_run` checked. Leave `target` empty for
-   alpha development; supply it only for an agreed next-minor or next-major target.
+3. In Actions, select **Release → Run workflow**, choose `main`, enter the exact version, choose
+   the `stage`, and leave `dry_run` checked. For `beta` or `rc`, enter the agreed next-minor or
+   next-major `target`; for alpha development, leave it empty unless a target is agreed; for
+   `stable`, leave it empty and choose the stage deliberately, since the default is `alpha`.
    Inspect the resulting artifact:
    the OXT, `.oxt.sha256`, `release-plan.json`, `release-notes.md`, and prospective `site/` feeds.
-   Check the title, notes, download URLs, minimum LibreOffice version, and CI URL.
+   Check the plan's `stage` and `target`, the title, the Pre-release flag, notes, download URLs,
+   minimum LibreOffice version, and CI URL.
 
 The dry run builds from the exact checked-out commit with `tools/build.py`, runs the full static
 and unit checks, requires successful CI on that commit, validates version/metadata/changelog,
@@ -165,10 +194,12 @@ release, or deployment. `dry_run` defaults to true.
 
 For release-workflow development, a PR that changes `.github/workflows/release.yml`,
 `.github/workflows/pages.yml`, `tools/github_release.py`, or `tools/release_data.py` also runs
-the dry run on its head commit using the metadata version. The artifact contains the stable
-preview and a separate `prerelease-preview/`, so both explicit channels are exercised without
-inferring one from the number. It waits for the PR's successful CI run instead of `main`'s, so
-this check normally finishes after CI. It waits up to 50 minutes,
+the dry run on its head commit using the metadata version. A pull request has no workflow
+inputs, so the artifact contains a preview with stage `stable` and a separate
+`prerelease-preview/` with an untargeted `alpha`, exercising both channels with an explicit stage
+rather than inferring one from the number. Unit tests cover the targeted beta and rc titles.
+It waits for the PR's successful CI run instead of `main`'s, so this check normally finishes
+after CI. It waits up to 50 minutes,
 covering the native matrix's 45-minute job limit plus startup time; the dry-run job allows
 60 minutes for setup and asset validation as well. If that metadata version is
 already published, the PR check emits a notice and skips release planning after static/unit
@@ -188,16 +219,17 @@ requires a successful **CI** push run on that exact commit; a successful PR run 
 Only the publishing job receives `contents: write`; no stored secret is needed.
 
 The workflow creates the numeric tag at that commit, creates a **draft** GitHub release with the
-changelog section and prerelease flag, uploads the OXT and checksum, verifies both are present,
-and only then publishes. GitHub release immutability is disabled during early development.
-Keep it disabled unless the owner directs otherwise. An existing tag,
-published version, or draft is refused. Publication is serialized so two workflow runs cannot
-reserve the same version or overtake one another.
+stage's title, the changelog section, and the Pre-release flag for every stage but `stable`,
+uploads the OXT and checksum, verifies both are present, and only then publishes. A stable
+release is also marked as GitHub's latest release; other stages are not. GitHub release
+immutability is disabled during early development. Keep it disabled unless the owner directs
+otherwise. An existing tag, published version, or draft is refused. Publication is serialized
+so two workflow runs cannot reserve the same version or overtake one another.
 
 After publication, the workflow calls **Pages**. Check the release's assets and checksum,
-the Pages deployment, and both live feeds. Stable builds appear in both feeds. Candidates appear
-only in the prerelease feed. Installed copies always point to the stable feed; installing a
-candidate does not opt a user into future candidates.
+the Pages deployment, and both live feeds. Stable builds appear in both feeds. Alpha, beta, and
+rc builds appear only in the prerelease feed. Installed copies always point to the stable feed;
+installing a test build does not opt a user into future test builds.
 
 If a run fails after reserving its tag, do not delete or move it and do not rerun publication for
 that version. Inspect the tag's exact commit, the draft and its assets, and the successful CI run.
@@ -271,7 +303,8 @@ workflow's `release` event. The event trigger also handles a manually completed 
 
 ## Verification boundary
 
-Unit tests check numeric ordering, the suffix trap, candidate titles, existing-version refusal,
+Unit tests check numeric ordering, the suffix trap, stage titles and their refused stage/target
+combinations, the workflow's stage input, existing-version refusal,
 changelog boundaries, feed XML, stable-feed immutability, empty feeds, and history regression
 refusal. The normal Linux and Windows integration lanes run `test_updates.py` too: an older
 installed build's identifier is used to query generated feeds served on a loopback HTTP server.

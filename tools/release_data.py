@@ -2,9 +2,12 @@
 
 Versions are not full SemVer: LibreOffice orders a suffixed candidate above its final version, so
 the package, tag, and assets share one plain numeric version until that host constraint changes
-(RELEASING.md). Test status is an explicit release flag, and untargeted builds are alpha
-iterations, not candidates for an inferred stable target. Never infer test status from patch
-numbers or reserve a patch range.
+(RELEASING.md). The release stage (alpha, beta, rc, or stable) is explicit release metadata: it
+names the title and sets GitHub's Pre-release flag for every stage but stable. Never infer a stage
+or test status from patch numbers, reserve a patch range, or treat an omitted stage as stable.
+Untargeted builds are alpha iterations, not candidates for an inferred stable target; beta and rc
+builds name their agreed target. Published history is read from GitHub's flag and the packaged
+metadata, never from titles, so every earlier title scheme stays valid.
 """
 
 import re
@@ -44,17 +47,28 @@ def version_parts(version: str) -> tuple[int, int, int]:
     return major, minor, patch
 
 
-def release_title(version: str, prerelease: bool, target: str = "") -> str:
+STAGES = ("alpha", "beta", "rc", "stable")
+
+
+def is_prerelease(stage: str) -> bool:
+    if stage not in STAGES:
+        raise ValueError(f"Release stage must be one of {', '.join(STAGES)}")
+    return stage != "stable"
+
+
+def release_title(version: str, stage: str, target: str = "") -> str:
     major, minor, _ = version_parts(version)
-    if prerelease:
-        if not target:
-            return f"{version} alpha"
-        if version_parts(target) not in {(major, minor + 1, 0), (major + 1, 0, 0)}:
-            raise ValueError("Candidate target must be the next minor or next major .0 release")
-        return f"{target} test build ({version})"
-    if target:
-        raise ValueError("Stable releases have no candidate target")
-    return version
+    if not is_prerelease(stage):
+        if target:
+            raise ValueError("Stable releases have no candidate target")
+        return version
+    if not target:
+        if stage != "alpha":
+            raise ValueError(f"A {stage} build needs its agreed next-minor or next-major target")
+        return f"{version} alpha"
+    if version_parts(target) not in {(major, minor + 1, 0), (major + 1, 0, 0)}:
+        raise ValueError("Candidate target must be the next minor or next major .0 release")
+    return f"{target} {stage} ({version})"
 
 
 def changelog_section(text: str, version: str) -> str:
@@ -131,7 +145,7 @@ def validate_history(builds: list[PublishedBuild], previous: list[PublishedBuild
     """
     by_version: dict[str, PublishedBuild] = {}
     for build in builds:
-        release_title(build.version, build.prerelease)
+        version_parts(build.version)
         version_parts(build.minimum)
         if build.version in by_version:
             raise ValueError(f"Duplicate published version: {build.version}")
