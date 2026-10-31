@@ -8,6 +8,7 @@ from unittest.mock import Mock
 import pytest
 
 from sheet_manager.selection import Selection
+from sheet_manager.structure import StructureEvents
 from tests.unit.source_methods import method
 
 SOURCE = "src/sheet_manager/uno_list.py"
@@ -29,7 +30,7 @@ def native_picks() -> tuple[Any, Any, list[Callable[[], None]]]:
         _input=1,
         _generation=0,
         _proven=0,
-        _monitor=SimpleNamespace(generation=0),
+        _monitor=SimpleNamespace(generation=0, events=StructureEvents()),
         _press=None,
         _pointer_depth=0,
         _context_target=None,

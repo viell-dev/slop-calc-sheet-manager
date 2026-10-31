@@ -13,17 +13,37 @@ the result or its recovery. docs/reordering.md is the contract the panel relies 
   cover a capacity of two.
 - Snapshots carry the shared `uno_structure` monitor's identity and generation, and
   `is_current`, `preflight` and `apply_order` check both. Undo and Redo invalidate a held
-  snapshot even when they restore the original order, so recovery tests take fresh ones.
+  snapshot even when they restore the original order, so recovery tests take fresh ones. The
+  one exception is a proved Undo or Redo of a move made here (#91, below).
+- Own-move markers (#91). With room for them (an undo capacity of two or more), a move group
+  holds a `_Marker` before its first move and one after its last, inside the balanced contexts
+  like the moves. `structure` states what they prove and when. Their `undo` and `redo` run inside
+  LibreOffice's replay, possibly on another thread: they only update the shared state, read the
+  sheet count, and, at the replay's first marker, the current controller's active sheet and
+  selected tab indices, which are getters that do no UI work once `getSelectedSheets` has run
+  for the document (it applies imported view settings only on its first call, and `apply_order`
+  makes that call before the move). They never raise into the replay. The first marker posts the
+  view restoration, which waits until the replay is settled and re-checks everything then: the
+  replay must be proved, the generation unchanged, and the controller still the document's
+  current one, unlocked. It restores the active sheet and tab group the first marker saw, so
+  Calc's activation of the moved sheets does not stick; other windows keep their own views. A
+  marker added before the first move costs one thing when that move then fails without changing
+  anything: the group holding only markers is undone and its redo entry removed, but Redo
+  history from before the move is lost.
 """
 
 from dataclasses import dataclass
 from typing import Any, Literal, cast
 
 import uno
+import unohelper
 from com.sun.star.beans import PropertyValue
+from com.sun.star.document import XUndoAction
 
 from sheet_manager.i18n import tr
 from sheet_manager.reorder import Move, Plan, Sheet, ordered_blocks, plan_order
+from sheet_manager.structure import OwnMove
+from sheet_manager.uno_calc import MainThread, report, selected_tabs_method
 from sheet_manager.uno_structure import StructureMonitor, monitor_for
 
 
@@ -204,6 +224,109 @@ def _restore_view(context: Any, controller: Any, active: str, selected: tuple[st
         raise RuntimeError("The active sheet or tab selection could not be restored")
 
 
+RESTORING = "keeping the view after Undo or Redo of a sheet move"
+REPLAY_WAIT = 0.05  # Seconds between looks at an own replay's outcome from posted work.
+REPLAY_WAITS = 40
+
+
+class _Ends:
+    """The state an own move group's two markers share, and the view work they post (#91)."""
+
+    def __init__(self, context: Any, monitor: StructureMonitor, title: str):
+        self.move = OwnMove()
+        self._context = context
+        self._monitor = monitor
+        self._main = MainThread(context)
+        self._tabs_method = selected_tabs_method(context)
+        self.first = _Marker(title, self, True)
+        self.last = _Marker(title, self, False)
+
+    def replayed(self, opening: bool, redo: bool) -> None:
+        """A marker's callback inside LibreOffice's replay; never raises into it."""
+        events = self._monitor.events
+        try:
+            count = self._monitor.count()
+            if not opening:
+                events.replay_finished(self.move, redo, count)
+                return
+            serial = events.replay_started(self.move, redo, count)
+            if serial is not None:
+                view = self._sample()
+                self._main.post(lambda: self._restore(serial, *view), RESTORING)
+        except Exception:
+            events.revoke(self.move)
+            report("following Undo or Redo of a sheet move")
+
+    def _sample(self) -> tuple[Any, Any, tuple[Any, ...]]:
+        """The view the replay found, as handles: they denote the same sheets after it."""
+        document = self._monitor.document
+        controller = document.getCurrentController()
+        sheets = document.getSheets()
+        indices = self._tabs_method.invoke(controller, ())[0]
+        tabs = tuple(sheets.getByIndex(int(index)) for index in indices)
+        return controller, controller.getActiveSheet(), tabs
+
+    def _restore(
+        self, serial: int, controller: Any, active: Any, tabs: tuple[Any, ...], waits: int = 0
+    ) -> None:
+        """After the replay is settled, put back the view its first marker found.
+
+        Posted work can run before the undo notification: when the replay runs on another
+        thread, or when Calc's progress display lets the main loop run. It waits for the outcome
+        then, and gives up after `REPLAY_WAITS`, leaving Calc's view.
+        """
+        events = self._monitor.events
+        if not events.replay_settled(serial) and waits < REPLAY_WAITS:
+            self._main.later(
+                REPLAY_WAIT,
+                lambda: self._restore(serial, controller, active, tabs, waits + 1),
+                RESTORING,
+            )
+            return
+        try:
+            document = self._monitor.document
+            if (
+                document is None
+                or events.view_replay != serial
+                or not events.replay_proven(serial)
+                or self._monitor.generation != self.move.generation
+                or document.getCurrentController() != controller
+                or document.hasControllersLocked()
+                or document.isActionLocked()
+            ):
+                return
+            _restore_view(
+                self._context,
+                controller,
+                str(active.getName()),
+                tuple(str(tab.getName()) for tab in tabs),
+            )
+        except Exception:
+            report(RESTORING)
+        finally:
+            if not events.replay_settled(serial):
+                events.revoke(self.move)  # Still unsettled: something went wrong.
+            events.view_restored(serial)
+
+
+class _Marker(unohelper.Base, XUndoAction):
+    """One end of an own move group in the undo history; it does nothing to the document.
+
+    Undo calls the group's last marker first and its first marker last; Redo the other way.
+    """
+
+    def __init__(self, title: str, ends: _Ends, first: bool):
+        self.Title = title
+        self._ends = ends
+        self._first = first
+
+    def undo(self):
+        self._ends.replayed(opening=not self._first, redo=False)
+
+    def redo(self):
+        self._ends.replayed(opening=self._first, redo=True)
+
+
 def _verify(document: Any, target: tuple[str, ...], original: Snapshot) -> None:
     # A check here would consume the undo evidence explaining the modify notification at
     # unlockControllers, falsely invalidating picks after our own successful move.
@@ -230,14 +353,28 @@ def apply_order(context: Any, document: Any, observed: Snapshot, plan: Plan) -> 
         return Result("refused", permission.reason, detail=permission.detail)
     # All callers get the own-move exception, including callers without a sheet-list view.
     # It covers unlock notifications too, and excludes pre-existing locks/quiet states.
-    with observed.monitor.own_move() as clear:
+    monitor = observed.monitor
+    with monitor.own_move() as clear:
         if not clear:
             return Result("refused", tr("The sheet list has changed. Refresh it and try again."))
-        return _apply_order(context, document, observed, plan, permission)
+        # One step of undo history has no room for the markers' group; such a move stays
+        # unmarked, and its Undo and Redo invalidate as any other.
+        ends = _Ends(context, monitor, tr("Move Sheets")) if permission.undo_steps >= 2 else None
+        result = _apply_order(context, document, observed, plan, permission, ends)
+        if ends is not None and result.status == "done":
+            # After the controllers are unlocked: their modify notification must not move the
+            # generation either. One undo action per move and per marker.
+            monitor.events.own_recorded(ends.move, len(plan.moves) + 2, monitor.count())
+        return result
 
 
 def _apply_order(
-    context: Any, document: Any, observed: Snapshot, plan: Plan, permission: Availability
+    context: Any,
+    document: Any,
+    observed: Snapshot,
+    plan: Plan,
+    permission: Availability,
+    ends: "_Ends | None",
 ) -> Result:
     controller = document.getCurrentController()
     undo = document.getUndoManager()
@@ -257,7 +394,7 @@ def _apply_order(
             "refused", tr("The current sheet selection could not be read."), detail=str(error)
         )
 
-    def execute(moves: tuple[Move, ...]) -> None:
+    def execute(moves: tuple["Move | _Marker", ...]) -> None:
         nonlocal attempted, completed, depth
         if len(moves) > capacity:
             # Calc limits the current undo array to configured Steps during
@@ -275,6 +412,9 @@ def _apply_order(
                     depth -= 1
             return
         for move in moves:
+            if isinstance(move, _Marker):
+                undo.addUndoAction(move)
+                continue
             if not controller.getFrame().isActive():
                 raise RuntimeError("The document's window is no longer active")
             attempted = True
@@ -288,7 +428,7 @@ def _apply_order(
         entered = True
         depth += 1
         try:
-            execute(plan.moves)
+            execute(plan.moves if ends is None else (ends.first, *plan.moves, ends.last))
         finally:
             undo.leaveUndoContext()
             depth -= 1
@@ -313,8 +453,9 @@ def _apply_order(
             # failure before the first mutation must never undo the user's last edit.
             # Entering an empty group can evict the oldest full-stack entry;
             # title changes alone therefore do not prove a mutation. A minimal
-            # plan never returns to the original order after any of its moves.
-            recorded = attempted and changed
+            # plan never returns to the original order after any of its moves. A marker
+            # recorded in the group makes it a group too, even if no sheet moved.
+            recorded = attempted and changed or observed.monitor.events.own_actions > 0
             if recorded:
                 if not controller.getFrame().isActive():
                     raise RuntimeError("Rollback needs the document's window active")

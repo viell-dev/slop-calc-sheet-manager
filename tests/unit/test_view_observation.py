@@ -1,5 +1,6 @@
 """Native-tab observation must not create picks from stale proof or overwrite newer input."""
 
+import time
 from collections.abc import Mapping
 from types import SimpleNamespace
 from typing import Any
@@ -7,6 +8,7 @@ from unittest.mock import Mock
 
 import pytest
 
+from sheet_manager.structure import StructureEvents
 from tests.unit.source_methods import method
 
 SOURCE = "src/sheet_manager/uno_list.py"
@@ -42,7 +44,7 @@ def observer() -> tuple[Any, Any]:
         _view_names=frozenset(live.names),
         _view_generation=0,
         _proven=0,
-        _monitor=SimpleNamespace(generation=0),
+        _monitor=SimpleNamespace(generation=0, events=StructureEvents()),
         _stale_since=None,
         _status=SimpleNamespace(show_tabs=Mock(return_value=False)),
         _bounds=(300, 600),
@@ -410,3 +412,52 @@ def test_an_old_queued_tick_cannot_clear_a_new_timer_or_create_a_second_chain() 
     tick(owner, current)
     assert (owner._view_token, owner._view_timer) == replacement
     assert owner._main.later.call_count == 1
+
+
+def test_calcs_view_during_an_own_replay_is_neither_followed_nor_a_baseline() -> None:
+    """#91: until the adapter restores the view after an own Undo or Redo, nothing is read."""
+    owner, live = observer()
+    owner._monitor.events.view_replay = 1
+    live.active, live.indices = "Charlie", (2,)
+    owner._observe_view()
+    owner._tabs_method.invoke.assert_not_called()
+    owner._select.assert_not_called()
+    assert owner._view_state == ("Alfa", frozenset({"Alfa"}))
+    owner._monitor.events.view_replay = None
+    live.active, live.indices = "Alfa", (0,)  # Restored: the earlier baseline still holds.
+    owner._observe_view()
+    owner._select.assert_not_called()
+
+
+@pytest.mark.parametrize("outcome", ["proven", "failed", "pending", "none"])
+def test_a_switch_during_an_own_replay_is_followed_only_if_the_replay_failed(outcome: str) -> None:
+    events = StructureEvents()
+    events.serial = 1
+    if outcome in ("proven", "failed"):
+        events.outcomes[1] = outcome == "proven"
+    owner = SimpleNamespace(
+        _disposed=False,
+        _monitor=SimpleNamespace(events=events),
+        _main=SimpleNamespace(later=Mock()),
+        _follow_input=None,
+        _refresh_timer=object(),  # A refresh is scheduled already.
+        _busy=False,
+        _stale_since=None,
+        _rate_wait=Mock(return_value=0.0),
+        _schedule=Mock(),
+        _run_refresh=Mock(),
+    )
+    owner._mark_stale = Mock()
+    changed = method(
+        SOURCE,
+        "SheetList",
+        "active_sheet_changed",
+        {"REPLAY_WAIT": 0.05, "REPLAY_WAITS": 40, "time": time},
+    )
+    changed(owner, False, 5, None if outcome == "none" else 1)
+    if outcome == "pending":
+        owner._main.later.assert_called_once()
+        assert owner._follow_input is None
+        return
+    owner._main.later.assert_not_called()
+    assert owner._follow_input == (None if outcome == "proven" else 5)

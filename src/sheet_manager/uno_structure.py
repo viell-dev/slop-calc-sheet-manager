@@ -4,7 +4,9 @@ The sheet list and reorder snapshots share one monitor per document, obtained th
 `monitor_for` before they retain any sheet handle. Its listeners live until the document is
 disposed, independently of any list view or snapshot: disposing a list never detaches it.
 `own_move()` marks the controller lock of the extension's own move; `uno_reorder.apply_order`
-holds it until the controllers are unlocked, and callers do not wrap it.
+holds it until the controllers are unlocked, and callers do not wrap it. Undo and Redo of an own
+move keep the generation only when its marker actions prove the replay (`structure`); the
+markers live in `uno_reorder` and call `events` directly, reading the count through `count()`.
 
 The modify and undo listener methods read the sheet count and the document's state while
 LibreOffice is still notifying: whether undo recording is enabled (the `IsUndoEnabled`
@@ -65,6 +67,11 @@ class StructureMonitor(
     def generation(self) -> int:
         return self.events.generation
 
+    @property
+    def document(self) -> Any:
+        """The document, or None once it is disposed."""
+        return self._document
+
     def check(self) -> int:
         """Bring the generation up to date before acting on handles; return it."""
         if not self._attached:
@@ -103,6 +110,10 @@ class StructureMonitor(
             del _MONITORS[self._document_id]
         # A held snapshot must not retain a closed document or silently regain continuity.
         self._document = self._sheets = self._undo = None
+
+    def count(self) -> int | None:
+        """The sheet count, for the own move's markers to read as the listeners here do."""
+        return self._count() if self._attached else None
 
     def _count(self) -> int | None:
         try:
@@ -149,13 +160,13 @@ class StructureMonitor(
         self.events.undone_or_redone(self._count())
 
     def actionRedone(self, iEvent):
-        self.events.undone_or_redone(self._count())
+        self.events.undone_or_redone(self._count(), redo=True)
 
     def allActionsCleared(self, iEvent):
         self.events.history_cleared(self._count(), self._quiet())
 
     def redoActionsCleared(self, iEvent):
-        self.events.history_cleared(self._count(), self._quiet())
+        self.events.history_cleared(self._count(), self._quiet(), redo=True)
 
     def resetAll(self, iEvent):
         self.events.history_cleared(self._count(), self._quiet(), reset=True)
@@ -164,7 +175,7 @@ class StructureMonitor(
         self.events.context_entered(self._count(), self._quiet())
 
     def enteredHiddenContext(self, iEvent):
-        self.events.context_entered(self._count(), self._quiet())
+        self.events.context_entered(self._count(), self._quiet(), hidden=True)
 
     def leftContext(self, iEvent):
         self.events.context_left(self._count(), self._quiet())
