@@ -12,6 +12,11 @@ metadata checks: no screen reader runs, so what one announces is not verified he
   the tree. The list's timers and observation only post to LibreOffice's main-thread queue, so
   holding the main thread after a property change, past the refresh delay, and then selecting
   queues the rebuilding refresh ahead of any intake: the ordering is deterministic.
+- Every control of the panel is a child of the panel window's accessible context, at its own index
+  in parent and in visual order, and each ancestor up to the top is listed by its parent (#133).
+  A walk down from the top, as a screen reader's object navigation or a bridge's focus tracking
+  makes it, reaches the tree. A footer label is listed while it is shown. The disabled backdrop
+  that keeps presses from undocking the sidebar is the last child.
 """
 
 import time
@@ -22,8 +27,10 @@ import unohelper
 from com.sun.star.accessibility import XAccessibleEventListener
 from main_thread import close_document
 from sheet_list_view import (
+    footer_text,
     labels,
     menu_entries,
+    move_buttons,
     names,
     on_main_thread,
     open_list,
@@ -35,11 +42,22 @@ from teardown import run_checks
 from test_sheet_list import VCL_RIGHT, Robot, say
 
 from sheet_manager.sheet_list import list_name
+from sheet_manager.uno_calc import select_tabs
 from sheet_manager.uno_list import REFRESH_DELAY
 from sheet_manager.uno_menu import MOVE_IDS
 
 NAME_CHANGED = uno.getConstantByName("com.sun.star.accessibility.AccessibleEventId.NAME_CHANGED")
 SELECTED = uno.getConstantByName("com.sun.star.accessibility.AccessibleStateType.SELECTED")
+ENABLED = uno.getConstantByName("com.sun.star.accessibility.AccessibleStateType.ENABLED")
+ROLES = {
+    uno.getConstantByName(f"com.sun.star.accessibility.AccessibleRole.{name}"): name
+    for name in ("LABEL", "PANEL", "PUSH_BUTTON", "TREE", "PAGE_TAB_LIST")
+}
+# Roles whose descendants are the document or the list's rows, which the walk need not enter.
+LEAVES = {
+    uno.getConstantByName(f"com.sun.star.accessibility.AccessibleRole.{name}")
+    for name in ("DOCUMENT_SPREADSHEET", "TABLE", "TREE")
+}
 FIVE = ["Alfa", "Bravo", "Charlie", "Delta", "Echo"]
 # Longer than the refresh delay of a list of five sheets, whose refresh costs milliseconds.
 REFRESH_HOLD = 2.5 * REFRESH_DELAY
@@ -216,9 +234,124 @@ def check_assistive_selection_before_rebuild(context, desktop):
     return {"taken": True}
 
 
+def _child(parent, index):
+    return parent.getAccessibleChild(index).getAccessibleContext()
+
+
+def _describe(item):
+    return {
+        "role": ROLES.get(item.getAccessibleRole(), item.getAccessibleRole()),
+        "name": item.getAccessibleName(),
+        "index": item.getAccessibleIndexInParent(),
+        "children": item.getAccessibleChildCount(),
+        "enabled": bool(item.getAccessibleStateSet() & ENABLED),
+    }
+
+
+def _find(item, target, depth=0):
+    """Walk down from `item` to `target` as a screen reader does, without knowing the path."""
+    if item == target:
+        return [_describe(item)]
+    count = item.getAccessibleChildCount()
+    if depth > 30 or count > 300 or item.getAccessibleRole() in LEAVES:
+        return None
+    for index in range(count):
+        path = _find(_child(item, index), target, depth + 1)
+        if path is not None:
+            return [_describe(item), *path]
+    return None
+
+
+def walk(context, panel, tree):
+    """The panel's children, its ancestry and a walk down to the tree, in one main-thread step."""
+    found: dict[str, Any] = {}
+
+    def work():
+        panel_context = accessible(panel)
+        tree_context = accessible(tree)
+        children = []
+        for index in range(panel_context.getAccessibleChildCount()):
+            child = _child(panel_context, index)
+            parent = child.getAccessibleParent()
+            assert parent is not None and parent.getAccessibleContext() == panel_context, index
+            children.append({**_describe(child), "is_tree": child == tree_context})
+        found["children"] = children
+        ancestry = []
+        level = panel_context
+        while (parent := level.getAccessibleParent()) is not None:
+            parent_context = parent.getAccessibleContext()
+            index = level.getAccessibleIndexInParent()
+            listed = 0 <= index < parent_context.getAccessibleChildCount()
+            listed = listed and _child(parent_context, index) == level
+            ancestry.append({**_describe(level), "listed_by_parent": listed})
+            level = parent_context
+        ancestry.append(_describe(level))
+        found["ancestry"] = ancestry
+        found["down_to_tree"] = _find(level, tree_context)
+
+    on_main_thread(context, work)
+    return found
+
+
+def check_hierarchy(context, desktop):
+    document = workbook(desktop, "Bravo")
+    frame = document.getCurrentController().getFrame()
+    panel, tree = open_list(context, document)
+    poll(lambda: names(tree) == FIVE, "every sheet in the list")
+    poll(lambda: read(context, tree)["name"] == viewing("Bravo"), "the viewed sheet's name")
+    buttons = list(move_buttons(panel))
+    assert buttons == ["Top", "Up", "Down", "Bottom"], buttons
+
+    def expect(found, shown):
+        children = [(child["role"], child["name"], child["index"]) for child in found["children"]]
+        wanted = [
+            *(("PUSH_BUTTON", name, index) for index, name in enumerate(buttons)),
+            ("TREE", viewing("Bravo"), 4),
+            *(("LABEL", label, 5 + index) for index, label in enumerate(shown)),
+            ("PANEL", "", 5 + len(shown)),
+        ]
+        assert children == wanted, found["children"]
+        assert [child["is_tree"] for child in found["children"]] == [
+            role == "TREE" for role, _, _ in wanted
+        ]
+        backdrop = found["children"][-1]
+        assert backdrop["children"] == 0 and not backdrop["enabled"], backdrop
+        assert all(level["listed_by_parent"] for level in found["ancestry"][:-1]), found
+        assert found["down_to_tree"] is not None, found["ancestry"]
+        assert found["down_to_tree"][-2]["children"] == len(wanted), found["down_to_tree"]
+
+    say("the controls are the panel's children, at their own indices, in visual order")
+    found = walk(context, panel, tree)
+    expect(found, [])
+
+    say("a shown footer label is listed after the tree")
+    select_tabs(context, frame, [1, 3])
+    grouped = footer_text(panel, "Cell edits affect every grouped Calc tab")
+    poll(lambda: grouped.isVisible(), "the grouped-tabs warning")
+    text = grouped.getText()
+    assert "Bravo" in text and "Delta" in text, text
+
+    def listed():
+        seen = walk(context, panel, tree)
+        return seen if len(seen["children"]) == 7 else None
+
+    while_grouped = poll(listed, "the warning among the panel's children")
+    expect(while_grouped, [text])
+    select_tabs(context, frame, [1])
+    poll(lambda: not grouped.isVisible(), "the warning to go")
+    close(context, document)
+    return {
+        "children": found["children"],
+        "children_while_grouped": while_grouped["children"],
+        "ancestry": found["ancestry"],
+        "down_to_tree": [(level["role"], level["index"]) for level in found["down_to_tree"]],
+    }
+
+
 def exercise(context, desktop, directory, output, *, headless):
     return run_checks(
         [
+            ("hierarchy", lambda: check_hierarchy(context, desktop)),
             ("viewed_sheet", lambda: check_viewed_sheet(context, desktop, headless)),
             (
                 "assistive_selection_before_rebuild",

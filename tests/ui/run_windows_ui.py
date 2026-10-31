@@ -151,6 +151,10 @@ def checks_for(lab, book):
     """The Windows checks, in order: #114's gaps first, so that a crash loses the least."""
     return [
         ("click_activates", lambda: ui.check_click_activates(book)),
+        (
+            "margin_drag_keeps_sidebar_docked",
+            lambda: ui.check_margin_drag_keeps_sidebar_docked(book),
+        ),
         ("ctrl_shift_selection", lambda: ui.check_ctrl_shift_selection(book)),
         ("viewed_sheet_name", lambda: ui.check_viewed_sheet_name(book)),
         ("keys_stay_in_list", lambda: ui.check_keys_stay_in_list(book)),

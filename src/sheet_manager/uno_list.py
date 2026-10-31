@@ -73,7 +73,9 @@ description, state or relation setter, toolkit has no `AccessibleDescription`, a
 only a tooltip. Native selection made without an owned handler, such as through
 `XAccessibleSelection`, waits for the queued intake; a refresh that rebuilds the rows first shows
 that selection again (`_show_native`) under the proof, drop count and order the intake checks,
-so the intake still decides.
+so the intake still decides. The panel window lists the move buttons, the tree and the shown
+footer labels as its accessible children in creation order, which is their visual order, so
+create them in that order (#133, `uno_panel`).
 
 Following Calc's tabs. Calc sends no reliable notification for a tab selection that keeps the
 same active sheet, so each list caches the reflected `getSelectedSheets` method and samples its
@@ -535,6 +537,22 @@ class SheetList:
         self._scroll_pending = False
         self._type_ahead = TypeAhead()
 
+        self._listeners = {
+            "mouse": _Mouse(self),
+            "focus": _Focus(self),
+            "cursor": _Cursor(self),
+            "paint": _Paint(self),
+            "gesture": _Gesture(self),
+            "source": _Source(self),
+            "target": _Target(self),
+            "document": _Document(self),
+        }
+        # The panel lists its children in creation order, which assistive technology follows:
+        # the buttons above the list come first, the footer below it last (#133).
+        self._moves = MoveButtons(
+            context, parent_window, self.queue_move, self._listeners["focus"], self.note_input
+        )
+        self._release_with(self._moves.dispose)
         manager = context.ServiceManager
         model = manager.createInstanceWithContext("com.sun.star.awt.tree.TreeControlModel", context)
         model.SelectionType = MULTI
@@ -553,22 +571,8 @@ class SheetList:
         self._row_height = self._row_paint.row_height()
         model.RowHeight = self._row_height
 
-        self._listeners = {
-            "mouse": _Mouse(self),
-            "focus": _Focus(self),
-            "cursor": _Cursor(self),
-            "paint": _Paint(self),
-            "gesture": _Gesture(self),
-            "source": _Source(self),
-            "target": _Target(self),
-            "document": _Document(self),
-        }
         self._status = CalcStatus(context, parent_window)
         self._release_with(self._status.dispose)
-        self._moves = MoveButtons(
-            context, parent_window, self.queue_move, self._listeners["focus"], self.note_input
-        )
-        self._release_with(self._moves.dispose)
         self.tree.addMouseListener(self._listeners["mouse"])
         self.tree.addFocusListener(self._listeners["focus"])
         self.tree.addPaintListener(self._listeners["paint"])

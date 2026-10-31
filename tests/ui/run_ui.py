@@ -357,6 +357,45 @@ def check_viewed_sheet_name(book):
     return names
 
 
+def check_margin_drag_keeps_sidebar_docked(book):
+    """A real press in the panel's empty margins, dragged away, leaves the sidebar docked (#133).
+
+    The list's controls lie over a disabled backdrop that swallows the press. With an enabled
+    plain window there, the same drag undocks the sidebar with the `win` interface; gtk3's
+    embedded sidebar does not undock either way. The picks stay as they were.
+    """
+    toolkit = book.lab.context.ServiceManager.createInstanceWithContext(
+        "com.sun.star.awt.Toolkit", book.lab.context
+    )
+    panel = book.panel.getProperty("XAccessible").getAccessibleContext()
+    tree = book.tree.getPosSize()  # In the panel's coordinates; the pointer uses the tree's.
+    buttons = view.move_buttons(book.panel)
+    top, up = buttons["Top"].getPosSize(), buttons["Up"].getPosSize()
+    starts = {
+        "left of the list": (1 - tree.X, 60),
+        "between buttons": (
+            (top.X + top.Width + up.X) // 2 - tree.X,
+            top.Y + top.Height // 2 - tree.Y,
+        ),
+    }
+    book.click(2)
+    wait_until(lambda: book.selection() == [NAMES[2]], "a click to pick Charlie")
+    evidence = {}
+    for name, start in starts.items():
+        location = panel.getLocationOnScreen()
+        before = (location.X, location.Y, toolkit.getTopWindowCount())
+        book.pointer.press(*start)
+        book.pointer.glide(start, (start[0] - 300, start[1] + 90))
+        book.pointer.release()
+        time.sleep(1.0)
+        location = panel.getLocationOnScreen()
+        after = (location.X, location.Y, toolkit.getTopWindowCount())
+        evidence[name] = {"start": start, "before": before, "after": after}
+        assert after == before, f"A drag from the panel's margin ({name}) moved the sidebar"
+    assert book.selection() == [NAMES[2]], book.selection()
+    return evidence
+
+
 def check_ctrl_shift_selection(book):
     book.double_click(1)
     wait_until(lambda: book.active() == NAMES[1], "double-click activation")
@@ -2320,6 +2359,7 @@ def run_checks(lab, output, only=()):
         ("move_edges_and_refusal", lambda: check_move_edges_and_refusal(book)),
         ("move_focus_and_queued_navigation", lambda: check_move_focus_and_queued_navigation(book)),
         ("click_activates", lambda: check_click_activates(book)),
+        ("margin_drag_keeps_sidebar_docked", lambda: check_margin_drag_keeps_sidebar_docked(book)),
         ("ctrl_shift_selection", lambda: check_ctrl_shift_selection(book)),
         ("viewed_sheet_name", lambda: check_viewed_sheet_name(book)),
         ("row_paint_scroll", lambda: check_row_paint_scroll(book)),
