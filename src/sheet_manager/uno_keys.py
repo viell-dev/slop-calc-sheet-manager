@@ -4,7 +4,9 @@ UNO key listeners cannot consume a key, so the list registers a toolkit key hand
 panel control has focus. The handler sees every key in the application first; it acts only when
 the list's tree or a move button has focus at that moment, and routes keys as ``sheet_manager.keys``
 describes. Shortcuts are resolved through the document's, Calc's, and the global shortcut
-configuration, in the order LibreOffice itself uses, and dispatched to the panel's frame.
+configuration, in the order LibreOffice itself uses, and dispatched to the panel's frame. Save
+and Save As go through ``SheetList.run_command`` like the others; the list then takes back the
+focus that a save moves to the sheet (``keys.keeps_focus``, #23).
 """
 
 import unohelper

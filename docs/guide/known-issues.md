@@ -28,7 +28,11 @@ If Sheet Manager does not work in an environment where it is expected to, please
   **Sheet Manager Help** in the context menu for this guide. Header hover sizing is also controlled
   by LibreOffice and its theme
   ([#81](https://github.com/viell-dev/slop-calc-sheet-manager/issues/81)).
-- **Save focus.** Ctrl+S from the list saves through Calc and moves focus to the sheet
+- **Save focus.** Ctrl+S from the list saves through Calc. With LibreOffice's gtk3 interface on
+  Linux, a save moves the keyboard focus from any sidebar control to the sheet, Calc's own panels
+  included. <Unreleased /> The list takes the focus back once the save has finished, after any
+  Save As, file format, or error dialog has closed, unless you have used the list or another
+  window meanwhile. Earlier builds leave the focus in the sheet; click the list to return to it
   ([#23](https://github.com/viell-dev/slop-calc-sheet-manager/issues/23)).
 - **Unavailable menu actions.** Native popup rendering can hide disabled commands and move
   actions, and their help text. In the gen backend, use Down to highlight the first available

@@ -92,6 +92,15 @@ main-thread timer, with a token rejecting a stale queued timeout after renewal o
 list moves Tab and Shift+Tab focus itself, between its controls and, past either end, to the
 frame's component window: native sidebar traversal alone neither reaches these child peers nor
 leaves them reliably. Posted focus requests are refused when focus or the active frame moved.
+
+Saving from the list (#23). With gtk3, a save moves the focus from every sidebar control to the
+sheet while it stores, Calc's own panels included (measured with 26.8.1.1 and 26.8.2.2; gen keeps
+it). A save or Save As forwarded from the list therefore runs synchronously, returning after any
+dialog it opened has closed, and a posted request then focuses the panel's own window and the
+control that had the focus. A focus request to the control alone has no effect after the save. The
+request is dropped after newer list input, and while another window or a dialog is active; no
+window is reported active until the document window has the focus again after a native gtk3 dialog,
+and the request takes effect then.
 `uno_moves` states the move buttons' rules, which `_update_moves` and `travel_focus` here, and
 `uno_keys` and `keys.move_action`, carry out.
 """
@@ -130,6 +139,7 @@ from sheet_manager.keys import (
     A,
     TypeAhead,
     find_prefix,
+    keeps_focus,
 )
 from sheet_manager.rename import Batch
 from sheet_manager.reorder import Action, plan_move
@@ -457,6 +467,7 @@ class SheetList:
         self._monitor = monitor_for(self.document)
         self._proven = self._monitor.generation  # The generation the picks were proved at.
         self.toolkit = parent_window.getToolkit()
+        self._panel_window = parent_window
         self.rows: list[SheetRow] = []
         self._observed: Snapshot | None = None
         self._handles: dict[str, Any] = {}
@@ -1497,7 +1508,50 @@ class SheetList:
             show_error(self.peer, tr("Sheet Manager"), result.message)
 
     def run_command(self, command: str) -> None:
-        self.post(lambda: dispatch(self.context, self.frame, command), "a shortcut")
+        if not keeps_focus(command):
+            self.post(lambda: dispatch(self.context, self.frame, command), "a shortcut")
+            return
+        # Called from the key handler: only note which control has the focus now.
+        control = self.tree if self.owns_tree_keys() else self._focused_button()
+        seen = self._input
+        self.post(lambda: self._save_keeping_focus(command, control, seen), "a save shortcut")
+
+    def _focused_button(self):
+        if self._moves is None:
+            return None
+        return next(
+            (b for b in self._moves.buttons.values() if b.getPeer().hasFocus()),
+            None,
+        )
+
+    def _save_keeping_focus(self, command: str, control, seen: int) -> None:
+        """Save, then give the focus back to the control that had it (#23).
+
+        Synchronous mode returns only when the save has finished, after any Save As, file
+        format, or error dialog has closed. With the gtk3 interface, the save moves the focus
+        from the panel to the sheet while it stores, as it does from Calc's own panels.
+        """
+        if self._disposed:
+            return
+        dispatch(self.context, self.frame, command, (prop("SynchronMode", True),))
+        if control is not None:
+            self.post(lambda: self._restore_focus(control, seen), "restoring focus after a save")
+
+    def _restore_focus(self, control, seen: int) -> None:
+        if self._disposed or self._input != seen or control.getPeer().hasFocus():
+            return  # Newer list input decides where the focus goes.
+        # After a native gtk3 dialog closes, no window is reported active until the document
+        # window has the focus again; a focus request made meanwhile takes effect then.
+        active = self.toolkit.getActiveTopWindow()
+        if not self.frame.isActive() or active not in (None, self.frame.getContainerWindow()):
+            return  # Another window or a dialog is active: leave it the focus.
+        # With gtk3, the panel is a window of its own inside the sidebar: a control's focus
+        # request alone has no effect after the save until that window has the focus again.
+        self._panel_window.setFocus()
+        if control is self.tree or control.getModel().Enabled:
+            control.setFocus()
+        else:
+            self.tree.setFocus()
 
     # Mouse and menu
 

@@ -9,7 +9,8 @@ therefore routed as follows:
 - selection and navigation keys are consumed and handled by the list's own selection model;
 - keys the list handles itself (Enter, typed characters, the menu keys) are consumed;
 - other shortcuts are consumed and their Calc command is dispatched to the panel's own frame,
-  because the sidebar swallows some of them (Ctrl+Page Down) before they reach Calc;
+  because the sidebar swallows some of them (Ctrl+Page Down) before they reach Calc; after a
+  save, the panel takes back the focus that the gtk3 interface moves to the sheet (#23);
 - Tab traverses enabled panel controls, then returns to Calc; other focus travel, the menu bar,
   and Escape are left to LibreOffice;
 - everything else is consumed so that it cannot reach a cell.
@@ -29,6 +30,7 @@ RETURN, ESCAPE, TAB, BACKSPACE, SPACE, INSERT, DELETE = range(1280, 1287)
 CONTEXTMENU = 1305
 
 NAVIGATION = frozenset((DOWN, UP, LEFT, RIGHT, HOME, END, PAGEUP, PAGEDOWN))
+SAVE_COMMANDS = frozenset((".uno:Save", ".uno:SaveAs"))
 TYPE_AHEAD_SECONDS = 1.0
 
 
@@ -101,6 +103,16 @@ def button_route(route: KeyRoute, code: int, modifiers: int) -> KeyRoute:
     if route in (KeyRoute.TREE, KeyRoute.ACTIVATE) or code == SPACE and modifiers == 0:
         return KeyRoute.LIBREOFFICE
     return KeyRoute.IGNORE if route is KeyRoute.TYPE_AHEAD else route
+
+
+def keeps_focus(command: str) -> bool:
+    """Whether the panel takes its focus back after a forwarded command has finished (#23).
+
+    Only saving: with the gtk3 user interface, a save moves the keyboard focus from any sidebar
+    control to the sheet, Calc's own panels included. Other commands keep the focus where
+    LibreOffice puts it, since some move it on purpose, such as Find or the Name Box.
+    """
+    return command.partition("?")[0] in SAVE_COMMANDS
 
 
 def unbound_route(modifiers: int) -> KeyRoute:
