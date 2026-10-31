@@ -172,6 +172,8 @@ from sheet_manager.uno_moves import MoveButtons
 from sheet_manager.uno_rename import apply_renames, preflight
 from sheet_manager.uno_rename_dialog import RenameDialog
 from sheet_manager.uno_reorder import (
+    REPLAY_WAIT,
+    REPLAY_WAITS,
     Availability,
     Snapshot,
     apply_order,
@@ -1184,18 +1186,34 @@ class SheetList:
         """
         seen = self._input
         own = self._activating
-        self.post(lambda: self.active_sheet_changed(own, seen), "following a sheet switch")
+        # Calc activates the sheets an Undo or Redo moves back; during an own move's replay and
+        # the restoration after it, the switch belongs to the replay (`structure`, #91).
+        replay = self._monitor.events.viewing_replay()
+        self.post(lambda: self.active_sheet_changed(own, seen, replay), "following a sheet switch")
 
-    def active_sheet_changed(self, own: bool, seen: int) -> None:
+    def active_sheet_changed(
+        self, own: bool, seen: int, replay: int | None = None, waits: int = 0
+    ) -> None:
         """Show the new active sheet, at once unless refreshes are being rate-limited.
 
         A switch the list made itself needs no following: the list already shows the sheet
-        the user clicked or chose. Other switches make the list follow Calc's selection,
-        unless the user has used the list since the switch (`seen`).
+        the user clicked or chose. Neither does one made by a proved replay of an own move or
+        by the restoration of the view after it, which puts back the sheet the user had. Other
+        switches make the list follow Calc's selection, unless the user has used the list since
+        the switch (`seen`).
         """
         if self._disposed:
             return
-        if not own:
+        events = self._monitor.events
+        if replay is not None and not events.replay_settled(replay) and waits < REPLAY_WAITS:
+            # Posted work can run before the replay's undo notification (`uno_reorder`).
+            self._main.later(
+                REPLAY_WAIT,
+                lambda: self.active_sheet_changed(own, seen, replay, waits + 1),
+                "following a sheet switch",
+            )
+            return
+        if not own and not events.replay_proven(replay):
             self._follow_input = seen
         now = time.monotonic()
         self._mark_stale(now)
@@ -1207,6 +1225,11 @@ class SheetList:
     def _timed_refresh(self) -> None:
         self._refresh_timer = None
         if self._disposed or self._stale_since is None:
+            return
+        if self._monitor.events.replay is not None:
+            # The main loop can run during Calc's replay of an Undo; a check now would end an
+            # own move's proof (#91). Refresh after it.
+            self._schedule(REPLAY_WAIT)
             return
         now = time.monotonic()
         delay = self._refresh_delay()
@@ -1343,6 +1366,8 @@ class SheetList:
             return
         if self.document.hasControllersLocked() or self.document.isActionLocked():
             return
+        if self._monitor.events.viewing_replay() is not None:
+            return  # Calc's view during an own move's replay, until it is restored (#91).
         generation = self._monitor.generation  # Never consume pending modify evidence (#66).
         if generation != self._proven:
             self._view_state = None

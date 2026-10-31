@@ -174,6 +174,7 @@ class Lab:
     def __init__(self, calls: list[str]) -> None:
         self.calls = calls
         self.input = self
+        self.released = 0  # Held buttons released after failures; display input, not office calls.
 
     def screenshot(self, name: str) -> None:
         self.calls.append(f"screenshot {name}")
@@ -183,6 +184,9 @@ class Lab:
 
     def tap(self, key: str, pause: float = 0) -> None:
         pass  # Real input reaches the display, not the office.
+
+    def release_held(self) -> None:
+        self.released += 1
 
 
 def ui_run_checks(calls: list[str], stall_at: str | None, fail_at: str | None = None) -> Any:
@@ -241,9 +245,11 @@ def ui_run_checks(calls: list[str], stall_at: str | None, fail_at: str | None = 
 def test_ui_checks_continue_after_an_ordinary_failure(tmp_path: Path) -> None:
     calls: list[str] = []
     run, _ = ui_run_checks(calls, None, fail_at="check_click_activates")
-    results = run(Lab(calls), tmp_path)
+    lab = Lab(calls)
+    results = run(lab, tmp_path)
     assert calls[-1] == "close" and calls.count("reset") == len(results) > 1
     assert [result["pass"] for result in results.values()].count(False) == 1
+    assert lab.released == 1  # A press held by the failed check must not drag in the next.
 
 
 @pytest.mark.parametrize("position", ["first", "check_picks_dropped_when_sheets_change"])

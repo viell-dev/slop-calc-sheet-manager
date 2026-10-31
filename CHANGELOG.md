@@ -11,6 +11,14 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   own panels included. The list now takes it back once the save has finished, after any Save As,
   file format, or error dialog has closed, so typing goes on searching the list instead of
   editing a cell. A dialog keeps the focus while it is open.
+- Keep the list's picks and the view through Undo and Redo of its own moves
+  ([#91](https://github.com/viell-dev/slop-calc-sheet-manager/issues/91)). After dragging sheets
+  or moving them with a button, the menu or a shortcut, Ctrl+Z and Ctrl+Y no longer clear the
+  picked rows, and the sheet you were viewing and Calc's selected tabs stay as they were instead
+  of jumping to a moved sheet. The list recognizes its own move only when nothing that could
+  change which sheet is which has happened since; otherwise Undo and Redo still clear the picks
+  and show the notice, as before. With undo history set to one step they always do. If a move
+  fails before it moves any sheet, Redo history from before the move is now lost.
 
 ## 0.0.7 - 2026-10-31
 

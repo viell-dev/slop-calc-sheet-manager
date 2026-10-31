@@ -10,6 +10,13 @@ modify notification; modify notifications per change, once when a `lockControlle
 undo recording is off except its modify notification; an undo context's actions grouped into
 one undo step; undo or redo as one action; and saves as modify notifications between save
 events. Sheet ids are the ground truth the list never sees.
+
+The list's own move group holds two marker actions (`uno_reorder`), and undoing or redoing it
+calls them as Calc does (measured with 26.8.1.1): Undo calls the last marker first and the first
+marker last, Redo the other way round, and a group of moves alone reports nothing in between.
+Undoing a group with an insertion or a deletion reports modify notifications, and actions that a
+hidden context added to a group are replayed outside its markers: on Undo before the last marker
+runs, on Redo after it.
 """
 
 import random
@@ -18,7 +25,13 @@ from dataclasses import dataclass, field
 
 from sheet_manager.rename import plan_renames
 from sheet_manager.selection import Ref, Selection, structure_kept
-from sheet_manager.structure import History, Quiet, StructureEvents
+from sheet_manager.structure import (
+    VIEW_RESTORE_LIMIT,
+    History,
+    OwnMove,
+    Quiet,
+    StructureEvents,
+)
 
 
 class Handle:
@@ -45,6 +58,10 @@ class Step:
     targets: dict[int, int]
     stale: bool = False  # An unrecorded change came after it: the model does not undo it.
     received: bool = False  # For an open context: whether an action was recorded in it.
+    moves_only: bool = True  # Only moves and markers: its undo and redo report nothing more.
+    marker: Callable[[bool, bool], None] | None = None  # Called (opening, redo) at each end.
+    merged: bool = False  # A hidden context added actions to it after it was recorded.
+    after: tuple[Sheets, dict[int, int]] | None = None  # The state Redo brings back.
 
 
 @dataclass
@@ -53,7 +70,10 @@ class Book:
     sheets: Sheets = field(default_factory=Sheets)
     handles: list[Handle] = field(default_factory=list[Handle])
     undo: list[Step] = field(default_factory=list[Step])
+    redo: list[Step] = field(default_factory=list[Step])
     contexts: list[Step] = field(default_factory=list[Step])
+    hidden_into: Step | None = None  # The undo step a hidden context adds actions to.
+    replayed: str | None = None  # The title of the step last undone or redone.
     listeners: list[Callable[[str, Quiet], None]] = field(
         default_factory=list[Callable[[str, Quiet], None]]
     )
@@ -122,20 +142,49 @@ class Book:
         else:
             self.notify("modified")
 
-    def _change(self, title: str, apply: Callable[[], None]) -> None:
+    def _clear_redo(self) -> None:
+        if self.redo:
+            self.redo.clear()
+            self.notify("redo_cleared")
+
+    def _change(self, title: str, apply: Callable[[], None], move: bool = False) -> None:
         """One change as Calc makes it: recorded (if recording is on), then reported."""
         sheets, targets = self._state()
         apply()
         if self.recording:
-            if self.contexts:
+            if self.hidden_into is not None:
+                self.hidden_into.merged = True
+                self.hidden_into.moves_only &= move
+            elif self.contexts:
                 self.contexts[-1].received = True
+                self.contexts[-1].moves_only &= move
             else:
-                self.undo.append(Step(title, sheets, targets))
+                self._clear_redo()
+                self.undo.append(Step(title, sheets, targets, moves_only=move))
             self.notify("added")
         else:
-            for step in (*self.undo, *self.contexts):
+            for step in (*self.undo, *self.redo, *self.contexts):
                 step.stale = True
         self._modify()
+
+    def mark(self, marker: Callable[[bool, bool], None]) -> None:
+        """A marker action recorded in the open context; it changes nothing."""
+        self.contexts[-1].received = True
+        self.contexts[-1].marker = marker
+        self.notify("added")
+
+    def hidden(self, changes: list[Callable[[], None]]) -> None:
+        """A hidden undo context: its actions join the top undo step."""
+        if not self.undo or not self.recording:
+            return
+        self.notify("hidden_entered")
+        self.hidden_into = self.undo[-1]
+        try:
+            for change in changes:
+                change()
+        finally:
+            self.hidden_into = None
+        self.notify("left")
 
     # Wrappers, as a program calls them
 
@@ -150,26 +199,66 @@ class Book:
     def leave(self) -> None:
         step = self.contexts.pop()
         if step.received:
+            self._clear_redo()  # Measured: reported before the context's end.
             self.undo.append(step)
         self.notify("left")
+
+    def _restore(self, sheets: Sheets, targets: dict[int, int]) -> None:
+        positions = {sheet_id: index for index, (sheet_id, _) in enumerate(self.sheets)}
+        self.sheets = list(sheets)
+        present = {sheet_id for sheet_id, _ in sheets}
+        for handle in self.handles:
+            target = targets.get(id(handle), handle.sheet_id)
+            if target not in present:  # Its sheet does not exist in the restored state.
+                index = min(positions.get(target, 0), len(sheets)) - 1
+                target = sheets[max(index, 0)][0]
+            handle.sheet_id = target
+
+    def _replay_reports(self, step: Step) -> None:
+        """What replaying more than moves reports (measured): Calc turns recording off."""
+        if not step.moves_only and not self.modify_off:
+            self.notify("modified", self.quiet() | Quiet.UNDO_OFF | Quiet.UNDO_LOCKED)
 
     def undo_last(self) -> None:
         """Undo the last step: sheets and handles as before it, reported as one action."""
         if not self.undo or self.undo[-1].stale or self.lock or not self.recording:
             return
         step = self.undo.pop()
-        positions = {sheet_id: index for index, (sheet_id, _) in enumerate(self.sheets)}
-        self.sheets = step.sheets
-        present = {sheet_id for sheet_id, _ in step.sheets}
-        for handle in self.handles:
-            target = step.targets.get(id(handle), handle.sheet_id)
-            if target not in present:  # Its sheet was inserted by the undone step.
-                index = min(positions.get(target, 0), len(step.sheets)) - 1
-                target = step.sheets[max(index, 0)][0]
-            handle.sheet_id = target
-        # Measured: Calc turns undo recording off while it undoes.
-        self.notify("modified", self.quiet() | Quiet.UNDO_OFF | Quiet.UNDO_LOCKED)
+        if step.merged:
+            self._replay_reports(step)  # The hidden context's actions are undone first.
+        if step.marker is not None:
+            step.marker(True, False)
+        after = self._state()
+        self._restore(step.sheets, step.targets)
+        if not step.merged:
+            self._replay_reports(step)
+        if step.marker is not None:
+            step.marker(False, False)
+        step.after = after
+        self.redo.append(step)
+        self.replayed = step.title
         self.notify("undone")
+
+    def redo_last(self) -> None:
+        """Redo the last undone step: sheets and handles as after it, reported as one action."""
+        if not self.redo or self.redo[-1].stale or self.lock or not self.recording:
+            return
+        step = self.redo.pop()
+        assert step.after is not None
+        if step.marker is not None:
+            step.marker(True, True)
+        before = self._state()
+        self._restore(*step.after)
+        if not step.merged:
+            self._replay_reports(step)
+        if step.marker is not None:
+            step.marker(False, True)
+        if step.merged:
+            self._replay_reports(step)  # The hidden context's actions are redone last.
+        step.sheets, step.targets = before
+        self.undo.append(step)
+        self.replayed = step.title
+        self.notify("redone")
 
     def save(self) -> None:
         """Measured: five modify notifications and no undo action, between OnSave and
@@ -207,7 +296,9 @@ class Book:
         self._change("Rename Sheet", apply)
 
     def move(self, index: int, to: int) -> None:
-        self._change("Move Sheets", lambda: self.sheets.insert(to, self.sheets.pop(index)))
+        self._change(
+            "Move Sheets", lambda: self.sheets.insert(to, self.sheets.pop(index)), move=True
+        )
 
     def colour(self) -> None:
         self._change("Color Tab", lambda: None)
@@ -281,10 +372,20 @@ class List:
     notification: the count alone, and every modify notification taken as explained.
     """
 
-    def __init__(self, book: Book, careful: bool = True, sampled: bool = True) -> None:
+    def __init__(
+        self,
+        book: Book,
+        careful: bool = True,
+        sampled: bool = True,
+        marked: bool = True,
+        trust_title: bool = False,
+    ) -> None:
         self.book = book
         self.careful = careful  # False: only per-ref name checks, as before round 6.
         self.sampled = sampled
+        self.marked = marked  # False: own moves without markers, as with one undo step.
+        # True: a deliberately broken identification that trusts the own move's title alone.
+        self.trust_title = trust_title
         self.selection = Selection(lambda ref: ref.token.name() == ref.name)
         self.events = StructureEvents(count=len(book.sheets), history=book.history())
         book.listeners.append(self.notified)
@@ -305,10 +406,19 @@ class List:
             events.action_added(count, quiet)
         elif kind == "entered":
             events.context_entered(count, quiet)
+        elif kind == "hidden_entered":
+            events.context_entered(count, quiet, hidden=True)
         elif kind == "left":
             events.context_left(count, quiet)
+        elif kind == "redo_cleared":
+            events.history_cleared(count, quiet, redo=True)
+        elif kind in ("undone", "redone") and self.trust_title:
+            if self.book.replayed == "Move Sheets":  # The broken rule keeps the generation.
+                events.replay, events.count, events.undo_notes = None, count, 1
+            else:
+                events.undone_or_redone(count, redo=kind == "redone")
         elif kind in ("undone", "redone"):
-            events.undone_or_redone(count)
+            events.undone_or_redone(count, redo=kind == "redone")
         elif kind.startswith("event:"):
             events.document_event(kind.removeprefix("event:"))
         else:
@@ -340,19 +450,36 @@ class List:
         return dict(zip(self.rows, self.handles, strict=True))
 
     def own_move(self, index: int, to: int) -> None:
-        """The list's own move, as apply_order makes it: locked, in one undo context."""
+        """The list's own move, as apply_order makes it: locked, in one undo context, between
+        two markers that follow its replays, and armed once the controllers are unlocked."""
         book = self.book
-        if self.check() != self.proven or book.lock or not book.recording:
+        if self.check() != self.proven or book.lock or not book.recording or index == to:
             return  # Refused, as the list and the reorder layer refuse.
-        self.events.own_move_started(book.quiet() if self.sampled else Quiet.NONE)
+        events = self.events
+        move = OwnMove()
+
+        def marker(opening: bool, redo: bool) -> None:
+            count = len(book.sheets)
+            if opening:
+                events.replay_started(move, redo, count)
+            else:
+                events.replay_finished(move, redo, count)
+
+        events.own_move_started(book.quiet() if self.sampled else Quiet.NONE)
         try:
             book.begin_lock("controllers")
             book.enter("Move Sheets")
+            if self.marked:
+                book.mark(marker)
             book.move(index, to)
+            if self.marked:
+                book.mark(marker)
             book.leave()
             end_lock(book)
+            if self.marked:
+                events.own_recorded(move, 3, len(book.sheets))
         finally:
-            self.events.own_move_finished()
+            events.own_move_finished()
 
     def own_rename(self, rng: random.Random) -> dict[str, str]:
         """The list's own batch rename, as apply_renames makes it: planned renames of retained
@@ -377,6 +504,11 @@ class List:
 
 
 DELIVERIES = (
+    "redo",
+    "undo_unmodified",
+    "redo_unmodified",
+    "hidden",
+    "titled",
     "each",
     "locked_controllers",
     "locked_action",
@@ -401,8 +533,17 @@ DELIVERIES = (
 
 def edit(book: Book, rng: random.Random, delivery: str) -> None:
     """One random edit, delivered as LibreOffice delivers it under one of the wrappers."""
-    if delivery == "undo":
-        book.undo_last()
+    if delivery in ("undo", "undo_unmodified", "redo", "redo_unmodified"):
+        # Unmodified: a program undoes under disableSetModified; only the undo is reported.
+        book.modify_off = delivery.endswith("unmodified")
+        if delivery.startswith("undo"):
+            book.undo_last()
+        else:
+            book.redo_last()
+        book.modify_off = False
+        return
+    if delivery == "hidden":  # Actions added to the top step, possibly an own move's.
+        book.hidden(random_changes(book, rng))
         return
     if delivery == "typed_input":
         book.typed_input()
@@ -428,14 +569,15 @@ def edit(book: Book, rng: random.Random, delivery: str) -> None:
         book.colour()
         book.leave()
         delivery = "unrecorded_controllers_before"
-    if delivery in ("each", "context", "unmodified", "unrecorded"):
+    if delivery in ("each", "context", "titled", "unmodified", "unrecorded"):
         book.modify_off = delivery == "unmodified"
         book.recording = delivery != "unrecorded"
-        if delivery == "context":
-            book.enter("Batch")
+        if delivery in ("context", "titled"):
+            # Titled: another program's group with the own move's title, as Calc's own is.
+            book.enter("Batch" if delivery == "context" else "Move Sheets")
         for change in changes:
             change()
-        if delivery == "context":
+        if delivery in ("context", "titled"):
             book.leave()
         book.recording, book.modify_off = True, False
         return
@@ -475,11 +617,12 @@ def random_session(
     careful: bool = True,
     deliveries: tuple[str, ...] = DELIVERIES,
     sampled: bool = True,
+    trust_title: bool = False,
 ) -> list[str]:
     """Random edits, picks, own moves, and refreshes; the violations found after refreshes."""
     rng = random.Random(seed)
     book = Book([f"S{n}" for n in range(rng.randrange(1, 9))])
-    sheet_list = List(book, careful, sampled)
+    sheet_list = List(book, careful, sampled, trust_title=trust_title)
     book.nested = sheet_list.refresh if rng.random() < 0.5 else None
     made_for: dict[int, tuple[Ref, int]] = {}  # id(ref) -> (ref, the sheet it was made for)
     violations: list[str] = []
@@ -489,11 +632,17 @@ def random_session(
             end_lock(book)  # A held batch's lock is released at last.
         elif step < 0.35:
             edit(book, rng, rng.choice(deliveries))
-        elif step < 0.4:
+        elif step < 0.42:
             count = len(book.sheets)
             sheet_list.own_move(rng.randrange(count), rng.randrange(count))
-        elif step < 0.6:
-            renamed = sheet_list.own_rename(rng) if step < 0.45 else {}
+        elif step < 0.47:
+            # Ctrl+Z and Ctrl+Y, mostly over the list's own moves.
+            if rng.random() < 0.6:
+                book.undo_last()
+            else:
+                book.redo_last()
+        elif step < 0.62:
+            renamed = sheet_list.own_rename(rng) if step < 0.5 else {}
             before = held(sheet_list.selection)
             sheet_list.refresh(renamed)
             for ref in held(sheet_list.selection):
@@ -914,3 +1063,264 @@ def test_structure_events_contexts():
     events.history_cleared(3, Quiet.NONE)
     events.modified(3, Quiet.NONE)
     assert events.generation == 1
+
+
+def own_moved(names: list[str], picks: list[str], *, marked: bool = True) -> tuple[Book, List]:
+    """The list's own move of its first pick to the top, with `picks` picked; refreshed."""
+    book = Book(names)
+    sheet_list = List(book, marked=marked)
+    sheet_list.selection.take(picks, sheet_list.tokens(), sheet_list.rows)
+    sheet_list.own_move(book.names().index(picks[0]), 0)
+    sheet_list.refresh()
+    assert sheet_list.selection.names() == [name for name in book.names() if name in picks]
+    return book, sheet_list
+
+
+def kept(sheet_list: List, picks: dict[str, int]) -> bool:
+    """Whether exactly these picks are held, each still for the sheet it was picked as."""
+    held_now = {ref.name: ref.token.sheet_id for ref in sheet_list.selection.picked}
+    return held_now == picks
+
+
+def test_undo_and_redo_of_the_lists_own_move_keep_the_picks():
+    """#91: the markers prove the replay, so neither Undo nor Redo moves the generation."""
+    book, sheet_list = own_moved(["Alfa", "Bravo", "Charlie", "Delta"], ["Charlie", "Delta"])
+    picks = {ref.name: ref.token.sheet_id for ref in sheet_list.selection.picked}
+    generation = sheet_list.proven
+    for replay in (book.undo_last, book.redo_last, book.undo_last, book.redo_last):
+        replay()
+        sheet_list.refresh()
+        assert kept(sheet_list, picks), replay
+        assert sheet_list.proven == generation
+    assert book.names() == ["Charlie", "Alfa", "Bravo", "Delta"]
+
+
+def test_own_moves_undo_in_turn():
+    """Two own moves undone and redone in turn: each group is proved on its own."""
+    book, sheet_list = own_moved(["Alfa", "Bravo", "Charlie", "Delta"], ["Charlie"])
+    sheet_list.own_move(book.names().index("Delta"), 1)
+    sheet_list.refresh()
+    picks = {ref.name: ref.token.sheet_id for ref in sheet_list.selection.picked}
+    for replay in (book.undo_last, book.undo_last, book.redo_last, book.redo_last):
+        replay()
+        sheet_list.refresh()
+        assert kept(sheet_list, picks), replay
+
+
+def test_without_markers_undo_clears_the_picks_as_before():
+    """Control: an own move without markers, as with one undo step, is any other Undo."""
+    book, sheet_list = own_moved(["Alfa", "Bravo", "Charlie"], ["Charlie"], marked=False)
+    book.undo_last()
+    sheet_list.refresh()
+    assert sheet_list.selection.picked == []
+
+
+def test_an_intervening_edit_revokes_the_own_move():
+    """A sheet inserted after the move and undone again: the move's Undo clears the picks."""
+    book, sheet_list = own_moved(["Alfa", "Bravo", "Charlie"], ["Charlie"])
+    book.insert(1, "Newcomer")
+    book.undo_last()
+    sheet_list.refresh()
+    sheet_list.selection.take(["Bravo"], sheet_list.tokens(), sheet_list.rows)
+    book.undo_last()  # The own move, no longer provable.
+    sheet_list.refresh()
+    assert sheet_list.selection.picked == []
+
+
+def test_an_unrecorded_edit_revokes_the_own_move():
+    """A cover with undo recording off leaves the own move on top, but its Undo clears."""
+    book, sheet_list = own_moved(["Alfa", "Bravo", "Charlie"], ["Charlie"])
+    book.recording = False
+    cover(book)
+    book.recording = True
+    sheet_list.refresh()
+    sheet_list.selection.take(["Bravo"], sheet_list.tokens(), sheet_list.rows)
+    book.undo[-1].stale = False  # Calc undoes the moves by index whatever happened since.
+    book.undo_last()
+    sheet_list.refresh()
+    assert sheet_list.selection.picked == []
+
+
+def test_a_hidden_context_into_the_own_group_revokes_it():
+    """A cover added to the own group by a hidden context: its Undo hands nothing over."""
+    for redo in (False, True):
+        book, sheet_list = own_moved(["Alfa", "Bravo", "Charlie", "Delta"], ["Delta"])
+        if redo:
+            book.undo_last()
+            book.redo_last()
+            sheet_list.refresh()
+        book.hidden([lambda b=book: cover(b)])
+        sheet_list.refresh()
+        sheet_list.selection.take(["Bravo"], sheet_list.tokens(), sheet_list.rows)
+        bravo = sheet_list.selection.picked[0].token.sheet_id
+        book.modify_off = True  # Even when the replay of the cover reports nothing itself.
+        book.undo_last()
+        book.modify_off = False
+        sheet_list.refresh()
+        assert sheet_list.selection.picked == [], redo
+        assert bravo not in [sheet_id for sheet_id, _ in book.sheets]
+
+
+def test_redo_is_not_trusted_after_new_history():
+    """After the own move's Undo, a new action clears the redo history: nothing to redo."""
+    book, sheet_list = own_moved(["Alfa", "Bravo", "Charlie"], ["Charlie"])
+    book.undo_last()
+    book.colour()
+    assert book.redo == []
+    sheet_list.refresh()
+    assert sheet_list.selection.names() == ["Charlie"]
+
+
+def titled_cover_then_undo(trust_title: bool) -> tuple[List, int]:
+    """Another program's group with the own move's title: a newcomer inserted last, Bravo
+    deleted, the newcomer renamed Bravo. Then a fresh pick of the newcomer, and that group
+    undone under disableSetModified: the newcomer's handle turns to the restored Bravo."""
+    book = Book(["Alfa", "Bravo", "Charlie"])
+    sheet_list = List(book, trust_title=trust_title)
+    book.enter("Move Sheets")
+    book.insert(3, "Newcomer")
+    book.delete(1)
+    book.rename(2, "Bravo")
+    book.leave()
+    sheet_list.refresh()
+    sheet_list.selection.take(["Bravo"], sheet_list.tokens(), sheet_list.rows)
+    newcomer = sheet_list.selection.picked[0].token.sheet_id
+    book.modify_off = True
+    book.undo_last()
+    book.modify_off = False
+    sheet_list.refresh()
+    return sheet_list, newcomer
+
+
+def test_a_titled_foreign_group_is_not_an_own_move():
+    """Adversarial: the same title, an unreported replay; the newcomer is gone, so is its pick."""
+    sheet_list, newcomer = titled_cover_then_undo(trust_title=False)
+    assert sheet_list.selection.picked == []
+    assert newcomer not in [sheet_id for sheet_id, _ in sheet_list.book.sheets]
+
+
+def test_trusting_the_title_alone_hands_the_pick_to_another_sheet():
+    """The deliberate break the adversarial checks catch: the pick passes to old Bravo."""
+    sheet_list, newcomer = titled_cover_then_undo(trust_title=True)
+    assert sheet_list.selection.names() == ["Bravo"]
+    assert sheet_list.selection.picked[0].token.sheet_id != newcomer
+    violations = [
+        found
+        for seed in range(500)
+        for found in random_session(
+            seed, deliveries=("titled", "undo_unmodified", "redo_unmodified"), trust_title=True
+        )
+    ]
+    assert violations, "Trusting the title should let a pick reach a replacement"
+
+
+def test_structure_events_own_replays():
+    """The marker protocol, step by step, with the ways it refuses."""
+    events = StructureEvents(count=3, history=(0, None))
+
+    def armed() -> OwnMove:
+        move = OwnMove()
+        events.own_move_started(Quiet.NONE)
+        events.context_entered(3, Quiet.CONTROLLERS_LOCKED)
+        for _ in range(3):  # A marker, a move, a marker.
+            events.action_added(3, Quiet.CONTROLLERS_LOCKED)
+        events.context_left(3, Quiet.CONTROLLERS_LOCKED)
+        events.modified(3, Quiet.NONE)
+        assert events.own_recorded(move, 3, 3)
+        events.own_move_finished()
+        return move
+
+    move = armed()
+    serial = events.replay_started(move, False, 3)
+    assert serial is not None and events.view_replay == serial
+    events.replay_finished(move, False, 3)
+    assert not events.replay_settled(serial)
+    assert events.undone_or_redone(3) and events.replay_proven(serial)
+    assert move.state == "undone" and events.generation == 0
+    events.view_restored(serial)
+    assert events.view_replay is None
+    # Redo needs the redo history it was left in: a cleared one revokes it.
+    events.history_cleared(3, Quiet.NONE, redo=True)
+    assert events.replay_started(move, True, 3) is None and move.state == "revoked"
+
+    # Anything reported inside the replay ends the proof; so does a wrong direction or count.
+    for interrupt in ("modified", "added", "direction", "count", "unfinished"):
+        move = armed()
+        serial = events.replay_started(move, False, 3)
+        assert serial is not None
+        if interrupt == "modified":
+            events.modified(3, Quiet.NONE)
+        elif interrupt == "added":
+            events.action_added(3, Quiet.NONE)
+        if interrupt != "unfinished":
+            events.replay_finished(move, False, 4 if interrupt == "count" else 3)
+        before = events.generation
+        assert not events.undone_or_redone(3, redo=interrupt == "direction"), interrupt
+        assert events.generation == before + 1 and move.state == "revoked", interrupt
+        assert events.replay_settled(serial) and not events.replay_proven(serial)
+        assert events.view_replay is None, interrupt
+
+    # A group is trusted only from the state and generation it was left at.
+    move = armed()
+    events.modified(3, Quiet.NONE)  # Unexplained: the generation moves.
+    assert events.replay_started(move, False, 3) is None
+    move = armed()
+    assert events.replay_started(move, True, 3) is None  # Not undone yet.
+    move = armed()
+    events.context_entered(3, Quiet.NONE, hidden=True)
+    events.context_left(3, Quiet.NONE)
+    assert events.replay_started(move, False, 3) is None
+    move = armed()
+    events.history_cleared(3, Quiet.NONE)
+    assert events.replay_started(move, False, 3) is None
+
+    # Arming refuses a move that recorded anything else, or saw the generation move.
+    for spoil in ("extra", "bump"):
+        move = OwnMove()
+        events.own_move_started(Quiet.NONE)
+        for _ in range(4 if spoil == "extra" else 3):
+            events.action_added(3, Quiet.CONTROLLERS_LOCKED)
+        if spoil == "bump":
+            events.action_added(4, Quiet.CONTROLLERS_LOCKED)
+        assert not events.own_recorded(move, 3, events.count)
+        events.own_move_finished()
+        assert move.state == "revoked"
+
+
+def test_a_proved_replays_view_ends_although_its_restoration_never_runs():
+    """#91: the view's restoration is posted work. Should it never run, views take Calc's view
+    back a bounded time after the proof, and nothing is trusted more for it."""
+    now = [100.0]
+    events = StructureEvents(count=3, history=(0, None), clock=lambda: now[0])
+    move = OwnMove()
+    events.own_move_started(Quiet.NONE)
+    events.context_entered(3, Quiet.CONTROLLERS_LOCKED)
+    for _ in range(3):  # A marker, a move, a marker.
+        events.action_added(3, Quiet.CONTROLLERS_LOCKED)
+    events.context_left(3, Quiet.CONTROLLERS_LOCKED)
+    events.modified(3, Quiet.NONE)
+    assert events.own_recorded(move, 3, 3)
+    events.own_move_finished()
+
+    serial = events.replay_started(move, False, 3)
+    now[0] += 60  # However long the replay itself takes, its view is the replay's meanwhile.
+    assert serial is not None and events.viewing_replay() == serial
+    events.replay_finished(move, False, 3)
+    assert events.undone_or_redone(3) and events.viewing_replay() == serial
+    now[0] += VIEW_RESTORE_LIMIT
+    assert events.viewing_replay() == serial
+    now[0] += 0.01  # The restoration never ran.
+    assert events.viewing_replay() is None and events.view_replay is None
+    assert events.replay_proven(serial) and move.state == "undone" and events.generation == 0
+    events.view_restored(serial)  # A late restoration changes nothing.
+    assert events.viewing_replay() is None
+
+    # The next replay gets its own bound, from its own proof.
+    redo = events.replay_started(move, True, 3)
+    assert redo is not None and events.viewing_replay() == redo
+    events.replay_finished(move, True, 3)
+    assert events.undone_or_redone(3, redo=True)
+    now[0] += VIEW_RESTORE_LIMIT / 2
+    assert events.viewing_replay() == redo
+    events.view_restored(redo)
+    assert events.viewing_replay() is None

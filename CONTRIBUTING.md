@@ -129,7 +129,9 @@ Release dry runs and publication follow
 
 The sheet list's selection model has a property test: random sequences of picks, refreshes,
 insertions, deletions, renames, moves, same-name replacements, a deleted sheet's name passed to
-another sheet, undo, the list's own moves, and ordinary edits and saves, checking that nothing
+another sheet, undo and redo (also unreported, under `disableSetModified`), the list's own moves
+with their marker actions and their Undo and Redo, hidden undo contexts adding actions to the top
+step, other groups with the own move's title, and ordinary edits and saves, checking that nothing
 the list holds ever resolves to a sheet it was not picked as. Its workbook reproduces how
 LibreOffice's retained handles behave (a deleted sheet's handle turns to the previous sheet) and
 how LibreOffice reports changes, each with the document's state at that moment: undo
@@ -138,8 +140,10 @@ ends, or none under `disableSetModified`, only modify notifications while undo r
 undo contexts grouped into one undo step, and saves between their save events, with a refresh
 inside some of them; some batches keep their lock held across later steps, while the list acts.
 Companion tests show that per-handle name checks alone, and the sheet
-count without the state, fail there, that ordinary edits, saves, and the list's own moves keep
-the picks, and document the two out-of-scope cases (`sheet_manager.structure`): with undo
+count without the state, fail there, as does trusting the own move's undo title alone, that
+ordinary edits, saves, and the list's own moves and their Undo and Redo keep the picks, that an own
+move without markers, an intervening edit, or a hidden context clears them, and document the two
+out-of-scope cases (`sheet_manager.structure`): with undo
 recording and modify notifications both off nothing is reported, and a sequence built to report
 like typed input passes.
 
@@ -161,7 +165,17 @@ replacements, recorded and unrecorded batches, held locks, Undo, and shared-moni
 two pairs of names that Calc's lookup confuses: rows, Show, the menu's Hide, moves and their
 refusal, and batch renames act on exactly their sheets (#113). It
 verifies that closing one list view keeps other views and held snapshots protected until the
-document closes. `test_move_menu.py` checks real UNO popup enablement, refusal reasons, robot menu
+document closes, and that the Undo of an own move keeps the proof while any other Undo
+invalidates it. `test_undo_moves.py` (#91) drives the packaged panel through Undo and Redo of its
+own moves, dispatched and from a bridge thread, at undo capacities 100 and 2 (nested groups),
+checking that the picks, the viewed sheet and the tab group stay, including a view changed just
+before a Redo. It checks that an insertion undone in between, an unrecorded replacement (which
+clears Calc's history), a hidden context adding to the move's step, Calc's own move with the same
+title, and a replacement in a group with that title undone under `disableSetModified` all clear
+the picks with the notice. Adapter checks cover held snapshots across own replays, rolled-back
+failures at both capacities, a failure before the first move, a one-step capacity without markers,
+two windows each keeping their own view whichever window undoes, Undo with the sidebar closed, and
+closing the document straight after Undo and Redo. `test_move_menu.py` checks real UNO popup enablement, refusal reasons, robot menu
 actions, and one Undo per action. `test_sheet_commands.py` checks the menu's Calc commands: their
 enablement, reasons and Calc's own labels, Calc's command state for grouped tabs, Hide and Delete on
 exactly their targets with one undo step, refusal of changed targets without touching the view, and
@@ -173,7 +187,8 @@ and instead of each real call, a broken undo, Calc's own refusals (structure pro
 a name refused after a Find & Replace, #112), stale, replaced and newly protected targets, another
 window's view, the main thread, and timings at 200 and 1,000 populated sheets, written to
 `rename-performance-headless.json`. The real-input UI suite exercises every move action and Alt
-shortcut, separated picks, repeated moves, edges, and permission refusals. Cursor checks cover Ctrl
+shortcut, separated picks, repeated moves, edges, and permission refusals, and `undo_own_move`
+repeats the reported #91 sequence with a real drag, Ctrl+Z and Ctrl+Y. Cursor checks cover Ctrl
 navigation outside the picks, Home/End, page navigation, and rebuilding the list. Selection keys are
 consumed before native forwarding, share a retained range anchor, and accumulate logical intent
 before a coalesced UI write. Boundary regressions cover a paused UI queue, ignored intermediate

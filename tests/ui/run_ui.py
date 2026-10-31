@@ -2186,13 +2186,18 @@ def check_tab_selection_sync(book):
 
 
 def check_selection_notice(book):
-    """Real Ctrl+Z creates a bounded notice without moving focus into a cell (#90)."""
+    """Real Ctrl+Z creates a bounded notice without moving focus into a cell (#90).
+
+    The move undone is Calc's own, made through the API: an Undo of the list's own move keeps
+    the picks (#91, `undo_own_move`)."""
     before = book.order()
     book.click(2)
     book.click(5, modifiers=("Control_L",))
     wait_until(lambda: book.selection() == [NAMES[2], NAMES[5]], "independent picks")
-    book.lab.input.tap("Home", modifiers=("Alt_L",), pause=0.5)
+    book.document.getSheets().moveByName(NAMES[7], 0)
     wait_until(lambda: book.order() != before, "move before Undo")
+    time.sleep(1)
+    assert book.selection() == [NAMES[2], NAMES[5]] and book.tree.hasFocus()
     book.lab.input.tap("z", modifiers=("Control_L",), pause=0.2)
     wait_until(lambda: book.order() == before, "Ctrl+Z restoring order")
     notice = view.footer_text(book.panel, "Why the sheet list")
@@ -2228,6 +2233,46 @@ def check_selection_notice(book):
     return {"expired_seconds": round(elapsed, 2), "focus_kept": True, "group_warning_kept": True}
 
 
+def check_undo_own_move(book):
+    """#91, the owner's sequence: Kilo viewed, Echo to Hotel picked and dragged above Bravo,
+    then real Ctrl+Z and Ctrl+Y. Calc's Undo activates the sheets it moves back; the list keeps
+    its picks and puts the view back, with no notice."""
+    picks = NAMES[4:8]
+    kilo = NAMES.index("Kilo")
+    book.controller.setActiveSheet(book.document.getSheets().getByIndex(kilo))
+    select_tabs(book.lab.context, book.frame, [kilo])
+    wait_until(lambda: book.calc_tabs() == ["Kilo"], "Kilo viewed alone")
+    before = book.order()
+    book.click(4)
+    book.click(7, modifiers=("Shift_L",))
+    wait_until(lambda: book.selection() == picks, "Echo to Hotel picked")
+    drag(book, 6, 1, 0.25, shot="undo-own-move-drag")
+    moved = before[:1] + picks + before[1:4] + before[8:]
+    wait_until(lambda: book.order() == moved, "the drop above Bravo")
+    notice = view.footer_text(book.panel, "Why the sheet list")
+    steps = [("drop", moved)] + [
+        (keysym, order) for keysym, order in (("z", before), ("y", moved), ("z", before))
+    ]
+    evidence = []
+    for keysym, order in steps:
+        if keysym != "drop":
+            book.lab.input.tap(keysym, modifiers=("Control_L",), pause=0.2)
+        wait_until(lambda o=order: book.order() == o, f"the order after {keysym}")
+        time.sleep(1.5)  # Longer than the list's refresh and view sampling.
+        state = {
+            "step": keysym,
+            "picks": book.selection(),
+            "active": book.active(),
+            "tabs": book.calc_tabs(),
+            "notice": notice.getText(),
+        }
+        evidence.append(state)
+        book.lab.screenshot(f"undo-own-move-{len(evidence)}-{keysym}")
+        wanted = {"step": keysym, "picks": picks, "active": "Kilo", "tabs": ["Kilo"], "notice": ""}
+        assert state == wanted, evidence
+    return evidence
+
+
 def run_checks(lab, output, only=()):
     book = Workbook(lab, "synthetic", NAMES)
     lab.screenshot("panel")
@@ -2242,6 +2287,7 @@ def run_checks(lab, output, only=()):
         ("row_paint_scroll", lambda: check_row_paint_scroll(book)),
         ("tab_selection_sync", lambda: check_tab_selection_sync(book)),
         ("selection_notice", lambda: check_selection_notice(book)),
+        ("undo_own_move", lambda: check_undo_own_move(book)),
         ("drag_two_sheets_above_midpoint", lambda: check_drag_two_sheets(book, 0.25, 12)),
         ("drag_two_sheets_below_midpoint", lambda: check_drag_two_sheets(book, 0.75, 13)),
         ("drop_in_place_and_escape", lambda: check_drop_in_place_and_escape(book)),
@@ -2312,6 +2358,7 @@ def run_named(lab, book, output, checks, only=()):
             failure = lab.failure_evidence()
             if failure:
                 results[name]["desktop"] = failure
+            lab.input.release_held()  # A press held across the failure would drag in the next.
             for _ in range(2):
                 lab.input.tap("Escape", pause=0.3)
         results[name]["seconds"] = round(time.monotonic() - started, 2)

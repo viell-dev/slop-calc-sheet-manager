@@ -69,7 +69,8 @@ either could hide or delete any sheet directly.
 longer matches, even when all names, positions, and retained handle names still match
 ([#19](https://github.com/viell-dev/slop-calc-sheet-manager/issues/19)). Undo, Redo, and conservative
 invalidation after unrecorded changes require a fresh snapshot, even if the original order has
-returned. A held lock or unreadable safety state also refuses the operation. The adapter manages
+returned. The one exception is a proved Undo or Redo of a move this adapter made, described below:
+it keeps the generation, so a snapshot of either order is current again once that order is back. A held lock or unreadable safety state also refuses the operation. The adapter manages
 the monitor's `own_move()` guard itself through controller unlock, so its own recorded moves do
 not invalidate other list views' identity proof. Callers need no additional monitor or guard.
 `preflight` is useful for enablement; `apply_order` always repeats it immediately before mutation.
@@ -129,7 +130,10 @@ View-restoration errors add a translated warning and diagnostic detail without u
 move or misreporting a verified order recovery.
 After verified rollback, the adapter removes the failed group's redo entry so Redo cannot replay
 a partial operation. A native mutation has already discarded older redo history. Recovery never
-undoes the user's preceding action. At a full stack, Calc can still evict its oldest entry when
+undoes the user's preceding action. A group that received only the adapter's marker actions,
+because the first move failed without changing anything, is undone and its redo entry removed the
+same way; leaving that group has already discarded older redo history, so such a failure now
+loses Redo history from before the move. At a full stack, Calc can still evict its oldest entry when
 opening even an empty context; that native eviction does not prove that a move was recorded.
 
 Calc reapplies the configured undo-step limit to the current context
@@ -137,9 +141,55 @@ Calc reapplies the configured undo-step limit to the current context
 calls than that limit silently loses earlier actions. The adapter uses balanced nested contexts
 when needed, keeping every level within the limit while presenting one top-level undo step.
 With a one-step undo setting, multi-call plans are refused until the setting is at least two;
-single-call plans remain available. The adapter never changes the user's undo setting.
+single-call plans remain available, without the marker actions below, which need two steps. The
+adapter never changes the user's undo setting.
 Preflight also refuses a move inside someone else's open undo context, because it could not be
 undone independently. That check reads undo state without opening or closing any contexts.
+
+## Undo and Redo of an own move
+
+Undo and Redo report one action, whatever it contained, so the structure monitor moves the
+generation at every Undo and Redo, and the list clears its picks. A replay of a group this
+adapter recorded can only move sheets, so the adapter proves those replays instead
+([#91](https://github.com/viell-dev/slop-calc-sheet-manager/issues/91)). With an undo capacity of
+two or more, each group holds two marker `XUndoAction`s of the adapter's own, one before the first
+move and one after the last, placed in the balanced nested contexts like the moves. They do
+nothing to the document. `sheet_manager.structure` holds the rules; in short, an Undo or Redo of
+the group keeps the generation only if:
+
+- the move ended verified, and recorded exactly its moves and the two markers, at an unchanged
+  generation;
+- the replay's first marker (the last one for Undo, the first one for Redo) finds the group in the
+  state its last transition left it, at that generation and sheet count, with no history cleared,
+  no redo history cleared for Redo, and no hidden undo context entered since;
+- nothing is reported between the two markers, and the undo or redo notification of the same
+  direction comes next with the same count.
+
+Measured with 26.8.1.1: each move and marker reports one undo action inside the group; Undo calls
+the last marker first, with the undo manager locked and the view as it was, then the moves, the
+first marker and the undo notification, and Redo the reverse; a group of moves reports nothing
+else meanwhile. Undoing a group with an insertion or deletion reports modify notifications that
+show the sheet count changing; actions a hidden context adds to a group are replayed outside its
+markers. Turning undo recording off clears Calc's undo history, so no unrecorded change can come
+between a move and its Undo. An undo title proves nothing: Calc's own move has the same one.
+
+Anything else revokes the group for good, and its Undo and Redo invalidate as before. That
+includes an Undo or Redo of anything in between, any change that moves the generation, a hidden
+undo context, and a cleared history. A rollback's Undo is never proved.
+
+After a proved replay, the adapter restores the view: at the first marker it reads each of the
+document's windows' active sheet and selected tabs, as handles, and once the replay has settled it
+puts back any that Calc changed, provided the generation is still the same and the document is
+not locked. Calc moves the view of LibreOffice's active window, which need not be the document's
+current controller, so every window is restored, not only the initiating one. The marker callbacks
+run inside LibreOffice's replay, possibly on another thread: they only update the shared state,
+read the count and those view getters, and post the restoration; they never raise into the
+replay. Views ignore Calc's activations during a proved replay and the restoration after it, and
+do not sample the tab selection until the restoration is done. Because the restoration is posted
+work, that suppression is bounded: five seconds after the proof (`VIEW_RESTORE_LIMIT` in
+`sheet_manager.structure`), views follow Calc's activations and sample its tabs again whether or
+not the restoration has run, and a restoration that runs later leaves Calc's view as it is. The
+bound trusts nothing more; it only ends the suppression.
 
 ## Limits and native semantics
 
@@ -149,7 +199,8 @@ The final order and rollback restore its original ownership. Do not inspect or a
 listener callbacks. If the document frame loses activation, rollback is refused rather than
 pretending Calc's silent inactive-view undo restored anything.
 
-Other document windows and native user undo/redo retain Calc's own view-selection behavior.
+Other document windows and native user undo/redo retain Calc's own view-selection behavior,
+except that a proved Undo or Redo of an own move restores every window's view, as described above.
 This adapter preserves the initiating view when applying or recovering a move; it does not replace
 Calc's undo actions. Positional and 3D formulas can change values when sheet intervals change.
 Direct formula, named-range, and chart-range references follow the native move and are integration

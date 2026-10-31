@@ -255,6 +255,7 @@ class WinInput:
     """`xinput.XInput`'s interface on the real Windows desktop of this session."""
 
     def __init__(self):
+        self.held = set()  # Buttons pressed and not yet released.
         # platform.system(), not os.name: Pyright would treat the rest as unreachable on Linux.
         if platform.system() != "Windows" or os.environ.get("SHEET_MANAGER_REAL_DESKTOP") != "1":
             raise RuntimeError("SendInput needs the disposable runner's explicit opt-in")
@@ -452,6 +453,12 @@ class WinInput:
             return
         press, release = BUTTON_FLAGS[button]
         self._send(self._mouse(press if down else release))
+        (self.held.add if down else self.held.discard)(button)
+
+    def release_held(self):
+        """Release any button a failed check left pressed, so that the next check starts clean."""
+        for button in sorted(self.held):
+            self.button(button, False)
 
     def key(self, keysym, down):
         if keysym not in KEYS:

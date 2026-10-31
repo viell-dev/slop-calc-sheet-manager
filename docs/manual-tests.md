@@ -139,8 +139,10 @@ instead. Take screenshots only of this workbook.
     display scaling.
     Expected: all text and swatches are readable and the insertion line is visible.
     Before testing each top move button, select Charlie and Echo. Click the button, then undo once.
-    Expected: each move preserves the picked order, selection and view. Calc's Undo can activate
-    an affected sheet and the list follows, so select both rows again before the next button.
+    Expected: each move preserves the picked order, selection and view. <Unreleased /> Undo
+    keeps Charlie and Echo picked and the viewed sheet as it was, so the next button can be
+    tested without picking again. In 0.0.6, Calc's Undo can activate an affected sheet and the list
+    follows, so select both rows again before the next button.
     Use Shift+Tab from the list to reach Bottom, Down, Up and Top. Enter/Space activate a focused
     button; ordinary letters do not edit cells. Tab at the end of the controls returns to Calc.
 24. **Sheets added during a selection.** Click "Charlie" and Ctrl+click "Echo". Then choose

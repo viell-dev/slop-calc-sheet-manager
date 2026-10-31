@@ -124,6 +124,10 @@ def check_lifetime(context, desktop):
             assert monitor.check() == original.generation, "Own moves must keep the shared proof"
             document.UndoManager.undo()
             assert tuple(document.Sheets.ElementNames) == tuple(s.name for s in original.sheets)
+            # The markers prove the own move's Undo (#91); any other Undo still invalidates.
+            assert monitor.check() == original.generation
+            assert preflight(context, document, original, plan).allowed
+            document.UndoManager.undo()  # The cell edit.
             history = tuple(document.UndoManager.AllUndoActionTitles)
             assert not preflight(context, document, original, plan).allowed
             assert apply_order(context, document, original, plan).status == "refused"
