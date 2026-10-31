@@ -391,7 +391,7 @@ def check_margin_drag_keeps_sidebar_docked(book):
         location = panel.getLocationOnScreen()
         after = (location.X, location.Y, toolkit.getTopWindowCount())
         evidence[name] = {"start": start, "before": before, "after": after}
-        assert after == before, f"A drag from the panel's margin ({name}) moved the sidebar"
+        assert after == before, f"A drag from the panel's margin moved the sidebar: {evidence}"
     assert book.selection() == [NAMES[2]], book.selection()
     return evidence
 

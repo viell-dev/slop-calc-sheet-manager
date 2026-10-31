@@ -61,8 +61,8 @@ If Sheet Manager does not work in an environment where it is expected to, please
 - **Assistive technology.** Rows give the sheet name and its hidden, protected, and scenario
   states; the current-sheet arrow and tab colours are painted only. <Unreleased /> The list's
   accessible name says which sheet Calc shows
-  ([#83](https://github.com/viell-dev/slop-calc-sheet-manager/issues/83)). In 0.0.8 and earlier, the
-  panel's controls cannot be reached by moving through the accessibility hierarchy from the
+  ([#83](https://github.com/viell-dev/slop-calc-sheet-manager/issues/83)). Through version 0.0.8,
+  the panel's controls cannot be reached by moving through the accessibility hierarchy from the
   sidebar, and with LibreOffice's gtk3 interface on Linux a screen reader hears nothing from the
   list. <Unreleased /> They can now, and the gtk3 bridge reports the list's focus, rows and name
   changes ([#133](https://github.com/viell-dev/slop-calc-sheet-manager/issues/133)). After its controls the
