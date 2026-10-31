@@ -41,8 +41,13 @@ If Sheet Manager does not work in an environment where it is expected to, please
   range anchor while its sheet identity remains valid. Native Undo and Redo can also activate an
   affected sheet; the list then follows Calc's new tab selection. A grouped move can activate
   the sheet above the returned group, whereas a single move can activate the returned sheet.
-  Keeping independent picks is tracked in
-  [#91](https://github.com/viell-dev/slop-calc-sheet-manager/issues/91).
+  **What Undo now keeps.** <Unreleased /> Undo and Redo of the list's own move keep its picks,
+  the viewed sheet and Calc's tab selection
+  ([#91](https://github.com/viell-dev/slop-calc-sheet-manager/issues/91)). They still clear the
+  picks when undo history is set to one step, after an Undo or Redo of anything else in between,
+  after another program or macro adds actions to the move's undo step, and when LibreOffice
+  reports anything unexpected while it replays the move. If a move fails before it moves any
+  sheet, Redo history from before the move is lost.
   **Selection feedback.** <Unreleased since="0.0.5" /> The clearing notice expires within the
   panel after ten seconds, preserving focus.
   An immediate selection after Reload or during concurrent document changes can remain empty or

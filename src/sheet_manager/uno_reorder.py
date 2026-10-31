@@ -19,14 +19,15 @@ the result or its recovery. docs/reordering.md is the contract the panel relies 
   holds a `_Marker` before its first move and one after its last, inside the balanced contexts
   like the moves. `structure` states what they prove and when. Their `undo` and `redo` run inside
   LibreOffice's replay, possibly on another thread: they only update the shared state, read the
-  sheet count, and, at the replay's first marker, the current controller's active sheet and
+  sheet count, and, at the replay's first marker, each window's active sheet and
   selected tab indices, which are getters that do no UI work once `getSelectedSheets` has run
   for the document (it applies imported view settings only on its first call, and `apply_order`
   makes that call before the move). They never raise into the replay. The first marker posts the
   view restoration, which waits until the replay is settled and re-checks everything then: the
-  replay must be proved, the generation unchanged, and the controller still the document's
-  current one, unlocked. It restores the active sheet and tab group the first marker saw, so
-  Calc's activation of the moved sheets does not stick; other windows keep their own views. A
+  replay must be proved, the generation unchanged, and the document unlocked. It restores each
+  of the document's windows, still open, to the active sheet and tab group the first marker saw,
+  so Calc's activation of the moved sheets sticks in none of them (Calc moves the view of
+  LibreOffice's active window, which need not be the document's current controller). A
   marker added before the first move costs one thing when that move then fails without changing
   anything: the group holding only markers is undone and its redo entry removed, but Redo
   history from before the move is lost.
@@ -225,6 +226,7 @@ def _restore_view(context: Any, controller: Any, active: str, selected: tuple[st
 
 
 RESTORING = "keeping the view after Undo or Redo of a sheet move"
+_View = tuple[Any, Any, tuple[Any, ...]]  # A controller, its active sheet, its selected tabs.
 REPLAY_WAIT = 0.05  # Seconds between looks at an own replay's outcome from posted work.
 REPLAY_WAITS = 40
 
@@ -251,25 +253,29 @@ class _Ends:
                 return
             serial = events.replay_started(self.move, redo, count)
             if serial is not None:
-                view = self._sample()
-                self._main.post(lambda: self._restore(serial, *view), RESTORING)
+                views = self._sample()
+                self._main.post(lambda: self._restore(serial, views), RESTORING)
         except Exception:
             events.revoke(self.move)
             report("following Undo or Redo of a sheet move")
 
-    def _sample(self) -> tuple[Any, Any, tuple[Any, ...]]:
-        """The view the replay found, as handles: they denote the same sheets after it."""
+    def _sample(self) -> tuple[_View, ...]:
+        """Every window's view as the replay found it, as handles: they denote the same sheets
+        after it. Calc moves the view of LibreOffice's active window, which need not be the
+        document's current controller."""
         document = self._monitor.document
-        controller = document.getCurrentController()
         sheets = document.getSheets()
-        indices = self._tabs_method.invoke(controller, ())[0]
-        tabs = tuple(sheets.getByIndex(int(index)) for index in indices)
-        return controller, controller.getActiveSheet(), tabs
+        views: list[_View] = []
+        controllers = document.getControllers()
+        while controllers.hasMoreElements():
+            controller = controllers.nextElement()
+            indices = self._tabs_method.invoke(controller, ())[0]
+            tabs = tuple(sheets.getByIndex(int(index)) for index in indices)
+            views.append((controller, controller.getActiveSheet(), tabs))
+        return tuple(views)
 
-    def _restore(
-        self, serial: int, controller: Any, active: Any, tabs: tuple[Any, ...], waits: int = 0
-    ) -> None:
-        """After the replay is settled, put back the view its first marker found.
+    def _restore(self, serial: int, views: tuple[_View, ...], waits: int = 0) -> None:
+        """After the replay is settled, put back each window's view its first marker found.
 
         Posted work can run before the undo notification: when the replay runs on another
         thread, or when Calc's progress display lets the main loop run. It waits for the outcome
@@ -279,7 +285,7 @@ class _Ends:
         if not events.replay_settled(serial) and waits < REPLAY_WAITS:
             self._main.later(
                 REPLAY_WAIT,
-                lambda: self._restore(serial, controller, active, tabs, waits + 1),
+                lambda: self._restore(serial, views, waits + 1),
                 RESTORING,
             )
             return
@@ -290,17 +296,18 @@ class _Ends:
                 or events.view_replay != serial
                 or not events.replay_proven(serial)
                 or self._monitor.generation != self.move.generation
-                or document.getCurrentController() != controller
                 or document.hasControllersLocked()
                 or document.isActionLocked()
             ):
                 return
-            _restore_view(
-                self._context,
-                controller,
-                str(active.getName()),
-                tuple(str(tab.getName()) for tab in tabs),
-            )
+            current = []
+            controllers = document.getControllers()
+            while controllers.hasMoreElements():
+                current.append(controllers.nextElement())
+            for controller, active, tabs in views:
+                if controller in current:  # A window closed meanwhile is left alone.
+                    names = tuple(str(tab.getName()) for tab in tabs)
+                    _restore_view(self._context, controller, str(active.getName()), names)
         except Exception:
             report(RESTORING)
         finally:
