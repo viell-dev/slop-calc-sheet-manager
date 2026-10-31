@@ -19,9 +19,9 @@ the result or its recovery. docs/reordering.md is the contract the panel relies 
   then finds the first of them for both (#113); measured with 26.2.1.2 and 26.8.1.1. Restoring
   the view also activates the sheet by index.
 - `moveByName` is the only sheet move the API offers, and it uses that lookup: measured with
-  26.8.1.1, it moved `ﬁ` when asked to move `fi`. `preflight` therefore asks Calc's lookup for the moved names and
-  refuses a plan in which a move's name would find another sheet when it runs
-  (`reorder.lookup_conflict`), and each call checks the name again just before it moves.
+  26.8.1.1, it moved `ﬁ` when asked to move `fi`. `preflight` therefore asks Calc's lookup for
+  the moved names and refuses a plan in which a move's name would find another sheet when it
+  runs (`reorder.lookup_conflict`), and each call checks the name again just before it moves.
 """
 
 from dataclasses import dataclass
