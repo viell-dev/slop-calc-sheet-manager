@@ -198,7 +198,7 @@ class Workbook:
         self.pointer.click(*self.point(index), modifiers=modifiers)
 
     def hold(self, index, probe=None):
-        """Press the button on a row and keep it down once the list has handled the press.
+        """Press the button on a row and keep it down; return once the list has handled it.
 
         The tree selects the row natively, then VCL posts the mouse listeners' callback, which
         runs without the solar mutex. A selection alone therefore does not show that the list
@@ -1782,8 +1782,8 @@ def check_newer_pick_survives_voided_press(book):
     left. Delta stays picked, and the Menu key's Hide acts on Delta alone.
 
     Each step records what the list showed, Calc's view, the tree's focus, the held buttons, and
-    when the list's mouse listeners heard the press, so that a timeout can be classified from
-    the evidence alone (#134).
+    when the tree's mouse listeners heard the press and release, so that a timeout can be
+    classified from the evidence alone (#134).
     """
     sheets = book.document.getSheets()
     evidence = {}
@@ -1816,7 +1816,7 @@ def check_newer_pick_survives_voided_press(book):
                         "calc_tabs": book.calc_tabs(),
                         "tree_focus": book.tree.hasFocus(),
                         "held": sorted(book.lab.input.held),
-                        "heard": [(kind, round(at - started, 3)) for kind, at in probe.heard],
+                        "heard": [(kind, round(when - started, 3)) for kind, when in probe.heard],
                     }
                 )
                 if failure is not None:
