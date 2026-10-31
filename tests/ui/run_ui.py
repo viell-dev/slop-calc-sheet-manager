@@ -4,6 +4,11 @@ Run inside the Linux test image with LibreOffice's bundled Python, normally thro
 ``tools/linux_integration.py <lane> --ui``. Each VCL plugin gets its own private office and
 profile. The tests drive only real X input and observe only public UNO: the panel's
 ``XPanel.getDialog()`` window, its child tree control, the document, and its undo manager.
+
+``run_windows_ui.py`` runs many of these checks on a visible Windows desktop (#114), so a check
+reaches the desktop only through its lab: ``lab.input`` (keysym names, ``popup_windows``,
+``modal_dialog``), ``lab.place``, ``lab.screenshot`` and ``lab.failure_evidence``, never through
+X11 tools directly. ``run_named`` is the loop both runners share.
 """
 
 import argparse
