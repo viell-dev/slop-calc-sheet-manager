@@ -11,6 +11,7 @@ open document can make Calc abort on Undo (#37).
 """
 
 import time
+from types import SimpleNamespace
 from typing import Any
 
 from main_thread import close_document
@@ -208,9 +209,12 @@ def check_titled_replacement(context, document, panel):
     """Adversarial: another group titled as the own move's, unreported when undone.
 
     The group inserts a newcomer after Bravo, deletes Bravo and renames the newcomer Bravo; the
-    newcomer is then picked. Undoing the group inserts the old Bravo again before the newcomer
-    and deletes the newcomer, whose handle turns to the old Bravo and reports its name. Under
-    `disableSetModified` the Undo reports only itself. A pick kept now would be another sheet.
+    newcomer is then picked. Undoing the group deletes the newcomer and brings the old Bravo
+    back under the same name, and under `disableSetModified` the Undo reports only itself. The
+    picked sheet is gone, so the list must drop its pick and say so. Calc's Undo activates the
+    restored Bravo, and the list follows it after dropping, so the row alone proves nothing; the
+    notice does. Measured with 26.8.1.1: a monitor that trusts the title alone keeps the
+    generation, and the pick then goes without a notice.
     """
     sheets, undo = document.Sheets, document.UndoManager
 
@@ -236,9 +240,17 @@ def check_titled_replacement(context, document, panel):
         finally:
             document.enableSetModified()
 
+    poll(lambda: not panel.notice(), "no notice before the Undo", timeout=15)
     on_main_thread(context, quiet_undo)
     assert sheets.getByName("Bravo").getCellRangeByName("A1").String == ""
-    return assert_cleared(panel, "undoing the titled replacement", ["Bravo"])
+    # Calc's Undo activates the restored Bravo, and a list that dropped the pick follows it, so
+    # the row alone proves nothing: the notice shows that the picked newcomer was dropped.
+    poll(panel.notice, "the notice that the newcomer's pick was dropped")
+    time.sleep(SETTLE)
+    controller = document.CurrentController
+    tabs = view(context, controller)[1]
+    assert panel.picks() in ([], tabs), (panel.picks(), tabs)
+    return {"picks": panel.picks(), "calc_tabs": tabs, "notice": True}
 
 
 def check_conservative(context, desktop):
@@ -405,8 +417,8 @@ def check_windows_and_disposal(context, desktop):
     document = workbook(desktop)
     panel = Panel(context, document)
     first = document.CurrentController
-    panel.pick("Echo", "Hotel")
-    panel.move("Up", UP)
+    # Opening a window can move the generation (`test_sync_sheet_list`): a move made before it
+    # is no longer provable, so the windows exist before the move.
     dispatch(context, first.Frame, ".uno:NewWindow")
     controllers = []
     enumeration = document.getControllers()
@@ -415,14 +427,22 @@ def check_windows_and_disposal(context, desktop):
     second = next(controller for controller in controllers if controller != first)
     second.setActiveSheet(document.Sheets.getByName("Bravo"))
     poll(lambda: view(context, second) == ("Bravo", ["Bravo"]), "the second window's view")
+    shown = SimpleNamespace(getCurrentController=lambda: second, Sheets=document.Sheets)
+    other = Panel(context, shown)
+    make_current(document, first)
+    poll(lambda: not panel.notice(), "a notice from opening the window to expire", timeout=15)
+    panel.pick("Echo", "Hotel")
+    panel.move("Up", UP)
+    other.pick("Golf")
+    picks = panel.picks()
+    assert picks == PICKS
 
     say("Undo in the first window: the second keeps its view")
     make_current(document, first)
-    time.sleep(SETTLE)
-    picks = panel.picks()
     replay(context, document, "Undo")
     assert_kept(context, panel, picks, ("Kilo", ["Kilo"]), TWELVE)
     assert view(context, second) == ("Bravo", ["Bravo"])
+    assert other.picks() == ["Golf"] and not other.notice()
 
     say("Redo in the second window: each window keeps its own view, and the picks stay")
     make_current(document, second)

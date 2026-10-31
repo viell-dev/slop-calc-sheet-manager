@@ -45,6 +45,7 @@ If Sheet Manager does not work in an environment where it is expected to, please
   the viewed sheet and Calc's tab selection
   ([#91](https://github.com/viell-dev/slop-calc-sheet-manager/issues/91)). They still clear the
   picks when undo history is set to one step, after an Undo or Redo of anything else in between,
+  after a new window of the workbook was opened in between,
   after another program or macro adds actions to the move's undo step, and when LibreOffice
   reports anything unexpected while it replays the move. If a move fails before it moves any
   sheet, Redo history from before the move is lost.
