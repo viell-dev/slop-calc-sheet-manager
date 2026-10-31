@@ -38,9 +38,7 @@ from sheet_manager.sheet_list import list_name
 from sheet_manager.uno_list import REFRESH_DELAY
 from sheet_manager.uno_menu import MOVE_IDS
 
-NAME_CHANGED = uno.getConstantByName(
-    "com.sun.star.accessibility.AccessibleEventId.NAME_CHANGED"
-)
+NAME_CHANGED = uno.getConstantByName("com.sun.star.accessibility.AccessibleEventId.NAME_CHANGED")
 SELECTED = uno.getConstantByName("com.sun.star.accessibility.AccessibleStateType.SELECTED")
 FIVE = ["Alfa", "Bravo", "Charlie", "Delta", "Echo"]
 # Longer than the refresh delay of a list of five sheets, whose refresh costs milliseconds.
@@ -54,11 +52,11 @@ class _Names(unohelper.Base, XAccessibleEventListener):
     def __init__(self):
         self.names: list[str] = []
 
-    def notifyEvent(self, event):
-        if event.EventId == NAME_CHANGED:
-            self.names.append(str(event.NewValue))
+    def notifyEvent(self, aEvent):
+        if aEvent.EventId == NAME_CHANGED:
+            self.names.append(str(aEvent.NewValue))
 
-    def disposing(self, event):
+    def disposing(self, Source):
         pass
 
 
