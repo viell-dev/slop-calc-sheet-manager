@@ -74,19 +74,26 @@ If Sheet Manager does not work in an environment where it is expected to, please
   few names that Calc accepts, such as `ss` beside `ß`, because LibreOffice can confuse them. Other
   windows on the same workbook clear their list's selection after a rename of several sheets.
 - **Names that LibreOffice confuses.** Calc accepts two sheets whose names differ only in some
-  characters, such as `ﬁ` (a single ligature character) and `fi`, but then finds the first one
-  for either name, also in formulas. The list then shows the second sheet with the first one's
-  hidden, protected, or colour state, and refuses to move, show, or rename sheets until one of
-  them is renamed in Calc
-  ([#113](https://github.com/viell-dev/slop-calc-sheet-manager/issues/113)).
+  characters, such as `ﬁ` (a single ligature character) and `fi`, or `ı` and `I`, but then finds
+  whichever of them comes first for either name, also in formulas: while `ﬁ` comes first,
+  `='fi'.A1` refers to a cell of `ﬁ`. This is a limit of LibreOffice; renaming one of the sheets
+  avoids it ([#113](https://github.com/viell-dev/slop-calc-sheet-manager/issues/113)). Test
+  builds up to 0.0.6 show the second sheet with the first one's hidden, protected, or colour
+  state, and refuse to move, show, or rename sheets until one of them is renamed.
+  <Unreleased /> The list shows each sheet's own state, and Show, the menu's commands, moves, and
+  Rename Sheets act on the sheet you picked. Calc moves a sheet only by its name, so the list
+  refuses a move that would need the name of the sheet that does not come first, and says which
+  two names Calc confuses ([#125](https://github.com/viell-dev/slop-calc-sheet-manager/issues/125)).
+  Rename Sheets still refuses to create such a pair.
 - **Macros that suppress notifications.** The list cannot detect structural edits for which
   LibreOffice reports nothing, or a deliberately constructed edit indistinguishable from ordinary
   typed input. The reorder adapter uses the same structural monitor and has the same boundary.
   The [reordering interface](../reordering.md) describes what is detected.
 - **A LibreOffice defect in two commands.** In LibreOffice 26.8.0 and 26.8.1, Calc's own
   Duplicate Sheet and Move or Copy Sheet copy formulas with relative sheet references incorrectly
-  ([tdf#173608](https://bugs.documentfoundation.org/show_bug.cgi?id=173608)). LibreOffice's fix
-  is due in 26.8.2. Test builds up to 0.0.4 offer both through **Sheet actions…**.
+  ([tdf#173608](https://bugs.documentfoundation.org/show_bug.cgi?id=173608)). LibreOffice 26.8.2
+  fixes this; update to it before using these commands on such formulas. Test builds up to 0.0.4
+  offer both through **Sheet actions…**.
   <Unreleased since="0.0.5" /> The list's menu leaves them to Calc's sheet tabs. Calc's Move or
   Copy also reverses several sheets moved to the right
   ([#3](https://github.com/viell-dev/slop-calc-sheet-manager/issues/3)); the list's own moves
