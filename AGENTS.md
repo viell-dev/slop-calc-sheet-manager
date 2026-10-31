@@ -304,9 +304,13 @@ Breaking one of these has hung or crashed LibreOffice, or let an action reach th
 
 ## Releases
 
-- The current phase is alpha development, with unsettled feature scope and no scheduled stable
-  release. Publish prereleases until the owner agrees a stable direction and scope. This does not
-  waive the human usability gate or required defect dispositions for any future stable release.
+- The current phase is beta towards 0.1.0, from the owner's direction of 2026-10-31: the feature
+  set is frozen at what 0.0.6 delivers, and each beta fixes a chosen subset of the open defects.
+  The stable release goal is proposed in
+  [#120](https://github.com/viell-dev/slop-calc-sheet-manager/issues/120); a release candidate
+  waits for its agreement and for the blockers it names, and
+  [#93](https://github.com/viell-dev/slop-calc-sheet-manager/issues/93) tracks the work. This
+  does not waive the human usability gate or required defect dispositions for the stable release.
 - The owner has given standing approval for agents to publish releases, prereleases and stable
   versions alike, with their release notes, whenever the agents judge a build ready. Only the
   listing on extensions.libreoffice.org needs the owner's sign-in.

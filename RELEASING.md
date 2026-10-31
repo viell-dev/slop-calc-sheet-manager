@@ -6,10 +6,12 @@ owner's standing approval. Readiness includes the checks below and the independe
 the owner's sign-in; prepare the listing text, screenshots, compatibility information, and files
 before asking them to sign in. Do not put that account's credentials in CI.
 
-The current source is the `0.0.6` alpha. Development is in alpha:
-features and workflows remain unsettled, and there is no scheduled stable release. Publish only
-prereleases during this phase. A future stable release needs an agreed scope as well as the human
-testing and defect-resolution gates below. Published builds are
+The current source is the `0.0.7` beta towards 0.1.0. Development is in beta: on the owner's
+direction of 2026-10-31, the feature set is frozen at what 0.0.6 delivers, and the remaining
+work is fixes and polish. Publish betas, then release candidates once the stable release goal
+proposed in [#120](https://github.com/viell-dev/slop-calc-sheet-manager/issues/120) is agreed
+and the blockers it names are resolved, then 0.1.0 after the human testing and
+defect-resolution gates below. Published builds are
 listed on [Releases and test builds](https://viell-dev.github.io/slop-calc-sheet-manager/guide/releases).
 The changelog's development-history section records unpublished work before 0.0.2.
 
