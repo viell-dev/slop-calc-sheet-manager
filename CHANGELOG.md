@@ -5,6 +5,11 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Test with LibreOffice 26.8.2.2 instead of 26.8.1.1 on Linux and Windows. LibreOffice 26.8.2
+  fixes Calc's own Duplicate Sheet and Move or Copy Sheet, which in 26.8.0 and 26.8.1 copy
+  formulas with relative sheet references incorrectly
+  ([tdf#173608](https://bugs.documentfoundation.org/show_bug.cgi?id=173608)); the known issues
+  now say so. The list's menu still leaves both commands to Calc's sheet tabs.
 - Sheets whose names Calc's own lookup cannot tell apart, such as `ﬁ` beside `fi`, or `ı` beside
   `I`, now show their own hidden, protected and colour states, and the list acts on them instead
   of refusing every action with "The sheet list has changed"

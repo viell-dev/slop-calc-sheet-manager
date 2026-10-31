@@ -19,8 +19,9 @@ This module owns context targeting, native tab grouping and restoration, and mov
   only `SheetMenu.run` groups.
 - `command_refusal` applies Calc's state rules to the targets, because Calc's command state
   describes its current tabs. Insert's "after" uses the last selected tab.
-- Duplicate Sheet and Move or Copy Sheet stay off the menu until a fixed LibreOffice is verified
-  (tdf#173608 in #33; #3).
+- Duplicate Sheet and Move or Copy Sheet stay off the menu: the supported releases 26.8.0 and
+  26.8.1 copy formulas wrongly (tdf#173608, fixed in 26.8.2; #33), and the list moves sheets
+  itself (#3).
 - `run` repeats every check in the list's posted completion: the generation, the targets'
   identity, and `command_refusal`. It sets and reads back exactly the targets, queries the
   dispatcher, and reads Calc's command state for that group. Grouping runs Calc's activation
@@ -77,8 +78,8 @@ SHOW = 1
 INSERT, DELETE, RENAME, HIDE = 2, 3, 4, 5
 RENAME_SHEETS = 6  # The list's own Rename Sheets, in Rename's place for two or more targets.
 # Calc's commands offered directly. Duplicate Sheet and Move or Copy Sheet are left to Calc's tab
-# bar: they copy formulas wrongly in 26.8.0 and 26.8.1 (tdf#173608, #33), and the list moves
-# sheets itself (#3).
+# bar: they copy formulas wrongly in 26.8.0 and 26.8.1 (tdf#173608, fixed in 26.8.2; #33), and
+# the list moves sheets itself (#3).
 COMMANDS = {
     INSERT: ".uno:Insert",
     DELETE: ".uno:Remove",

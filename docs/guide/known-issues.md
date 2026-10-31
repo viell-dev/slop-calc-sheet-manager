@@ -87,8 +87,9 @@ If Sheet Manager does not work in an environment where it is expected to, please
   The [reordering interface](../reordering.md) describes what is detected.
 - **A LibreOffice defect in two commands.** In LibreOffice 26.8.0 and 26.8.1, Calc's own
   Duplicate Sheet and Move or Copy Sheet copy formulas with relative sheet references incorrectly
-  ([tdf#173608](https://bugs.documentfoundation.org/show_bug.cgi?id=173608)). LibreOffice's fix
-  is due in 26.8.2. Test builds up to 0.0.4 offer both through **Sheet actions…**.
+  ([tdf#173608](https://bugs.documentfoundation.org/show_bug.cgi?id=173608)). LibreOffice 26.8.2
+  fixes this; update to it before using these commands on such formulas. Test builds up to 0.0.4
+  offer both through **Sheet actions…**.
   <Unreleased since="0.0.5" /> The list's menu leaves them to Calc's sheet tabs. Calc's Move or
   Copy also reverses several sheets moved to the right
   ([#3](https://github.com/viell-dev/slop-calc-sheet-manager/issues/3)); the list's own moves
