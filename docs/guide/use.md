@@ -211,7 +211,9 @@ button, Enter or Space runs that move; typing letters cannot enter cell content.
 F6, F10, Esc, and unbound
 Alt menu mnemonics retain LibreOffice's behaviour. Keys used by the list do not type into cells.
 Other documents keep their
-own keyboard handling. After Ctrl+S, focus moves to the sheet; use the focus cycle to return.
+own keyboard handling. <Unreleased since="0.0.8" /> After Ctrl+S, the list keeps or gets back the
+focus; before 0.0.8, with the gtk3 interface, it moved to the sheet
+([#23](https://github.com/viell-dev/slop-calc-sheet-manager/issues/23)).
 
 Rows use LibreOffice's native tree control and its accessible names: the sheet name, with hidden,
 protected, and scenario states written in text. The current-sheet arrow and tab-colour square are

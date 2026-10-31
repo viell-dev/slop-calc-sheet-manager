@@ -7,8 +7,8 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## 0.0.9 - 2026-10-31
 
-Third beta towards the stable release 0.1.0, following 0.0.8. It makes the list reachable
-and understandable through assistive technology; the feature set and the visible behaviour are
+Third beta towards the stable release 0.1.0, following 0.0.8. It exposes the list, its controls
+and the viewed sheet to assistive technology; the feature set and the visible behaviour are
 unchanged. Requires LibreOffice 26.2.1 or later with Python support.
 
 - Name the list after the sheet Calc shows, for assistive technology
@@ -26,7 +26,8 @@ unchanged. Requires LibreOffice 26.2.1 or later with Python support.
   appear, and the gtk3 bridge reports their focus, rows and name changes; what a particular
   screen reader announces is not verified. Clicking or dragging in the panel's empty margins
   still leaves the sidebar where it is.
-- Keep a row selected through a screen reader when the list refreshes at the same moment
+- Keep a row selected through the accessibility interface when the list refreshes at the same
+  moment
   ([#83](https://github.com/viell-dev/slop-calc-sheet-manager/issues/83)). If a sheet's
   protection, visibility or colour changed just before, the refresh could put back the
   previous selection.
