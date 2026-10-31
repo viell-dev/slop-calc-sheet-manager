@@ -219,9 +219,11 @@ square are painted only. <Unreleased /> The list itself is named after the sheet
 example "Sheets, current sheet: Bravo", so assistive technology can tell the viewed sheet from
 the selected rows; the name changes when another sheet is shown
 ([#83](https://github.com/viell-dev/slop-calc-sheet-manager/issues/83)). Tab colours are not
-announced. Automated checks read this information through LibreOffice's accessibility
-interface; what a particular screen reader announces is not verified, and with LibreOffice's
-gtk3 interface it may not reach screen readers at all (see [Known issues](./known-issues.md)).
+announced. <Unreleased /> The move buttons, the list and the footer messages are reported to
+assistive technology in the order they appear, so a screen reader reaches them by moving through
+the sidebar as well as by keyboard focus ([#133](https://github.com/viell-dev/slop-calc-sheet-manager/issues/133)).
+Automated checks read this information through LibreOffice's accessibility interface; what a
+particular screen reader announces is not verified (see [Known issues](./known-issues.md)).
 
 ## When the list clears its selection
 

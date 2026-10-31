@@ -10,9 +10,14 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   named after the viewed sheet, for example "Sheets, current sheet: Bravo", and the name changes
   when another sheet is shown. Until now only the painted arrow showed it, and the selected rows
   could be different sheets. Rows still read the plain sheet name with its hidden, protected or
-  scenario state; tab colours are not announced. With LibreOffice's gtk3 interface, screen
-  readers may not reach the list at all yet
-  ([#133](https://github.com/viell-dev/slop-calc-sheet-manager/issues/133)).
+  scenario state; tab colours are not announced.
+- Let screen readers reach the sheet list and its move buttons
+  ([#133](https://github.com/viell-dev/slop-calc-sheet-manager/issues/133)). The panel kept its controls in a container
+  that did not report them to assistive technology, so moving through the sidebar never reached
+  them, and with LibreOffice's gtk3 interface on Linux a screen reader heard nothing from the
+  list: neither its focus nor its rows nor the name of the viewed sheet. The buttons, the list
+  and the footer messages are now reported in the order they appear. Clicking or dragging in the
+  panel's empty margins still leaves the sidebar where it is.
 - Keep a row selected through a screen reader when the list refreshes at the same moment
   ([#83](https://github.com/viell-dev/slop-calc-sheet-manager/issues/83)). If a sheet's
   protection, visibility or colour changed just before, the refresh could put back the

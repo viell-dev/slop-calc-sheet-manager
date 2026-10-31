@@ -61,13 +61,15 @@ If Sheet Manager does not work in an environment where it is expected to, please
 - **Assistive technology.** Rows give the sheet name and its hidden, protected, and scenario
   states; the current-sheet arrow and tab colours are painted only. <Unreleased /> The list's
   accessible name says which sheet Calc shows
-  ([#83](https://github.com/viell-dev/slop-calc-sheet-manager/issues/83)). The panel's controls
-  cannot be reached by walking the accessibility hierarchy down from the sidebar. With
-  LibreOffice's gtk3 interface on Linux, a screen reader's bridge reports keyboard focus in the
-  list on an unnamed pane rather than on the list or its rows, so screen readers there may read
-  none of this. Windows screen readers have not been tried
-  ([#133](https://github.com/viell-dev/slop-calc-sheet-manager/issues/133)). The checks read
-  LibreOffice's accessibility interface; no screen reader runs in them.
+  ([#83](https://github.com/viell-dev/slop-calc-sheet-manager/issues/83)). In 0.0.8 and earlier, the
+  panel's controls cannot be reached by moving through the accessibility hierarchy from the
+  sidebar, and with LibreOffice's gtk3 interface on Linux a screen reader hears nothing from the
+  list. <Unreleased /> They can now, and the gtk3 bridge reports the list's focus, rows and name
+  changes ([#133](https://github.com/viell-dev/slop-calc-sheet-manager/issues/133)). After its controls the
+  panel holds an empty, unnamed, unavailable pane, which keeps clicks in its margins from
+  undocking the sidebar. No screen reader runs in the checks: they read LibreOffice's
+  accessibility interface, and the gtk3 bridge was probed once. Windows screen readers have not
+  been tried.
 - **Large lists.** The list rebuilds after changes. During rapid sheet switches the active-sheet
   marker, and <Unreleased /> the list's accessible name, can lag; timing measurements and the
   remaining work are in [#22](https://github.com/viell-dev/slop-calc-sheet-manager/issues/22).
