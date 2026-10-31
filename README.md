@@ -13,10 +13,11 @@ updates, removal, use, known issues, troubleshooting, and reporting a problem.
 
 ## Status
 
-Source version: `0.0.6` alpha. Sheet Manager is in **alpha
-development**: features and workflows are still being decided and tested. No stable release is
-scheduled. Future stable publication requires an agreed scope, human usability testing, and
-resolution of release blockers.
+Source version: `0.0.7` beta towards the first stable release, 0.1.0. Sheet Manager is in
+**beta**: the features planned for 0.1.0 are complete, and the remaining work is fixing the
+logged defects and polishing. No stable release date is set. Stable publication requires the
+agreed release goal ([#120](https://github.com/viell-dev/slop-calc-sheet-manager/issues/120)),
+human usability testing, and resolution of release blockers.
 See [Releases and test builds](https://viell-dev.github.io/slop-calc-sheet-manager/guide/releases)
 for currently published downloads. Sheet Manager lists the workbook's sheets, supports selection,
 drag and drop, and move actions with keyboard shortcuts,

@@ -19,8 +19,8 @@ for installation and checksum instructions.
 
 ## Test builds
 
-Current test builds are alpha iterations. The feature set is unsettled, and testing one does not
-imply that stable publication is close. Download and install their OXT
+Current test builds are betas towards 0.1.0: the planned features are complete, and each beta
+fixes some of the logged defects. Download and install their OXT
 packages manually. Installing one keeps the stable update feed: it will offer a newer final
 release, but does not offer later test builds. An extension-directory listing is not needed to
 install these GitHub assets.
