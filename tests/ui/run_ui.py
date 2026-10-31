@@ -884,8 +884,8 @@ def typing_reaches_list(book, letter, name):
 def save_with_prompt(book, answer, shot):
     """Ctrl+S from the list opens a dialog, which keeps the focus while it is open (#23).
 
-    Returns what was seen while the dialog was open, and whether the list had the focus again
-    after `answer` closed it.
+    Checks what was seen while the dialog was open, and that the list has the focus again after
+    `answer` closed it, before the caller types into it.
     """
     book.document.getSheets().getByIndex(0).getCellRangeByName("B2").setString("changed")
     time.sleep(1)
@@ -904,6 +904,12 @@ def save_with_prompt(book, answer, shot):
     wait_until(lambda: not native_dialog(book), "the dialog to close", timeout=20)
     state["list_focus_after"] = wait_for_list_focus(book)
     state["view_kept"] = (book.selection(), book.active(), book.calc_tabs()) == view_before
+    assert state == {
+        "dialog_kept": True,
+        "list_focus_during": False,
+        "list_focus_after": True,
+        "view_kept": True,
+    }, state
     return state
 
 
@@ -932,9 +938,6 @@ def check_save_prompts_keep_focus(lab):
         locked.path.chmod(0o644)
         locked.close()
 
-    for case in evidence.values():
-        assert case["dialog_kept"] and not case["list_focus_during"], evidence
-        assert case["list_focus_after"] and case["view_kept"], evidence
     assert evidence["save_as_cancelled"]["still_unsaved"], evidence
     assert evidence["write_error"]["still_modified"], evidence
     return evidence
