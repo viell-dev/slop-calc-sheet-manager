@@ -30,6 +30,7 @@ from sheet_manager.keys import (
     TypeAhead,
     button_route,
     find_prefix,
+    keeps_focus,
     move_action,
     route_key,
     typed_character,
@@ -117,6 +118,23 @@ def test_unbound_shortcuts() -> None:
     assert unbound_route(MOD1) is KeyRoute.IGNORE
     assert unbound_route(MOD1 | MOD2) is KeyRoute.IGNORE
     assert unbound_route(0) is KeyRoute.IGNORE
+
+
+@pytest.mark.parametrize(
+    "command,keeps",
+    [
+        (".uno:Save", True),
+        (".uno:SaveAs", True),
+        (".uno:Save?Arg=1", True),
+        (".uno:SaveAll", False),  # Saves other documents too; not the list's own window.
+        (".uno:Undo", False),
+        (".uno:JumpToNextTable", False),
+        (".uno:SearchDialog", False),  # Moves the focus on purpose.
+        ("", False),
+    ],
+)
+def test_only_saving_gives_the_focus_back_to_the_panel(command: str, keeps: bool) -> None:
+    assert keeps_focus(command) is keeps  # #23
 
 
 @pytest.mark.parametrize(

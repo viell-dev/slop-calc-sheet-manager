@@ -5,6 +5,12 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Keep the keyboard focus in the sheet list after Ctrl+S
+  ([#23](https://github.com/viell-dev/slop-calc-sheet-manager/issues/23)). With LibreOffice's
+  gtk3 interface on Linux, a save moves the focus from any sidebar control to the sheet, Calc's
+  own panels included. The list now takes it back once the save has finished, after any Save As,
+  file format, or error dialog has closed, so typing goes on searching the list instead of
+  editing a cell. A dialog keeps the focus while it is open.
 - Keep the list's picks and the view through Undo and Redo of its own moves
   ([#91](https://github.com/viell-dev/slop-calc-sheet-manager/issues/91)). After dragging sheets
   or moving them with a button, the menu or a shortcut, Ctrl+Z and Ctrl+Y no longer clear the
@@ -13,11 +19,13 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   change which sheet is which has happened since; otherwise Undo and Redo still clear the picks
   and show the notice, as before. With undo history set to one step they always do. If a move
   fails before it moves any sheet, Redo history from before the move is now lost.
-- Test with LibreOffice 26.8.2.2 instead of 26.8.1.1 on Linux and Windows. LibreOffice 26.8.2
-  fixes Calc's own Duplicate Sheet and Move or Copy Sheet, which in 26.8.0 and 26.8.1 copy
-  formulas with relative sheet references incorrectly
-  ([tdf#173608](https://bugs.documentfoundation.org/show_bug.cgi?id=173608)); the known issues
-  now say so. The list's menu still leaves both commands to Calc's sheet tabs.
+
+## 0.0.7 - 2026-10-31
+
+First beta towards the stable release 0.1.0, following the 0.0.6 alpha. The features planned
+for 0.1.0 are complete; the remaining work before a release candidate is fixing the logged
+defects and polishing. Requires LibreOffice 26.2.1 or later with Python support.
+
 - Sheets whose names Calc's own lookup cannot tell apart, such as `ﬁ` beside `fi`, or `ı` beside
   `I`, now show their own hidden, protected and colour states, and the list acts on them instead
   of refusing every action with "The sheet list has changed"
@@ -25,6 +33,11 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   sheet only by its name, so a move that would need the name of the sheet that does not come
   first is refused, with the two names it confuses. Calc's formulas still find the first of the
   two; renaming one of them avoids that.
+- Test with LibreOffice 26.8.2.2 instead of 26.8.1.1 on Linux and Windows. LibreOffice 26.8.2
+  fixes Calc's own Duplicate Sheet and Move or Copy Sheet, which in 26.8.0 and 26.8.1 copy
+  formulas with relative sheet references incorrectly
+  ([tdf#173608](https://bugs.documentfoundation.org/show_bug.cgi?id=173608)); the known issues
+  now say so. The list's menu still leaves both commands to Calc's sheet tabs.
 - Name each test build's stage in its GitHub release title
   ([#121](https://github.com/viell-dev/slop-calc-sheet-manager/issues/121)): alpha, beta, or
   release candidate, as in `0.1.0 beta (0.0.7)` and `0.1.0 rc (0.0.9)`, where the number in
@@ -32,6 +45,21 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   work as before, and earlier titles such as `0.1.0 test build (0.0.4)` are unchanged. The
   [releases page](https://viell-dev.github.io/slop-calc-sheet-manager/guide/releases#test-builds)
   explains the stages.
+- Check real keyboard and mouse input in a visible Windows window
+  ([#114](https://github.com/viell-dev/slop-calc-sheet-manager/issues/114)). A new workflow, not
+  yet required for merging, runs the real-input checks on GitHub's hosted Windows Server 2025
+  runners: typing and shortcuts in the list, dragging sheets and cancelling with Esc, the menu by
+  right click, Menu key and Shift+F10, Rename Sheet and Insert Sheet on the right-clicked row,
+  undoing Hide Sheet, and the Rename Sheets dialog. No change to the extension itself.
+
+Install the OXT manually over 0.0.6, restart LibreOffice when asked, and check its SHA-256 asset.
+LibreOffice's Extension Manager offers only stable releases, and there is none yet, so later test
+builds remain manual downloads. Known limits are in the
+[known issues](https://viell-dev.github.io/slop-calc-sheet-manager/guide/known-issues). The next
+beta works on keeping the list's selection through Undo and Redo of its own moves
+([#91](https://github.com/viell-dev/slop-calc-sheet-manager/issues/91)); the plan towards 0.1.0
+is in [#93](https://github.com/viell-dev/slop-calc-sheet-manager/issues/93). A short usability
+test on a later beta will be requested before the stable release.
 
 ## 0.0.6 - 2026-10-28
 

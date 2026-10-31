@@ -2,7 +2,7 @@
 
 {{See the user guide for installation, use, compatibility, and known issues: https://viell-dev.github.io/slop-calc-sheet-manager/}}
 
-{{Alpha development: features and workflows are still being decided and tested.}}
+{{Beta towards the first stable release, 0.1.0: the features are complete, and the remaining work is fixing and polishing.}}
 
 {{Requires LibreOffice 26.2.1 or later with Python support.}}
 {{Licence: MPL-2.0 (Mozilla Public License 2.0). The complete licence is included as LICENSE.txt.}}

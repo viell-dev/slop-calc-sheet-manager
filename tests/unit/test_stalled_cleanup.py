@@ -178,12 +178,15 @@ class Lab:
     def screenshot(self, name: str) -> None:
         self.calls.append(f"screenshot {name}")
 
+    def failure_evidence(self) -> dict[str, object]:
+        return {}
+
     def tap(self, key: str, pause: float = 0) -> None:
         pass  # Real input reaches the display, not the office.
 
 
 def ui_run_checks(calls: list[str], stall_at: str | None, fail_at: str | None = None) -> Any:
-    """The UI runner's real check loop, with every check and workbook call faked."""
+    """The UI runner's real check loop, `run_named`, with every check and workbook call faked."""
     path = ROOT / "tests" / "ui" / "run_ui.py"
     tree = ast.parse(path.read_text(encoding="utf-8"))
     function = next(
@@ -231,6 +234,7 @@ def ui_run_checks(calls: list[str], stall_at: str | None, fail_at: str | None = 
         traceback=traceback,
         stalled_callbacks=stalled_callbacks,
     )
+    load(path, "run_named", namespace)
     return load(path, "run_checks", namespace), checks
 
 

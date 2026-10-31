@@ -28,7 +28,11 @@ If Sheet Manager does not work in an environment where it is expected to, please
   **Sheet Manager Help** in the context menu for this guide. Header hover sizing is also controlled
   by LibreOffice and its theme
   ([#81](https://github.com/viell-dev/slop-calc-sheet-manager/issues/81)).
-- **Save focus.** Ctrl+S from the list saves through Calc and moves focus to the sheet
+- **Save focus.** Ctrl+S from the list saves through Calc. With LibreOffice's gtk3 interface on
+  Linux, a save moves the keyboard focus from any sidebar control to the sheet, Calc's own panels
+  included. <Unreleased /> The list takes the focus back once the save has finished, after any
+  Save As, file format, or error dialog has closed, unless you have used the list or another
+  window meanwhile. Earlier builds leave the focus in the sheet; click the list to return to it
   ([#23](https://github.com/viell-dev/slop-calc-sheet-manager/issues/23)).
 - **Unavailable menu actions.** Native popup rendering can hide disabled commands and move
   actions, and their help text. In the gen backend, use Down to highlight the first available
@@ -82,11 +86,12 @@ If Sheet Manager does not work in an environment where it is expected to, please
   avoids it ([#113](https://github.com/viell-dev/slop-calc-sheet-manager/issues/113)). Test
   builds up to 0.0.6 show the second sheet with the first one's hidden, protected, or colour
   state, and refuse to move, show, or rename sheets until one of them is renamed.
-  <Unreleased /> The list shows each sheet's own state, and Show, the menu's commands, moves, and
-  Rename Sheets act on the sheet you picked. Calc moves a sheet only by its name, so the list
-  refuses a move that would need the name of the sheet that does not come first, and says which
-  two names Calc confuses ([#125](https://github.com/viell-dev/slop-calc-sheet-manager/issues/125)).
-  Rename Sheets still refuses to create such a pair.
+  <Unreleased since="0.0.7" /> The list shows each sheet's own state, and Show, the menu's
+  commands, moves, and Rename Sheets act on the sheet you picked. Calc moves a sheet only by its
+  name, so the list refuses a move that would need the name of the sheet that does not come first,
+  and says which two names Calc confuses
+  ([#125](https://github.com/viell-dev/slop-calc-sheet-manager/issues/125)). Rename Sheets still
+  refuses to create such a pair.
 - **Macros that suppress notifications.** The list cannot detect structural edits for which
   LibreOffice reports nothing, or a deliberately constructed edit indistinguishable from ordinary
   typed input. The reorder adapter uses the same structural monitor and has the same boundary.

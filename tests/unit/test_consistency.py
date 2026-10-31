@@ -99,13 +99,13 @@ def test_current_build_and_package_examples_match_the_manifest_version() -> None
         ROOT / "README.md",
         ROOT / "RELEASING.md",
     ):
-        builds = re.findall(r"`(\d+\.\d+\.\d+)` (?:alpha|test build|release)", text(page))
+        builds = re.findall(r"`(\d+\.\d+\.\d+)` (?:alpha|beta|rc|test build|release)", text(page))
         assert builds == [version], (page.name, builds, version)
 
     # The public guide follows published history, not the source package's prepared version.
     for name in ("status.md", "use.md"):
         assert not re.search(
-            r"`\d+\.\d+\.\d+` (?:alpha|test build|release)", text(DOCS / "guide" / name)
+            r"`\d+\.\d+\.\d+` (?:alpha|beta|rc|test build|release)", text(DOCS / "guide" / name)
         )
     install = text(DOCS / "guide" / "install.md")
     assert "sheet-manager-VERSION.oxt" in install
@@ -118,8 +118,10 @@ def test_environment_table_names_the_tested_builds() -> None:
     linux = next(line for line in table.splitlines() if line.startswith("| Linux x86-64"))
     for lane in set(pins) - {"unsupported", "windows"}:
         assert pins[lane]["version"] in linux, lane
-    windows = next(line for line in table.splitlines() if line.startswith("| Windows x86-64"))
-    assert pins["windows"]["version"] in windows
+    windows = [line for line in table.splitlines() if line.startswith("| Windows x86-64")]
+    assert len(windows) == 2, windows  # Headless CI, and the visible desktop workflow.
+    for line in windows:
+        assert pins["windows"]["version"] in line, line
     refused = ".".join(pins["unsupported"]["version"].split(".")[:3])
     assert f"| LibreOffice {refused} and earlier " in table
     assert "<!--@include: ../../README.md#environments-->" in text(

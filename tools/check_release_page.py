@@ -159,6 +159,7 @@ def main() -> None:
         next_build = {**candidate, "version": "0.0.4", "published": "2026-10-26T00:00:00Z"}
         alpha = {**candidate, "version": "0.0.5", "published": "2026-10-28T00:00:00Z"}
         next_alpha = {**candidate, "version": "0.0.6", "published": "2026-10-29T00:00:00Z"}
+        beta = {**candidate, "version": "0.0.7", "published": "2026-10-31T00:00:00Z"}
         first_stable = {**next_build, "version": "0.1.0", "prerelease": False}
         for name, builds, notice in (
             ("empty", [], "Sheet Manager has no release yet."),
@@ -179,6 +180,12 @@ def main() -> None:
                 "next-alpha-published",
                 [candidate, next_build, alpha, next_alpha],
                 "0.0.6, the newest test build",
+            ),
+            # A beta is a prerelease like any other to the history and the page.
+            (
+                "beta-published",
+                [candidate, next_build, alpha, next_alpha, beta],
+                "0.0.7, the newest test build",
             ),
             (
                 "stable-with-candidate",
@@ -237,6 +244,16 @@ def main() -> None:
             elif name == "next-alpha-published":
                 assert links("0.0.6") + links("0.0.5") + links("0.0.4") + links("0.0.3") in (
                     tables.links
+                )
+            elif name == "beta-published":
+                assert "No stable releases have been published yet." in html
+                assert (
+                    links("0.0.7")
+                    + links("0.0.6")
+                    + links("0.0.5")
+                    + links("0.0.4")
+                    + links("0.0.3")
+                    in tables.links
                 )
             elif name == "first-stable-published":
                 assert tables.links[:2] == [links("0.1.0"), links("0.0.4") + links("0.0.3")]

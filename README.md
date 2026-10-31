@@ -13,10 +13,11 @@ updates, removal, use, known issues, troubleshooting, and reporting a problem.
 
 ## Status
 
-Source version: `0.0.6` alpha. Sheet Manager is in **alpha
-development**: features and workflows are still being decided and tested. No stable release is
-scheduled. Future stable publication requires an agreed scope, human usability testing, and
-resolution of release blockers.
+Source version: `0.0.7` beta towards the first stable release, 0.1.0. Sheet Manager is in
+**beta**: the features planned for 0.1.0 are complete, and the remaining work is fixing the
+logged defects and polishing. No stable release date is set. Stable publication requires the
+agreed release goal ([#120](https://github.com/viell-dev/slop-calc-sheet-manager/issues/120)),
+human usability testing, and resolution of release blockers.
 See [Releases and test builds](https://viell-dev.github.io/slop-calc-sheet-manager/guide/releases)
 for currently published downloads. Sheet Manager lists the workbook's sheets, supports selection,
 drag and drop, and move actions with keyboard shortcuts,
@@ -58,20 +59,24 @@ describes that gate and how its results are tracked.
 
 <!-- #region environments -->
 
-| Environment                                                                       | Status                                 |
-| --------------------------------------------------------------------------------- | -------------------------------------- |
-| Linux x86-64, libreoffice.org 26.2.1.2, 26.2.6.3, and 26.8.2.2: headless and gtk3 | Verified in CI for every change        |
-| Windows x86-64, libreoffice.org 26.8.2.2: headless                                | Verified in CI for every change        |
-| Other 26.2 and 26.8 releases, and later versions, from libreoffice.org            | Expected to work, not verified         |
-| Distribution packages, other interfaces such as kf6 or gtk4, Wayland, macOS       | Expected to work, not verified         |
-| Flatpak, Snap, Arm builds, and the Windows interface in a visible window          | Expected to work, not verified         |
-| LibreOffice 26.2.0 and earlier                                                    | Unsupported: installation is refused   |
-| LibreOffice without Python support                                                | Unsupported: the extension cannot run  |
+| Environment                                                                       | Status                                             |
+| --------------------------------------------------------------------------------- | -------------------------------------------------- |
+| Linux x86-64, libreoffice.org 26.2.1.2, 26.2.6.3, and 26.8.2.2: headless and gtk3 | Verified in CI for every change                    |
+| Windows x86-64, libreoffice.org 26.8.2.2: headless                                | Verified in CI for every change                    |
+| Windows x86-64, libreoffice.org 26.8.2.2: a visible window with real input        | Checked on extension changes; not a required check |
+| Other 26.2 and 26.8 releases, and later versions, from libreoffice.org            | Expected to work, not verified                     |
+| Distribution packages, other interfaces such as kf6 or gtk4, Wayland, macOS       | Expected to work, not verified                     |
+| Flatpak, Snap, and Arm builds                                                     | Expected to work, not verified                     |
+| LibreOffice 26.2.0 and earlier                                                    | Unsupported: installation is refused               |
+| LibreOffice without Python support                                                | Unsupported: the extension cannot run              |
 
 <!-- #endregion environments -->
 
-The gtk3 checks run under X11 in a virtual display. If Sheet Manager does not work somewhere it is
-expected to, please [report it](CONTRIBUTING.md#report-a-defect).
+The gtk3 checks run under X11 in a virtual display. The visible Windows checks run on GitHub's
+hosted Windows Server 2025 runners, on one 1024×768 desktop at 96 DPI with the en-US keyboard
+layout, the `win` interface and no screen reader; they are not yet required for merging. If
+Sheet Manager does not work somewhere it is expected to, please
+[report it](CONTRIBUTING.md#report-a-defect).
 
 ## Install and update
 
@@ -104,7 +109,9 @@ explains the model; [RELEASING.md](RELEASING.md) gives the maintainer rules and 
 ## Known issues
 
 - Changes made outside the list are observed periodically, so they can appear after a short delay.
-- After Ctrl+S from the list, keyboard focus moves to the sheet (#23).
+- With LibreOffice's gtk3 interface, a save moves keyboard focus from the sidebar to the sheet.
+  Test builds up to 0.0.6 leave it there after Ctrl+S from the list; the development version
+  gives it back to the list (#23).
 - A change that may replace a sheet clears the list's selection conservatively. Large lists are
   rebuilt after changes, which can delay the active-sheet marker (#22).
 - The sidebar header's `?` opens LibreOffice's unavailable help topic for this extension. Use

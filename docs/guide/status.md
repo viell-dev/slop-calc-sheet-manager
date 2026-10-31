@@ -1,12 +1,14 @@
 # Status and plans
 
-Sheet Manager is in **alpha development**. Its feature set and workflows are still being decided
-and tested; no stable release is scheduled. The
-[release page](./releases.md) lists currently published downloads; the notice above identifies
-the build this guide describes.
+Sheet Manager is in **beta** towards its first stable release, 0.1.0. The features planned for
+0.1.0 are complete, and the remaining work is fixing the logged defects and polishing. No stable
+release date is set. The [release page](./releases.md) lists currently published downloads; the
+notice above identifies the build this guide describes.
 
-The [alpha backlog](https://github.com/viell-dev/slop-calc-sheet-manager/issues/93) tracks priorities
-and current work.
+The [beta tracker](https://github.com/viell-dev/slop-calc-sheet-manager/issues/93) lists the
+planned fixes, and the
+[stable release goal](https://github.com/viell-dev/slop-calc-sheet-manager/issues/120) what
+0.1.0 includes and leaves out.
 
 ## What Sheet Manager includes
 
