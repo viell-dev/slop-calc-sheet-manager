@@ -104,7 +104,9 @@ explains the model; [RELEASING.md](RELEASING.md) gives the maintainer rules and 
 ## Known issues
 
 - Changes made outside the list are observed periodically, so they can appear after a short delay.
-- After Ctrl+S from the list, keyboard focus moves to the sheet (#23).
+- With LibreOffice's gtk3 interface, a save moves keyboard focus from the sidebar to the sheet.
+  Test builds up to 0.0.6 leave it there after Ctrl+S from the list; the development version
+  gives it back to the list (#23).
 - A change that may replace a sheet clears the list's selection conservatively. Large lists are
   rebuilt after changes, which can delay the active-sheet marker (#22).
 - The sidebar header's `?` opens LibreOffice's unavailable help topic for this extension. Use

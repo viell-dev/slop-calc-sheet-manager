@@ -87,7 +87,9 @@ instead. Take screenshots only of this workbook.
 14. **Undo and save from the list.** Type text into a cell and press Enter, click a row of the
     list, press Ctrl+Z, type text into a cell again, click a row, and press Ctrl+S.
     Expected: Ctrl+Z removes the text; Ctrl+S saves without a dialog and the document's modified
-    indicator in the status bar clears.
+    indicator in the status bar clears. <Unreleased /> After the save the list still has the
+    focus: typing a letter selects a sheet in the list and changes no cell. On Windows and
+    Wayland, also note whether the focus ever left the list during the save (#23).
 15. **Menu by right click.** Click "Charlie", Ctrl+click "Echo", and right-click "Echo".
     Expected: Delete Sheet, Hide Sheet, the move actions and Help appear in one menu; Insert
     and Rename are unavailable for two sheets (greyed out, or left out of the menu on some

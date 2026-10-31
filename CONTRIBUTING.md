@@ -305,7 +305,11 @@ step. These tests exercise explicit key events, not the operating system's timed
 They click, Ctrl+click, and Shift+click rows, drag two separate sheets above and below a row's
 midpoint and check the order and the single undo step, cancel a drag with Esc, auto-scroll and
 wheel-scroll the list, type into the focused list and check that no cell changes, use Ctrl+Page
-Down, Ctrl+Z, and Ctrl+S from the list, open the sheet tab menu by right click, Menu key, and
+Down, Ctrl+Z, and Ctrl+S from the list and check that the list keeps the focus, so that a typed
+letter after the save searches the list. They press Ctrl+S from the list on a new document and
+cancel Save As with Esc, and on a read-only file and close the write error, and check that the
+dialog keeps the focus while it is open and the list has it afterwards. They open the sheet tab
+menu by right click, Menu key, and
 Shift+F10, check that double-click activation leaves one selected tab so that typing edits
 one sheet, keep the keyboard position across a refresh, refuse a drop after a sheet was replaced
 during the drag, and switch documents. They release a press after its sheet was replaced or moved

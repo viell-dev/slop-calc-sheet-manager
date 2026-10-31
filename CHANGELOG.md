@@ -5,6 +5,12 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Keep the keyboard focus in the sheet list after Ctrl+S
+  ([#23](https://github.com/viell-dev/slop-calc-sheet-manager/issues/23)). With LibreOffice's
+  gtk3 interface on Linux, a save moves the focus from any sidebar control to the sheet, Calc's
+  own panels included. The list now takes it back once the save has finished, after any Save As,
+  file format, or error dialog has closed, so typing goes on searching the list instead of
+  editing a cell. A dialog keeps the focus while it is open.
 - Name each test build's stage in its GitHub release title
   ([#121](https://github.com/viell-dev/slop-calc-sheet-manager/issues/121)): alpha, beta, or
   release candidate, as in `0.1.0 beta (0.0.7)` and `0.1.0 rc (0.0.9)`, where the number in
