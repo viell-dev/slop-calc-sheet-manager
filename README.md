@@ -13,7 +13,7 @@ updates, removal, use, known issues, troubleshooting, and reporting a problem.
 
 ## Status
 
-Source version: `0.0.7` beta towards the first stable release, 0.1.0. Sheet Manager is in
+Source version: `0.0.8` beta towards the first stable release, 0.1.0. Sheet Manager is in
 **beta**: the features planned for 0.1.0 are complete, and the remaining work is fixing the
 logged defects and polishing. No stable release date is set. Stable publication requires the
 agreed release goal ([#120](https://github.com/viell-dev/slop-calc-sheet-manager/issues/120)),
