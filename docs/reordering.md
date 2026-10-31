@@ -107,9 +107,9 @@ plans. It also refuses a plan in which a moved sheet's name would find another s
 runs: Calc accepts names that its own lookup cannot tell apart, such as `ﬁ` beside `fi`, finds
 whichever comes first for both, and `moveByName` is the only move the API offers
 ([#113](https://github.com/viell-dev/slop-calc-sheet-manager/issues/113)). Each call checks the
-name again just before it moves. Individual sheet content protection does not prevent reordering. It groups moves with the
-translated `tr("Move Sheets")` title, verifies the final order and scenario flags, and preserves
-the initiating view's active sheet and native tab selection.
+name again just before it moves. Individual sheet content protection does not prevent reordering.
+It groups moves with the translated `tr("Move Sheets")` title, verifies the final order and
+scenario flags, and preserves the initiating view's active sheet and native tab selection.
 
 `Result.status` is one of:
 
