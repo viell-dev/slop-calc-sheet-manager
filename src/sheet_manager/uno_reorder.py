@@ -297,11 +297,10 @@ class _Ends:
                 self._main.post(lambda: self._restore(serial, views), RESTORING)
         except Exception:
             # Nothing may escape into the replay: neither the revocation nor the report.
-            try:
+            with contextlib.suppress(Exception):
                 events.revoke(self.move)
-            finally:
-                with contextlib.suppress(Exception):
-                    report("following Undo or Redo of a sheet move")
+            with contextlib.suppress(Exception):
+                report("following Undo or Redo of a sheet move")
 
     def _sample(self) -> tuple[_View, ...]:
         """Every window's view as the replay found it, as handles: they denote the same sheets

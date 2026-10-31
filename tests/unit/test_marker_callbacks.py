@@ -73,3 +73,32 @@ def test_a_marker_callback_never_raises_even_when_logging_fails() -> None:
     assert move.state == "revoked"
     assert events.replay is None and events.view_replay is None
     ends._main.post.assert_not_called()
+
+
+def test_a_marker_callback_never_raises_even_when_the_revocation_fails() -> None:
+    """A failure inside the revocation itself neither escapes nor leaves the replay open."""
+    events = StructureEvents(count=3)
+    move = OwnMove(state="done", generation=events.generation, count=3, epoch=events.epoch)
+
+    class FailingOutcomes(dict[int, bool]):
+        """Settling the aborted replay fails, inside the revocation."""
+
+        def __setitem__(self, key: int, value: bool) -> None:
+            raise RuntimeError("the settlement failed")
+
+    events.outcomes = FailingOutcomes()
+    ends = SimpleNamespace(
+        move=move,
+        _monitor=SimpleNamespace(events=events, count=lambda: 3, document=object()),
+        _main=Mock(),
+        _sample=Mock(side_effect=RuntimeError("a view getter failed")),
+    )
+    replayed = method(
+        REORDER,
+        "_Ends",
+        "replayed",
+        {"report": Mock(), "RESTORING": "restoring", "contextlib": contextlib},
+    )
+    replayed(ends, opening=True, redo=False)  # Must not raise into Calc's replay.
+    assert move.state == "revoked"
+    assert events.replay is None and events.view_replay is None
