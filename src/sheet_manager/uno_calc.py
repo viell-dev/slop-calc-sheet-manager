@@ -1,6 +1,7 @@
 """Calc and toolkit helpers shared by the panel's parts. Only the panel uses them."""
 
 import _thread
+import contextlib
 import sys
 import time
 import traceback
@@ -20,9 +21,14 @@ BUTTONS_OK = uno.getConstantByName("com.sun.star.awt.MessageBoxButtons.BUTTONS_O
 
 
 def report(where: str) -> None:
-    """Log an unexpected error; a callback must never raise into LibreOffice."""
-    print(f"Sheet Manager: {where} failed", file=sys.stderr)
-    traceback.print_exc()
+    """Log an unexpected error; a callback must never raise into LibreOffice.
+
+    Logging can fail too, for example on a closed stderr, and that must not escape either:
+    the own-move markers call this inside Calc's Undo (#91).
+    """
+    with contextlib.suppress(Exception):
+        print(f"Sheet Manager: {where} failed", file=sys.stderr)
+        traceback.print_exc()
 
 
 def prop(name, value):

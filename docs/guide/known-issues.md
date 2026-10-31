@@ -30,10 +30,10 @@ If Sheet Manager does not work in an environment where it is expected to, please
   ([#81](https://github.com/viell-dev/slop-calc-sheet-manager/issues/81)).
 - **Save focus.** Ctrl+S from the list saves through Calc. With LibreOffice's gtk3 interface on
   Linux, a save moves the keyboard focus from any sidebar control to the sheet, Calc's own panels
-  included. <Unreleased /> The list takes the focus back once the save has finished, after any
-  Save As, file format, or error dialog has closed, unless you have used the list or another
-  window meanwhile. Earlier builds leave the focus in the sheet; click the list to return to it
-  ([#23](https://github.com/viell-dev/slop-calc-sheet-manager/issues/23)).
+  included. <Unreleased since="0.0.8" /> The list takes the focus back once the save has finished,
+  after any Save As, file format, or error dialog has closed, unless you have used the list or
+  another window meanwhile. Earlier builds leave the focus in the sheet; click the list to return to
+  it ([#23](https://github.com/viell-dev/slop-calc-sheet-manager/issues/23)).
 - **Unavailable menu actions.** Native popup rendering can hide disabled commands and move
   actions, and their help text. In the gen backend, use Down to highlight the first available
   entry; Home can leave no entry highlighted when the leading actions are unavailable. Alt move
@@ -43,22 +43,21 @@ If Sheet Manager does not work in an environment where it is expected to, please
   modifications whose continuity cannot be established can clear the list's selection. A notice
   explains conservative clearing of a user-made selection. Ordinary refreshes retain the list's
   range anchor while its sheet identity remains valid. Native Undo and Redo can also activate an
-  affected sheet; the list then follows Calc's new tab selection. A grouped move can activate
-  the sheet above the returned group, whereas a single move can activate the returned sheet.
-  **What Undo now keeps.** <Unreleased /> Undo and Redo of the list's own move keep its picks,
-  the viewed sheet and Calc's tab selection
+  affected sheet; the list then follows Calc's new tab selection. A grouped move can activate the
+  sheet above the returned group, whereas a single move can activate the returned sheet. **What Undo
+  now keeps.** <Unreleased since="0.0.8" /> Undo and Redo of the list's own move keep its picks, the
+  viewed sheet and Calc's tab selection
   ([#91](https://github.com/viell-dev/slop-calc-sheet-manager/issues/91)). They still clear the
   picks when undo history is set to one step, after an Undo or Redo of anything else in between,
   after a new window of the workbook was opened in between, after another program or macro adds
-  actions to the move's undo step, and when LibreOffice reports anything unexpected while it
-  replays the move. If a move fails before it moves any sheet, Redo history from before the move
-  is lost.
-  **Selection feedback.** <Unreleased since="0.0.5" /> The clearing notice expires within the
-  panel after ten seconds, preserving focus.
-  An immediate selection after Reload or during concurrent document changes can remain empty or
-  clear again, including during some recorded changes. Select the desired rows again once loading
-  or concurrent edits finish; the cause of this intermittent observation is still under
-  investigation ([#88](https://github.com/viell-dev/slop-calc-sheet-manager/issues/88)).
+  actions to the move's undo step, and when LibreOffice reports anything unexpected while it replays
+  the move. If a move fails before it moves any sheet, Redo history from before the move is lost.
+  **Selection feedback.** <Unreleased since="0.0.5" /> The clearing notice expires within the panel
+  after ten seconds, preserving focus. An immediate selection after Reload or during concurrent
+  document changes can remain empty or clear again, including during some recorded changes. Select
+  the desired rows again once loading or concurrent edits finish; the cause of this intermittent
+  observation is still under investigation
+  ([#88](https://github.com/viell-dev/slop-calc-sheet-manager/issues/88)).
 - **Large lists.** The list rebuilds after changes. During rapid sheet switches the active-sheet
   marker can lag; timing measurements and the remaining work are in
   [#22](https://github.com/viell-dev/slop-calc-sheet-manager/issues/22).

@@ -13,7 +13,7 @@ updates, removal, use, known issues, troubleshooting, and reporting a problem.
 
 ## Status
 
-Source version: `0.0.7` beta towards the first stable release, 0.1.0. Sheet Manager is in
+Source version: `0.0.8` beta towards the first stable release, 0.1.0. Sheet Manager is in
 **beta**: the features planned for 0.1.0 are complete, and the remaining work is fixing the
 logged defects and polishing. No stable release date is set. Stable publication requires the
 agreed release goal ([#120](https://github.com/viell-dev/slop-calc-sheet-manager/issues/120)),
@@ -110,8 +110,8 @@ explains the model; [RELEASING.md](RELEASING.md) gives the maintainer rules and 
 
 - Changes made outside the list are observed periodically, so they can appear after a short delay.
 - With LibreOffice's gtk3 interface, a save moves keyboard focus from the sidebar to the sheet.
-  Test builds up to 0.0.6 leave it there after Ctrl+S from the list; the development version
-  gives it back to the list (#23).
+  Test builds up to 0.0.7 leave it there after Ctrl+S from the list; later builds give it back
+  to the list (#23).
 - A change that may replace a sheet clears the list's selection conservatively. Large lists are
   rebuilt after changes, which can delay the active-sheet marker (#22).
 - The sidebar header's `?` opens LibreOffice's unavailable help topic for this extension. Use
