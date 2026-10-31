@@ -230,8 +230,9 @@ A notice explains conservative clearing of a user-made selection. Pick the sheet
 **Undo and Redo of the list's moves.** <Unreleased /> Undo and Redo of a move the list made
 itself, by dragging, a move button, the menu or a shortcut, keep the picks and the view. The list
 recognizes its own move only when nothing that could change which sheet is which has happened
-since: Undo and Redo of anything else, an inserted, deleted or replaced sheet, a macro adding
-actions to the move's undo step, or undo history set to one step still clear the picks as before.
+since: Undo and Redo of anything else, an inserted, deleted or replaced sheet, a new window of
+the workbook, a macro adding actions to the move's undo step, or undo history set to one step
+still clear the picks as before.
 
 **Panel notice.** <Unreleased since="0.0.5" /> This explanation appears within the panel and
 disappears after ten seconds, without changing keyboard focus or dismissing a grouped-editing
