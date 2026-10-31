@@ -63,8 +63,10 @@ If Sheet Manager does not work in an environment where it is expected to, please
   states; the current-sheet arrow and tab colours are painted only. <Unreleased /> The list's
   accessible name says which sheet Calc shows
   ([#83](https://github.com/viell-dev/slop-calc-sheet-manager/issues/83)). The panel's controls
-  are reached by keyboard focus, but walking the accessibility hierarchy down from the sidebar
-  does not reach them
+  cannot be reached by walking the accessibility hierarchy down from the sidebar. With
+  LibreOffice's gtk3 interface on Linux, a screen reader's bridge reports keyboard focus in the
+  list on an unnamed pane rather than on the list or its rows, so screen readers there may read
+  none of this. Windows screen readers have not been tried
   ([#133](https://github.com/viell-dev/slop-calc-sheet-manager/issues/133)). The checks read
   LibreOffice's accessibility interface; no screen reader runs in them.
 - **Large lists.** The list rebuilds after changes. During rapid sheet switches the active-sheet

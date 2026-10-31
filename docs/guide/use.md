@@ -221,7 +221,8 @@ example "Sheets, current sheet: Bravo", so assistive technology can tell the vie
 the selected rows; the name changes when another sheet is shown
 ([#83](https://github.com/viell-dev/slop-calc-sheet-manager/issues/83)). Tab colours are not
 announced. Automated checks read this information through LibreOffice's accessibility
-interface; what a particular screen reader announces is not verified.
+interface; what a particular screen reader announces is not verified, and with LibreOffice's
+gtk3 interface it may not reach screen readers at all (see [Known issues](./known-issues.md)).
 
 ## When the list clears its selection
 
