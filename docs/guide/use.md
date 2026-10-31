@@ -97,7 +97,9 @@ menu targets several sheets, every command for hidden sheets, and Delete for pro
 [Rename several sheets](#rename-several-sheets).
 They are also unavailable in a read-only document or one whose sheet structure is protected,
 Rename for a protected sheet, Delete while changes are recorded, and Delete and Hide when no other
-sheet would stay visible. Calc's own sheet tabs keep their full menu, including your
+sheet would stay visible. <Unreleased /> Delete is also unavailable for either of two sheets whose
+names Calc confuses, because Undo can leave the sheet deleted; rename one of them first, as
+[Known issues](./known-issues.md) explains. Calc's own sheet tabs keep their full menu, including your
 customizations, for every other command. Duplicate Sheet and Move or Copy Sheet are only there;
 see [Known issues](./known-issues.md).
 
