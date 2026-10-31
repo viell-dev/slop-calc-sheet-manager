@@ -66,6 +66,9 @@ KEYS: dict[str, tuple[int, bool]] = {
     **{chr(code): (code, False) for code in range(ord("0"), ord("9") + 1)},
 }
 EN_US = 0x0409
+# How long a tap holds its key, as a hand does. Windows generates no repeat for injected keys,
+# and native loops that sample key state, such as a drag's, can miss a shorter press.
+KEY_HOLD = 0.05
 
 INPUT_MOUSE, INPUT_KEYBOARD = 0, 1
 KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP = 0x0001, 0x0002
@@ -464,6 +467,7 @@ class WinInput:
         for modifier in modifiers:
             self.key(modifier, True)
         self.key(keysym, True)
+        time.sleep(KEY_HOLD)
         self.key(keysym, False)
         for modifier in reversed(modifiers):
             self.key(modifier, False)

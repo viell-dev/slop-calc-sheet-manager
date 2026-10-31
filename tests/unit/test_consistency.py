@@ -118,8 +118,10 @@ def test_environment_table_names_the_tested_builds() -> None:
     linux = next(line for line in table.splitlines() if line.startswith("| Linux x86-64"))
     for lane in set(pins) - {"unsupported", "windows"}:
         assert pins[lane]["version"] in linux, lane
-    windows = next(line for line in table.splitlines() if line.startswith("| Windows x86-64"))
-    assert pins["windows"]["version"] in windows
+    windows = [line for line in table.splitlines() if line.startswith("| Windows x86-64")]
+    assert len(windows) == 2, windows  # Headless CI, and the visible desktop workflow.
+    for line in windows:
+        assert pins["windows"]["version"] in line, line
     refused = ".".join(pins["unsupported"]["version"].split(".")[:3])
     assert f"| LibreOffice {refused} and earlier " in table
     assert "<!--@include: ../../README.md#environments-->" in text(
