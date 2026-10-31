@@ -5,6 +5,13 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Check real keyboard and mouse input in a visible Windows window
+  ([#114](https://github.com/viell-dev/slop-calc-sheet-manager/issues/114)). A new workflow, not
+  yet required for merging, runs the real-input checks on GitHub's hosted Windows Server 2025
+  runners: typing and shortcuts in the list, dragging sheets and cancelling with Esc, the menu by
+  right click, Menu key and Shift+F10, Rename Sheet and Insert Sheet on the right-clicked row,
+  undoing Hide Sheet, and the Rename Sheets dialog. No change to the extension itself.
+
 ## 0.0.6 - 2026-10-28
 
 Alpha build following 0.0.5, adding batch rename.
