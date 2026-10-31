@@ -59,20 +59,24 @@ describes that gate and how its results are tracked.
 
 <!-- #region environments -->
 
-| Environment                                                                       | Status                                 |
-| --------------------------------------------------------------------------------- | -------------------------------------- |
-| Linux x86-64, libreoffice.org 26.2.1.2, 26.2.6.3, and 26.8.2.2: headless and gtk3 | Verified in CI for every change        |
-| Windows x86-64, libreoffice.org 26.8.2.2: headless                                | Verified in CI for every change        |
-| Other 26.2 and 26.8 releases, and later versions, from libreoffice.org            | Expected to work, not verified         |
-| Distribution packages, other interfaces such as kf6 or gtk4, Wayland, macOS       | Expected to work, not verified         |
-| Flatpak, Snap, Arm builds, and the Windows interface in a visible window          | Expected to work, not verified         |
-| LibreOffice 26.2.0 and earlier                                                    | Unsupported: installation is refused   |
-| LibreOffice without Python support                                                | Unsupported: the extension cannot run  |
+| Environment                                                                       | Status                                             |
+| --------------------------------------------------------------------------------- | -------------------------------------------------- |
+| Linux x86-64, libreoffice.org 26.2.1.2, 26.2.6.3, and 26.8.2.2: headless and gtk3 | Verified in CI for every change                    |
+| Windows x86-64, libreoffice.org 26.8.2.2: headless                                | Verified in CI for every change                    |
+| Windows x86-64, libreoffice.org 26.8.2.2: a visible window with real input        | Checked on extension changes; not a required check |
+| Other 26.2 and 26.8 releases, and later versions, from libreoffice.org            | Expected to work, not verified                     |
+| Distribution packages, other interfaces such as kf6 or gtk4, Wayland, macOS       | Expected to work, not verified                     |
+| Flatpak, Snap, and Arm builds                                                     | Expected to work, not verified                     |
+| LibreOffice 26.2.0 and earlier                                                    | Unsupported: installation is refused               |
+| LibreOffice without Python support                                                | Unsupported: the extension cannot run              |
 
 <!-- #endregion environments -->
 
-The gtk3 checks run under X11 in a virtual display. If Sheet Manager does not work somewhere it is
-expected to, please [report it](CONTRIBUTING.md#report-a-defect).
+The gtk3 checks run under X11 in a virtual display. The visible Windows checks run on GitHub's
+hosted Windows Server 2025 runners, on one 1024×768 desktop at 96 DPI with the en-US keyboard
+layout, the `win` interface and no screen reader; they are not yet required for merging. If
+Sheet Manager does not work somewhere it is expected to, please
+[report it](CONTRIBUTING.md#report-a-defect).
 
 ## Install and update
 

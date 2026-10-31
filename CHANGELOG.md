@@ -30,6 +30,12 @@ defects and polishing. Requires LibreOffice 26.2.1 or later with Python support.
   work as before, and earlier titles such as `0.1.0 test build (0.0.4)` are unchanged. The
   [releases page](https://viell-dev.github.io/slop-calc-sheet-manager/guide/releases#test-builds)
   explains the stages.
+- Check real keyboard and mouse input in a visible Windows window
+  ([#114](https://github.com/viell-dev/slop-calc-sheet-manager/issues/114)). A new workflow, not
+  yet required for merging, runs the real-input checks on GitHub's hosted Windows Server 2025
+  runners: typing and shortcuts in the list, dragging sheets and cancelling with Esc, the menu by
+  right click, Menu key and Shift+F10, Rename Sheet and Insert Sheet on the right-clicked row,
+  undoing Hide Sheet, and the Rename Sheets dialog. No change to the extension itself.
 
 Install the OXT manually over 0.0.6, restart LibreOffice when asked, and check its SHA-256 asset.
 LibreOffice's Extension Manager offers only stable releases, and there is none yet, so later test

@@ -114,9 +114,11 @@ def office_session(
     startup_attempts=3,
     vcl="gtk3",
     profile_directory=None,
+    settings=None,
 ):
     # `profile_directory` reuses an existing private profile, such as one prepared with unopkg;
-    # by default each attempt gets a new one inside its temporary directory.
+    # by default each attempt gets a new one inside its temporary directory. `settings`, the text
+    # of a registrymodifications.xcu, is written into each new profile before installation.
     # Retry only startup, before opening documents or making test assertions. Windows
     # occasionally loses soffice.bin just after a successful UNO connection. Such an attempt's
     # crash dumps are kept and listed, but do not fail a session whose retry starts cleanly.
@@ -127,6 +129,11 @@ def office_session(
         directory = Path(temporary.name)
         profile_path = profile_directory or directory / "profile"
         profile = "-env:UserInstallation=" + profile_path.as_uri()
+        if settings is not None and profile_directory is None:
+            (profile_path / "user").mkdir(parents=True)
+            (profile_path / "user" / "registrymodifications.xcu").write_text(
+                settings, encoding="utf-8"
+            )
         pipe = "sheet_manager_" + uuid.uuid4().hex
         environment = os.environ.copy()
         environment.pop("WAYLAND_DISPLAY", None)

@@ -1,0 +1,79 @@
+name: Windows desktop
+
+# Real keyboard and mouse input to a visible LibreOffice on a GitHub-hosted Windows runner (#114).
+# The runner's job runs in the active console session, where SendInput reaches the office.
+# Not a required check yet; CONTRIBUTING.md and docs/verification.md say what would promote it.
+on:
+  workflow_dispatch:
+    inputs:
+      checks:
+        description: Check names to run, separated by spaces; empty runs them all
+        required: false
+        default: ""
+  pull_request:
+    paths:
+      - "src/**"
+      - "extension/**"
+      - "tests/ui/**"
+      - "tests/integration/run.py"
+      - "tests/integration/main_thread.py"
+      - "tests/integration/office_process.py"
+      - "tests/integration/sheet_list_view.py"
+      - "tests/integration/teardown.py"
+      - "tools/build.py"
+      - "ci/**"
+      - ".github/workflows/windows-desktop.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-desktop-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  desktop:
+    name: Windows desktop real input
+    runs-on: windows-2025
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the pinned LibreOffice MSI
+        run: ./ci/install-windows.ps1
+      - name: Build the extension with LibreOffice's Python
+        run: |
+          & 'C:\Program Files\LibreOffice\program\python.exe' tools/build.py
+          if ($LASTEXITCODE -ne 0) { throw 'Build failed' }
+      - name: Real-input checks in a visible Calc window
+        env:
+          SHEET_MANAGER_REAL_DESKTOP: "1"
+          CHECKS: ${{ inputs.checks }}
+        run: |
+          $package = (Get-ChildItem -LiteralPath dist -Filter '*.oxt').FullName
+          $selected = @()
+          foreach ($name in "$env:CHECKS".Split(' ', [StringSplitOptions]::RemoveEmptyEntries)) {
+            $selected += @('--check', $name)
+          }
+          & 'C:\Program Files\LibreOffice\program\python.exe' tests/ui/run_windows_ui.py `
+            --program 'C:\Program Files\LibreOffice\program' --oxt $package `
+            --output test-results/windows-desktop @selected
+          if ($LASTEXITCODE -ne 0) { throw 'Windows desktop checks failed' }
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: windows-desktop
+          path: |
+            test-results/windows-desktop/
+            dist/
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: windows-desktop-installer-failure
+          path: ${{ runner.temp }}/sheet-manager-msi.log
+          if-no-files-found: warn
