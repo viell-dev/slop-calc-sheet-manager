@@ -27,7 +27,7 @@ features:
       move actions, keyboard navigation, and Calc's common sheet commands.
   - title: Where it is now
     details:
-      In beta towards the first stable release, 0.1.0: the features are complete, and the
+      In beta towards the first stable release, 0.1.0. The features are complete, and the
       remaining work is fixes and polish.
       Check the release page for test builds and the compatibility guide for known limits.
 ---
