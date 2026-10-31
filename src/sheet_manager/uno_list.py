@@ -144,7 +144,7 @@ from sheet_manager.keys import (
 from sheet_manager.rename import Batch
 from sheet_manager.reorder import Action, plan_move
 from sheet_manager.selection import Ref, Selection, structure_kept
-from sheet_manager.sheet_list import RowGeometry, SheetRow, ordered, row_label
+from sheet_manager.sheet_list import RowGeometry, SheetRow, list_name, ordered, row_label
 from sheet_manager.uno_calc import (
     Later,
     MainThread,
@@ -516,6 +516,7 @@ class SheetList:
         self._menu_context = False
         self._page_rows = 10
         self._decoration_pending = False
+        self._viewed_name: str | None = None  # The tree's accessible name, once set.
         self._drag: _Drag | None = None
         self._gap: int | None = None
         self._pointer_y = 0
@@ -678,8 +679,14 @@ class SheetList:
         change: a refresh that only renews the handles behind unchanged rows must still drop a
         pick whose sheet was replaced under the same name (#28).
         """
-        if self._press is None:
-            self._take_tree_selection(defer=True)  # Let queued owned input run first.
+        # Let queued owned input run first. A native selection still waiting for that intake,
+        # such as one made through accessibility, is shown again after a rebuild (`_rebuild`).
+        pending = (
+            tuple(self.selected_names())
+            if self._press is None and self._take_tree_selection(defer=True)
+            else None
+        )
+        order, drops, proof = tuple(self.names()), self._generation, self._proven
         previous = self._observed
         observed = snapshot(self.document)
         rows = read_rows(self.controller, observed)
@@ -700,6 +707,15 @@ class SheetList:
             self._rebuild(rows)
         elif dropped or tuple(self._selection.names()) != self._shown:
             self._apply_selection()
+        if (
+            pending is not None
+            and self._generation == drops
+            and generation == proof
+            and tuple(self.names()) == order
+        ):
+            # The queued intake checks the same proof, drops and order before taking it.
+            self._show_native(pending)
+        self._name_viewed()
         self._update_moves()
 
         if self._view_generation != generation or self._view_names != frozenset(self.names()):
@@ -804,6 +820,31 @@ class SheetList:
             self._apply_selection()
         finally:
             self._restoring_cursor = restoring
+
+    def _show_native(self, names: tuple[str, ...]) -> None:
+        """Show a native selection that awaits intake again over rebuilt rows, keeping the cursor.
+
+        Only the queued intake adopts it, after its own checks (`_take_tree_selection`).
+        """
+        if tuple(self.selected_names()) == names:
+            return
+        restoring = self._restoring_cursor
+        self._restoring_cursor = True
+        try:
+            self.tree.clearSelection()  # Keeps the cursor where it is.
+            for index, name in enumerate(self.names()):
+                if name in names:
+                    self.tree.addSelection(self._nodes[index])
+        finally:
+            self._restoring_cursor = restoring
+        self.peer.invalidate(0)
+
+    def _name_viewed(self) -> None:
+        """Name the tree after the sheet Calc shows, which the painted arrow marks (#83)."""
+        name = list_name(next((row.name for row in self.rows if row.active), None))
+        if name != self._viewed_name:
+            self._viewed_name = name
+            self.peer.setProperty("AccessibleName", name)
 
     def _select(self, names: list[str], cursor: str | None = None) -> None:
         """Pick these rows as they show now and put the keyboard cursor on `cursor`."""

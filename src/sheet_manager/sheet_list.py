@@ -28,6 +28,17 @@ def row_label(row: SheetRow) -> str:
     return f"{label} ({', '.join(states)})" if states else label
 
 
+def list_name(active: str | None) -> str:
+    """The list's accessible name, naming the sheet Calc shows, which the painted arrow marks.
+
+    Assistive technology reads it for the list itself; the list's picks cannot stand in for the
+    viewed sheet, and row names stay plain (#83).
+    """
+    if active is None:
+        return tr("Sheets")
+    return tr("Sheets, current sheet: {name}").format(name=active)
+
+
 def tab_color(value: int) -> int | None:
     """Convert a sheet's TabColor property, where -1 means no colour, to 0xRRGGBB or None."""
     return None if value < 0 or value == 0xFFFFFFFF else value & 0xFFFFFF
