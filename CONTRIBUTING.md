@@ -117,7 +117,8 @@ Unit tests need no LibreOffice and run as part of the checks. To run them alone:
 .venv/bin/python -m pytest
 ```
 
-Release tests cover version ordering, candidate policy, changelog extraction, and update feeds.
+Release tests cover version ordering, release stages and titles, the Release workflow's `stage`
+input, changelog extraction, and update feeds.
 The integration runner also sends generated loopback HTTP feeds through LibreOffice's update
 parser and checks candidate compatibility through its deployment API. The painted Linux lanes
 also run `tests/ui/update_dialog.py` with the gen interface: actual offered and refused updates,
