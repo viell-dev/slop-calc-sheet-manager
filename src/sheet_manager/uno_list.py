@@ -690,7 +690,7 @@ class SheetList:
         pick whose sheet was replaced under the same name (#28).
         """
         # Let queued owned input run first. A native selection still waiting for that intake,
-        # such as one made through accessibility, is shown again after a rebuild (`_rebuild`).
+        # such as one made through accessibility, is shown again after a rebuild (`_show_native`).
         pending = (
             tuple(self.selected_names())
             if self._press is None and self._take_tree_selection(defer=True)
