@@ -220,8 +220,9 @@ example "Sheets, current sheet: Bravo", so assistive technology can tell the vie
 the selected rows; the name changes when another sheet is shown
 ([#83](https://github.com/viell-dev/slop-calc-sheet-manager/issues/83)). Tab colours are not
 announced. <Unreleased /> The move buttons, the list and the footer messages are reported to
-assistive technology in the order they appear, so a screen reader reaches them by moving through
-the sidebar as well as by keyboard focus ([#133](https://github.com/viell-dev/slop-calc-sheet-manager/issues/133)).
+assistive technology in the order they appear, so it can reach them by moving through the
+sidebar as well as by keyboard focus
+([#133](https://github.com/viell-dev/slop-calc-sheet-manager/issues/133)).
 Automated checks read this information through LibreOffice's accessibility interface; what a
 particular screen reader announces is not verified (see [Known issues](./known-issues.md)).
 

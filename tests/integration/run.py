@@ -337,10 +337,16 @@ def assert_panel(context, document):
         lambda: panels.getByName("SheetManagerPanel").getDialog(), "the public panel dialog"
     )
     peer_types = [item.typeName for item in window.getTypes()]
-    # The panel holds the list's controls itself (#133). A page-less tab control anywhere in it
-    # crashes LibreOffice on Shift, Ctrl, or Alt (#18, #31).
-    for peer in (window, *window.getWindows()):
+    # The panel holds the list's controls itself (#133). A page-less tab control anywhere in it,
+    # at any depth, crashes LibreOffice on Shift, Ctrl, or Alt (#18, #31).
+    def peers(peer):
         types = [item.typeName for item in peer.getTypes()]
+        yield peer, types
+        if "com.sun.star.awt.XVclContainer" in types:
+            for child in peer.getWindows():
+                yield from peers(child)
+
+    for peer, types in peers(window):
         assert "com.sun.star.awt.XSimpleTabController" not in types, types
     wait_for(lambda: window.getPosSize().Height > 100, "a full-height panel")
     assert window.getPosSize().Width >= 150

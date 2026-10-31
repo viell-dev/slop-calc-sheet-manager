@@ -63,9 +63,10 @@ If Sheet Manager does not work in an environment where it is expected to, please
   accessible name says which sheet Calc shows
   ([#83](https://github.com/viell-dev/slop-calc-sheet-manager/issues/83)). Through version 0.0.8,
   the panel's controls cannot be reached by moving through the accessibility hierarchy from the
-  sidebar, and with LibreOffice's gtk3 interface on Linux a screen reader hears nothing from the
-  list. <Unreleased /> They can now, and the gtk3 bridge reports the list's focus, rows and name
-  changes ([#133](https://github.com/viell-dev/slop-calc-sheet-manager/issues/133)). After its controls the
+  sidebar, and with LibreOffice's gtk3 interface on Linux the accessibility bridge reports
+  nothing from the list. <Unreleased /> They can now, and the gtk3 bridge reports the list's
+  focus, rows and name changes
+  ([#133](https://github.com/viell-dev/slop-calc-sheet-manager/issues/133)). After its controls the
   panel holds an empty, unnamed, unavailable pane, which keeps clicks in its margins from
   undocking the sidebar. No screen reader runs in the checks: they read LibreOffice's
   accessibility interface, and the gtk3 bridge was probed once. Windows screen readers have not
