@@ -1,6 +1,7 @@
 """Pure sheet ordering. Gaps refer to the complete, original physical sheet list."""
 
-from collections.abc import Iterable, Sequence
+from collections import Counter
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Literal
@@ -179,3 +180,28 @@ def plan_move(
     sheets: Sequence[Sheet], selected: Iterable[str], action: Action, gap: int | None = None
 ) -> Plan:
     return plan_order(sheets, target_order(sheets, selected, action, gap))
+
+
+def lookup_conflict(plan: Plan, finds: Mapping[str, str]) -> tuple[str, str] | None:
+    """The first move whose name Calc's lookup would give another sheet, and that sheet's name.
+
+    Calc moves a sheet by name, and accepts some names that its own lookup cannot tell apart,
+    such as `ﬁ` beside `fi`; the lookup then finds whichever of them comes first at that moment
+    (#113). `finds` maps every sheet's name to the name of the sheet the lookup finds for it in
+    `plan.before`'s order: itself, or the first sheet it cannot tell apart from it. Sheets that
+    find the same sheet form one group. The plan's earlier moves change which member comes first,
+    so the order is simulated move by move.
+    """
+    groups = Counter(finds[sheet.name] for sheet in plan.before)
+    if all(groups[finds[move.name]] == 1 for move in plan.moves):
+        return None
+    order = [sheet.name for sheet in plan.before]
+    for move in plan.moves:
+        group = finds[move.name]
+        if groups[group] > 1:
+            found = next(name for name in order if finds[name] == group)
+            if found != move.name:
+                return move.name, found
+        order.remove(move.name)
+        order.insert(move.index, move.name)
+    return None

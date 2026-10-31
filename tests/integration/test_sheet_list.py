@@ -729,8 +729,9 @@ class _FailingSheets:
     def __getattr__(self, name):
         return getattr(self._real, name)
 
-    def getByName(self, name):
-        return _FailingHandle(self._real.getByName(name), self._counter)
+    def getByIndex(self, index):
+        # Snapshots read their handles by index (#113).
+        return _FailingHandle(self._real.getByIndex(index), self._counter)
 
 
 class _FailingDocument:

@@ -5,7 +5,15 @@ from time import perf_counter
 
 import pytest
 
-from sheet_manager.reorder import Sheet, blocks, plan_move, plan_order, target_order
+from sheet_manager.reorder import (
+    Plan,
+    Sheet,
+    blocks,
+    lookup_conflict,
+    plan_move,
+    plan_order,
+    target_order,
+)
 
 
 def lcs_length(left: tuple[str, ...], right: tuple[str, ...]) -> int:
@@ -164,3 +172,48 @@ def test_invalid_inputs_and_noops() -> None:
             target_order(sheets, ["A"], "drop", gap)
     for selected in ([], ["A", "B"]):
         assert not plan_move(sheets, selected, "bottom").moves
+
+
+def calc_lookup(order: list[str], name: str) -> str:
+    """Calc's lookup modelled on synthetic names: the letters before a digit are what it compares,
+    and it finds the first sheet in the current order that has them (#113)."""
+    key = name.rstrip("0123456789")
+    return next(other for other in order if other.rstrip("0123456789") == key)
+
+
+def oracle_conflict(plan: Plan) -> tuple[str, str] | None:
+    """Replay the plan, asking the model of Calc's lookup before each call."""
+    order = [sheet.name for sheet in plan.before]
+    for move in plan.moves:
+        found = calc_lookup(order, move.name)
+        if found != move.name:
+            return move.name, found
+        order.insert(move.index, order.pop(order.index(move.name)))
+    return None
+
+
+def test_lookup_conflict_matches_a_replay_of_calcs_lookup() -> None:
+    # Two groups Calc cannot tell apart, a2 and a3 beside a1 and b2 beside b1, and one name alone.
+    for names in (("a1", "a2", "b1", "b2", "c"), ("a1", "a2", "a3", "b1", "c")):
+        for before in permutations(names):
+            sheets = tuple(Sheet(name) for name in before)
+            finds = {name: calc_lookup(list(before), name) for name in before}
+            for target in permutations(before):
+                plan = plan_order(sheets, target)
+                conflict = lookup_conflict(plan, finds)
+                assert conflict == oracle_conflict(plan), (before, target)
+                # uno_reorder looks up only the moved names when they all find their own sheets.
+                if all(finds[move.name] == move.name for move in plan.moves):
+                    assert conflict is None, (before, target)
+
+
+def test_lookup_conflict_names_the_sheet_calc_would_move() -> None:
+    sheets = (Sheet("ﬁ"), Sheet("fi"), Sheet("Last"))
+    finds = {"ﬁ": "ﬁ", "fi": "ﬁ", "Last": "Last"}
+    assert lookup_conflict(plan_move(sheets, ["fi"], "bottom"), finds) == ("fi", "ﬁ")
+    assert lookup_conflict(plan_move(sheets, ["ﬁ"], "bottom"), finds) is None
+    assert lookup_conflict(plan_move(sheets, ["Last"], "top"), finds) is None
+    # The ligature moves first, behind fi, so that fi comes first and its own name finds it.
+    plan = plan_order(sheets, ("Last", "fi", "ﬁ"))
+    assert [move.name for move in plan.moves] == ["ﬁ", "fi"]
+    assert lookup_conflict(plan, finds) is None
