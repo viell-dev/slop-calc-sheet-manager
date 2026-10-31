@@ -110,6 +110,33 @@ class Tracker(unohelper.Base, XMouseMotionListener):
         pass
 
 
+class PressProbe(unohelper.Base, XMouseListener):
+    """When the tree's mouse listeners heard each button press and release.
+
+    VCL notifies a window's mouse listeners in one callback that it posts to the main thread.
+    Listener containers notify the most recently added first, so this probe hears a press
+    before the list's own listener has run; `Workbook.hold` waits for the rest of the callback.
+    """
+
+    def __init__(self):
+        self.heard = []
+
+    def mousePressed(self, event):
+        self.heard.append(("pressed", time.monotonic()))
+
+    def mouseReleased(self, event):
+        self.heard.append(("released", time.monotonic()))
+
+    def mouseEntered(self, event):
+        pass
+
+    def mouseExited(self, event):
+        pass
+
+    def disposing(self, event):
+        pass
+
+
 class Workbook:
     def __init__(self, lab, title, names, stored=True):
         """A synthetic workbook with the list open, stored unless `stored` is false."""
@@ -170,6 +197,33 @@ class Workbook:
 
     def click(self, index, modifiers=()):
         self.pointer.click(*self.point(index), modifiers=modifiers)
+
+    def hold(self, index, probe=None):
+        """Press the button on a row and keep it down; return once the list has handled it.
+
+        The tree selects the row natively, then VCL posts the mouse listeners' callback, which
+        runs without the solar mutex. A selection alone therefore does not show that the list
+        knows of the press: an API change made before its listener has run reaches the list
+        first, and the list rightly counts the press as newer input (#134). Once a probe has
+        heard the press, a round trip to the main thread returns only after that callback, and
+        so the list's listener, has finished. `probe`, a `PressProbe` already added to the
+        tree, is used instead of a temporary one.
+        """
+        own = probe is None
+        if own:
+            probe = PressProbe()
+            self.tree.addMouseListener(probe)
+        try:
+            heard = len(probe.heard)
+            self.pointer.press(*self.point(index))
+            wait_until(
+                lambda: any(kind == "pressed" for kind, _ in probe.heard[heard:]),
+                "the tree's listeners to hear the press",
+            )
+            view.on_main_thread(self.lab.context, lambda: None)
+        finally:
+            if own:
+                self.tree.removeMouseListener(probe)
 
     def focus_list(self):
         """Click the active sheet's row: the list gets the focus, nothing else changes."""
@@ -1684,8 +1738,7 @@ def check_selected_press_cursor(book):
     for newer in (False, True):
         reset(book)
         book.click(1)
-        start = book.point(1)
-        book.pointer.press(*start)
+        book.hold(1)
         try:
             book.document.getSheets().moveByName(NAMES[1], 6)
             wait_until(lambda: view.names(book.tree) == book.order(), "the moved list")
@@ -1763,8 +1816,7 @@ def check_press_then_change(book):
     evidence = {}
     for change, picked in (("replace", []), ("move", [NAMES[1]])):
         reset(book)
-        point = book.point(1)
-        book.pointer.press(*point)
+        book.hold(1)
         wait_until(lambda: book.selection() == [NAMES[1]], "the press to select Bravo")
         if change == "replace":
             replace(book.document, NAMES[1])
@@ -1804,33 +1856,73 @@ def check_newer_pick_survives_voided_press(book):
     Two ways to a newer pick while Bravo is held: Calc goes to Delta and the list follows, or
     Bravo is moved away and the user types "d". Then the button is released over the row Bravo
     left. Delta stays picked, and the Menu key's Hide acts on Delta alone.
+
+    Each step records what the list showed, Calc's view, the tree's focus, the held buttons, and
+    when the tree's mouse listeners heard the press and release, so that a timeout can be
+    classified from the evidence alone (#134).
     """
     sheets = book.document.getSheets()
     evidence = {}
-    for way in ("calc_switch", "typing"):
-        reset(book)
-        point = book.point(1)
-        book.pointer.press(*point)
-        wait_until(lambda: book.selection() == [NAMES[1]], "the press to select Bravo")
-        if way == "calc_switch":
-            book.controller.setActiveSheet(sheets.getByName(NAMES[3]))
-            wait_until(lambda: book.selection() == [NAMES[3]], "the list to follow Delta")
-            sheets.moveByName(NAMES[1], 6)
-            wait_until(lambda: view.names(book.tree)[1] == NAMES[2], "the list to show the move")
-        else:
-            sheets.moveByName(NAMES[1], 6)
-            wait_until(lambda: view.names(book.tree)[1] == NAMES[2], "the list to show the move")
-            book.lab.input.tap("d", pause=0.5)
-            wait_until(lambda: book.selection() == [NAMES[3]], "typing to pick Delta")
-        time.sleep(1)
-        book.pointer.release()
-        time.sleep(1)
-        state = {"selection": book.selection(), "active": book.active()}
-        evidence[way] = state
-        assert state["selection"] == [NAMES[3]], evidence
-        state["menu"] = hide_through_menu(
-            book, [NAMES[3]], lambda: book.lab.input.tap("Menu", pause=0.3)
-        )
+    probe = PressProbe()
+    book.tree.addMouseListener(probe)
+    try:
+        for way in ("calc_switch", "typing"):
+            reset(book)
+            probe.heard.clear()
+            started = time.monotonic()
+            steps = []
+            # The office's own clock too: CLOCK_MONOTONIC is shared within the container.
+            evidence[way] = {"clock": round(started, 3), "steps": steps}
+
+            def step(what, condition=None, started=started, steps=steps):
+                failure = None
+                if condition is not None:
+                    try:
+                        wait_until(condition, what)
+                    except AssertionError as error:
+                        failure = error
+                at = time.monotonic() - started  # Before the reads below, which take time.
+                steps.append(
+                    {
+                        "step": what,
+                        "at": round(at, 3),
+                        "met": failure is None,
+                        "selection": book.selection(),
+                        "active": book.active(),
+                        "calc_tabs": book.calc_tabs(),
+                        "tree_focus": book.tree.hasFocus(),
+                        "held": sorted(book.lab.input.held),
+                        "heard": [(kind, round(when - started, 3)) for kind, when in probe.heard],
+                    }
+                )
+                if failure is not None:
+                    raise AssertionError(f"{failure}; evidence: {json.dumps(evidence)}")
+
+            book.hold(1, probe)
+            step("the press to select Bravo", lambda: book.selection() == [NAMES[1]])
+            if way == "calc_switch":
+                book.controller.setActiveSheet(sheets.getByName(NAMES[3]))
+                step("Calc to go to Delta")
+                step("the list to follow Delta", lambda: book.selection() == [NAMES[3]])
+                sheets.moveByName(NAMES[1], 6)
+                step("the list to show the move", lambda: view.names(book.tree)[1] == NAMES[2])
+            else:
+                sheets.moveByName(NAMES[1], 6)
+                step("the list to show the move", lambda: view.names(book.tree)[1] == NAMES[2])
+                book.lab.input.tap("d", pause=0.5)
+                step("typing to pick Delta", lambda: book.selection() == [NAMES[3]])
+            time.sleep(1)
+            book.pointer.release()
+            time.sleep(1)
+            step("the release")
+            state = evidence[way]
+            state.update(selection=book.selection(), active=book.active())
+            assert state["selection"] == [NAMES[3]], evidence
+            state["menu"] = hide_through_menu(
+                book, [NAMES[3]], lambda: book.lab.input.tap("Menu", pause=0.3)
+            )
+    finally:
+        book.tree.removeMouseListener(probe)
     return evidence
 
 
