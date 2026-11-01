@@ -1,7 +1,7 @@
 name: Release sweep
 
 # Manual release-preparation evidence; batch cross-platform runs to at most once per week.
-# macOS is not established by this workflow; #145 owns that additional lane.
+# Includes the demonstrated Intel macOS headless lane (#145).
 on:
   workflow_dispatch:
 
@@ -186,10 +186,39 @@ jobs:
           path: ${{ runner.temp }}/sheet-manager-msi.log
           if-no-files-found: warn
 
+  macos:
+    name: macOS Intel packaged integration
+    runs-on: macos-15-intel
+    # Internal command budgets total 43 minutes; allow cleanup and artifact upload too.
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Check native tool options before installation
+        run: |
+          hdiutil help || true
+          ditto -h || true
+          curl --help
+      - name: Install privately and run with the bundled PyUNO interpreter
+        run: python3 tools/macos_integration.py
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: macos-integration
+          path: |
+            test-results/macos/
+            dist/
+          if-no-files-found: error
+
   gate:
     name: Full release sweep
     if: always()
-    needs: [linux, linux-gtk3, refusal, windows, desktop]
+    needs: [linux, linux-gtk3, refusal, windows, desktop, macos]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

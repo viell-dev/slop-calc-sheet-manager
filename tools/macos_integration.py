@@ -5,6 +5,7 @@ before mounting it, use LibreOffice's own Python wrapper, and let the existing r
 profile/process and assertion. A prepared lane is not macOS coverage until its native run passes.
 Each command owns a new process group; timeout cleanup stops it before removing the application.
 Keep the workflow timeout above the commands' combined budgets, including cleanup and upload.
+Every failure, including diagnostic collection, leaves the host result marked unsuccessful.
 """
 
 import hashlib
@@ -217,6 +218,7 @@ def main() -> None:
                     result["assertions_passed"] = False
                     raise AssertionError("This private application produced a native crash report")
     except BaseException:
+        result["assertions_passed"] = False
         result["error"] = traceback.format_exc()
         raise
     finally:

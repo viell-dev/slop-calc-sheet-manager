@@ -104,6 +104,23 @@ def test_latest_failed_sweep_cannot_fall_back_to_an_older_green_run(evidence: An
         cli.require_ci("a" * 40, publishing=True, timeout=0)
 
 
+@pytest.mark.parametrize("failure", ["missing", "skipped", "failure", "cancelled", "in_progress"])
+def test_green_linux_windows_sweep_cannot_authorize_release_without_macos(
+    evidence: Any, failure: str
+) -> None:
+    _, jobs, _ = evidence
+    macos = next(job for job in jobs[2] if job["name"] == "macOS Intel packaged integration")
+    if failure == "missing":
+        jobs[2].remove(macos)
+    elif failure == "in_progress":
+        macos["status"] = "in_progress"
+    else:
+        macos["conclusion"] = failure
+    for publishing in (False, True):
+        with pytest.raises(ValueError, match="Required jobs"):
+            cli.require_ci("a" * 40, publishing=publishing, timeout=0)
+
+
 def test_a_branch_pr_cannot_supply_main_publication_evidence(evidence: Any) -> None:
     runs, _, _ = evidence
     runs[ROUTINE.workflow][0].update(event="pull_request", head_branch="task")

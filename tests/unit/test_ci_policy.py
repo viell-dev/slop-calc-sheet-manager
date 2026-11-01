@@ -76,3 +76,17 @@ def test_platform_sweeps_and_windows_investigations_are_manual_only() -> None:
             (ROOT / ".github/workflows" / filename).read_text("utf-8"), Loader=yaml.BaseLoader
         )
         assert set(workflow["on"]) == {"workflow_dispatch"}
+
+
+@pytest.mark.parametrize("result", [None, "failure", "skipped", "cancelled"])
+def test_macos_is_required_even_when_every_other_sweep_dependency_passes(
+    result: str | None,
+) -> None:
+    results: dict[str, Any] = {name: {"result": "success"} for name in SWEEP.dependencies}
+    assert "macos" in results
+    if result is None:
+        results.pop("macos")
+    else:
+        results["macos"]["result"] = result
+    with pytest.raises(ValueError, match="dependencies differ|did not succeed"):
+        require_dependencies(results, SWEEP)

@@ -13,7 +13,8 @@ Record run results, deliberate-break experiments and review findings in the owni
   3.12 and 3.14.
 - **Integration:** routine CI uses the newest tested Linux build, headless. The manual full release
   sweep adds the minimum and newest tested 26.2, painted gtk3 on all three builds, the Windows pin
-  headless, and the unsupported-version refusal. `ci/libreoffice.json` owns the pins.
+  headless, Intel macOS headless integration/lifecycle, and the unsupported-version refusal.
+  `ci/libreoffice.json` owns the pins.
 - **Linux UI:** gtk3 and gen under private Xvfb displays on current Linux in routine CI and all
   three Linux builds in the full release sweep.
   Real XTEST input exercises native dispatch and drag behaviour that synthetic UNO input cannot.
@@ -32,14 +33,16 @@ one 1024×768 desktop at 96 DPI. The full release sweep requires the complete su
 manual workflow supports focused investigation. Commands and cadence are in
 [CONTRIBUTING.md](https://github.com/viell-dev/slop-calc-sheet-manager/blob/main/CONTRIBUTING.md#routine-ci-and-release-sweeps).
 
-No automated lane runs a screen reader. Native Wayland input, macOS, distribution packages,
+No automated lane runs a screen reader. Native Wayland input, distribution packages,
 Flatpak, Snap, Arm and other themes or scaling are not established by these checks.
 [#145](https://github.com/viell-dev/slop-calc-sheet-manager/issues/145) owns macOS release verification.
-The prepared on-demand Intel macOS harness has no native result yet and is not included in the
-release gate. Its unit checks cover installer integrity/private paths and diagnostic ownership;
-they are not evidence of the macOS host's behaviour. The planned headless runner reuses the
-integration/lifecycle suite; OS input, painted pixels, Apple Silicon and system/delayed crash
-reports remain outside that first pass.
+Intel macOS 15 with the pinned official build has passed the full headless integration/lifecycle
+suite and is required by the manual release sweep. The runner requests `svp`; Aqua rendering,
+OS input, GUI installation/update, upgrades from published macOS builds, Apple Silicon and
+system-wide/delayed crash reports remain unverified. Installer unit checks cover integrity,
+private paths, diagnostic ownership and failure propagation for version mismatch or new crash
+reports; they are separate from the native evidence linked in #145. A standalone focused Mac run
+cannot replace the complete exact-revision sweep.
 A focused [human usability pass](./manual-tests.md) remains a separate release requirement.
 
 ## Installation, packaging and publication

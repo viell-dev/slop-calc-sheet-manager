@@ -131,6 +131,91 @@ def test_wrong_architecture_is_recorded_before_any_external_command(
     assert "Expected x86_64, got arm64" in result["error"]
 
 
+@pytest.fixture
+def native_commands_stubbed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Mock]:
+    """Exercise failure propagation only; no native command or application is executed."""
+    monkeypatch.setattr(cli, "ROOT", tmp_path)
+    monkeypatch.setattr(cli.sys, "platform", "darwin")
+    monkeypatch.setattr(cli.platform, "machine", lambda: "x86_64")
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
+    (tmp_path / "ci").mkdir()
+    (tmp_path / "ci/libreoffice.json").write_text(
+        json.dumps(
+            {
+                "macos": {
+                    "architecture": "x86_64",
+                    "version": "26.8.2.2",
+                    "url": "https://example.invalid/pinned.dmg",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "dist").mkdir()
+    (tmp_path / "dist/fixture.oxt").write_bytes(b"test-only package placeholder")
+    monkeypatch.setattr(cli, "install", Mock(return_value=tmp_path / "LibreOffice.app"))
+
+    def binary(app: Path, path: Path) -> Path:
+        return path
+
+    monkeypatch.setattr(cli, "checked_binary", binary)
+    monkeypatch.setattr(cli, "collect_reports", Mock(return_value=[]))
+
+    def run(command: list[str], log: Path, environment: dict[str, str], timeout: int = 120) -> None:
+        log.write_text("LibreOffice 26.8.2.2" if log.name == "office-version.txt" else "", "utf-8")
+
+    runner = Mock(side_effect=run)
+    monkeypatch.setattr(cli, "run", runner)
+    return tmp_path / "test-results/macos", runner
+
+
+def test_version_mismatch_fails_before_integration_and_retains_the_reason(
+    native_commands_stubbed: tuple[Path, Mock],
+) -> None:
+    output, runner = native_commands_stubbed
+
+    def wrong_version(
+        command: list[str], log: Path, environment: dict[str, str], timeout: int = 120
+    ) -> None:
+        log.write_text("LibreOffice 26.2.1.2", "utf-8")
+
+    runner.side_effect = wrong_version
+    with pytest.raises(ValueError, match="Unexpected installed version"):
+        cli.main()
+    assert all(call.args[1].name != "integration.log" for call in runner.call_args_list)
+    result = json.loads((output / "host-results.json").read_text("utf-8"))
+    assert result["assertions_passed"] is False
+    assert "26.2.1.2" in result["error"]
+
+
+def test_new_owned_crash_report_overrides_otherwise_successful_commands(
+    native_commands_stubbed: tuple[Path, Mock], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output, runner = native_commands_stubbed
+    monkeypatch.setattr(cli, "collect_reports", Mock(return_value=["soffice.ips"]))
+    with pytest.raises(AssertionError, match="native crash report"):
+        cli.main()
+    assert any(call.args[1].name == "integration.log" for call in runner.call_args_list)
+    result = json.loads((output / "host-results.json").read_text("utf-8"))
+    assert result["assertions_passed"] is False
+    assert result["native_crash_reports"] == ["soffice.ips"]
+
+
+def test_diagnostic_collection_error_cannot_leave_a_successful_host_record(
+    native_commands_stubbed: tuple[Path, Mock], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output, _ = native_commands_stubbed
+    monkeypatch.setattr(
+        cli, "collect_reports", Mock(side_effect=OSError("diagnostics unavailable"))
+    )
+    with pytest.raises(OSError, match="diagnostics unavailable"):
+        cli.main()
+    result = json.loads((output / "host-results.json").read_text("utf-8"))
+    assert result["assertions_passed"] is False
+    assert "diagnostics unavailable" in result["error"]
+
+
 @pytest.mark.skipif(os.name == "nt", reason="The installer executes only on macOS/POSIX")
 def test_timeout_stops_only_the_new_private_process_group_before_propagating_failure(
     tmp_path: Path,

@@ -5,8 +5,8 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
-- Prepare an on-demand, privately installed Intel macOS integration harness; native evidence
-  remains pending before it joins release verification
+- Require demonstrated Intel macOS headless packaged integration and lifecycle in the manual
+  release sweep; retain focused on-demand checks and explicit GUI/input/Apple Silicon limits
   ([#145](https://github.com/viell-dev/slop-calc-sheet-manager/issues/145)).
 - Reduce routine verification to deterministic checks, documentation and current Linux host/input
   coverage. Require a separate complete, exact-revision manual sweep before release validation or
