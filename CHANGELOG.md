@@ -50,6 +50,7 @@ more diagnostics, and the identity fixture waits for the list to finish refreshi
 ([#159](https://github.com/viell-dev/slop-calc-sheet-manager/issues/159),
 [#160](https://github.com/viell-dev/slop-calc-sheet-manager/issues/160),
 [#162](https://github.com/viell-dev/slop-calc-sheet-manager/issues/162)).
+Native theme checks prepare their workbook before opening the panel, keeping all UI checks visible.
 
 Install the OXT manually over 0.0.8 or an earlier build, restart LibreOffice when asked, and check
 its SHA-256 asset. LibreOffice's Extension Manager offers only stable releases, and there is none
