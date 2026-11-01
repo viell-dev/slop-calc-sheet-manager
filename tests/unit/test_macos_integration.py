@@ -1,6 +1,7 @@
 """Private-install and diagnostic boundaries, without pretending to execute macOS."""
 
 import hashlib
+import json
 import os
 import signal
 import subprocess
@@ -20,9 +21,16 @@ def test_checksum_failure_prevents_mounting_or_running_a_payload(
     image.write_bytes(b"unexpected package")
     run = Mock()
     monkeypatch.setattr(cli, "run", run)
-    with pytest.raises(ValueError, match="checksum mismatch"):
+    digest = hashlib.sha256(image.read_bytes()).hexdigest()
+    with pytest.raises(ValueError, match=f"checksum mismatch:.*{digest}.*{image.stat().st_size}"):
         cli.install(image, {"sha256": "0" * 64}, tmp_path, tmp_path, {})
     run.assert_not_called()
+    receipt = json.loads((tmp_path / "download.json").read_text("utf-8"))
+    assert receipt == {
+        "sha256": "0" * 64,
+        "actual_sha256": digest,
+        "bytes": image.stat().st_size,
+    }
 
 
 def test_verified_image_is_mounted_read_only_and_always_detached_on_copy_failure(
@@ -85,14 +93,42 @@ def test_only_new_reports_identifying_this_application_are_retained(
 
 
 def test_installer_refuses_other_hosts_before_any_external_command(
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr(cli, "ROOT", tmp_path)
     monkeypatch.setattr(cli.sys, "platform", "win32")
     run = Mock()
     monkeypatch.setattr(cli, "run", run)
     with pytest.raises(SystemExit, match="disposable macOS"):
         cli.main()
     run.assert_not_called()
+    result = json.loads((tmp_path / "test-results/macos/host-results.json").read_text("utf-8"))
+    assert result["assertions_passed"] is False
+    assert "disposable macOS" in result["error"]
+
+
+def test_wrong_architecture_is_recorded_before_any_external_command(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(cli, "ROOT", tmp_path)
+    monkeypatch.setattr(cli.sys, "platform", "darwin")
+    monkeypatch.setattr(cli.platform, "machine", lambda: "arm64")
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    (tmp_path / "ci").mkdir()
+    (tmp_path / "ci/libreoffice.json").write_text(
+        json.dumps({"macos": {"architecture": "x86_64"}}), encoding="utf-8"
+    )
+    run = Mock()
+    monkeypatch.setattr(cli, "run", run)
+    with pytest.raises(SystemExit, match="Expected x86_64, got arm64"):
+        cli.main()
+    run.assert_not_called()
+    result = json.loads((tmp_path / "test-results/macos/host-results.json").read_text("utf-8"))
+    assert result["assertions_passed"] is False
+    assert result["architecture"] == "arm64"
+    assert "Expected x86_64, got arm64" in result["error"]
 
 
 @pytest.mark.skipif(os.name == "nt", reason="The installer executes only on macOS/POSIX")

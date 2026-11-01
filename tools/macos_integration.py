@@ -4,6 +4,7 @@ Keep the application in this job's temporary directory, never /Applications. Ver
 before mounting it, use LibreOffice's own Python wrapper, and let the existing runner own every
 profile/process and assertion. A prepared lane is not macOS coverage until its native run passes.
 Each command owns a new process group; timeout cleanup stops it before removing the application.
+Keep the workflow timeout above the commands' combined budgets, including cleanup and upload.
 """
 
 import hashlib
@@ -70,13 +71,16 @@ def install(
 ) -> Path:
     with image.open("rb") as stream:
         actual = hashlib.file_digest(stream, "sha256").hexdigest()
-    if actual != pin["sha256"]:
-        raise ValueError("LibreOffice DMG checksum mismatch; nothing will be mounted or executed")
+    size = image.stat().st_size
     (output / "download.json").write_text(
-        json.dumps({**pin, "actual_sha256": actual, "bytes": image.stat().st_size}, indent=2)
-        + "\n",
+        json.dumps({**pin, "actual_sha256": actual, "bytes": size}, indent=2) + "\n",
         encoding="utf-8",
     )
+    if actual != pin["sha256"]:
+        raise ValueError(
+            f"LibreOffice DMG checksum mismatch: expected {pin['sha256']}, got {actual} "
+            f"({size} bytes); nothing will be mounted or executed"
+        )
     mount = temporary / "mount"
     mount.mkdir()
     run(
@@ -107,11 +111,6 @@ def collect_reports(app: Path, output: Path, preceding: set[Path]) -> list[str]:
 
 
 def main() -> None:
-    if sys.platform != "darwin" or os.environ.get("GITHUB_ACTIONS") != "true":
-        raise SystemExit("This installer is for a disposable macOS GitHub runner only")
-    pin = json.loads((ROOT / "ci/libreoffice.json").read_text("utf-8"))["macos"]
-    if platform.machine() != pin["architecture"]:
-        raise SystemExit(f"Expected {pin['architecture']}, got {platform.machine()}")
     output = ROOT / "test-results/macos"
     output.mkdir(parents=True, exist_ok=True)
     environment = {
@@ -134,11 +133,16 @@ def main() -> None:
         "assertions_passed": False,
         "platform": platform.platform(),
         "architecture": platform.machine(),
-        "pin": pin,
     }
-    reports = Path.home() / "Library/Logs/DiagnosticReports"
-    preceding = set(reports.glob("*"))
     try:
+        if sys.platform != "darwin" or os.environ.get("GITHUB_ACTIONS") != "true":
+            raise SystemExit("This installer is for a disposable macOS GitHub runner only")
+        pin = json.loads((ROOT / "ci/libreoffice.json").read_text("utf-8"))["macos"]
+        result["pin"] = pin
+        if platform.machine() != pin["architecture"]:
+            raise SystemExit(f"Expected {pin['architecture']}, got {platform.machine()}")
+        reports = Path.home() / "Library/Logs/DiagnosticReports"
+        preceding = set(reports.glob("*"))
         with tempfile.TemporaryDirectory(
             prefix="sheet-manager-macos-", dir=os.environ["RUNNER_TEMP"]
         ) as directory:
