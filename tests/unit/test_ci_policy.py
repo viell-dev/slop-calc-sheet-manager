@@ -71,7 +71,7 @@ def test_aggregate_depends_on_every_job_and_runs_even_after_a_failure(kind: str)
 
 
 def test_platform_sweeps_and_windows_investigations_are_manual_only() -> None:
-    for filename in ("release-sweep.yml", "windows-desktop.yml"):
+    for filename in ("release-sweep.yml", "windows-desktop.yml", "macos.yml"):
         workflow = yaml.load(
             (ROOT / ".github/workflows" / filename).read_text("utf-8"), Loader=yaml.BaseLoader
         )

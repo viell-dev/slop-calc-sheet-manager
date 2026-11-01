@@ -122,7 +122,7 @@ def test_environment_table_names_the_tested_builds() -> None:
     sweep = next(line for line in linux if "manual release sweep" in line)
     assert len(linux) == 2, linux
     assert pins["current-26.8"]["version"] in routine
-    for lane in set(pins) - {"unsupported", "windows"}:
+    for lane in set(pins) - {"unsupported", "windows", "macos"}:
         assert pins[lane]["version"] in sweep, lane
     windows = [line for line in table.splitlines() if line.startswith("| Windows x86-64")]
     assert len(windows) == 2, windows  # Headless and visible desktop sweep lanes.
