@@ -21,6 +21,7 @@ import uno
 from com.sun.star.awt import KeyEvent, MouseEvent
 from com.sun.star.beans import PropertyValue
 from com.sun.star.table import CellRangeAddress
+from input_trace import record
 from main_thread import close_document
 from sheet_list_view import (
     BATCHES,
@@ -85,6 +86,7 @@ class Robot:
         down, as a hand moves it between clicks: a move that reports a held button right after
         a press can start a drag.
         """
+        record("click", id(window), point=point, buttons=buttons, modifiers=modifiers)
         event = self._event(window, point, buttons, modifiers)
         self.toolkit.mouseMove(self._event(window, point, 0, modifiers))
         self.toolkit.mousePress(event)
@@ -92,10 +94,12 @@ class Robot:
         time.sleep(pause)
 
     def press(self, window, point):
+        record("press", id(window), point=point)
         self.toolkit.mouseMove(self._event(window, point, 0, 0))
         self.toolkit.mousePress(self._event(window, point, VCL_LEFT, 0))
 
     def double_click(self, window, point, pause=0.6):
+        record("double_click", id(window), point=point)
         self.click(window, point, pause=0)
         event = self._event(window, point, VCL_LEFT, 0)
         event.ClickCount = 2
@@ -104,6 +108,7 @@ class Robot:
         time.sleep(pause)
 
     def release(self, window, point):
+        record("release", id(window), point=point)
         self.toolkit.mouseRelease(self._event(window, point, VCL_LEFT, 0))
 
     def key(self, window, code):

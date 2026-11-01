@@ -28,6 +28,7 @@ gtk3 saves a screenshot.
 #   status. The wrapper bypasses the normal launcher's exit-81 bootstrap restart, so the runner
 #   handles that restart once, only before connecting UNO, and keeps the initialization trace.
 #   Never extend this startup handling into retrying test assertions or shutdown failures.
+# - Failed input polls retain only existing fixture reads/posts, without extra UNO calls (#160).
 
 import argparse
 import importlib.util
@@ -51,6 +52,7 @@ import unohelper
 from com.sun.star.awt import MouseEvent
 from com.sun.star.beans import PropertyValue
 from com.sun.star.lang import XEventListener
+from input_trace import configure as configure_input_trace
 from main_thread import close_after, close_document
 from office_process import (
     assert_clean_shutdown,
@@ -765,8 +767,10 @@ def main():
         parser.error("--backtrace requires the Linux test image with gdb")
     output = arguments.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
+    configure_input_trace(output / "input-observations.json")
     for pattern in (
         "results.json",
+        "input-observations.json",
         "deck.png",
         "refusal.log",
         "resize-initial*.json",

@@ -53,6 +53,8 @@ A focused [human usability pass](./manual-tests.md) remains a separate release r
 The theme fixture retains its initial pointer events, geometry and selection on success or
 failure, without retrying the click, to investigate the macOS pick timeout
 ([#160](https://github.com/viell-dev/slop-calc-sheet-manager/issues/160)).
+Failed integration input polls also retain a bounded trace of the fixtures' existing selection
+reads, row coordinates and posted pointer actions, without extra UNO reads, waits or retries.
 
 ## Installation, packaging and publication
 

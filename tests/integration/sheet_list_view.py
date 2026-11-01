@@ -2,6 +2,7 @@
 
 The panel's ``XPanel.getDialog()`` window holds the list's tree control as a child; the tree's
 nodes carry the sheet names. No test hook exists in the extension.
+Input polls retain the fixtures' existing reads/posts through ``input_trace`` on failure (#160).
 """
 
 import threading
@@ -11,6 +12,7 @@ import traceback
 import unohelper
 from com.sun.star.awt import XCallback
 from com.sun.star.lang import IllegalArgumentException
+from input_trace import record, retain
 from teardown import record_stalled_callback
 
 DECK = "SheetManagerDeck"
@@ -137,7 +139,9 @@ def poll(function, description, timeout=20):
         if result:
             return result
         time.sleep(0.1)
-    raise AssertionError(f"Timed out waiting for {description}")
+    failure = AssertionError(f"Timed out waiting for {description}")
+    retain(failure)
+    raise failure
 
 
 def tree_of(panel):
@@ -213,9 +217,12 @@ def labels(tree):
 def selection(tree, order):
     selected = tree.getSelection()
     if selected is None:
+        record("selection", id(tree), picked=[])
         return []
     picked = {node.DataValue for node in (selected if isinstance(selected, tuple) else (selected,))}
-    return [name for name in order if name in picked]
+    result = [name for name in order if name in picked]
+    record("selection", id(tree), picked=result)
+    return result
 
 
 def row_rect(tree, index, scroll=True):
@@ -235,7 +242,15 @@ def row_rect(tree, index, scroll=True):
 
 def row_point(tree, index, fraction=0.5):
     rect = row_rect(tree, index)
-    return rect.X + 12, rect.Y + int(rect.Height * fraction)
+    point = rect.X + 12, rect.Y + int(rect.Height * fraction)
+    record(
+        "row_point",
+        id(tree),
+        index=index,
+        point=point,
+        rectangle=[rect.X, rect.Y, rect.Width, rect.Height],
+    )
+    return point
 
 
 def selected_tabs(context, controller):
