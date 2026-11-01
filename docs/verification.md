@@ -11,22 +11,31 @@ Record run results, deliberate-break experiments and review findings in the owni
 
 - **Checks:** Ruff, strict Pyright, unit tests and byte-for-byte reproducible builds, on Python
   3.12 and 3.14.
-- **Integration:** official LibreOffice builds pinned in `ci/libreoffice.json`: the minimum,
-  newest tested 26.2 and newest tested 26.8 on Linux, headless and painted gtk3; the Windows pin
-  headless. A separate refusal lane tests the unsupported version.
-- **Linux UI:** gtk3 and gen under private Xvfb displays in each required painted Linux job.
+- **Integration:** routine CI uses the newest tested Linux build, headless. The manual full release
+  sweep adds the minimum and newest tested 26.2, painted gtk3 on all three builds, the Windows pin
+  headless, and the unsupported-version refusal. `ci/libreoffice.json` owns the pins.
+- **Linux UI:** gtk3 and gen under private Xvfb displays on current Linux in routine CI and all
+  three Linux builds in the full release sweep.
   Real XTEST input exercises native dispatch and drag behaviour that synthetic UNO input cannot.
 - **Documentation:** guide build, offline feed combination and rendered synthetic-history checks.
 
-These are required CI jobs on every PR and push to `main`; the workflow and pins are authoritative.
-**Windows desktop** is a separate, non-required workflow using real `SendInput` on a visible
+The required **Routine CI** aggregate checks every routine dependency on every PR and push to
+`main`, refusing missing, failed or skipped work. **Release sweep** is manual, on demand and at most
+weekly. Its aggregate and publication gate require every supported release lane for the exact
+revision; routine CI and PR planning previews cannot authorize publication. Workflow/policy
+consistency and negative job/run evidence are checked by `test_ci_policy.py`, `test_release_ci.py`
+and `test_consistency.py`.
+
+**Windows desktop** uses real `SendInput` on a visible
 Windows Server 2025 desktop, the pinned `win` build and en-US layout. Its current evidence covers
-one 1024×768 desktop at 96 DPI. It runs for affected PRs and by dispatch; its promotion conditions
-are in [CONTRIBUTING.md](https://github.com/viell-dev/slop-calc-sheet-manager/blob/main/CONTRIBUTING.md#visible-windows-desktop).
+one 1024×768 desktop at 96 DPI. The full release sweep requires the complete suite; a separate
+manual workflow supports focused investigation. Commands and cadence are in
+[CONTRIBUTING.md](https://github.com/viell-dev/slop-calc-sheet-manager/blob/main/CONTRIBUTING.md#routine-ci-and-release-sweeps).
 
 No automated lane runs a screen reader. Native Wayland input, macOS, distribution packages,
-Flatpak, Snap, Arm and other themes or scaling are not established by these checks. A focused
-[human usability pass](./manual-tests.md) remains a separate release requirement.
+Flatpak, Snap, Arm and other themes or scaling are not established by these checks.
+[#145](https://github.com/viell-dev/slop-calc-sheet-manager/issues/145) owns macOS release verification.
+A focused [human usability pass](./manual-tests.md) remains a separate release requirement.
 
 ## Installation, packaging and publication
 
@@ -39,8 +48,8 @@ Flatpak, Snap, Arm and other themes or scaling are not established by these chec
 | Packages contain exactly the allowlisted files and build reproducibly | `test_build.py`, `tools/check.py` | Checks; two builds must match byte for byte. |
 | Repeated compatibility, package and guide claims agree with their sources | `test_consistency.py` | Checks; prose still needs review. Historical versions and policy examples are independent of the source version. |
 | Downloads and availability markers follow published history | `tools/check_release_page.py` | Documentation; empty history, preparation, publication and an older stable alongside a newer test build. Checks channel order, rendered OXT/checksum links and markers. Public bytes still need post-publication verification. |
-| Stages are explicit; releases require exact-commit CI; tags, assets and feed history cannot regress | `test_release_data.py`, `test_github_release.py`, affected-PR release dry runs | Checks and Release workflow; mocks/dry runs do not create live tags or upload assets. A stage or green run does not establish feature completeness or human usability. |
-| Compatible newer updates are offered and install correctly | `test_updates.py`, `tests/ui/update_dialog.py` | Provider/dependency checks in integration; real dialogs, download/install and same-profile restart in required painted Linux jobs, using gen and loopback feeds. See the [release verification boundary](https://github.com/viell-dev/slop-calc-sheet-manager/blob/main/RELEASING.md#verification-boundary) for GUI, HTTPS and post-publication limits. |
+| Stages are explicit; releases require complete routine and full-sweep evidence for the exact revision; tags, assets and feed history cannot regress | `test_release_data.py`, `test_github_release.py`, `test_release_ci.py`, affected-PR planning previews | Checks and Release workflow; missing, stale, failed, skipped or duplicate required jobs are refused. PR previews cannot authorize publication. Mocks/dry runs do not create live tags or upload assets. A stage or green run does not establish feature completeness or human usability. |
+| Compatible newer updates are offered and install correctly | `test_updates.py`, `tests/ui/update_dialog.py` | Provider/dependency checks in integration; real dialogs, download/install and same-profile restart in Linux UI jobs, using gen and loopback feeds. See the [release verification boundary](https://github.com/viell-dev/slop-calc-sheet-manager/blob/main/RELEASING.md#verification-boundary) for GUI, HTTPS and post-publication limits. |
 
 ## Sheet identity and synchronization
 
@@ -99,7 +108,7 @@ The measured native naming rules and deliberate-break results are in
 | --- | --- | --- |
 | <Unreleased /> The list follows Calc's document background; native labels, selection, dividers and unused space stay readable without rebuilding rows or changing input/document state | `test_theme.py` readability, native selection pairs, bounded/cached accessibility traversal and transient retry; `test_document_theme.py` private-profile live changes; real-input `document_colors` with independent glyph/background pixel checks; `test_theme_pixels.py` antialiasing and wrong-colour controls | Checks, integration and Linux gtk3/gen UI. Four custom palettes include unreadable ordinary text and a background matching the native highlight; restoration checks the original background and Calc's native selection/text pair. Ordinary text and synthesised selection text meet 4.5:1; retained platform selection pairs keep the platform's own contrast. A one-off Windows 26.8.1.1 probe also reads the resolved automatic dark background. Native labels/empty space are pixel-checked on Linux; Windows verifies native properties and state. Other themes, high-contrast desktop modes and macOS are not established. The document surface lookup stops at tables/trees, eight levels and 128 objects; missing/disposed surfaces retain the preceding palette and retry. Obtaining the surface activates Calc's document/shape accessibility listeners for the view, even after hiding the list; caching avoids repeated walks, not that native cost. Bounded 1,000-rectangle selection measurements and their limits are recorded in [#141](https://github.com/viell-dev/slop-calc-sheet-manager/issues/141). |
 | Full-width clicks select; double-click/Enter activates and ends grouped editing | Integration selection/activation cases; real-input `click_activates`, `ctrl_shift_selection`, `plain_click_ends_group` | Integration, Linux UI and Windows desktop selection checks. Built-in commands retain Calc's grouping semantics. |
-| Shift, Ctrl and Alt do not crash LibreOffice while the deck is shown | `run.py` presses real modifiers with `xdotool`; Windows desktop selection and shortcut checks use `SendInput`; both check office shutdown and dumps | Painted Linux integration and Windows desktop; modifiers are not pressed in the required headless Windows lane. |
+| Shift, Ctrl and Alt do not crash LibreOffice while the deck is shown | `run.py` presses real modifiers with `xdotool`; Windows desktop selection and shortcut checks use `SendInput`; both check office shutdown and dumps | Painted Linux integration and Windows desktop in the release sweep; routine real-input UI checks also press modifiers. The headless Windows sweep lane does not press them. |
 | Drag/drop keeps order/view, marks the gap, scrolls, cancels and undoes once | Real-input midpoint, in-place, Esc, autoscroll, stale-drop and undo checks; reorder integration | Linux UI and integration; Windows desktop covers native OLE drag, cancel and scrolling, but not stale drops. Autoscroll follows viewport resizing after a notice expires, preserving its six-second budget and order checks (#90). |
 | Move buttons, menu actions and Alt shortcuts preserve independent picks | `test_move_buttons.py`, `test_move_menu.py`, key/queued-operation unit tests; real-input `move_*` checks | Integration, Checks and Linux UI; Windows desktop covers Alt shortcuts, not button input or menu moves. |
 | List/button keys cannot edit cells; shortcuts and focus traversal remain usable | `test_keys.py`; real-input `keys_stay_in_list`, `move_focus_and_queued_navigation`, `shortcuts_reach_calc`, `other_document`, `native_cursor_positions`, `cursor_across_refresh` | Checks and Linux UI. Windows desktop covers list keys/shortcuts, not the button, other-document or cursor probes. Input methods and screen-reader experience are unverified. |

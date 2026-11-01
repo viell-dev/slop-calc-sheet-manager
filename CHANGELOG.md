@@ -5,6 +5,10 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Reduce routine verification to deterministic checks, documentation and current Linux host/input
+  coverage. Require a separate complete, exact-revision manual sweep before release validation or
+  publication; PR planning previews cannot supply that evidence
+  ([#143](https://github.com/viell-dev/slop-calc-sheet-manager/issues/143)).
 - Follow LibreOffice's document background in the sheet list, including its unused space. Keep
   native text, selection and row dividers readable as the colour scheme changes, without moving
   the picks or editing the workbook

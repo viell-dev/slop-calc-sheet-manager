@@ -239,8 +239,10 @@ reconsider. The owner may report a defect themselves, in their own words.
   GitHub offers no merge queue for this repository's owner account.
 - `.github/rulesets/main.json` and `release-tags.json` are the API request bodies of rulesets
   25349507 (`main`) and 25349508 (immutable version tags); recording them does not apply them.
-  Keep the main ruleset's required contexts identical to CI's job names, and its strict
-  up-to-date policy off.
+  Keep the main ruleset's required context at **Routine CI**, whose always-running aggregate
+  requires every routine job to succeed. Keep workflow job names and `tools/ci_policy.py` in sync,
+  and leave the strict up-to-date policy off. Publication also requires the manual full release
+  sweep on the exact revision; a PR planning preview cannot supply that release evidence.
 
 ## Working with the code
 

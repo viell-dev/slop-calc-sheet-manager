@@ -2,13 +2,16 @@
 
 ## Where it is tested
 
-Every change runs against official LibreOffice builds from libreoffice.org, in these environments:
+Routine CI tests each change on the current Linux build. A manual release sweep checks the
+broader Linux and Windows environments before each release, using official builds from
+libreoffice.org:
 
 <!--@include: ../../README.md#environments-->
 
-"Verified" means automated checks on every change. They install the extension, open and resize the
-deck, check read-only workbooks and Writer, press modifier keys in a real window, convert a file
-headlessly, and remove the extension. The checks and their limits are listed in the
+"Verified" means automated checks at the cadence shown in the table. Together, these checks
+install the extension, open and resize the deck, check read-only workbooks and Writer, press
+modifier keys in a real window, convert a file headlessly, and remove the extension. The checks
+and their limits are listed in the
 [verification map](../verification.md).
 
 If Sheet Manager does not work in an environment where it is expected to, please

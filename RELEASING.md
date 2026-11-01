@@ -185,7 +185,11 @@ its platform inventory is not a requirement to make one person test every host.
    keep stable publication blocked until required human coverage and fixes are complete.
    Complete the release review that
    [AGENTS.md](AGENTS.md#review) requires, then merge the preparation PR and wait for **CI** on its
-   exact `main` commit to succeed.
+   exact `main` commit to succeed. Then manually run **Release sweep** on that same revision and
+   require its **Full release sweep** aggregate and every lane to pass. Batch platform runs to
+   at most once per week; check the recent Actions history and record the revision/run in the
+   release issue before dispatch. If `main` advances, the old sweep cannot authorize the new
+   revision. Complete independent work and wait for the next planned sweep when necessary.
 3. In Actions, select **Release → Run workflow**, choose `main`, enter the exact version, choose
    the `stage`, and leave `dry_run` checked. For `beta` or `rc`, enter the agreed next-minor or
    next-major `target`; for alpha development, leave it empty unless a target is agreed; for
@@ -193,23 +197,27 @@ its platform inventory is not a requirement to make one person test every host.
    Inspect the resulting artifact:
    the OXT, `.oxt.sha256`, `release-plan.json`, `release-notes.md`, and prospective `site/` feeds.
    Check the plan's `stage` and `target`, the title, the Pre-release flag, notes, download URLs,
-   minimum LibreOffice version, and CI URL.
+   minimum LibreOffice version, verification scope, and full-sweep URL.
 
 The dry run builds from the exact checked-out commit with `tools/build.py`, runs the full static
-and unit checks, requires successful CI on that commit, validates version/metadata/changelog,
+and unit checks, requires successful routine CI and a full manual sweep on that commit,
+independently verifies every required job rather than accepting skipped lanes in a green workflow,
+validates version/metadata/changelog,
 checks release history and tags, and generates prospective feeds. It creates no tag, draft,
 release, or deployment. `dry_run` defaults to true.
 
 For release-workflow development, a PR that changes `.github/workflows/release.yml`,
-`.github/workflows/pages.yml`, `tools/github_release.py`, or `tools/release_data.py` also runs
-the dry run on its head commit using the metadata version. A pull request has no workflow
+`.github/workflows/pages.yml`, `tools/github_release.py`, `tools/ci_policy.py`, or
+`tools/release_data.py` also runs a planning preview on its head commit using the metadata version.
+A pull request has no workflow
 inputs, so the artifact contains a preview with stage `stable` and a separate
 `prerelease-preview/` with an untargeted `alpha`, exercising both channels with an explicit stage
 rather than inferring one from the number. Unit tests cover the targeted beta and rc titles.
-It waits for the PR's successful CI run instead of `main`'s, so this check normally finishes
-after CI. It waits up to 50 minutes,
-covering the native matrix's 45-minute job limit plus startup time; the dry-run job allows
-60 minutes for setup and asset validation as well. If that metadata version is
+It waits for successful routine CI and verifies its required jobs. Its plan explicitly says
+**PR preview**; it does not require or supply full release-sweep evidence and cannot authorize
+publication. Manual release dry runs and publication require the full sweep as well as routine CI.
+The gate waits up to 50 minutes, covering a 45-minute native job plus startup time; the dry-run job
+allows 60 minutes for setup and asset validation as well. If that metadata version is
 already published, the PR check emits a notice and skips release planning after static/unit
 checks and validation of live published assets, history, and current feeds. In that case its
 artifact contains only the current feed preview, with no prospective release plan. Existing
@@ -223,7 +231,8 @@ version until the next release is prepared.
 
 Run **Release** again on the same `main` commit with the same inputs and `dry_run` unchecked.
 If `main` has advanced, dry-run that new commit first. Publication repeats validation and
-requires a successful **CI** push run on that exact commit; a successful PR run is insufficient.
+requires a successful routine **CI** push run and manual **Release sweep** on that exact `main`
+commit, with every required job successful; a PR preview or another revision's sweep is insufficient.
 Only the publishing job receives `contents: write`; no stored secret is needed.
 
 The workflow creates the numeric tag at that commit, creates a **draft** GitHub release with the
@@ -240,7 +249,8 @@ rc builds appear only in the prerelease feed. Installed copies always point to t
 installing a test build does not opt a user into future test builds.
 
 If a run fails after reserving its tag, do not delete or move it and do not rerun publication for
-that version. Inspect the tag's exact commit, the draft and its assets, and the successful CI run.
+that version. Inspect the tag's exact commit, the draft and its assets, and the successful routine
+CI and full-sweep runs.
 A maintainer may finish that same draft by uploading only missing assets, verifying their bytes
 against a rebuild of the tagged commit, and publishing it. Never use `--clobber` or replace an
 asset. If its content is wrong or uncertain, abandon the draft/tag and prepare a higher version.
@@ -329,7 +339,7 @@ incompatible feeds, the disabled candidate's dependency reason, the actual OXT d
 successful installation, then restarts the same profile and verifies the new version, complete
 installed payload and deck.
 Screenshots, accessibility trees, HTTP requests and both office lifecycles are retained as CI
-artifacts. This runs after the UI suite in every required Linux gtk3 job.
+artifacts. This runs after the UI suite in each routine and full-sweep Linux UI job.
 
 The dialog check uses **gen** because its public UNO accessibility tree exposes the deployment
 dialogs; GTK's native weld manager is absent from Toolkit top windows in this lab. It invokes

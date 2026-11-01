@@ -15,6 +15,7 @@ from typing import Any, cast
 import yaml
 
 from tools.build import ROOT
+from tools.ci_policy import ROUTINE, SWEEP
 
 DOCS = ROOT / "docs"
 NAMESPACES = {
@@ -116,13 +117,18 @@ def test_package_examples_and_source_version_claims_match_the_manifest_version()
 def test_environment_table_names_the_tested_builds() -> None:
     table = readme_region("environments")
     pins = lanes()
-    linux = next(line for line in table.splitlines() if line.startswith("| Linux x86-64"))
+    linux = [line for line in table.splitlines() if line.startswith("| Linux x86-64")]
+    routine = next(line for line in linux if "routine CI" in line)
+    sweep = next(line for line in linux if "manual release sweep" in line)
+    assert len(linux) == 2, linux
+    assert pins["current-26.8"]["version"] in routine
     for lane in set(pins) - {"unsupported", "windows"}:
-        assert pins[lane]["version"] in linux, lane
+        assert pins[lane]["version"] in sweep, lane
     windows = [line for line in table.splitlines() if line.startswith("| Windows x86-64")]
-    assert len(windows) == 2, windows  # Headless CI, and the visible desktop workflow.
+    assert len(windows) == 2, windows  # Headless and visible desktop sweep lanes.
     for line in windows:
         assert pins["windows"]["version"] in line, line
+        assert "manual release sweep" in line, line
     refused = ".".join(pins["unsupported"]["version"].split(".")[:3])
     assert f"| LibreOffice {refused} and earlier " in table
     assert "<!--@include: ../../README.md#environments-->" in text(
@@ -140,9 +146,9 @@ def test_identifier_and_feed_agree_everywhere() -> None:
     assert url in text(DOCS / "guide" / "install.md")
 
 
-def ci_job_names() -> set[str]:
+def ci_job_names(filename: str) -> set[str]:
     """The names CI reports for its jobs, with each matrix entry's values filled in."""
-    workflow = yaml.load(text(ROOT / ".github" / "workflows" / "ci.yml"), Loader=yaml.BaseLoader)
+    workflow = yaml.load(text(ROOT / ".github" / "workflows" / filename), Loader=yaml.BaseLoader)
     names: set[str] = set()
     for job in cast(dict[str, dict[str, Any]], workflow["jobs"]).values():
         template = cast(str, job["name"])
@@ -158,11 +164,13 @@ def ci_job_names() -> set[str]:
     return names
 
 
-def test_recorded_ruleset_requires_exactly_the_ci_jobs() -> None:
+def test_recorded_ruleset_requires_the_fail_closed_aggregate_and_job_policies_match() -> None:
     ruleset = json.loads(text(ROOT / ".github" / "rulesets" / "main.json"))
     rule = next(rule for rule in ruleset["rules"] if rule["type"] == "required_status_checks")
     required = {check["context"] for check in rule["parameters"]["required_status_checks"]}
-    assert required == ci_job_names()
+    assert required == {ROUTINE.aggregate}
+    assert ci_job_names(ROUTINE.workflow) == ROUTINE.checks
+    assert ci_job_names(SWEEP.workflow) == SWEEP.checks
     assert rule["parameters"]["strict_required_status_checks_policy"] is False
 
 

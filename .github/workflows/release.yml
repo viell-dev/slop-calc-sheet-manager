@@ -6,6 +6,7 @@ on:
       - ".github/workflows/release.yml"
       - ".github/workflows/pages.yml"
       - "tools/github_release.py"
+      - "tools/ci_policy.py"
       - "tools/release_data.py"
   workflow_dispatch:
     inputs:
@@ -43,7 +44,7 @@ concurrency:
 
 jobs:
   validate:
-    name: Release dry run
+    name: ${{ github.event_name == 'pull_request' && 'Release planning preview' || 'Release dry run' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     permissions:
