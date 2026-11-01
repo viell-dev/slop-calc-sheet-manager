@@ -190,6 +190,11 @@ default), `--sessions gtk3`, and `--sessions both` select independent office ses
 gtk3 sessions save `deck.png`; `--screenshot` remains an alias for running both sessions when
 `--sessions` is omitted. The `unsupported` lane asserts that
 26.2.0 refuses installation for a dependency error and leaves the extension uninstalled.
+
+The image download retries from the archive URL after errors, including a redirected mirror's
+certificate failure, with at most three retries. TLS verification and the pinned SHA-256 gate
+remain required; an exhausted download or checksum mismatch fails the build.
+
 Image changes retain older `sheet-manager-ci:<version>-<fingerprint>` tags locally; list them with
 `docker image ls sheet-manager-ci` and remove obsolete tags explicitly with `docker image rm <tag>`
 (including old unfingerprinted `sheet-manager-ci:<version>` tags, which are no longer reused).

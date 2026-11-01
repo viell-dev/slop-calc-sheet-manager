@@ -49,6 +49,7 @@ A focused [human usability pass](./manual-tests.md) remains a separate release r
 
 | Promise | Current checks | Runs and limits |
 | --- | --- | --- |
+| Linux image downloads retry mirror failures while retaining TLS and pinned-digest checks | `ci/Dockerfile`; controlled loopback TLS/digest experiment in [#61](https://github.com/viell-dev/slop-calc-sheet-manager/issues/61) | Image builds; the recorded control reproduces an untrusted mirror followed by a valid payload, not the availability of every public mirror. Exhausted retries and digest mismatches still fail. |
 | Unsupported LibreOffice refuses installation and leaves nothing installed | `run.py:check_refusal` | Refusal lane; only the pinned unsupported build is tried. |
 | Supported versions install; Calc and read-only workbooks get the deck, Writer does not | `tests/integration/run.py:exercise`, fresh-profile `unopkg add` | Integration; the installation dialog is not driven. |
 | Panel size follows the sidebar and panel disposal follows document closure | `run.py` geometry and disposal assertions | Integration; compares growth, since gtk3 does not report the requested absolute height (#9). |
