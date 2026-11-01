@@ -5,6 +5,9 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Update the development checks image and local Node.js pin together to 24.22.0, keeping the
+  documentation container example aligned.
+
 ## 0.0.9 - 2026-11-01
 
 Third beta towards the stable release 0.1.0, following 0.0.8. It improves the sheet list's
