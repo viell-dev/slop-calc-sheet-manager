@@ -328,6 +328,26 @@ Windows 11; one 1024×768 desktop at 96 DPI with the en-US layout; the `win` int
 Windows pin of `ci/libreoffice.json`; and no screen reader or input method. Neither a focused
 manual run nor a full automated sweep satisfies the separate human usability gate.
 
+### macOS harness bring-up
+
+The manual **macOS integration** workflow (`.github/workflows/macos.yml`) prepares Intel macOS
+evidence for [#145](https://github.com/viell-dev/slop-calc-sheet-manager/issues/145). Its initial
+native run is pending; it is not yet part of the full release-sweep gate or an established
+compatibility claim. Keep its first-run findings and remaining coverage in that issue.
+
+The helper requires a disposable GitHub macOS runner. It verifies the pinned official DMG,
+mounts it read-only, copies the app into the job's temporary directory, and uses its own
+`Contents/Resources/python` wrapper for PyUNO. It never installs in `/Applications` or changes
+a contributor's existing installation. The existing integration runner supplies private profiles,
+synthetic fixtures, lifecycle checks and shutdown assertions. The artifact includes interpreter,
+version, installer and integration logs, plus new user diagnostic reports identifying that
+private app. System-wide or delayed crash reports are not established by this collection.
+
+Dispatch it on demand with `gh workflow run macos.yml --ref <branch>` once it has landed on the
+default branch, respecting the platform cadence above. The intended initial scope is headless
+packaged integration and lifecycle, not real OS keyboard/mouse input, rendered pixels, screen
+readers or Apple Silicon. Add it to release authority only after inspecting native evidence.
+
 ### Soak painted sessions
 
 Run the **Painted gtk3 soak** workflow manually with `sessions` between 1 and 100 (default 20).

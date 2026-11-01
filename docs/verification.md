@@ -35,6 +35,11 @@ manual workflow supports focused investigation. Commands and cadence are in
 No automated lane runs a screen reader. Native Wayland input, macOS, distribution packages,
 Flatpak, Snap, Arm and other themes or scaling are not established by these checks.
 [#145](https://github.com/viell-dev/slop-calc-sheet-manager/issues/145) owns macOS release verification.
+The prepared on-demand Intel macOS harness has no native result yet and is not included in the
+release gate. Its unit checks cover installer integrity/private paths and diagnostic ownership;
+they are not evidence of the macOS host's behaviour. The planned headless runner reuses the
+integration/lifecycle suite; OS input, painted pixels, Apple Silicon and system/delayed crash
+reports remain outside that first pass.
 A focused [human usability pass](./manual-tests.md) remains a separate release requirement.
 
 ## Installation, packaging and publication
