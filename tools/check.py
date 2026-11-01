@@ -1,4 +1,7 @@
-"""Run all local static checks, pure tests, and the reproducible build."""
+"""Run static checks for each supported host, pure tests, and the reproducible build.
+
+Pyright's platform targets check API availability; they do not execute native host behaviour.
+"""
 
 import shutil
 import subprocess
@@ -15,7 +18,9 @@ def main() -> None:
     for command in (
         ["ruff", "check", "."],
         ["ruff", "format", "--check", "."],
-        ["pyright", "--pythonpath", sys.executable],
+        ["pyright", "--pythonpath", sys.executable, "--pythonplatform", "Linux"],
+        ["pyright", "--pythonpath", sys.executable, "--pythonplatform", "Windows"],
+        ["pyright", "--pythonpath", sys.executable, "--pythonplatform", "Darwin"],
         ["pytest"],
     ):
         subprocess.run([sys.executable, "-m", *command], cwd=ROOT, check=True)

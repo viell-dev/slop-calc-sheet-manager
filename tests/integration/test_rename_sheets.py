@@ -10,6 +10,7 @@ Failures are injected through test-only forwarding handles and documents; nothin
 `check_native_refusal_after_search` runs last, and the runner runs this suite after all others
 (`run.LAST_SUITES`): the Find & Replace it dispatches leaves Calc's sheet-name comparison ignoring
 character width for the rest of the office session (#112).
+Keep completed benchmark cases in a partial receipt so an external timeout retains them (#162).
 """
 
 import json
@@ -663,14 +664,16 @@ def check_main_thread(context, desktop):
     return True
 
 
-def performance(context, desktop):
+def performance(context, desktop, output):
     """Median complete-batch and undo timings: three runs at 200 populated sheets, one at 1,000.
 
     Measured from this test process, so every call crosses the UNO bridge; the extension makes
     the same calls inside the office. Measurements, not limits.
     """
     results = []
+    receipt = output / "rename-performance-progress-headless.json"
     for count, repeats in ((200, 3), (1000, 1)):
+        print(f"rename benchmark: building {count} populated sheets", flush=True)
         document = populated_workbook(desktop, count)
         try:
             original = names(document)
@@ -678,6 +681,7 @@ def performance(context, desktop):
                 ("every-sheet", [(name, "Renamed " + name) for name in original]),
                 ("one-cycle", list(zip(original, original[1:] + original[:1], strict=True))),
             ):
+                print(f"rename benchmark: {count} sheets, {case} started", flush=True)
                 applied, undone, calls = [], [], 0
                 for _ in range(repeats):
                     started = time.perf_counter()
@@ -703,10 +707,17 @@ def performance(context, desktop):
                     }
                 )
                 print(json.dumps(results[-1]), flush=True)
+                receipt.write_text(
+                    json.dumps({"complete": False, "cases": results}, indent=2) + "\n",
+                    encoding="utf-8",
+                )
         except BaseException as failure:
             close_after(context, document, failure)
             raise
         close_after(context, document)
+    receipt.write_text(
+        json.dumps({"complete": True, "cases": results}, indent=2) + "\n", encoding="utf-8"
+    )
     return results
 
 
@@ -756,7 +767,7 @@ def exercise(context, desktop, directory, output, headless=True):
         "main_thread": check_main_thread(context, desktop),
     }
     if headless:  # Measurements, not gates: painted sessions skip them to save CI time.
-        timings = performance(context, desktop)
+        timings = performance(context, desktop, output)
         (output / "rename-performance-headless.json").write_text(
             json.dumps(timings, indent=2) + "\n", encoding="utf-8"
         )

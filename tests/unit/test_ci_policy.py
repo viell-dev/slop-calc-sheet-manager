@@ -1,10 +1,12 @@
 """Missing/skipped evidence cannot become a green aggregate or a publication gate."""
 
+from inspect import signature
 from typing import Any
 
 import pytest
 import yaml
 
+from tools import github_release
 from tools.build import ROOT
 from tools.ci_policy import (
     POLICIES,
@@ -115,3 +117,21 @@ def test_macos_is_required_even_when_every_other_sweep_dependency_passes(
         results["macos"]["result"] = result
     with pytest.raises(ValueError, match="dependencies differ|did not succeed"):
         require_dependencies(results, SWEEP)
+
+
+def test_release_wait_and_outer_jobs_outlast_the_native_jobs() -> None:
+    sweep = yaml.load(
+        (ROOT / ".github/workflows/release-sweep.yml").read_text("utf-8"), Loader=yaml.BaseLoader
+    )
+    longest = max(
+        int(job["timeout-minutes"]) * 60
+        for job in sweep["jobs"].values()
+        if "timeout-minutes" in job
+    )
+    wait = float(signature(github_release.require_ci).parameters["timeout"].default)
+    assert wait > longest, "The release wait must cover native execution plus startup"
+    release = yaml.load(
+        (ROOT / ".github/workflows/release.yml").read_text("utf-8"), Loader=yaml.BaseLoader
+    )
+    for name in ("validate", "publish"):
+        assert int(release["jobs"][name]["timeout-minutes"]) * 60 > wait

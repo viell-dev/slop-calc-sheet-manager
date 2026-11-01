@@ -127,7 +127,7 @@ def check_viewed_sheet(context, desktop, menus):
     document = workbook(desktop, "Bravo")
     controller = document.getCurrentController()
     sheets = document.getSheets()
-    _, tree = open_list(context, document)
+    _, tree = open_list(context, document, trace_input=True)
     poll(lambda: names(tree) == FIVE, "every sheet in the list")
     events = _Names()
     on_main_thread(context, lambda: accessible(tree).addAccessibleEventListener(events))

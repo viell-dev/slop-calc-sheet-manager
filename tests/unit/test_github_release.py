@@ -84,7 +84,7 @@ def test_ci_gate_requires_exact_commit_and_main_push_for_publication(
         cli.require_ci("a" * 40, publishing=True, timeout=0)
 
 
-def test_ci_gate_waits_for_a_native_matrix_longer_than_twenty_minutes(
+def test_ci_gate_waits_for_a_full_native_job_and_startup_time(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     elapsed = 0.0
@@ -102,14 +102,15 @@ def test_ci_gate_waits_for_a_native_matrix_longer_than_twenty_minutes(
                 ]
             }
         assert f"head_sha={'a' * 40}" in path
-        completed = elapsed >= 25 * 60
+        sweep = "release-sweep.yml" in path
+        completed = not sweep or elapsed >= 65 * 60
         return {
             "workflow_runs": [
                 {
                     "id": 1,
                     "head_sha": "a" * 40,
                     "head_branch": "main",
-                    "event": "workflow_dispatch" if "release-sweep.yml" in path else "pull_request",
+                    "event": "workflow_dispatch" if sweep else "push",
                     "status": "completed" if completed else "in_progress",
                     "conclusion": "success" if completed else None,
                     "html_url": "https://example.invalid/ci/long-native-matrix",
@@ -120,8 +121,8 @@ def test_ci_gate_waits_for_a_native_matrix_longer_than_twenty_minutes(
     monkeypatch.setattr(cli.time, "monotonic", lambda: elapsed)
     monkeypatch.setattr(cli.time, "sleep", sleep)
     monkeypatch.setattr(cli, "api", api)
-    assert cli.require_ci("a" * 40, publishing=False).endswith("/long-native-matrix")
-    assert elapsed == 25 * 60
+    assert cli.require_ci("a" * 40, publishing=True).endswith("/long-native-matrix")
+    assert elapsed == 65 * 60
 
 
 @pytest.mark.parametrize(("stage", "target_kind"), STAGE_REQUESTS)

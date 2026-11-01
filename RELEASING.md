@@ -225,8 +225,11 @@ rather than inferring one from the number. Unit tests cover the targeted beta an
 It waits for successful routine CI and verifies its required jobs. Its plan explicitly says
 **PR preview**; it does not require or supply full release-sweep evidence and cannot authorize
 publication. Manual release dry runs and publication require the full sweep as well as routine CI.
-The gate waits up to 50 minutes, covering a 45-minute native job plus startup time; the dry-run job
-allows 60 minutes for setup and asset validation as well. If that metadata version is
+The gate waits up to 70 minutes, covering the longest native job (60 minutes) plus startup time.
+Validation and publication jobs allow 80 minutes for the wait, setup and asset validation.
+The Mac integration command has 30 minutes for its measured complete benchmark workload;
+functional assertion deadlines are separate and unchanged
+([#162](https://github.com/viell-dev/slop-calc-sheet-manager/issues/162)). If that metadata version is
 already published, the PR check emits a notice and skips release planning after static/unit
 checks and validation of live published assets, history, and current feeds. In that case its
 artifact contains only the current feed preview, with no prospective release plan. Existing
