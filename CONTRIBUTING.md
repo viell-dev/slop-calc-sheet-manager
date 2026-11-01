@@ -272,6 +272,13 @@ headless integration on the newest tested Linux build followed by GTK3/gen real-
 Xvfb. The required **Routine CI** aggregate runs even after a dependency fails and refuses missing,
 failed, cancelled or skipped work. Every checkout uses the exact event revision.
 
+The Linux job captures each phase's combined console output in `test-results/ci/`, preserving
+the runner's failure status through `tee`. It uploads `linux-current-headless` before input
+starts, even when headless checks fail; input requires successful headless checks. The final
+`linux-current` artifact also includes input output when available. The job retains its
+45-minute limit. A hard timeout can prevent the final upload, so inspect the earlier artifact
+as well as the job log and check annotations; missing evidence is not a pass.
+
 **Release sweep** (`.github/workflows/release-sweep.yml`) is manual release-preparation evidence.
 It retains all three pinned Linux builds, headless and painted integration, GTK3/gen input, the
 unsupported-version refusal, Windows headless integration, the complete Windows desktop suite,

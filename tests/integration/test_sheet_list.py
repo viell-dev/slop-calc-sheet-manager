@@ -47,7 +47,7 @@ from teardown import Configured, run_checks
 from sheet_manager import keys, uno_list
 from sheet_manager.sheet_list import SheetRow, row_label, tab_color
 from sheet_manager.uno_calc import select_tabs
-from sheet_manager.uno_menu import HIDE, INSERT, RENAME
+from sheet_manager.uno_menu import DELETE, HIDE, INSERT, RENAME, SheetMenu
 from sheet_manager.uno_reorder import snapshot
 from sheet_manager.uno_show import show_sheets
 
@@ -835,6 +835,80 @@ def check_show(context, desktop):
     return results
 
 
+def measure_large_menu(context, document, count):
+    """Benchmark full menu construction across the test client's UNO bridge, not popup latency.
+
+    Keep all three consecutive samples, without warm-up or a performance threshold. Snapshots,
+    fixture changes, correctness assertions and popup cleanup stay outside the timed build.
+    Put the confusable pair last so an unrelated target still requires the full Delete scan.
+    """
+    controller = document.getCurrentController()
+    sheets, undo = document.getSheets(), document.getUndoManager()
+    menu = SheetMenu(context, controller.getFrame(), document, controller)
+    results: dict[str, Any] = {}
+
+    def state():
+        return (
+            tuple(sheets.getElementNames()),
+            controller.getActiveSheet().getName(),
+            tuple(selected_tabs(context, controller)),
+            tuple(undo.getAllUndoActionTitles()),
+            tuple(undo.getAllRedoActionTitles()),
+            document.isModified(),
+            sheets.getByIndex(0).getCellRangeByName("A1").getValue(),
+        )
+
+    def measure(observed, picked, allowed):
+        before = state()
+        samples = []
+        for _ in range(3):
+            started = time.monotonic()
+            popup, enabled = menu.build(observed, picked)
+            samples.append(round(time.monotonic() - started, 4))
+            assert (DELETE in enabled) == allowed, (picked, enabled)
+            assert bool(popup.isItemEnabled(DELETE)) == allowed
+            reason = popup.getTipHelpText(DELETE)
+            if allowed:
+                assert reason == "", reason
+            else:
+                assert "ﬁ" in reason and "fi" in reason and "undo" in reason, reason
+            popup.clear()
+            del popup
+            assert state() == before, "Building the menu changed the workbook or view"
+        return {"picked": picked, "delete_allowed": allowed, "seconds": samples}
+
+    def baseline():
+        observed = snapshot(document)
+        assert len(observed.sheets) == count
+        results["unique_names"] = measure(observed, [observed.sheets[0].name], True)
+
+    on_main_thread(context, baseline, timeout=120)
+
+    def with_collision():
+        # Calc permits this rename although its live lookup confuses the two names (#113).
+        sheets.getByIndex(count - 2).setName("ﬁ")
+        sheets.getByIndex(count - 1).setName("fi")
+        assert sheets.getByName("fi").getName() == "ﬁ", "The collision was not established"
+        observed = snapshot(document)
+        assert len(observed.sheets) == count
+        assert [sheet.name for sheet in observed.sheets[-2:]] == ["ﬁ", "fi"]
+        results["unrelated_with_collision"] = measure(observed, [observed.sheets[0].name], True)
+        results["first_collision_member"] = measure(observed, ["ﬁ"], False)
+        results["second_collision_member"] = measure(observed, ["fi"], False)
+
+    on_main_thread(context, with_collision, timeout=120)
+    return {
+        "samples_per_case": 3,
+        "cases": results,
+        "method": (
+            "consecutive external test-client UNO wall times of SheetMenu.build; "
+            "snapshot/setup/assertions/cleanup excluded; no popup display, warm-up or timing gate"
+        ),
+        "collision_indices": [count - 2, count - 1],
+        "document_view_undo_unchanged": True,
+    }
+
+
 def measure_large_workbook(context, desktop, count):
     """Record wall-clock following/rebuild costs, with correctness assertions (see #22)."""
     document = make_workbook(desktop, [f"Sheet {n:04}" for n in range(1, count + 1)])
@@ -892,6 +966,7 @@ def measure_large_workbook(context, desktop, count):
         assert current.getChildCount() == count
         assert current.getChildAt(0).DataValue == order[0]
         assert current.getChildAt(count - 1).DataValue == order[-1]
+    menu = measure_large_menu(context, document, count)
     close_workbook(context, document)
     return {
         "sheets": count,
@@ -901,6 +976,7 @@ def measure_large_workbook(context, desktop, count):
         "tab_only_same_model": True,
         "cell_edit_same_model": True,
         "tab_color_repaint_seconds": repaints,
+        "menu_build": menu,
         "method": "100ms polling; wall times include debounce/backpressure; no performance gate",
     }
 
