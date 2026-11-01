@@ -10,7 +10,7 @@ from sheet_list_view import names, on_main_thread, open_list, poll, root, row_po
 from teardown import Configured
 from test_sheet_list import Robot
 
-from sheet_manager.theme import contrast
+from sheet_manager.theme import contrast, text_color
 from sheet_manager.uno_calc import prop, selected_tabs
 
 
@@ -33,6 +33,17 @@ def set_colors(settings, values):
     for name, value in zip(("DocColor", "FontColor", "DocBoundaries"), values, strict=True):
         scheme.getByName(name).setPropertyValue("Color", value)
     settings.commitChanges()
+
+
+def check_selection_colors(style, source, background):
+    native = source.HighlightColor, source.HighlightTextColor
+    actual = style.HighlightColor, style.HighlightTextColor
+    if background == source.FieldColor or contrast(background, native[0]) >= 3:
+        assert actual == native, ("The native selection pair changed", native, actual)
+    else:
+        assert actual[0] != native[0]
+        assert contrast(background, actual[0]) >= 3
+        assert contrast(*actual) >= 4.5
 
 
 def check_document_colors(context, desktop):
@@ -68,14 +79,26 @@ def check_document_colors(context, desktop):
             document.isModified(),
         )
         source_style = controller.Frame.ComponentWindow.StyleSettings
-        native = (source_style.FieldColor, source_style.FieldTextColor, source_style.ShadowColor)
+        native = tuple(
+            getattr(source_style, name)
+            for name in (
+                "FieldColor",
+                "FieldTextColor",
+                "ShadowColor",
+                "HighlightColor",
+                "HighlightTextColor",
+            )
+        )
         initial = tree.StyleSettings.FieldColor
+        assert initial == source_style.FieldColor, "The private profile should use native white"
+        check_selection_colors(tree.StyleSettings, source_style, initial)
         evidence = []
         with Configured(lambda: None, lambda: set_colors(settings, original)):
             for background, foreground, border in (
                 (0x112233, 0xEEF4FF, 0x708090),
                 (0xFFFFFF, 0xFFFFFF, 0xFFFFFF),
                 (0xF1EAD1, 0x342C1D, 0xF1EAD1),
+                (native[3], text_color(native[3], None), native[3]),
             ):
                 set_colors(settings, (background, foreground, border))
                 poll(
@@ -84,8 +107,7 @@ def check_document_colors(context, desktop):
                 )
                 style = tree.StyleSettings
                 assert contrast(background, style.FieldTextColor) >= 4.5
-                assert contrast(background, style.HighlightColor) >= 3
-                assert contrast(style.HighlightColor, style.HighlightTextColor) >= 4.5
+                check_selection_colors(style, source_style, background)
                 assert contrast(background, style.ShadowColor) >= 3
                 if foreground != background:
                     assert style.FieldTextColor == foreground
@@ -105,10 +127,15 @@ def check_document_colors(context, desktop):
                     "Bravo",
                     "Charlie",
                 ]
-                assert native == (
-                    source_style.FieldColor,
-                    source_style.FieldTextColor,
-                    source_style.ShadowColor,
+                assert native == tuple(
+                    getattr(source_style, name)
+                    for name in (
+                        "FieldColor",
+                        "FieldTextColor",
+                        "ShadowColor",
+                        "HighlightColor",
+                        "HighlightTextColor",
+                    )
                 ), "The list changed the document window's own styles"
                 evidence.append(
                     {
@@ -120,11 +147,16 @@ def check_document_colors(context, desktop):
                     }
                 )
         poll(lambda: tree.StyleSettings.FieldColor == initial, "the original document colour")
+        check_selection_colors(tree.StyleSettings, source_style, initial)
     except BaseException as failure:
         close_after(context, document, failure)
         raise
     close_after(context, document)
-    return {"palettes": evidence, "model_input_and_document_kept": True}
+    return {
+        "palettes": evidence,
+        "native_selection_kept": True,
+        "model_input_and_document_kept": True,
+    }
 
 
 def exercise(context, desktop, directory, output):

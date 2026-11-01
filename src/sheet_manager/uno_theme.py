@@ -5,6 +5,10 @@ background, including automatic appearance and white-document overrides (measure
 26.8.1.1; ScAccessibleDocument::getBackground in 26.8.2.2). Its foreground is always black, so
 explicit FontColor/DocBoundaries come from the selected scheme and automatic text uses a readable
 fallback. Do not duplicate the host's automatic-background table or inspect cells.
+Creating this accessible also enables Calc's document/shape accessibility listeners for that
+view (ScGridWindow::CreateAccessible and ScAccessibleDocument::Init in 26.8.2.2). This is not a
+side-effect-free read. Cache the document context, never its changing background; drop it after
+a disposed/out-of-bounds read or a component-window change, and retry on the next idle sample.
 
 The native tree and RowPaint share the tree peer's local style settings. Set its model's
 background and those local settings, never Application settings or the user's configuration.
@@ -20,6 +24,7 @@ there are no additional listeners or timers. A hidden list catches up when it is
 from typing import Any
 
 import uno
+from com.sun.star.lang import DisposedException, IndexOutOfBoundsException
 
 from sheet_manager.theme import Palette, palette
 from sheet_manager.uno_calc import prop, report
@@ -31,25 +36,25 @@ LEAVES = {
 }
 
 
-def document_background(item: Any, depth: int = 0, budget: list[int] | None = None) -> int | None:
+def document_surface(item: Any, depth: int = 0, budget: list[int] | None = None) -> Any:
     """Find only the document surface; never enumerate its billions of accessible cells."""
     if budget is None:
         budget = [128]
-    if budget[0] <= 0:
+    if item is None or budget[0] <= 0:
         return None
     budget[0] -= 1
     role = item.getAccessibleRole()
     if role == DOCUMENT:
-        value = int(item.getBackground())
-        return value if 0 <= value <= 0xFFFFFF else None
+        return item
     count = item.getAccessibleChildCount()
     if depth >= 8 or count > 64 or role in LEAVES:
         return None
     for index in range(count):
         if budget[0] <= 0:
             return None
-        value = document_background(
-            item.getAccessibleChild(index).getAccessibleContext(), depth + 1, budget
+        child = item.getAccessibleChild(index)
+        value = document_surface(
+            child.getAccessibleContext() if child is not None else None, depth + 1, budget
         )
         if value is not None:
             return value
@@ -60,6 +65,7 @@ class ListTheme:
     def __init__(self, context, frame, tree):
         self.tree, self.frame = tree, frame
         self._current: Palette | None = None
+        self._surface = self._window = None
         provider = context.ServiceManager.createInstanceWithContext(
             "com.sun.star.configuration.ConfigurationProvider", context
         )
@@ -75,13 +81,31 @@ class ListTheme:
             return
         try:
             self._apply()
+        except (DisposedException, IndexOutOfBoundsException):
+            self._surface = self._window = None
         except Exception:
             self.failed = True
             report("following document colours")
 
+    def _background(self, window):
+        if window != self._window:
+            self._surface, self._window = None, window
+        if self._surface is None:
+            accessible = window.getProperty("XAccessible")
+            self._surface = document_surface(
+                accessible.getAccessibleContext() if accessible is not None else None
+            )
+        if self._surface is None:
+            return None
+        value = int(self._surface.getBackground())
+        return value if 0 <= value <= 0xFFFFFF else None
+
     def _apply(self):
         window = self.frame.getComponentWindow()
-        background = document_background(window.getProperty("XAccessible").getAccessibleContext())
+        if window is None:
+            self._surface = self._window = None
+            return
+        background = self._background(window)
         if background is None:
             # A document surface can be absent during view creation. Retain the preceding
             # palette and try on the next visible sample, without guessing an automatic colour.
@@ -100,6 +124,7 @@ class ListTheme:
             self.style.HighlightColor,
             self.style.HighlightTextColor,
             border if border is not None else self.style.ShadowColor,
+            self.style.FieldColor,
         )
         peer = self.tree.getPeer()
         style = peer.StyleSettings

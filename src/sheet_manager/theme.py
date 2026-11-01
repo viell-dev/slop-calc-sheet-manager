@@ -1,8 +1,9 @@
 """A readable list palette around Calc's document background, without UNO (#141).
 
-Keep a configured text or UI colour when it remains readable on its background. Otherwise use
-black/white text and neutral edges. The document background itself is never adjusted. Tab-colour
-swatches remain the sheet's own colours, outside this palette.
+Keep the native selection/text pair together when it remains distinct or the document uses the
+host's field background. Only synthesise selection text when replacing the selection colour.
+Keep configured ordinary text when readable; otherwise use black/white text and neutral edges.
+The document background and sheet-tab colour swatches are never adjusted.
 """
 
 from dataclasses import dataclass
@@ -38,7 +39,7 @@ def _edge(background: int, preferred: int | None, foreground: int) -> int:
     if preferred is not None and _valid(preferred) and contrast(background, preferred) >= 3:
         return preferred
     # The first sufficient blend keeps a divider or selection distinct without making every
-    # edge as bright as the text. A black/white foreground always supplies a sufficient endpoint.
+    # edge as bright as the text. The readable foreground supplies a sufficient endpoint.
     for amount in (0.25, 0.4, 0.55, 0.7, 0.85, 1):
         mixed = sum(
             round(
@@ -68,13 +69,15 @@ def palette(
     highlight: int,
     highlight_text: int,
     border: int | None,
+    native_background: int | None = None,
 ) -> Palette:
     text = text_color(background, foreground)
-    selection = _edge(background, highlight, text)
+    keep_selection = background == native_background or contrast(background, highlight) >= 3
+    selection = highlight if keep_selection else _edge(background, highlight, text)
     return Palette(
         background,
         text,
         selection,
-        text_color(selection, highlight_text),
+        highlight_text if keep_selection else text_color(selection, highlight_text),
         _edge(background, border, text),
     )

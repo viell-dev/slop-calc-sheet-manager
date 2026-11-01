@@ -20,6 +20,24 @@ def test_known_contrast_and_explicit_readable_colours() -> None:
     assert result.border == 0x708090
 
 
+@pytest.mark.parametrize("highlight", [0x3584E4, 0x3DAEE9, 0x007AFF, 0x0078D7, 0x0078D4])
+def test_default_native_selection_pair_is_preserved(highlight: int) -> None:
+    result = palette(0xFFFFFF, None, highlight, 0xFFFFFF, None, 0xFFFFFF)
+    assert (result.highlight, result.highlight_text) == (highlight, 0xFFFFFF)
+
+
+def test_retaining_a_distinct_selection_also_retains_its_native_text() -> None:
+    result = palette(0xFFFFFF, None, 0x3584E4, 0xFFFFFF, None)
+    assert (result.highlight, result.highlight_text) == (0x3584E4, 0xFFFFFF)
+
+
+def test_selection_is_synthesised_only_when_the_document_background_hides_it() -> None:
+    result = palette(0x3584E4, None, 0x3584E4, 0xFFFFFF, None, 0xFFFFFF)
+    assert result.highlight != 0x3584E4
+    assert contrast(result.highlight, result.background) >= 3
+    assert contrast(result.highlight, result.highlight_text) >= 4.5
+
+
 @pytest.mark.parametrize("background", [0, 0xFFFFFF, 0x1C1C1C, 0x808080, 0x112233, 0xFFFF00])
 @pytest.mark.parametrize("preferred", [None, -1, 0, 0xFFFFFF, 0x123456, 0x1000000])
 def test_unreadable_colours_are_replaced_together(background: int, preferred: int | None) -> None:
@@ -32,15 +50,15 @@ def test_unreadable_colours_are_replaced_together(background: int, preferred: in
     assert text_color(background, preferred) == result.foreground
 
 
-def background_reader() -> Any:
+def surface_finder() -> Any:
     path = "src/sheet_manager/uno_theme.py"
     tree = ast.parse((ROOT / path).read_text(encoding="utf-8"))
     node = next(
-        n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "document_background"
+        n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "document_surface"
     )
     namespace: dict[str, Any] = {"Any": Any, "DOCUMENT": 84, "LEAVES": {58, 65}}
     exec(compile(ast.Module(body=[node], type_ignores=[]), path, "exec"), namespace)
-    return namespace["document_background"]
+    return namespace["document_surface"]
 
 
 def test_document_surface_does_not_enumerate_cells() -> None:
@@ -49,8 +67,97 @@ def test_document_surface_does_not_enumerate_cells() -> None:
         getBackground=lambda: 0x112233,
         getAccessibleChildCount=Mock(side_effect=AssertionError("enumerated document cells")),
     )
-    assert background_reader()(item) == 0x112233
+    assert surface_finder()(item) is item
     item.getAccessibleChildCount.assert_not_called()
+
+
+def test_missing_children_and_contexts_are_skipped() -> None:
+    document = SimpleNamespace(getAccessibleRole=lambda: 84)
+    children = [
+        None,
+        SimpleNamespace(getAccessibleContext=lambda: None),
+        SimpleNamespace(getAccessibleContext=lambda: document),
+    ]
+
+    def child(index: int) -> Any:
+        return children[index]
+
+    parent = SimpleNamespace(
+        getAccessibleRole=lambda: 40,
+        getAccessibleChildCount=lambda: 3,
+        getAccessibleChild=child,
+    )
+    assert surface_finder()(parent) is document
+
+
+def test_cached_surface_is_read_again_without_rewalking_and_replaced_with_the_window() -> None:
+    surface = SimpleNamespace(getBackground=Mock(side_effect=[0xFFFFFF, 0x112233, 0xF1EAD1]))
+    find = Mock(return_value=surface)
+    window = SimpleNamespace(
+        getProperty=Mock(
+            return_value=SimpleNamespace(getAccessibleContext=Mock(return_value=object()))
+        )
+    )
+    owner = SimpleNamespace(_window=None, _surface=None)
+    read = method(
+        "src/sheet_manager/uno_theme.py", "ListTheme", "_background", {"document_surface": find}
+    )
+    assert read(owner, window) == 0xFFFFFF
+    assert read(owner, window) == 0x112233
+    assert find.call_count == 1 and window.getProperty.call_count == 1
+    other = SimpleNamespace(getProperty=Mock(return_value=window.getProperty.return_value))
+    assert read(owner, other) == 0xF1EAD1
+    assert find.call_count == 2
+
+
+@pytest.mark.parametrize("transient", ["disposed", "index"])
+def test_transient_surface_failure_retries_on_the_next_sample(transient: str) -> None:
+    class Disposed(Exception):
+        pass
+
+    class MissingIndex(Exception):
+        pass
+
+    error = Disposed if transient == "disposed" else MissingIndex
+    work = Mock(side_effect=[error(), None])
+    owner = SimpleNamespace(failed=False, _surface=object(), _window=object(), _apply=work)
+    reports = Mock()
+    apply = method(
+        "src/sheet_manager/uno_theme.py",
+        "ListTheme",
+        "apply",
+        {
+            "DisposedException": Disposed,
+            "IndexOutOfBoundsException": MissingIndex,
+            "report": reports,
+        },
+    )
+    apply(owner)
+    assert owner._surface is None and owner._window is None and not owner.failed
+    apply(owner)
+    assert work.call_count == 2
+    reports.assert_not_called()
+
+
+def test_unexpected_theme_failure_is_still_reported_once_and_stops_sampling() -> None:
+    reports = Mock()
+    work = Mock(side_effect=RuntimeError("unexpected failure"))
+    owner = SimpleNamespace(failed=False, _apply=work)
+    apply = method(
+        "src/sheet_manager/uno_theme.py",
+        "ListTheme",
+        "apply",
+        {
+            "DisposedException": type("Disposed", (Exception,), {}),
+            "IndexOutOfBoundsException": type("MissingIndex", (Exception,), {}),
+            "report": reports,
+        },
+    )
+    apply(owner)
+    apply(owner)
+    assert owner.failed
+    work.assert_called_once()
+    reports.assert_called_once_with("following document colours")
 
 
 @pytest.mark.parametrize("role,count", [(58, 2**34), (65, 1000), (40, 65)])
@@ -60,7 +167,7 @@ def test_cell_tables_rows_and_large_child_sets_are_not_walked(role: int, count: 
         getAccessibleChildCount=lambda: count,
         getAccessibleChild=Mock(side_effect=AssertionError("walked a leaf")),
     )
-    assert background_reader()(item) is None
+    assert surface_finder()(item) is None
     item.getAccessibleChild.assert_not_called()
 
 
@@ -70,7 +177,7 @@ def test_a_cyclic_or_branching_native_hierarchy_has_a_total_visit_budget() -> No
     item.getAccessibleChild = Mock(
         return_value=SimpleNamespace(getAccessibleContext=Mock(return_value=item))
     )
-    assert background_reader()(item) is None
+    assert surface_finder()(item) is None
     assert role.call_count == 128
 
 
@@ -159,6 +266,7 @@ def test_a_failed_native_colour_update_restores_the_whole_previous_palette(
         frame=SimpleNamespace(getComponentWindow=lambda: window),
         tree=SimpleNamespace(getPeer=lambda: peer, getModel=lambda: model),
         colors=colors,
+        _background=Mock(return_value=0x112233),
         _current=None,
     )
     reports = Mock()
@@ -167,7 +275,6 @@ def test_a_failed_native_colour_update_restores_the_whole_previous_palette(
         "ListTheme",
         "_apply",
         {
-            "document_background": Mock(return_value=0x112233),
             "palette": palette,
             "report": reports,
         },

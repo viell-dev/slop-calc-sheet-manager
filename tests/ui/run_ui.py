@@ -38,12 +38,17 @@ from rename_dialog import check_mouse as check_rename_mouse  # noqa: E402
 from rename_dialog import check_stale as check_rename_stale  # noqa: E402
 from run import office_session, wait_for  # noqa: E402
 from teardown import Configured, stalled_callbacks  # noqa: E402
-from test_document_theme import color_settings, scheme_of, set_colors  # noqa: E402
+from test_document_theme import (  # noqa: E402
+    check_selection_colors,
+    color_settings,
+    scheme_of,
+    set_colors,
+)
 from xinput import RIGHT, Pointer, XInput  # noqa: E402
 
 from sheet_manager.reorder import Action, Sheet, target_order  # noqa: E402
 from sheet_manager.sheet_list import list_name  # noqa: E402
-from sheet_manager.theme import contrast  # noqa: E402
+from sheet_manager.theme import contrast, text_color  # noqa: E402
 from sheet_manager.uno_calc import dispatch, select_tabs  # noqa: E402
 from sheet_manager.uno_menu import (  # noqa: E402
     DELETE,
@@ -375,6 +380,8 @@ def check_document_colors(book):
     try:
         sample.click(1)
         root = view.root(sample.tree)
+        source_style = sample.document.CurrentController.Frame.ComponentWindow.StyleSettings
+        check_selection_colors(sample.tree.StyleSettings, source_style, source_style.FieldColor)
         original_height = sample.tree.getNodeRect(sample.nodes()[0]).Height
         before = sample.active(), sample.calc_tabs(), sample.undo_titles()
         with Configured(lambda: None, lambda: set_colors(settings, original)):
@@ -382,6 +389,11 @@ def check_document_colors(book):
                 ("dark", 0x112233, 0xEEF4FF),
                 ("light", 0xF1EAD1, 0x342C1D),
                 ("poor-contrast", 0xFFFFFF, 0xFFFFFF),
+                (
+                    "selection-background",
+                    source_style.HighlightColor,
+                    text_color(source_style.HighlightColor, None),
+                ),
             ):
                 set_colors(settings, (background, foreground, background))
                 wait_until(
@@ -392,8 +404,7 @@ def check_document_colors(book):
                 style = sample.tree.StyleSettings
                 assert contrast(background, style.FieldTextColor) >= 4.5
                 assert contrast(background, style.ShadowColor) >= 3
-                assert contrast(background, style.HighlightColor) >= 3
-                assert contrast(style.HighlightColor, style.HighlightTextColor) >= 4.5
+                check_selection_colors(style, source_style, background)
                 size = sample.tree.getOutputSize()
                 rows = [sample.tree.getNodeRect(node) for node in sample.nodes()]
                 assert rows[0].Height == original_height, (original_height, rows[0].Height)
