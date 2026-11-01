@@ -60,6 +60,10 @@ The macOS helper records its owned process group on timeout and runs
 native TERM/KILL controls before installing the app; a zombie-only signalling refusal is accepted
 only after reading member states. Unverified cleanup retains the private directory and fails
 ([#162](https://github.com/viell-dev/slop-calc-sheet-manager/issues/162)).
+The Mac integration command has 30 minutes for the measured complete benchmark workload, with
+60 minutes for its job's installation, commands and evidence collection. Functional assertion
+deadlines and correctness checks remain separate; the enclosing release wait/job budgets are
+documented in [RELEASING.md](https://github.com/viell-dev/slop-calc-sheet-manager/blob/main/RELEASING.md).
 
 ## Installation, packaging and publication
 

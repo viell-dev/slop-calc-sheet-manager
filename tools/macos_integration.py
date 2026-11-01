@@ -29,6 +29,8 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+# Complete native benchmark work exceeded 20 minutes in retained phase receipts (#162).
+INTEGRATION_TIMEOUT = 30 * 60
 
 
 class GroupCleanupError(RuntimeError):
@@ -371,7 +373,7 @@ def main() -> None:
                     ],
                     output / "integration.log",
                     environment,
-                    1200,
+                    INTEGRATION_TIMEOUT,
                 )
                 result["assertions_passed"] = True
             finally:
