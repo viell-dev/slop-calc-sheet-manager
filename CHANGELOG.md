@@ -5,6 +5,8 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Retry Linux test-image downloads after redirected mirror certificate failures, retaining TLS
+  and pinned-checksum verification ([#61](https://github.com/viell-dev/slop-calc-sheet-manager/issues/61)).
 - Prepare an on-demand, privately installed Intel macOS integration harness; native evidence
   remains pending before it joins release verification
   ([#145](https://github.com/viell-dev/slop-calc-sheet-manager/issues/145)).

@@ -11,8 +11,9 @@ ARG LO_VERSION
 ARG LO_SERIES
 ARG LO_URL
 ARG LO_SHA256
+# Retry from the archive URL after mirror TLS failures; retain TLS and digest verification (#61).
 RUN test -n "$LO_VERSION" && test -n "$LO_SERIES" && test -n "$LO_URL" && test -n "$LO_SHA256" \
-    && curl --fail --location --retry 3 "$LO_URL" -o /tmp/libreoffice.tar.gz \
+    && curl --fail --location --retry 3 --retry-all-errors "$LO_URL" -o /tmp/libreoffice.tar.gz \
     && echo "$LO_SHA256  /tmp/libreoffice.tar.gz" | sha256sum --check --strict - \
     && mkdir /tmp/libreoffice /opt/ci-metadata \
     && tar -xzf /tmp/libreoffice.tar.gz -C /tmp/libreoffice \
