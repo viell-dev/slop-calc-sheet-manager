@@ -159,7 +159,8 @@ measurements, not limits:
   These are external test-client UNO wall times, with snapshots, setup, assertions and cleanup
   excluded; they do not measure in-process popup display or input latency. There is no warm-up,
   sample selection or timing threshold. Results are retained under `large_workbook.menu_build`
-  in the integration session's JSON; its enclosing result identifies the office and platform.
+  in the integration session's JSON, alongside lane artifacts identifying the office and Python
+  versions and the tested environment.
   Property-driven rebuild cost remains tracked in
   [#22](https://github.com/viell-dev/slop-calc-sheet-manager/issues/22).
 
