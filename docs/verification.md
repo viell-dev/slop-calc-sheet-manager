@@ -40,9 +40,9 @@ Intel macOS 15 with the pinned official build has passed the full headless integ
 suite and is required by the manual release sweep. The runner requests `svp`; Aqua rendering,
 OS input, GUI installation/update, upgrades from published macOS builds, Apple Silicon and
 system-wide/delayed crash reports remain unverified. Installer unit checks cover integrity,
-private paths, diagnostic ownership and failure propagation for version mismatch or new crash
-reports; they are separate from the native evidence linked in #145. A standalone focused Mac run
-cannot replace the complete exact-revision sweep.
+private paths, diagnostic ownership and failure propagation for version mismatch, new crash
+reports or diagnostic collection failure. Those checks are separate from the native evidence
+linked in #145. A standalone focused Mac run cannot replace the complete exact-revision sweep.
 A focused [human usability pass](./manual-tests.md) remains a separate release requirement.
 
 ## Installation, packaging and publication

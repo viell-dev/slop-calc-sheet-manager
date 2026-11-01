@@ -134,6 +134,7 @@ def test_wrong_architecture_is_recorded_before_any_external_command(
 @pytest.fixture
 def native_commands_stubbed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Mock]:
     """Exercise failure propagation only; no native command or application is executed."""
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
     monkeypatch.setattr(cli, "ROOT", tmp_path)
     monkeypatch.setattr(cli.sys, "platform", "darwin")
     monkeypatch.setattr(cli.platform, "machine", lambda: "x86_64")

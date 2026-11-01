@@ -62,9 +62,9 @@ describes that gate and how its results are tracked.
 | Environment                                                                       | Status                                             |
 | --------------------------------------------------------------------------------- | -------------------------------------------------- |
 | Linux x86-64, libreoffice.org 26.8.2.2: headless integration; gtk3/gen real input | Verified in routine CI for every change |
-| Linux x86-64, libreoffice.org 26.2.1.2, 26.2.6.3, and 26.8.2.2: headless/gtk3 integration; gtk3/gen real input | Verified in the manual release sweep before each release |
-| Windows x86-64, libreoffice.org 26.8.2.2: headless | Verified in the manual release sweep before each release |
-| Windows x86-64, libreoffice.org 26.8.2.2: a visible window with real input | Verified in the manual release sweep before each release |
+| Linux x86-64, libreoffice.org 26.2.1.2, 26.2.6.3, and 26.8.2.2: headless/gtk3 integration; gtk3/gen real input | Verified in manual CI; required by the manual release sweep |
+| Windows x86-64, libreoffice.org 26.8.2.2: headless | Verified in manual CI; required by the manual release sweep |
+| Windows x86-64, libreoffice.org 26.8.2.2: a visible window with real input | Verified in manual CI; required by the manual release sweep |
 | macOS Intel, macOS 15, libreoffice.org 26.8.2.2: headless integration | Verified in manual CI; required by the manual release sweep |
 | Other 26.2 and 26.8 releases, and later versions, from libreoffice.org            | Expected to work, not verified                     |
 | Distribution packages, other interfaces such as kf6 or gtk4, Wayland, macOS GUI input | Expected to work, not verified                     |

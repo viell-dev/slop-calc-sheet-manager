@@ -381,9 +381,9 @@ fatal marker or different nonzero exit never qualifies; test assertions and shut
 `ci/libreoffice.json` pins the minimum 26.2.1 build, the newest tested 26.2 and 26.8 builds, the
 unsupported 26.2.0 build, Windows and Intel macOS. When updating a lane, verify the current TDF
 catalogue and published SHA-256, update the version, URL and digest together, and run that lane.
-Always use
-`https://downloadarchive.documentfoundation.org/libreoffice/old/<full version>/` and the full
-four-part version in filenames: `stable/` downloads disappear when the offered releases change.
+Always use `https://downloadarchive.documentfoundation.org/libreoffice/old/<full version>/`
+and the full four-part version in filenames: `stable/` downloads disappear when the offered
+releases change.
 These pins do not discover newer releases automatically. Dependabot checks development tools,
 GitHub-owned actions and Docker base images weekly after a seven-day cooldown. Action references
 remain full commit SHAs, with their versions in comments. The checks image's two base images are

@@ -188,10 +188,10 @@ its platform inventory is not a requirement to make one person test every host.
    exact `main` commit to succeed. Then manually run **Release sweep** on that same revision and
    require its **Full release sweep** aggregate and every lane, including Intel macOS headless
    integration, to pass. A standalone macOS run or an older Linux/Windows-only sweep cannot
-   authorize release. Batch platform runs to
-   at most once per week; check the recent Actions history and record the revision/run in the
-   release issue before dispatch. If `main` advances, the old sweep cannot authorize the new
-   revision. Complete independent work and wait for the next planned sweep when necessary.
+   authorize release. Batch platform runs to at most once per week; check the recent Actions
+   history and record the revision/run in the release issue before dispatch. If `main` advances,
+   the old sweep cannot authorize the new revision. Complete independent work and wait for the next
+   planned sweep when necessary.
 3. In Actions, select **Release → Run workflow**, choose `main`, enter the exact version, choose
    the `stage`, and leave `dry_run` checked. For `beta` or `rc`, enter the agreed next-minor or
    next-major `target`; for alpha development, leave it empty unless a target is agreed; for
