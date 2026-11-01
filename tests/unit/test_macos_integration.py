@@ -5,6 +5,7 @@ import json
 import os
 import signal
 import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -217,11 +218,13 @@ def test_diagnostic_collection_error_cannot_leave_a_successful_host_record(
     assert "diagnostics unavailable" in result["error"]
 
 
-@pytest.mark.skipif(os.name == "nt", reason="The installer executes only on macOS/POSIX")
 def test_timeout_stops_only_the_new_private_process_group_before_propagating_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Keep unavailable POSIX APIs outside Windows static analysis as well as execution.
+    if sys.platform == "win32":
+        pytest.skip("The installer executes only on macOS/POSIX")
     monkeypatch.setattr(cli.sys, "platform", "darwin")
     process = Mock(pid=47123)
     process.wait.side_effect = [

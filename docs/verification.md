@@ -9,8 +9,9 @@ Record run results, deliberate-break experiments and review findings in the owni
 
 ## Where checks run
 
-- **Checks:** Ruff, strict Pyright, unit tests and byte-for-byte reproducible builds, on Python
-  3.12 and 3.14.
+- **Checks:** Ruff, strict Pyright for Linux, Windows and macOS API availability, unit
+  tests and byte-for-byte reproducible builds, on Python 3.12 and 3.14. Static platform targets do
+  not execute native behaviour.
 - **Integration:** routine CI uses the newest tested Linux build, headless. The manual full release
   sweep adds the minimum and newest tested 26.2, painted gtk3 on all three builds, the Windows pin
   headless, Intel macOS headless integration/lifecycle, and the unsupported-version refusal.
@@ -49,6 +50,9 @@ private paths, diagnostic ownership and failure propagation for version mismatch
 reports or diagnostic collection failure. Those checks are separate from the native evidence
 linked in #145. A standalone focused Mac run cannot replace the complete exact-revision sweep.
 A focused [human usability pass](./manual-tests.md) remains a separate release requirement.
+The theme fixture retains its initial pointer events, geometry and selection on success or
+failure, without retrying the click, to investigate the macOS pick timeout
+([#160](https://github.com/viell-dev/slop-calc-sheet-manager/issues/160)).
 
 ## Installation, packaging and publication
 

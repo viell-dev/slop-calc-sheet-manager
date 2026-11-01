@@ -78,8 +78,9 @@ Linux semantics; the release sweep also runs the complete check command on Windo
 ## Checks
 
 One command runs Ruff lint and format checks, Pyright, unit tests, and two builds whose bytes must
-match. Pyright uses Python 3.12 semantics and strict checking, with limited exceptions at the
-dynamic UNO boundary. The test stubs never ship in the extension.
+match. Pyright checks Linux, Windows and macOS API availability; this does not execute
+native behaviour on those platforms. It uses Python 3.12 semantics and strict checking, with
+limited exceptions at the dynamic UNO boundary. The test stubs never ship in the extension.
 
 Windows PowerShell 7:
 
