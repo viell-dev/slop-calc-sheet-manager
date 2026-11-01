@@ -5,6 +5,10 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Follow LibreOffice's document background in the sheet list, including its unused space. Keep
+  native text, selection and row dividers readable as the colour scheme changes, without moving
+  the picks or editing the workbook
+  ([#141](https://github.com/viell-dev/slop-calc-sheet-manager/issues/141)).
 - Refuse Delete Sheet for either of two names Calc confuses: Calc's Undo can otherwise lose the
   deleted sheet. Rename one of them first; the refusal names both sheets
   ([#138](https://github.com/viell-dev/slop-calc-sheet-manager/issues/138)).
