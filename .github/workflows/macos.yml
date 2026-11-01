@@ -1,7 +1,6 @@
 name: macOS integration
 
-# On-demand bring-up; #145 stays open until native evidence is inspected.
-# This preparation does not add a macOS success claim to the release gate.
+# Focused on-demand investigation; release-sweep.yml requires the same packaged lane.
 on:
   workflow_dispatch:
 

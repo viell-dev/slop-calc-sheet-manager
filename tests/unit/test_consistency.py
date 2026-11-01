@@ -129,6 +129,10 @@ def test_environment_table_names_the_tested_builds() -> None:
     for line in windows:
         assert pins["windows"]["version"] in line, line
         assert "manual release sweep" in line, line
+    macos = [line for line in table.splitlines() if line.startswith("| macOS Intel")]
+    assert len(macos) == 1, macos
+    assert pins["macos"]["version"] in macos[0] and "headless" in macos[0]
+    assert "manual release sweep" in macos[0]
     refused = ".".join(pins["unsupported"]["version"].split(".")[:3])
     assert f"| LibreOffice {refused} and earlier " in table
     assert "<!--@include: ../../README.md#environments-->" in text(

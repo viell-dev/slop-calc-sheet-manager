@@ -3,7 +3,7 @@
 ## Where it is tested
 
 Routine CI tests each change on the current Linux build. A manual release sweep checks the
-broader Linux and Windows environments before each release, using official builds from
+broader Linux, Windows and Intel macOS environments before each release, using official builds from
 libreoffice.org:
 
 <!--@include: ../../README.md#environments-->

@@ -186,10 +186,12 @@ its platform inventory is not a requirement to make one person test every host.
    Complete the release review that
    [AGENTS.md](AGENTS.md#review) requires, then merge the preparation PR and wait for **CI** on its
    exact `main` commit to succeed. Then manually run **Release sweep** on that same revision and
-   require its **Full release sweep** aggregate and every lane to pass. Batch platform runs to
-   at most once per week; check the recent Actions history and record the revision/run in the
-   release issue before dispatch. If `main` advances, the old sweep cannot authorize the new
-   revision. Complete independent work and wait for the next planned sweep when necessary.
+   require its **Full release sweep** aggregate and every lane, including Intel macOS headless
+   integration, to pass. A standalone macOS run or an older Linux/Windows-only sweep cannot
+   authorize release. Batch platform runs to at most once per week; check the recent Actions
+   history and record the revision/run in the release issue before dispatch. If `main` advances,
+   the old sweep cannot authorize the new revision. Complete independent work and wait for the next
+   planned sweep when necessary.
 3. In Actions, select **Release → Run workflow**, choose `main`, enter the exact version, choose
    the `stage`, and leave `dry_run` checked. For `beta` or `rc`, enter the agreed next-minor or
    next-major `target`; for alpha development, leave it empty unless a target is agreed; for
@@ -324,8 +326,9 @@ workflow's `release` event. The event trigger also handles a manually completed 
 Unit tests check numeric ordering, the suffix trap, stage titles and their refused stage/target
 combinations, the workflow's stage input, existing-version refusal,
 changelog boundaries, feed XML, stable-feed immutability, empty feeds, and history regression
-refusal. The normal Linux and Windows integration lanes run `test_updates.py` too: an older
-installed build's identifier is used to query generated feeds served on a loopback HTTP server.
+refusal. The normal Linux, Windows and Intel macOS integration lanes also run `test_updates.py`:
+an older installed build's identifier is used to query generated feeds served on a loopback HTTP
+server.
 LibreOffice's `UpdateInformationProvider` returns the expected descriptions in newest-first
 order; temporary candidate OXTs pass or fail LibreOffice's real `XPackage.checkDependencies`
 according to their minimum-version dependency. No public network or normal profile is used.

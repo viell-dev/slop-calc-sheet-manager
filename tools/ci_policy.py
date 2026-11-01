@@ -3,6 +3,8 @@
 Workflows use dependency results for their aggregate; publication independently checks every
 expected job on the exact revision. Keep these names, workflow matrices and the main ruleset
 consistent. A manual release sweep is separate from routine CI and from PR planning previews.
+It includes Intel macOS headless integration (#145); the earlier Linux/Windows-only sweep is
+insufficient, and a separate focused macOS run cannot replace a sweep on the release revision.
 """
 
 import json
@@ -38,7 +40,7 @@ ROUTINE = Policy(
 SWEEP = Policy(
     "release-sweep.yml",
     "Full release sweep",
-    frozenset({"linux", "linux-gtk3", "refusal", "windows", "desktop"}),
+    frozenset({"linux", "linux-gtk3", "refusal", "windows", "desktop", "macos"}),
     frozenset(
         {
             *(
@@ -52,6 +54,7 @@ SWEEP = Policy(
             "Refuses LibreOffice 26.2.0",
             "Windows (LibreOffice 26.8 latest)",
             "Windows desktop real input",
+            "macOS Intel packaged integration",
             "Full release sweep",
         }
     ),

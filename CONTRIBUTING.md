@@ -274,21 +274,22 @@ failed, cancelled or skipped work. Every checkout uses the exact event revision.
 
 **Release sweep** (`.github/workflows/release-sweep.yml`) is manual release-preparation evidence.
 It retains all three pinned Linux builds, headless and painted integration, GTK3/gen input, the
-unsupported-version refusal, Windows headless integration and the complete Windows desktop suite.
+unsupported-version refusal, Windows headless integration, the complete Windows desktop suite,
+and Intel macOS headless packaged integration and lifecycle.
 Its **Full release sweep** aggregate requires every lane. Any test or shutdown failure fails the
 job; artifacts are required, and no error message is an allowed crash.
 
 Batch cross-platform sweeps to at most once per week, on demand rather than on every PR. Check the
 recent Actions history and record the chosen revision and last platform run in the release issue
 before dispatch. If that revision changes, its sweep cannot authorize another revision: finish
-independent work and wait for the next planned sweep before releasing. A focused Windows dispatch
-is investigation evidence, not a substitute for the complete sweep.
+independent work and wait for the next planned sweep before releasing. A focused Windows or macOS
+dispatch is investigation evidence, not a substitute for the complete sweep.
 
 The full sweep must run on the exact release revision before a manual release dry run or
 publication. A PR's release-planning preview needs routine CI only and is labelled as a preview;
 it cannot authorize publication. See [RELEASING.md](RELEASING.md#prepare-and-dry-run).
-macOS has no established lane yet; [#145](https://github.com/viell-dev/slop-calc-sheet-manager/issues/145)
-tracks that readiness work. No macOS coverage is implied by **Full release sweep**.
+The macOS lane covers only the headless boundary below; a separate successful macOS run cannot
+replace the combined sweep or supply another revision's release evidence.
 
 ### Visible Windows desktop
 
@@ -333,12 +334,12 @@ Windows 11; one 1024×768 desktop at 96 DPI with the en-US layout; the `win` int
 Windows pin of `ci/libreoffice.json`; and no screen reader or input method. Neither a focused
 manual run nor a full automated sweep satisfies the separate human usability gate.
 
-### macOS harness bring-up
+### macOS packaged integration
 
-The manual **macOS integration** workflow (`.github/workflows/macos.yml`) prepares Intel macOS
-evidence for [#145](https://github.com/viell-dev/slop-calc-sheet-manager/issues/145). Its initial
-native run is pending; it is not yet part of the full release-sweep gate or an established
-compatibility claim. Keep its first-run findings and remaining coverage in that issue.
+The full release sweep requires **macOS Intel packaged integration**, using `macos-15-intel`
+and the macOS pin. The manual **macOS integration** workflow (`.github/workflows/macos.yml`)
+runs the same helper for focused investigation. Its first native result and limits are recorded
+in [#145](https://github.com/viell-dev/slop-calc-sheet-manager/issues/145).
 
 The helper requires a disposable GitHub macOS runner. It verifies the pinned official DMG,
 mounts it read-only, copies the app into the job's temporary directory, and uses its own
@@ -348,10 +349,10 @@ synthetic fixtures, lifecycle checks and shutdown assertions. The artifact inclu
 version, installer and integration logs, plus new user diagnostic reports identifying that
 private app. System-wide or delayed crash reports are not established by this collection.
 
-Dispatch it on demand with `gh workflow run macos.yml --ref <branch>` once it has landed on the
-default branch, respecting the platform cadence above. The intended initial scope is headless
-packaged integration and lifecycle, not real OS keyboard/mouse input, rendered pixels, screen
-readers or Apple Silicon. Add it to release authority only after inspecting native evidence.
+Dispatch focused checks with `gh workflow run macos.yml --ref <branch>`, respecting the platform
+cadence above. Coverage is Intel macOS 15 headless packaged integration and lifecycle, with the
+runner requesting `svp`. Aqua rendering, real OS keyboard/mouse input, screen readers, Apple
+Silicon, GUI installation/update and upgrades from published builds on macOS are not established.
 
 ### Soak painted sessions
 
@@ -383,10 +384,11 @@ Before UNO is exposed, the debugger path handles one normal profile-initializati
 fatal marker or different nonzero exit never qualifies; test assertions and shutdown are not retried.
 
 `ci/libreoffice.json` pins the minimum 26.2.1 build, the newest tested 26.2 and 26.8 builds, the
-unsupported 26.2.0 build, and Windows. When updating a lane, verify the current TDF catalogue and
-published SHA-256, update the version, URL and digest together, and run that lane. Always use
-`https://downloadarchive.documentfoundation.org/libreoffice/old/<full version>/` and the full
-four-part version in filenames: `stable/` downloads disappear when the offered releases change.
+unsupported 26.2.0 build, Windows and Intel macOS. When updating a lane, verify the current TDF
+catalogue and published SHA-256, update the version, URL and digest together, and run that lane.
+Always use `https://downloadarchive.documentfoundation.org/libreoffice/old/<full version>/`
+and the full four-part version in filenames: `stable/` downloads disappear when the offered
+releases change.
 These pins do not discover newer releases automatically. Dependabot checks development tools,
 GitHub-owned actions and Docker base images weekly after a seven-day cooldown. Action references
 remain full commit SHAs, with their versions in comments. The checks image's two base images are
