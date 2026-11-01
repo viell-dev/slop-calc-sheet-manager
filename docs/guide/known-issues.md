@@ -85,7 +85,11 @@ If Sheet Manager does not work in an environment where it is expected to, please
   name, so the list refuses a move that would need the name of the sheet that does not come first,
   and says which two names Calc confuses
   ([#125](https://github.com/viell-dev/slop-calc-sheet-manager/issues/125)). Rename Sheets still
-  refuses to create such a pair.
+  refuses to create such a pair. Calc's Undo of Delete Sheet can also fail to restore either
+  sheet of the pair, leaving it deleted
+  ([#138](https://github.com/viell-dev/slop-calc-sheet-manager/issues/138)). <Unreleased /> The
+  list refuses Delete for either sheet and names both; rename one of them before deleting. This
+  protects commands from the list's menu. Calc's own sheet-tab menu remains affected.
 - **Macros that suppress notifications.** The list cannot detect structural edits for which
   LibreOffice reports nothing, or a deliberately constructed edit indistinguishable from ordinary
   typed input. The reorder adapter uses the same structural monitor and has the same boundary.
