@@ -5,6 +5,12 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Refuse Delete Sheet for either of two names Calc confuses: Calc's Undo can otherwise lose the
+  deleted sheet. Rename one of them first; the refusal names both sheets
+  ([#138](https://github.com/viell-dev/slop-calc-sheet-manager/issues/138)).
+- Exercise view restoration after Undo with confusable sheet names, and Delete targeting after
+  removing the collision, against real LibreOffice
+  ([#128](https://github.com/viell-dev/slop-calc-sheet-manager/issues/128)).
 - Simplify contributor and agent guidance, consolidate the verification map, and separate current
   limitations from upgrade advice. Release procedures and safety requirements are unchanged
   ([#139](https://github.com/viell-dev/slop-calc-sheet-manager/issues/139)).

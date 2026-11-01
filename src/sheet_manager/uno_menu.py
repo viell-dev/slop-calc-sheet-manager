@@ -19,6 +19,10 @@ This module owns context targeting, native tab grouping and restoration, and mov
   only `SheetMenu.run` groups.
 - `command_refusal` applies Calc's state rules to the targets, because Calc's command state
   describes its current tabs. Insert's "after" uses the last selected tab.
+- Delete refuses either sheet of a pair Calc's name lookup confuses (#138): Calc accepts the
+  deletion but its Undo cannot recreate the name. Check every name against the live lookup,
+  including unpicked sheets, so the first of a pair is protected too. This check runs again
+  after grouping and command-state callbacks, as do the other command refusals.
 - Duplicate Sheet and Move or Copy Sheet stay off the menu: the supported releases 26.8.0 and
   26.8.1 copy formulas wrongly (tdf#173608, fixed in 26.8.2; #33), and the list moves sheets
   itself (#3).
@@ -59,6 +63,7 @@ from com.sun.star.awt import Rectangle
 from com.sun.star.lang import DisposedException
 
 from sheet_manager.i18n import tr
+from sheet_manager.rename import quoted
 from sheet_manager.reorder import Action, plan_move
 from sheet_manager.selection import Ref
 from sheet_manager.uno_calc import (
@@ -137,6 +142,14 @@ def command_refusal(document, observed: Snapshot, item: int, picked: list[str]) 
                 return tr("Sheets cannot be deleted while changes are being recorded.")
             if any(handles[name].isProtected() for name in targets):
                 return tr("Protected sheets cannot be deleted.")
+            sheets = document.getSheets()
+            for name in handles:
+                found = sheets.getByName(name).getName()
+                if found != name and targets.intersection((name, found)):
+                    return tr(
+                        "Calc cannot safely undo deleting {sheet} or {other}, because it "
+                        "confuses their names. Rename one of them first."
+                    ).format(sheet=quoted(name), other=quoted(found))
         if item in (DELETE, HIDE) and not any(
             handle.IsVisible for name, handle in handles.items() if name not in targets
         ):
