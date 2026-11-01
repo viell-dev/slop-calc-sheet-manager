@@ -24,6 +24,10 @@ event and re-parents all rows under the root, so nodes are never changed in plac
 builds a new data model and restores the selection, scroll position, and keyboard cursor.
 `uno_rows` paints the rows.
 
+Colours (#141). `uno_theme` reads Calc's resolved document background and applies a readable
+palette to the tree's native labels and row decorations. The existing visible-view sampler
+updates it behind the same input, lock and replay barriers; no colour listener or timer is added.
+
 Refresh. Refreshing reads every sheet and rebuilds the tree on the main thread, so it is limited.
 An activation refreshes at once only after the list has been idle for several times the last
 refresh's cost; other changes wait for a pause, with a bounded wait. Bulk API changes, such as a
@@ -198,6 +202,7 @@ from sheet_manager.uno_rows import RowPaint
 from sheet_manager.uno_show import show_sheets
 from sheet_manager.uno_status import CalcStatus
 from sheet_manager.uno_structure import monitor_for
+from sheet_manager.uno_theme import ListTheme
 
 MULTI = uno.Enum("com.sun.star.view.SelectionType", "MULTI")
 SINGLE = uno.Enum("com.sun.star.view.SelectionType", "SINGLE")
@@ -462,6 +467,7 @@ class SheetList:
         self._cleanup = contextlib.ExitStack()
         self._status: CalcStatus | None = None
         self._moves: MoveButtons | None = None
+        self._theme: ListTheme | None = None
         self._bounds = (0, 0)
         try:
             self._initialize(context, frame, parent_window)
@@ -567,6 +573,7 @@ class SheetList:
         self.tree.setModel(model)
         self.tree.createPeer(self.toolkit, parent_window)
         self.peer = self.tree.getPeer()
+        self._theme = ListTheme(context, frame, self.tree)
         self._row_paint = RowPaint(self.peer, self.tree)
         self._row_height = self._row_paint.row_height()
         model.RowHeight = self._row_height
@@ -649,6 +656,7 @@ class SheetList:
             self._notice_timer.cancel()
         self._view_controls = None
         self._cleanup.close()
+        self._theme = None
 
     # Rows and identity
 
@@ -1423,6 +1431,8 @@ class SheetList:
             return
         if self._monitor.events.viewing_replay() is not None:
             return  # Calc's view during an own move's replay, until it is restored (#91).
+        if self._theme is not None:
+            self._theme.apply()
         generation = self._monitor.generation  # Never consume pending modify evidence (#66).
         if generation != self._proven:
             self._view_state = None

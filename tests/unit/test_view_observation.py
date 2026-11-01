@@ -14,6 +14,34 @@ from tests.unit.source_methods import method
 SOURCE = "src/sheet_manager/uno_list.py"
 
 
+@pytest.mark.parametrize(
+    "barrier",
+    [
+        "_busy",
+        "_pointer_depth",
+        "_restoring_cursor",
+        "_press",
+        "_drag",
+        "_menu_context",
+        "menu",
+        "lock",
+        "replay",
+    ],
+)
+def test_palette_sampling_does_not_change_styles_during_an_input_or_replay(barrier: str) -> None:
+    owner, live = observer()
+    if barrier == "menu":
+        owner._menu.is_open = True
+    elif barrier == "lock":
+        live.controllers_locked = True
+    elif barrier == "replay":
+        owner._monitor.events.view_replay = 1
+    else:
+        setattr(owner, barrier, True)
+    owner._observe_view()
+    owner._theme.apply.assert_not_called()
+
+
 def observer() -> tuple[Any, Any]:
     live = SimpleNamespace(
         names=("Alfa", "Bravo", "Charlie"),
@@ -29,6 +57,7 @@ def observer() -> tuple[Any, Any]:
 
     owner = SimpleNamespace(
         _disposed=False,
+        _theme=SimpleNamespace(apply=Mock()),
         _view_stopped=False,
         _busy=False,
         _pointer_depth=0,

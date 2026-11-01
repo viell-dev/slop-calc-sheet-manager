@@ -16,6 +16,12 @@ in the left gutter marks the viewed sheet.
 Hidden, protected, and scenario sheets have those states written beside their names. The deck is
 also shown for read-only workbooks and follows the sidebar when it resizes, docks, or undocks.
 
+<Unreleased /> The list follows LibreOffice's document background colour. Text, the selected
+rows, and dividers use colours that remain readable against it, including when a custom scheme
+would otherwise give the text and background the same colour. Sheet-tab colour squares keep
+their assigned colours. Appearance changes follow when the visible list is idle; they leave
+your picks and the workbook unchanged.
+
 ## Find and select sheets
 
 - **Click** anywhere across a row to select it without switching the viewed sheet.
