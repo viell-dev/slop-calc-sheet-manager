@@ -5,16 +5,7 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
-- Measure context-menu construction at 1,000 sheets, retaining Delete safety assertions for an
-  unrelated sheet and both members of a confusable-name pair
-  ([#22](https://github.com/viell-dev/slop-calc-sheet-manager/issues/22)). This adds benchmark
-  evidence without changing the extension or imposing a timing limit.
-- Retain routine Linux headless diagnostics before input starts, preserve runner failures while
-  capturing console output, and stop input after a headless failure
-  ([#152](https://github.com/viell-dev/slop-calc-sheet-manager/issues/152)). The CI timeout and
-  required success gate remain unchanged.
-
-## 0.0.9 - 2026-11-08
+## 0.0.9 - 2026-11-01
 
 Third beta towards the stable release 0.1.0, following 0.0.8. It improves the sheet list's
 appearance and accessibility, and refuses a Delete that Calc cannot safely undo. Requires
@@ -49,6 +40,11 @@ Regression checks also exercise identifying-cell view restoration and guarded De
 both measured confusable-name pairs
 ([#128](https://github.com/viell-dev/slop-calc-sheet-manager/issues/128),
 [#145](https://github.com/viell-dev/slop-calc-sheet-manager/issues/145)).
+The 1,000-sheet checks also measure context-menu construction and verify Delete safety
+([#22](https://github.com/viell-dev/slop-calc-sheet-manager/issues/22)); routine Linux CI retains
+headless diagnostics before input starts and preserves failed runner status
+([#152](https://github.com/viell-dev/slop-calc-sheet-manager/issues/152)). Its timeout and required
+success gate are unchanged.
 
 Install the OXT manually over 0.0.8 or an earlier build, restart LibreOffice when asked, and check
 its SHA-256 asset. LibreOffice's Extension Manager offers only stable releases, and there is none
