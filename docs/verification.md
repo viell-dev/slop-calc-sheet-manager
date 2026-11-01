@@ -152,6 +152,14 @@ measurements, not limits:
   at 1,000, across the UNO bridge.
 - `test_sheet_list.py:measure_large_workbook`: list opening and tab following at 1,000 sheets.
   Activation settles selection/model rebuilding before the separate tab-only measurement.
+  Menu construction records three consecutive `SheetMenu.build` samples with unique names,
+  then an unrelated pick and each member of a `ﬁ`/`fi` pair at the last two indices. Delete stays
+  enabled for the unrelated sheet and refuses either collision member, without changing sheet
+  order, viewed sheet, grouped tabs, undo/redo history, modified state or the identifying cell.
+  These are external test-client UNO wall times, with snapshots, setup, assertions and cleanup
+  excluded; they do not measure in-process popup display or input latency. There is no warm-up,
+  sample selection or timing threshold. Results are retained under `large_workbook.menu_build`
+  in the integration session's JSON; its enclosing result identifies the office and platform.
   Property-driven rebuild cost remains tracked in
   [#22](https://github.com/viell-dev/slop-calc-sheet-manager/issues/22).
 

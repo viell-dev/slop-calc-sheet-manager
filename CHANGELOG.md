@@ -5,6 +5,11 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Measure context-menu construction at 1,000 sheets, retaining Delete safety assertions for an
+  unrelated sheet and both members of a confusable-name pair
+  ([#22](https://github.com/viell-dev/slop-calc-sheet-manager/issues/22)). This adds benchmark
+  evidence without changing the extension or imposing a timing limit.
+
 ## 0.0.9 - 2026-11-08
 
 Third beta towards the stable release 0.1.0, following 0.0.8. It improves the sheet list's
