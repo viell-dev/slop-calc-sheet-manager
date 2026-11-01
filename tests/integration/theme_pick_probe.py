@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import run as integration
+from extension_input_trace import instrument_package
 from input_trace import configure
 
 MODES = (False, True, True, False, False, True, True, False)
@@ -30,6 +31,10 @@ def main():
     package = arguments.oxt.resolve()
     output = arguments.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
+    source_checksum = hashlib.sha256(package.read_bytes()).hexdigest()
+    diagnostic_package = output / "extension-input-probe.oxt"
+    instrument_package(package, diagnostic_package)
+    package = diagnostic_package
     sys.path.insert(0, str(package) + "/pythonpath")
     import test_accessibility
     import test_adapter_failures
@@ -41,6 +46,8 @@ def main():
         "run_complete": False,
         "assertions_passed": False,
         "package_sha256": hashlib.sha256(package.read_bytes()).hexdigest(),
+        "source_package_sha256": source_checksum,
+        "diagnostic_package": package.name,
         "planned_observer_modes": MODES,
         "cases": cases,
     }
