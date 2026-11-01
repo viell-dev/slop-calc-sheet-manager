@@ -1,7 +1,8 @@
 """Retain existing public-UNO observations at a failed input poll (#160).
 
-Record only values the fixture already read or posted: never make a UNO call, add a wait or
-retry input here. The bounded trace is diagnostic evidence, not a history of sheet identities.
+Record scalars from existing fixture reads/posts or native event callbacks: never make a UNO
+call, add a wait or retry input here. The bounded trace is diagnostic evidence, not a history of
+sheet identities. Detailed failure-only state is supplied by the caller after its poll fails.
 Failure to write diagnostics must preserve the original assertion.
 Proxy IDs distinguish retained test proxies only; they are not native window identities.
 """
@@ -35,12 +36,25 @@ def record(kind: str, window: int, **values: Any) -> None:
         )
 
 
-def retain(failure: BaseException) -> None:
+def events_for(window: int) -> list[dict[str, Any]]:
+    return [entry for entry in list(_entries) if entry["window_proxy_id"] == window]
+
+
+def retain(failure: BaseException, details: object = None) -> None:
     if _path is None:
         return
     try:
         _path.write_text(
-            json.dumps({"failure": str(failure), "events": list(_entries)}, indent=2) + "\n",
+            json.dumps(
+                {
+                    "failure": str(failure),
+                    "failure_notes": getattr(failure, "__notes__", []),
+                    "events": list(_entries),
+                    "details": details,
+                },
+                indent=2,
+            )
+            + "\n",
             encoding="utf-8",
         )
     except Exception as error:

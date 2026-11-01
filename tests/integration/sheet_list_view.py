@@ -3,6 +3,9 @@
 The panel's ``XPanel.getDialog()`` window holds the list's tree control as a child; the tree's
 nodes carry the sheet names. No test hook exists in the extension.
 Input polls retain the fixtures' existing reads/posts through ``input_trace`` on failure (#160).
+Opt-in input listeners record scalar delivery/selection events only. Install them before
+fixture cleanup, never as extra state reads immediately before a click. Detailed reads run only
+after a failed poll; callback failures must not replace that assertion.
 """
 
 import threading
@@ -10,14 +13,62 @@ import time
 import traceback
 
 import unohelper
-from com.sun.star.awt import XCallback
+from com.sun.star.awt import XCallback, XMouseListener
 from com.sun.star.lang import IllegalArgumentException
+from com.sun.star.view import XSelectionChangeListener
 from input_trace import record, retain
 from teardown import record_stalled_callback
 
 DECK = "SheetManagerDeck"
 PANEL = "SheetManagerPanel"
 TREE = "com.sun.star.awt.tree.XTreeControl"
+
+
+class _InputObservations(unohelper.Base, XMouseListener, XSelectionChangeListener):
+    def __init__(self, proxy_id):
+        self.proxy_id = proxy_id
+
+    def _mouse(self, kind, event):
+        record(
+            kind,
+            self.proxy_id,
+            observer_id=id(self),
+            point=[event.X, event.Y],
+            buttons=event.Buttons,
+            modifiers=event.Modifiers,
+            clicks=event.ClickCount,
+        )
+
+    def mousePressed(self, e):
+        self._mouse("delivered_mouse_press", e)
+
+    def mouseReleased(self, e):
+        self._mouse("delivered_mouse_release", e)
+
+    def mouseEntered(self, e):
+        pass
+
+    def mouseExited(self, e):
+        pass
+
+    def selectionChanged(self, aEvent):
+        record("native_selection_changed", self.proxy_id, observer_id=id(self))
+
+    def disposing(self, Source):
+        record("input_observer_disposed", self.proxy_id, observer_id=id(self))
+
+
+def observe_input(tree):
+    observer = _InputObservations(id(tree))
+    for name, attach in (
+        ("mouse", lambda: tree.addMouseListener(observer)),
+        ("selection", lambda: tree.addSelectionChangeListener(observer)),
+    ):
+        try:
+            attach()
+            record("input_observer_attached", id(tree), observer=name, observer_id=id(observer))
+        except Exception as error:
+            record("input_observer_unavailable", id(tree), observer=name, error=repr(error))
 
 
 class _OnMain(unohelper.Base, XCallback):
@@ -132,7 +183,7 @@ def release(document, lock):
     _wrapper(document, lock)[1]()
 
 
-def poll(function, description, timeout=20):
+def poll(function, description, timeout=20, *, on_failure=None):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         result = function()
@@ -140,7 +191,13 @@ def poll(function, description, timeout=20):
             return result
         time.sleep(0.1)
     failure = AssertionError(f"Timed out waiting for {description}")
-    retain(failure)
+    details = None
+    if on_failure is not None:
+        try:
+            details = on_failure()
+        except Exception as error:
+            failure.add_note(f"Reading failure-only input details also failed: {error!r}")
+    retain(failure, details)
     raise failure
 
 
@@ -173,7 +230,7 @@ def footer_text(panel, help_prefix):
     return fields[0]
 
 
-def open_list(context, document):
+def open_list(context, document, *, trace_input=False):
     """Show the deck for this document and return its panel window and tree control."""
     frame = document.getCurrentController().getFrame()
     frame.activate()
@@ -184,6 +241,8 @@ def open_list(context, document):
     deck = document.getCurrentController().getSidebar().getDecks().getByName(DECK)
     panel = poll(lambda: deck.getPanels().getByName(PANEL).getDialog(), "the panel window")
     tree = poll(lambda: tree_of(panel), "the sheet list's tree control")
+    if trace_input:
+        observe_input(tree)
     return panel, tree
 
 

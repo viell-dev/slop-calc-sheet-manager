@@ -3,10 +3,12 @@
 Only public native panel peers are observed. Configuration changes stay in the runner's private
 profile and are restored before other suites run. Painted label/background pixels are covered
 by the corresponding real-input check; these assertions alone do not establish native painting.
-Keep the original initial-click sequence: input_trace records existing reads/posts without
-adding pre-click UNO observations that could mask a setup race (#160).
+Input listeners are attached before fixture cleanup, with the accessibility suite as a delivery
+control. Take detailed state only after a failed initial pick, never between cleanup and click
+(#160). A passing observed run does not establish a fix for the unobserved failure.
 """
 
+from input_trace import events_for
 from main_thread import close_after
 from sheet_list_view import names, on_main_thread, open_list, poll, root, row_point, selection
 from teardown import Configured
@@ -14,6 +16,42 @@ from test_sheet_list import Robot
 
 from sheet_manager.theme import contrast, text_color
 from sheet_manager.uno_calc import prop, selected_tabs
+
+
+def failed_pick_details(context, document, tree, point):
+    controller = document.CurrentController
+    frame = controller.Frame
+    bounds = tree.getPosSize()
+    model = root(tree)
+    target = tree.getNodeForLocation(*point)
+    rectangles = []
+    if model is not None:
+        for index in range(model.getChildCount()):
+            node = model.getChildAt(index)
+            rect = tree.getNodeRect(node)
+            rectangles.append([node.DataValue, rect.X, rect.Y, rect.Width, rect.Height])
+    return {
+        "stage": "initial_theme_pick",
+        "point": point,
+        "target_now": target.DataValue if target is not None else None,
+        "rows": names(tree),
+        "selection": selection(tree, names(tree)),
+        "rectangles": rectangles,
+        "bounds": [bounds.X, bounds.Y, bounds.Width, bounds.Height],
+        "visible": tree.isVisible(),
+        "enabled": tree.isEnabled(),
+        "focus": tree.hasFocus(),
+        "frame_active": frame.isActive(),
+        "frame_is_active_top_window": tree.getToolkit().getActiveTopWindow()
+        == frame.ContainerWindow,
+        "viewed": controller.ActiveSheet.Name,
+        "tabs": selected_tabs(context, controller),
+        "controllers_locked": document.hasControllersLocked(),
+        "actions_locked": document.isActionLocked(),
+        "undo_locked": document.UndoManager.isLocked(),
+        "undo_enabled": document.IsUndoEnabled,
+        "modify_notifications_enabled": document.isSetModifiedEnabled(),
+    }
 
 
 def color_settings(context):
@@ -63,14 +101,21 @@ def check_document_colors(context, desktop):
         sheets.insertNewByName("Charlie", 2)
         for index, name in enumerate(("Alfa", "Bravo", "Charlie")):
             sheets.getByIndex(index).getCellRangeByName("A1").String = name
-        panel, tree = open_list(context, document)
+        panel, tree = open_list(context, document, trace_input=True)
         poll(lambda: names(tree) == ["Alfa", "Bravo", "Charlie"], "the theme fixture rows")
         toolkit = panel.getToolkit()
         document.UndoManager.clear()
         document.setModified(False)
         on_main_thread(context, toolkit.processEventsToIdle)
-        Robot(context).click(tree, row_point(tree, 1))
-        poll(lambda: selection(tree, names(tree)) == ["Bravo"], "the independent Bravo pick")
+        robot = Robot(context)
+        point = row_point(tree, 1)
+        robot.click(tree, point)
+        poll(
+            lambda: selection(tree, names(tree)) == ["Bravo"],
+            "the independent Bravo pick",
+            on_failure=lambda: failed_pick_details(context, document, tree, point),
+        )
+        initial_input = events_for(id(tree))
         model = root(tree)
         assert model is not None
         row_height = tree.getNodeRect(model.getChildAt(0)).Height
@@ -155,6 +200,7 @@ def check_document_colors(context, desktop):
         raise
     close_after(context, document)
     return {
+        "initial_input": initial_input,
         "palettes": evidence,
         "native_selection_kept": True,
         "model_input_and_document_kept": True,

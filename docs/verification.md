@@ -52,8 +52,12 @@ linked in #145. A standalone focused Mac run cannot replace the complete exact-r
 A focused [human usability pass](./manual-tests.md) remains a separate release requirement.
 Failed integration input polls also retain a bounded trace of the fixtures' existing selection
 reads, row coordinates and posted pointer actions, without extra UNO reads, waits or retries
-([#160](https://github.com/viell-dev/slop-calc-sheet-manager/issues/160)). The theme fixture keeps
-its original click sequence; additional pre-click observations could mask a setup race.
+([#160](https://github.com/viell-dev/slop-calc-sheet-manager/issues/160)). The accessibility and
+theme fixtures can also record delivered mouse and selection events without making UNO calls
+from listeners. Successful theme results keep the initial input trace too. Observers attach
+before fixture cleanup; detailed theme state is read only after a failed pick. Passing an
+observed run does not explain an older
+unobserved failure, and unavailable observers are identified in the trace.
 Completed suites and rename benchmark cases are saved incrementally so an external timeout
 retains partial evidence; `run_complete` distinguishes the final result from partial checkpoints.
 The macOS helper records its owned process group on timeout and runs
