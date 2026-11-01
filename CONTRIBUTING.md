@@ -362,6 +362,13 @@ cadence above. Coverage is Intel macOS 15 headless packaged integration and life
 runner requesting `svp`. Aqua rendering, real OS keyboard/mouse input, screen readers, Apple
 Silicon, GUI installation/update and upgrades from published builds on macOS are not established.
 
+For the unresolved initial theme pick in #160, `-f theme_pick_probe=true` instead runs eight
+fixed cases in fresh office profiles: original, observed, observed, original, repeated once.
+Each repeats the normal panel/accessibility/adapter prefix. Every outcome is retained; an
+initial-pick failure allows the remaining measurements but fails the command after all eight.
+Unexpected failures and unclean shutdowns stop it. This investigation is marked explicitly in
+the host/probe receipts and cannot replace integration, lifecycle or a full release sweep.
+
 ### Soak painted sessions
 
 Run the **Painted gtk3 soak** workflow manually with `sessions` between 1 and 100 (default 20).

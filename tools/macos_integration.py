@@ -11,6 +11,7 @@ Keep the workflow timeout above the commands' combined budgets, including cleanu
 Every failure, including diagnostic collection, leaves the host result marked unsuccessful.
 """
 
+import argparse
 import hashlib
 import json
 import os
@@ -278,6 +279,13 @@ def collect_reports(app: Path, output: Path, preceding: set[Path]) -> list[str]:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--theme-pick-probe",
+        action="store_true",
+        help="Investigate eight fixed input cases instead of running release integration",
+    )
+    arguments = parser.parse_args()
     output = ROOT / "test-results/macos"
     output.mkdir(parents=True, exist_ok=True)
     environment = {
@@ -300,6 +308,7 @@ def main() -> None:
         "assertions_passed": False,
         "platform": platform.platform(),
         "architecture": platform.machine(),
+        "investigation_only": arguments.theme_pick_probe,
     }
     try:
         if sys.platform != "darwin" or os.environ.get("GITHUB_ACTIONS") != "true":
@@ -361,13 +370,16 @@ def main() -> None:
                 run(
                     [
                         str(wrapper),
-                        str(ROOT / "tests/integration/run.py"),
+                        str(
+                            ROOT
+                            / "tests/integration"
+                            / ("theme_pick_probe.py" if arguments.theme_pick_probe else "run.py")
+                        ),
                         "--program",
                         str(program),
                         "--oxt",
                         str(packages[0]),
-                        "--sessions",
-                        "headless",
+                        *([] if arguments.theme_pick_probe else ["--sessions", "headless"]),
                         "--output",
                         str(output / "integration"),
                     ],

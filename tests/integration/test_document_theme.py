@@ -86,7 +86,7 @@ def check_selection_colors(style, source, background):
         assert contrast(*actual) >= 4.5
 
 
-def check_document_colors(context, desktop):
+def check_document_colors(context, desktop, *, trace_input=True):
     settings = color_settings(context)
     scheme = scheme_of(settings)
     original = tuple(
@@ -101,7 +101,7 @@ def check_document_colors(context, desktop):
         sheets.insertNewByName("Charlie", 2)
         for index, name in enumerate(("Alfa", "Bravo", "Charlie")):
             sheets.getByIndex(index).getCellRangeByName("A1").String = name
-        panel, tree = open_list(context, document, trace_input=True)
+        panel, tree = open_list(context, document, trace_input=trace_input)
         poll(lambda: names(tree) == ["Alfa", "Bravo", "Charlie"], "the theme fixture rows")
         toolkit = panel.getToolkit()
         document.UndoManager.clear()

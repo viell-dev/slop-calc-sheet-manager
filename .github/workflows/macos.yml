@@ -1,8 +1,13 @@
 name: macOS integration
 
-# Focused on-demand investigation; release-sweep.yml requires the same packaged lane.
+# Default packaged integration matches the sweep; the optional probe is investigation only.
 on:
   workflow_dispatch:
+    inputs:
+      theme_pick_probe:
+        description: "Investigate eight paired initial-pick cases (not release evidence)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -13,7 +18,8 @@ concurrency:
 
 jobs:
   macos:
-    name: macOS Intel packaged integration
+    name: >-
+      ${{ inputs.theme_pick_probe && 'macOS initial pick investigation' || 'macOS Intel packaged integration' }}
     runs-on: macos-15-intel
     # Allow room for native controls, command budgets, cleanup and artifact upload.
     timeout-minutes: 60
@@ -31,11 +37,18 @@ jobs:
           ditto -h || true
           curl --help
       - name: Install privately and run with the bundled PyUNO interpreter
-        run: python3 tools/macos_integration.py
+        env:
+          THEME_PICK_PROBE: ${{ inputs.theme_pick_probe }}
+        run: |
+          if [ "$THEME_PICK_PROBE" = "true" ]; then
+            python3 tools/macos_integration.py --theme-pick-probe
+          else
+            python3 tools/macos_integration.py
+          fi
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
-          name: macos-integration
+          name: ${{ inputs.theme_pick_probe && 'macos-theme-pick-probe' || 'macos-integration' }}
           path: |
             test-results/macos/
             dist/
