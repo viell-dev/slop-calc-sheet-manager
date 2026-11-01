@@ -4,6 +4,9 @@ Keep the application in this job's temporary directory, never /Applications. Ver
 before mounting it, use LibreOffice's own Python wrapper, and let the existing runner own every
 profile/process and assertion. A prepared lane is not macOS coverage until its native run passes.
 Each command owns a new process group; timeout cleanup stops it before removing the application.
+Darwin can refuse signals to zombie-only groups; verify member states before accepting that
+case. Never reap the leader before signalling/draining its group, or signal it after reaping.
+An unverified cleanup retains the private directory. Native controls exercise both TERM and KILL.
 Keep the workflow timeout above the commands' combined budgets, including cleanup and upload.
 Every failure, including diagnostic collection, leaves the host result marked unsuccessful.
 """
@@ -20,11 +23,104 @@ import sys
 import tempfile
 import time
 import traceback
-from contextlib import suppress
+from collections.abc import Generator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+class GroupCleanupError(RuntimeError):
+    """A private command group could not be proved stopped; retain its application."""
+
+
+def group_members(group: int) -> list[dict[str, Any]]:
+    result = subprocess.run(
+        ["/bin/ps", "-axo", "pid=,pgid=,stat=,uid=,comm="],
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=5,
+    )
+    members: list[dict[str, Any]] = []
+    for line in result.stdout.splitlines():
+        fields = line.split(None, 4)
+        if len(fields) != 5:
+            raise ValueError(f"Unexpected process-state row: {line!r}")
+        pid, pgid, state, uid, command = fields
+        if int(pgid) == group:
+            members.append(
+                {
+                    "pid": int(pid),
+                    "pgid": int(pgid),
+                    "state": state,
+                    "uid": int(uid),
+                    "command": command,
+                }
+            )
+    return members
+
+
+def live_members(members: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [member for member in members if not str(member["state"]).startswith("Z")]
+
+
+def signal_group(group: int, sig: int, receipt: dict[str, Any]) -> None:
+    if sys.platform != "darwin":
+        raise RuntimeError("Private process-group signals require macOS")
+    try:
+        os.killpg(group, sig)
+    except ProcessLookupError:
+        receipt.setdefault("absent_at_signal", []).append(sig)
+    except PermissionError:
+        members = group_members(group)
+        receipt.setdefault("permission_at_signal", []).append({"signal": sig, "members": members})
+        if live_members(members):
+            raise
+
+
+def stop_group(process: subprocess.Popen[Any], receipt: dict[str, Any]) -> None:
+    if sys.platform != "darwin":
+        raise RuntimeError("Private process-group cleanup requires macOS")
+    try:
+        receipt["before"] = group_members(process.pid)
+    except Exception as error:
+        receipt["before_error"] = repr(error)  # A diagnostic failure cannot prevent the stop.
+    signal_group(process.pid, signal.SIGTERM, receipt)
+    time.sleep(0.5)
+    signal_group(process.pid, signal.SIGKILL, receipt)
+    deadline = time.monotonic() + 5
+    while True:
+        members = group_members(process.pid)
+        receipt["after_signals"] = members
+        if not live_members(members):
+            break
+        if time.monotonic() >= deadline:
+            raise TimeoutError("Private process-group members remain alive after SIGKILL")
+        time.sleep(0.05)
+    process.wait(timeout=5)  # Reap only after the group is stopped. Never signal this ID again.
+    receipt["cleanup_succeeded"] = True
+
+
+@contextmanager
+def private_directory(parent: str) -> Generator[Path, None, None]:
+    manager = tempfile.TemporaryDirectory(prefix="sheet-manager-macos-", dir=parent, delete=False)
+    try:
+        yield Path(manager.name).resolve()
+    except BaseException as failure:
+        cause: BaseException | None = failure
+        while cause is not None and not isinstance(cause, GroupCleanupError):
+            cause = cause.__context__
+        if cause is not None:
+            failure.add_note(
+                f"Unverified process cleanup: retained private directory {manager.name}"
+            )
+        else:
+            manager.cleanup()
+        raise
+    else:
+        manager.cleanup()
 
 
 def checked_binary(app: Path, path: Path) -> Path:
@@ -51,20 +147,74 @@ def run(command: list[str], log: Path, environment: dict[str, str], timeout: int
         )
         try:
             process.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            # The integration client's office processes inherit this private process group.
-            # Stop that group before TemporaryDirectory can remove the live application.
-            with suppress(ProcessLookupError):
-                os.killpg(process.pid, signal.SIGTERM)
-            # Keep the group leader unreaped until the final signal, so its PID cannot be
-            # reused for an unrelated group. Children may outlive a terminated client.
-            time.sleep(0.5)
-            with suppress(ProcessLookupError):
-                os.killpg(process.pid, signal.SIGKILL)
-            process.wait(timeout=5)
+        except subprocess.TimeoutExpired as failure:
+            receipt: dict[str, Any] = {
+                "command": command,
+                "group": process.pid,
+                "timeout_seconds": timeout,
+                "cleanup_succeeded": False,
+            }
+            cleanup_error = None
+            try:
+                stop_group(process, receipt)
+            except Exception as error:
+                cleanup_error = error
+                receipt["cleanup_error"] = repr(error)
+            try:
+                log.with_suffix(".timeout.json").write_text(
+                    json.dumps(receipt, indent=2) + "\n", encoding="utf-8"
+                )
+            except Exception as error:
+                failure.add_note(f"Retaining timeout diagnostics also failed: {error!r}")
+            if cleanup_error is not None:
+                raise GroupCleanupError(
+                    f"Private group {process.pid} cleanup failed: {cleanup_error}"
+                ) from failure
             raise
         if process.returncode:
             raise subprocess.CalledProcessError(process.returncode, command)
+
+
+def timeout_controls(output: Path, environment: dict[str, str]) -> None:
+    """Prove native stopped-group handling before running an installed application."""
+    controls = {}
+    for name, source in (
+        ("term", "import time; print('term-ready', flush=True); time.sleep(60)"),
+        (
+            "kill",
+            "import signal,subprocess,sys,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+            "subprocess.Popen([sys.executable, '-c', "
+            "'import signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+            'print("kill-child-ready", flush=True); time.sleep(60)\']); '
+            "print('kill-parent-ready', flush=True); "
+            "time.sleep(60)",
+        ),
+    ):
+        log = output / f"timeout-control-{name}.log"
+        try:
+            run([sys.executable, "-c", source], log, environment, timeout=5)
+        except subprocess.TimeoutExpired as failure:
+            receipt = json.loads(log.with_suffix(".timeout.json").read_text("utf-8"))
+            if receipt["cleanup_succeeded"] is not True or live_members(receipt["after_signals"]):
+                raise AssertionError(
+                    f"The {name} timeout control left an unverified group"
+                ) from failure
+            expected = (
+                ["term-ready"] if name == "term" else ["kill-parent-ready", "kill-child-ready"]
+            )
+            text = log.read_text("utf-8")
+            if not all(marker in text for marker in expected) or len(
+                live_members(receipt["before"])
+            ) < len(expected):
+                raise AssertionError(
+                    f"The {name} timeout control did not finish setup"
+                ) from failure
+            controls[name] = receipt
+        else:
+            raise AssertionError(f"The {name} timeout control did not fail at its deadline")
+    (output / "timeout-controls.json").write_text(
+        json.dumps(controls, indent=2) + "\n", encoding="utf-8"
+    )
 
 
 def install(
@@ -142,12 +292,10 @@ def main() -> None:
         result["pin"] = pin
         if platform.machine() != pin["architecture"]:
             raise SystemExit(f"Expected {pin['architecture']}, got {platform.machine()}")
+        timeout_controls(output, environment)
         reports = Path.home() / "Library/Logs/DiagnosticReports"
         preceding = set(reports.glob("*"))
-        with tempfile.TemporaryDirectory(
-            prefix="sheet-manager-macos-", dir=os.environ["RUNNER_TEMP"]
-        ) as directory:
-            temporary = Path(directory).resolve()
+        with private_directory(os.environ["RUNNER_TEMP"]) as temporary:
             image = temporary / "libreoffice.dmg"
             run(
                 [

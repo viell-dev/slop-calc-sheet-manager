@@ -29,6 +29,7 @@ gtk3 saves a screenshot.
 #   handles that restart once, only before connecting UNO, and keeps the initialization trace.
 #   Never extend this startup handling into retrying test assertions or shutdown failures.
 # - Failed input polls retain only existing fixture reads/posts, without extra UNO calls (#160).
+# - Save completed suites as they finish: an external timeout can bypass Python finally (#162).
 
 import argparse
 import importlib.util
@@ -782,6 +783,7 @@ def main():
         "crash-*.dmp",
         "crash-*-dump.ini",
         "reorder-performance*.json",
+        "rename-performance*.json",
     ):
         for artifact in output.glob(pattern):
             artifact.unlink()
@@ -791,6 +793,10 @@ def main():
     # Add once for all sessions; feature suites exercise packaged modules, not src/.
     sys.path.insert(0, str(package) + "/pythonpath")
     results: list[dict[str, object]] = []
+
+    def checkpoint() -> None:
+        (output / "results.json").write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8")
+
     try:
         if arguments.expect_refusal:
             results.append(check_refusal(program, package, output))
@@ -802,6 +808,8 @@ def main():
                     "extension_installed": not arguments.without_extension,
                 }
                 results.append(result)
+                durations: dict[str, float] = {}
+                result["suite_seconds"] = durations
                 with office_session(
                     program,
                     None if arguments.without_extension else package,
@@ -815,9 +823,12 @@ def main():
                     if arguments.without_extension:
                         result.update(exercise_without_extension(context, desktop, directory))
                     else:
+                        started = time.monotonic()
                         result.update(
                             exercise(context, desktop, directory, output, screenshot=not headless)
                         )
+                        durations["panel"] = round(time.monotonic() - started, 3)
+                        checkpoint()
                         if arguments.suites == "all":
                             for suite_path in sorted(
                                 Path(__file__).parent.glob("test_*.py"), key=suite_order
@@ -836,10 +847,19 @@ def main():
                                     if "headless" in inspect.signature(suite.exercise).parameters
                                     else {}
                                 )
+                                started = time.monotonic()
+                                print(f"integration phase: {suite_path.stem} started", flush=True)
                                 suite_result = suite.exercise(
                                     context, desktop, directory, output, **options
                                 )
                                 result[suite_path.stem] = suite_result
+                                durations[suite_path.stem] = round(time.monotonic() - started, 3)
+                                checkpoint()
+                                print(
+                                    f"integration phase: {suite_path.stem} passed in "
+                                    f"{durations[suite_path.stem]} seconds",
+                                    flush=True,
+                                )
                                 if "performance" in suite_result:
                                     mode = "headless" if headless else "gtk3"
                                     (output / f"reorder-performance-{mode}.json").write_text(
@@ -853,7 +873,7 @@ def main():
                 results.append({"lifecycle": lifecycle})
                 check_lifecycle(program, package, output / "lifecycle", lifecycle)
     finally:
-        (output / "results.json").write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8")
+        checkpoint()
     print(json.dumps(results, indent=2))
 
 

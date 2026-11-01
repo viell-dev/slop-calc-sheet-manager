@@ -55,6 +55,11 @@ failure, without retrying the click, to investigate the macOS pick timeout
 ([#160](https://github.com/viell-dev/slop-calc-sheet-manager/issues/160)).
 Failed integration input polls also retain a bounded trace of the fixtures' existing selection
 reads, row coordinates and posted pointer actions, without extra UNO reads, waits or retries.
+Completed suites and rename benchmark cases are saved incrementally so an external timeout
+retains partial evidence. The macOS helper records its owned process group on timeout and runs
+native TERM/KILL controls before installing the app; a zombie-only signalling refusal is accepted
+only after reading member states. Unverified cleanup retains the private directory and fails
+([#162](https://github.com/viell-dev/slop-calc-sheet-manager/issues/162)).
 
 ## Installation, packaging and publication
 

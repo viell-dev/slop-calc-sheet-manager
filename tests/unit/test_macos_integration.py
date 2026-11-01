@@ -163,6 +163,7 @@ def native_commands_stubbed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
 
     monkeypatch.setattr(cli, "checked_binary", binary)
     monkeypatch.setattr(cli, "collect_reports", Mock(return_value=[]))
+    monkeypatch.setattr(cli, "timeout_controls", Mock())
 
     def run(command: list[str], log: Path, environment: dict[str, str], timeout: int = 120) -> None:
         log.write_text("LibreOffice 26.8.2.2" if log.name == "office-version.txt" else "", "utf-8")
@@ -236,7 +237,72 @@ def test_timeout_stops_only_the_new_private_process_group_before_propagating_fai
     monkeypatch.setattr(cli.subprocess, "Popen", popen)
     monkeypatch.setattr(cli.os, "killpg", kill)
     monkeypatch.setattr(cli.time, "sleep", Mock())
+    monkeypatch.setattr(cli, "group_members", Mock(return_value=[{"state": "Z"}]))
     with pytest.raises(subprocess.TimeoutExpired):
         cli.run(["client"], tmp_path / "client.log", {}, timeout=1)
     assert popen.call_args.kwargs["start_new_session"] is True
     assert kill.call_args_list == [((47123, signal.SIGTERM),), ((47123, signal.SIGKILL),)]
+
+
+@pytest.mark.parametrize("state", ["Z", "S"])
+def test_permission_error_is_accepted_only_for_a_proved_stopped_group(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, state: str
+) -> None:
+    if sys.platform == "win32":
+        pytest.skip("The installer executes only on macOS/POSIX")
+    monkeypatch.setattr(cli.sys, "platform", "darwin")
+    timeout = subprocess.TimeoutExpired(["client"], 1)
+    process = Mock(pid=47123)
+    process.wait.side_effect = [timeout, None]
+    monkeypatch.setattr(cli.subprocess, "Popen", Mock(return_value=process))
+    monkeypatch.setattr(
+        cli.os, "killpg", Mock(side_effect=[None, PermissionError("refused")]), raising=False
+    )
+    monkeypatch.setattr(cli.time, "sleep", Mock())
+    monkeypatch.setattr(cli, "group_members", Mock(return_value=[{"state": state}]))
+    expected = subprocess.TimeoutExpired if state == "Z" else cli.GroupCleanupError
+    with pytest.raises(expected) as raised:
+        cli.run(["client"], tmp_path / "client.log", {}, timeout=1)
+    receipt = json.loads((tmp_path / "client.timeout.json").read_text("utf-8"))
+    assert receipt["cleanup_succeeded"] is (state == "Z")
+    if state == "Z":
+        assert raised.value is timeout
+    else:
+        assert raised.value.__cause__ is timeout
+        assert process.wait.call_count == 1, "A live group leader must stay unreaped"
+
+
+def test_process_snapshot_keeps_only_members_of_the_owned_group(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    command = Mock(
+        return_value=subprocess.CompletedProcess(
+            [],
+            0,
+            "42 42 S 501 /private/python\n43 42 Z 501 /private/office\n99 99 S 501 /other/app\n",
+        )
+    )
+    monkeypatch.setattr(cli.subprocess, "run", command)
+    members = cli.group_members(42)
+    assert [member["pid"] for member in members] == [42, 43]
+    assert [member["pid"] for member in cli.live_members(members)] == [42]
+
+
+@pytest.mark.parametrize("unsafe", [False, True])
+def test_private_application_is_retained_only_when_process_cleanup_is_unverified(
+    tmp_path: Path, unsafe: bool
+) -> None:
+    with pytest.raises(RuntimeError), cli.private_directory(str(tmp_path)) as directory:
+        (directory / "owned-app").write_text("fixture", encoding="utf-8")
+        if unsafe:
+            raise cli.GroupCleanupError("live child remains")
+        raise RuntimeError("ordinary command failure")
+    assert directory.exists() is unsafe
+
+
+def test_native_control_cannot_accept_a_command_that_did_not_time_out(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(cli, "run", Mock())
+    with pytest.raises(AssertionError, match="did not fail at its deadline"):
+        cli.timeout_controls(tmp_path, {})
