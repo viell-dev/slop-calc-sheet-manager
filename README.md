@@ -41,8 +41,9 @@ separately from the list's own picks. It includes:
 - one undo step per change, and respect for protected and read-only documents.
 
 Sheet Manager is written and maintained by AI agents, and no person reviews the code. A change is
-accepted on its tests and on CI against real LibreOffice builds on Linux and Windows. Changes are
-independently reviewed where another agent's perspective adds confidence; every release PR gets a
+accepted on its tests and current Linux CI. Broader Linux and Windows checks run in a manual
+release sweep before publication. Changes are independently reviewed where another agent's
+perspective adds confidence; every release PR gets a
 review of all changes since the previous release. [AGENTS.md](AGENTS.md) holds the agents' rules
 for this project. Before the first stable release and after substantial interface or workflow
 changes, a person also tries the product; [RELEASING.md](RELEASING.md#human-release-testing)
@@ -60,9 +61,10 @@ describes that gate and how its results are tracked.
 
 | Environment                                                                       | Status                                             |
 | --------------------------------------------------------------------------------- | -------------------------------------------------- |
-| Linux x86-64, libreoffice.org 26.2.1.2, 26.2.6.3, and 26.8.2.2: headless and gtk3 | Verified in CI for every change                    |
-| Windows x86-64, libreoffice.org 26.8.2.2: headless                                | Verified in CI for every change                    |
-| Windows x86-64, libreoffice.org 26.8.2.2: a visible window with real input        | Checked on extension changes; not a required check |
+| Linux x86-64, libreoffice.org 26.8.2.2: headless integration; gtk3/gen real input | Verified in routine CI for every change |
+| Linux x86-64, libreoffice.org 26.2.1.2, 26.2.6.3, and 26.8.2.2: headless/gtk3 integration; gtk3/gen real input | Verified in the manual release sweep before each release |
+| Windows x86-64, libreoffice.org 26.8.2.2: headless | Verified in the manual release sweep before each release |
+| Windows x86-64, libreoffice.org 26.8.2.2: a visible window with real input | Verified in the manual release sweep before each release |
 | Other 26.2 and 26.8 releases, and later versions, from libreoffice.org            | Expected to work, not verified                     |
 | Distribution packages, other interfaces such as kf6 or gtk4, Wayland, macOS       | Expected to work, not verified                     |
 | Flatpak, Snap, and Arm builds                                                     | Expected to work, not verified                     |
@@ -73,8 +75,9 @@ describes that gate and how its results are tracked.
 
 The gtk3 checks run under X11 in a virtual display. The visible Windows checks run on GitHub's
 hosted Windows Server 2025 runners, on one 1024×768 desktop at 96 DPI with the en-US keyboard
-layout, the `win` interface and no screen reader; they are not yet required for merging. If
-Sheet Manager does not work somewhere it is expected to, please
+layout, the `win` interface and no screen reader. They are required in the release sweep, with
+focused manual checks available for investigation. If Sheet Manager does not work somewhere it
+is expected to, please
 [report it](CONTRIBUTING.md#report-a-defect).
 
 ## Install and update

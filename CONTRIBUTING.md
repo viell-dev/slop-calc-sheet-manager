@@ -256,8 +256,9 @@ The painted resize check repeats the initial request if a late maximize changes 
 ([#9](https://github.com/viell-dev/slop-calc-sheet-manager/issues/9)). Keep the one-second delay
 between opening and closing the Writer fixture to avoid its native teardown race
 ([#30](https://github.com/viell-dev/slop-calc-sheet-manager/issues/30)).
-Windows CI and the Windows desktop workflow verify a pinned MSI before silently installing it;
-this installation script is for disposable CI runners, not a contributor's existing installation.
+The release sweep's Windows jobs and the Windows desktop workflow verify a pinned MSI before
+silently installing it; this installation script is for disposable CI runners, not a contributor's
+existing installation.
 
 ### Routine CI and release sweeps
 

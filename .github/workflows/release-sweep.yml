@@ -137,7 +137,7 @@ jobs:
         with:
           name: windows-installer-failure
           path: ${{ runner.temp }}/sheet-manager-msi.log
-          if-no-files-found: error
+          if-no-files-found: warn
 
   desktop:
     name: Windows desktop real input
@@ -184,7 +184,7 @@ jobs:
         with:
           name: windows-desktop-installer-failure
           path: ${{ runner.temp }}/sheet-manager-msi.log
-          if-no-files-found: error
+          if-no-files-found: warn
 
   gate:
     name: Full release sweep

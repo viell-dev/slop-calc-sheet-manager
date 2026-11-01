@@ -117,13 +117,18 @@ def test_package_examples_and_source_version_claims_match_the_manifest_version()
 def test_environment_table_names_the_tested_builds() -> None:
     table = readme_region("environments")
     pins = lanes()
-    linux = next(line for line in table.splitlines() if line.startswith("| Linux x86-64"))
+    linux = [line for line in table.splitlines() if line.startswith("| Linux x86-64")]
+    routine = next(line for line in linux if "routine CI" in line)
+    sweep = next(line for line in linux if "manual release sweep" in line)
+    assert len(linux) == 2, linux
+    assert pins["current-26.8"]["version"] in routine
     for lane in set(pins) - {"unsupported", "windows"}:
-        assert pins[lane]["version"] in linux, lane
+        assert pins[lane]["version"] in sweep, lane
     windows = [line for line in table.splitlines() if line.startswith("| Windows x86-64")]
-    assert len(windows) == 2, windows  # Headless CI, and the visible desktop workflow.
+    assert len(windows) == 2, windows  # Headless and visible desktop sweep lanes.
     for line in windows:
         assert pins["windows"]["version"] in line, line
+        assert "manual release sweep" in line, line
     refused = ".".join(pins["unsupported"]["version"].split(".")[:3])
     assert f"| LibreOffice {refused} and earlier " in table
     assert "<!--@include: ../../README.md#environments-->" in text(
