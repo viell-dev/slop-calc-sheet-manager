@@ -5,6 +5,10 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Reduce routine verification to deterministic checks, documentation and current Linux host/input
+  coverage. Require a separate complete, exact-revision manual sweep before release validation or
+  publication; PR planning previews cannot supply that evidence
+  ([#143](https://github.com/viell-dev/slop-calc-sheet-manager/issues/143)).
 - Refuse Delete Sheet for either of two names Calc confuses: Calc's Undo can otherwise lose the
   deleted sheet. Rename one of them first; the refusal names both sheets
   ([#138](https://github.com/viell-dev/slop-calc-sheet-manager/issues/138)).

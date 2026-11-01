@@ -73,7 +73,7 @@ docker run --rm --network none --mount "type=bind,source=${PWD},target=/work" sh
 This uses digest-pinned Python 3.12.15 and Node images, the latter at the `.nvmrc` version, and
 hash-pinned development tools. It writes caches, test output and `dist/` into the checkout; the
 container is removed on exit. Rebuild the image after changing `requirements-dev.txt`. This checks
-Linux semantics; CI also runs the complete check command on Windows in the Windows integration job.
+Linux semantics; the release sweep also runs the complete check command on Windows.
 
 ## Checks
 
@@ -259,10 +259,30 @@ between opening and closing the Writer fixture to avoid its native teardown race
 Windows CI and the Windows desktop workflow verify a pinned MSI before silently installing it;
 this installation script is for disposable CI runners, not a contributor's existing installation.
 
-`Linux (LibreOffice …)` jobs run the headless checks and `Linux gtk3 (LibreOffice …)` jobs the
-painted checks and the real-input UI tests under Xvfb; both are required for merging. Every job
-fails on any test or shutdown failure and uploads its artifacts; no error message is treated as an
-allowed crash.
+### Routine CI and release sweeps
+
+Every PR and push to `main` runs the two Python check versions, Documentation, and **Linux current**:
+headless integration on the newest tested Linux build followed by GTK3/gen real-input tests under
+Xvfb. The required **Routine CI** aggregate runs even after a dependency fails and refuses missing,
+failed, cancelled or skipped work. Every checkout uses the exact event revision.
+
+**Release sweep** (`.github/workflows/release-sweep.yml`) is manual release-preparation evidence.
+It retains all three pinned Linux builds, headless and painted integration, GTK3/gen input, the
+unsupported-version refusal, Windows headless integration and the complete Windows desktop suite.
+Its **Full release sweep** aggregate requires every lane. Any test or shutdown failure fails the
+job; artifacts are required, and no error message is an allowed crash.
+
+Batch cross-platform sweeps to at most once per week, on demand rather than on every PR. Check the
+recent Actions history and record the chosen revision and last platform run in the release issue
+before dispatch. If that revision changes, its sweep cannot authorize another revision: finish
+independent work and wait for the next planned sweep before releasing. A focused Windows dispatch
+is investigation evidence, not a substitute for the complete sweep.
+
+The full sweep must run on the exact release revision before a manual release dry run or
+publication. A PR's release-planning preview needs routine CI only and is labelled as a preview;
+it cannot authorize publication. See [RELEASING.md](RELEASING.md#prepare-and-dry-run).
+macOS has no established lane yet; [#145](https://github.com/viell-dev/slop-calc-sheet-manager/issues/145)
+tracks that readiness work. No macOS coverage is implied by **Full release sweep**.
 
 ### Visible Windows desktop
 
@@ -283,10 +303,9 @@ The [verification map](docs/verification.md#the-visible-windows-desktop) identif
 checks this workflow runs and the paths it does not cover. Its artifacts establish functional
 behaviour on that desktop; they do not satisfy human usability testing.
 
-It runs on pull requests that change `src/`, `extension/` (which includes release preparation,
-since the version is there), `tests/ui/`, the integration helpers it shares, `tools/build.py`,
-`ci/`, or the workflow itself, and by manual dispatch, whose `checks` input names checks to run,
-separated by spaces. Dispatch it for a branch with
+It runs by manual dispatch for focused investigation; the full release sweep runs all its checks
+for release evidence. The manual `checks` input names checks to run, separated by spaces. Dispatch
+it for a branch with
 `gh workflow run windows-desktop.yml --ref <branch> -f checks="keys_stay_in_list wheel"`.
 
 The `windows-desktop` artifact holds `ui-results.json`, with the desktop the run saw (session,
@@ -303,13 +322,10 @@ Never run the suite on your own computer: its input goes to whatever has the foc
 workflow does, and the runner refuses session 0, a desktop it cannot open for input, and a
 keyboard layout other than en-US.
 
-The workflow is not a required check yet. Its evidence is limited to Windows Server 2025, not
+Desktop evidence is required by the full release sweep. It is limited to Windows Server 2025, not
 Windows 11; one 1024×768 desktop at 96 DPI with the en-US layout; the `win` interface; the
-Windows pin of `ci/libreoffice.json`; and no screen reader or input method. Promote it, by moving
-the job into `ci.yml` and adding its name to the main ruleset's required contexts, once at least
-ten consecutive runs on pull requests have passed, with every failure in between classified from
-its artifacts as a product defect rather than the harness or the runner, and while a run stays
-within about fifteen minutes.
+Windows pin of `ci/libreoffice.json`; and no screen reader or input method. Neither a focused
+manual run nor a full automated sweep satisfies the separate human usability gate.
 
 ### Soak painted sessions
 

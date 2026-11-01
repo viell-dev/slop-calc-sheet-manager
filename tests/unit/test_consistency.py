@@ -15,6 +15,7 @@ from typing import Any, cast
 import yaml
 
 from tools.build import ROOT
+from tools.ci_policy import ROUTINE, SWEEP
 
 DOCS = ROOT / "docs"
 NAMESPACES = {
@@ -140,9 +141,9 @@ def test_identifier_and_feed_agree_everywhere() -> None:
     assert url in text(DOCS / "guide" / "install.md")
 
 
-def ci_job_names() -> set[str]:
+def ci_job_names(filename: str) -> set[str]:
     """The names CI reports for its jobs, with each matrix entry's values filled in."""
-    workflow = yaml.load(text(ROOT / ".github" / "workflows" / "ci.yml"), Loader=yaml.BaseLoader)
+    workflow = yaml.load(text(ROOT / ".github" / "workflows" / filename), Loader=yaml.BaseLoader)
     names: set[str] = set()
     for job in cast(dict[str, dict[str, Any]], workflow["jobs"]).values():
         template = cast(str, job["name"])
@@ -158,11 +159,13 @@ def ci_job_names() -> set[str]:
     return names
 
 
-def test_recorded_ruleset_requires_exactly_the_ci_jobs() -> None:
+def test_recorded_ruleset_requires_the_fail_closed_aggregate_and_job_policies_match() -> None:
     ruleset = json.loads(text(ROOT / ".github" / "rulesets" / "main.json"))
     rule = next(rule for rule in ruleset["rules"] if rule["type"] == "required_status_checks")
     required = {check["context"] for check in rule["parameters"]["required_status_checks"]}
-    assert required == ci_job_names()
+    assert required == {ROUTINE.aggregate}
+    assert ci_job_names(ROUTINE.workflow) == ROUTINE.checks
+    assert ci_job_names(SWEEP.workflow) == SWEEP.checks
     assert rule["parameters"]["strict_required_status_checks_policy"] is False
 
 

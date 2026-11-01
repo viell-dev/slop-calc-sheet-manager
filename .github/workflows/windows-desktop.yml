@@ -2,7 +2,7 @@ name: Windows desktop
 
 # Real keyboard and mouse input to a visible LibreOffice on a GitHub-hosted Windows runner (#114).
 # The runner's job runs in the active console session, where SendInput reaches the office.
-# Not a required check yet; CONTRIBUTING.md and docs/verification.md say what would promote it.
+# Focused manual investigation. Release sweep carries the required full desktop evidence.
 on:
   workflow_dispatch:
     inputs:
@@ -10,19 +10,6 @@ on:
         description: Check names to run, separated by spaces; empty runs them all
         required: false
         default: ""
-  pull_request:
-    paths:
-      - "src/**"
-      - "extension/**"
-      - "tests/ui/**"
-      - "tests/integration/run.py"
-      - "tests/integration/main_thread.py"
-      - "tests/integration/office_process.py"
-      - "tests/integration/sheet_list_view.py"
-      - "tests/integration/teardown.py"
-      - "tools/build.py"
-      - "ci/**"
-      - ".github/workflows/windows-desktop.yml"
 
 permissions:
   contents: read
@@ -42,6 +29,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - name: Install the pinned LibreOffice MSI
         run: ./ci/install-windows.ps1

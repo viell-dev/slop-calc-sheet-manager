@@ -39,47 +39,7 @@
         "strict_required_status_checks_policy": false,
         "required_status_checks": [
           {
-            "context": "Checks (Python 3.12)",
-            "integration_id": 15368
-          },
-          {
-            "context": "Checks (Python 3.14)",
-            "integration_id": 15368
-          },
-          {
-            "context": "Documentation",
-            "integration_id": 15368
-          },
-          {
-            "context": "Linux (LibreOffice 26.2.1)",
-            "integration_id": 15368
-          },
-          {
-            "context": "Linux (LibreOffice 26.2 latest)",
-            "integration_id": 15368
-          },
-          {
-            "context": "Linux (LibreOffice 26.8 latest)",
-            "integration_id": 15368
-          },
-          {
-            "context": "Linux gtk3 (LibreOffice 26.2.1)",
-            "integration_id": 15368
-          },
-          {
-            "context": "Linux gtk3 (LibreOffice 26.2 latest)",
-            "integration_id": 15368
-          },
-          {
-            "context": "Linux gtk3 (LibreOffice 26.8 latest)",
-            "integration_id": 15368
-          },
-          {
-            "context": "Refuses LibreOffice 26.2.0",
-            "integration_id": 15368
-          },
-          {
-            "context": "Windows (LibreOffice 26.8 latest)",
+            "context": "Routine CI",
             "integration_id": 15368
           }
         ]

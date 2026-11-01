@@ -13,6 +13,7 @@ import yaml
 
 from tools import github_release as cli
 from tools.build import ROOT, build, version
+from tools.ci_policy import ROUTINE, SWEEP
 from tools.release_data import STAGES, PublishedBuild, release_title, version_parts
 
 
@@ -45,6 +46,8 @@ def test_ci_gate_requires_exact_commit_and_main_push_for_publication(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     run: dict[str, object] = {
+        "id": 1,
+        "head_sha": "a" * 40,
         "event": "push",
         "head_branch": "main",
         "status": "completed",
@@ -55,6 +58,15 @@ def test_ci_gate_requires_exact_commit_and_main_push_for_publication(
 
     def api(path: str) -> dict[str, object]:
         calls.append(path)
+        if "/jobs?" in path:
+            return {
+                "jobs": [
+                    {"name": name, "status": "completed", "conclusion": "success"}
+                    for name in ROUTINE.checks | SWEEP.checks
+                ]
+            }
+        if "release-sweep.yml" in path:
+            return {"workflow_runs": [{**run, "event": "workflow_dispatch"}]}
         return {"workflow_runs": [run]}
 
     monkeypatch.setattr(cli, "api", api)
@@ -82,12 +94,22 @@ def test_ci_gate_waits_for_a_native_matrix_longer_than_twenty_minutes(
         elapsed += seconds
 
     def api(path: str) -> dict[str, object]:
+        if "/jobs?" in path:
+            return {
+                "jobs": [
+                    {"name": name, "status": "completed", "conclusion": "success"}
+                    for name in ROUTINE.checks | SWEEP.checks
+                ]
+            }
         assert f"head_sha={'a' * 40}" in path
         completed = elapsed >= 25 * 60
         return {
             "workflow_runs": [
                 {
-                    "event": "pull_request",
+                    "id": 1,
+                    "head_sha": "a" * 40,
+                    "head_branch": "main",
+                    "event": "workflow_dispatch" if "release-sweep.yml" in path else "pull_request",
                     "status": "completed" if completed else "in_progress",
                     "conclusion": "success" if completed else None,
                     "html_url": "https://example.invalid/ci/long-native-matrix",
@@ -133,6 +155,7 @@ def test_dry_run_builds_assets_and_prospective_feeds_without_api_writes(
     assert (tmp_path / f"sheet-manager-{version()}.oxt.sha256").exists()
     plan = json.loads((tmp_path / "release-plan.json").read_text(encoding="utf-8"))
     assert plan["release"]["target_commitish"] == "a" * 40
+    assert plan["verification"] == "PR preview"
     assert plan["release"]["draft"] is True
     assert plan["stage"] == stage and plan["target"] == target
     assert plan["release"]["name"] == release_title(version(), stage, target)

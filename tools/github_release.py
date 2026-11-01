@@ -1,4 +1,8 @@
-"""Validate, build, and optionally publish one GitHub release."""
+"""Validate, build, and optionally publish one GitHub release.
+
+Routine CI authorizes PR planning previews only. Manual release dry runs and publication also
+require every full-sweep job for the exact revision; workflow-level success alone is insufficient.
+"""
 
 import argparse
 import hashlib
@@ -21,6 +25,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from tools.build import build  # noqa: E402
+from tools.ci_policy import ROUTINE, SWEEP, Policy, require_completed_jobs  # noqa: E402
 from tools.release_data import (  # noqa: E402
     REPOSITORY,
     SITE,
@@ -182,32 +187,59 @@ def combine_site(guide: Path, site: Path) -> list[str]:
     return relative
 
 
-def require_ci(commit: str, *, publishing: bool, timeout: float = 3000) -> str:
-    # Native CI jobs allow 45 minutes; include a small queue/startup margin.
-    deadline = time.monotonic() + timeout
+def require_workflow(policy: Policy, commit: str, publishing: bool, deadline: float) -> str:
+    events = {"workflow_dispatch"} if policy == SWEEP else {"pull_request", "push"}
+    if publishing and policy == ROUTINE:
+        events = {"push"}
     while True:
         response = api(
-            f"repos/{REPOSITORY}/actions/workflows/ci.yml/runs?head_sha={commit}&per_page=100"
+            f"repos/{REPOSITORY}/actions/workflows/{policy.workflow}/runs"
+            f"?head_sha={commit}&per_page=100"
         )
         runs = [
             run
             for run in response["workflow_runs"]
-            if run["event"] == ("push" if publishing else "pull_request")
+            if run["head_sha"] == commit
+            and run["event"] in events
             and (not publishing or run["head_branch"] == "main")
         ]
-        # A dispatch dry run on main uses the same push CI gate as publication.
-        if not runs and not publishing:
-            runs = [run for run in response["workflow_runs"] if run["event"] == "push"]
         if runs:
-            latest = runs[0]
+            latest = max(runs, key=lambda item: int(item["id"]))
             if latest["status"] == "completed":
                 if latest["conclusion"] != "success":
-                    raise ValueError(f"CI did not pass for {commit}: {latest['html_url']}")
+                    raise ValueError(
+                        f"{policy.aggregate} did not pass for {commit}: {latest['html_url']}"
+                    )
+                jobs: list[dict[str, Any]] = []
+                page = 1
+                while True:
+                    batch = api(
+                        f"repos/{REPOSITORY}/actions/runs/{latest['id']}/jobs"
+                        f"?filter=latest&per_page=100&page={page}"
+                    )["jobs"]
+                    jobs.extend(batch)
+                    if len(batch) < 100:
+                        break
+                    page += 1
+                require_completed_jobs(jobs, policy)
                 return cast(str, latest["html_url"])
         if time.monotonic() >= deadline:
-            raise ValueError(f"No successful completed CI run for exact commit {commit}")
-        print(f"Waiting for CI on {commit}", flush=True)
+            raise ValueError(f"No successful {policy.aggregate} run for exact commit {commit}")
+        print(f"Waiting for {policy.aggregate} on {commit}", flush=True)
         time.sleep(15)
+
+
+def require_ci(
+    commit: str, *, publishing: bool, preview: bool = False, timeout: float = 3000
+) -> str:
+    if preview and publishing:
+        raise ValueError("A PR preview cannot authorize publication")
+    deadline = time.monotonic() + timeout
+    routine = require_workflow(ROUTINE, commit, publishing, deadline)
+    if preview:
+        return routine
+    print(f"Routine CI passed: {routine}", flush=True)
+    return require_workflow(SWEEP, commit, publishing, deadline)
 
 
 def prepare(
@@ -299,11 +331,19 @@ def main() -> None:
             )
             return
     plan, builds = prepare(args.version, args.stage, args.target, args.output)
-    ci_url = require_ci(commit, publishing=args.publish)
+    preview = os.environ.get("GITHUB_EVENT_NAME") == "pull_request"
+    ci_url = require_ci(commit, publishing=args.publish, preview=preview)
     plan["target_commitish"] = commit
     (args.output / "release-plan.json").write_text(
         json.dumps(
-            {"stage": args.stage, "target": args.target, "release": plan, "ci": ci_url}, indent=2
+            {
+                "stage": args.stage,
+                "target": args.target,
+                "release": plan,
+                "ci": ci_url,
+                "verification": "PR preview" if preview else "full release sweep",
+            },
+            indent=2,
         )
         + "\n",
         encoding="utf-8",
@@ -316,7 +356,8 @@ def main() -> None:
         [*builds, PublishedBuild(args.version, prerelease, minimum, timestamp)],
     )
     if not args.publish:
-        print(f"Dry run passed for {commit}; no tag, draft, release, or deployment created")
+        scope = "PR preview (full release sweep still required)" if preview else "Dry run"
+        print(f"{scope} passed for {commit}; no tag, draft, release, or deployment created")
         return
     # Recheck state immediately before the first write. The workflow serializes publishers.
     current_releases = paginated(f"repos/{REPOSITORY}/releases?per_page=100")
