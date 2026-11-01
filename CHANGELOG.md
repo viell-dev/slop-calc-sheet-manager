@@ -5,7 +5,7 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
-## 0.0.9 - 2026-11-01
+## 0.0.9 - 2026-11-08
 
 Third beta towards the stable release 0.1.0, following 0.0.8. It improves the sheet list's
 appearance and accessibility, and refuses a Delete that Calc cannot safely undo. Requires

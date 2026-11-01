@@ -176,7 +176,9 @@ its platform inventory is not a requirement to make one person test every host.
 
 1. On a task branch, set the version in `extension/description.xml`. Move the changes being
    released into a nonempty `## VERSION - YYYY-MM-DD` section in `CHANGELOG.md`, retaining an
-   `Unreleased` section above it. The exact section body becomes the release notes; write for
+   `Unreleased` section above it. Set the date to the planned publication date before dispatching
+   the full release sweep. A later source change to that date needs fresh exact-revision CI and
+   sweep evidence. The exact section body becomes the release notes; write for
    users, without an agent callout or footer. Update compatibility and installation documentation
    if needed. Do not change the extension identifier. In the user guide, give the changes being
    released a versioned marker, `<Unreleased since="VERSION" />`, replacing untargeted
