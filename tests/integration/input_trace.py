@@ -3,6 +3,7 @@
 Record only values the fixture already read or posted: never make a UNO call, add a wait or
 retry input here. The bounded trace is diagnostic evidence, not a history of sheet identities.
 Failure to write diagnostics must preserve the original assertion.
+Proxy IDs distinguish retained test proxies only; they are not native window identities.
 """
 
 import json
@@ -25,7 +26,12 @@ def configure(path: Path) -> None:
 def record(kind: str, window: int, **values: Any) -> None:
     if _path is not None:
         _entries.append(
-            {"seconds": time.monotonic() - _started, "kind": kind, "window": window, **values}
+            {
+                "seconds": time.monotonic() - _started,
+                "kind": kind,
+                "window_proxy_id": window,
+                **values,
+            }
         )
 
 

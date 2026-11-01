@@ -50,13 +50,13 @@ private paths, diagnostic ownership and failure propagation for version mismatch
 reports or diagnostic collection failure. Those checks are separate from the native evidence
 linked in #145. A standalone focused Mac run cannot replace the complete exact-revision sweep.
 A focused [human usability pass](./manual-tests.md) remains a separate release requirement.
-The theme fixture retains its initial pointer events, geometry and selection on success or
-failure, without retrying the click, to investigate the macOS pick timeout
-([#160](https://github.com/viell-dev/slop-calc-sheet-manager/issues/160)).
 Failed integration input polls also retain a bounded trace of the fixtures' existing selection
-reads, row coordinates and posted pointer actions, without extra UNO reads, waits or retries.
+reads, row coordinates and posted pointer actions, without extra UNO reads, waits or retries
+([#160](https://github.com/viell-dev/slop-calc-sheet-manager/issues/160)). The theme fixture keeps
+its original click sequence; additional pre-click observations could mask a setup race.
 Completed suites and rename benchmark cases are saved incrementally so an external timeout
-retains partial evidence. The macOS helper records its owned process group on timeout and runs
+retains partial evidence; `run_complete` distinguishes the final result from partial checkpoints.
+The macOS helper records its owned process group on timeout and runs
 native TERM/KILL controls before installing the app; a zombie-only signalling refusal is accepted
 only after reading member states. Unverified cleanup retains the private directory and fails
 ([#162](https://github.com/viell-dev/slop-calc-sheet-manager/issues/162)).

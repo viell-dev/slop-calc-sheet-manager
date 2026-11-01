@@ -46,19 +46,23 @@ def group_members(group: int) -> list[dict[str, Any]]:
     members: list[dict[str, Any]] = []
     for line in result.stdout.splitlines():
         fields = line.split(None, 4)
-        if len(fields) != 5:
+        if len(fields) < 2:
             raise ValueError(f"Unexpected process-state row: {line!r}")
-        pid, pgid, state, uid, command = fields
-        if int(pgid) == group:
-            members.append(
-                {
-                    "pid": int(pid),
-                    "pgid": int(pgid),
-                    "state": state,
-                    "uid": int(uid),
-                    "command": command,
-                }
-            )
+        pid, pgid = fields[:2]
+        if int(pgid) != group:
+            continue
+        if len(fields) < 4:
+            raise ValueError(f"Incomplete owned process-state row: {line!r}")
+        state, uid = fields[2:4]
+        members.append(
+            {
+                "pid": int(pid),
+                "pgid": int(pgid),
+                "state": state,
+                "uid": int(uid),
+                "command": fields[4] if len(fields) == 5 else "",
+            }
+        )
     return members
 
 
@@ -109,10 +113,19 @@ def private_directory(parent: str) -> Generator[Path, None, None]:
     try:
         yield Path(manager.name).resolve()
     except BaseException as failure:
-        cause: BaseException | None = failure
-        while cause is not None and not isinstance(cause, GroupCleanupError):
-            cause = cause.__context__
-        if cause is not None:
+        pending = [failure]
+        seen: set[int] = set()
+        unsafe = False
+        while pending:
+            cause = pending.pop()
+            if id(cause) in seen:
+                continue
+            seen.add(id(cause))
+            unsafe = unsafe or isinstance(cause, GroupCleanupError)
+            pending.extend(
+                error for error in (cause.__context__, cause.__cause__) if error is not None
+            )
+        if unsafe:
             failure.add_note(
                 f"Unverified process cleanup: retained private directory {manager.name}"
             )
@@ -157,7 +170,7 @@ def run(command: list[str], log: Path, environment: dict[str, str], timeout: int
             cleanup_error = None
             try:
                 stop_group(process, receipt)
-            except Exception as error:
+            except BaseException as error:
                 cleanup_error = error
                 receipt["cleanup_error"] = repr(error)
             try:
@@ -195,7 +208,8 @@ def timeout_controls(output: Path, environment: dict[str, str]) -> None:
             run([sys.executable, "-c", source], log, environment, timeout=5)
         except subprocess.TimeoutExpired as failure:
             receipt = json.loads(log.with_suffix(".timeout.json").read_text("utf-8"))
-            if receipt["cleanup_succeeded"] is not True or live_members(receipt["after_signals"]):
+            after = receipt.get("after_signals")
+            if receipt.get("cleanup_succeeded") is not True or after is None or live_members(after):
                 raise AssertionError(
                     f"The {name} timeout control left an unverified group"
                 ) from failure
@@ -204,7 +218,7 @@ def timeout_controls(output: Path, environment: dict[str, str]) -> None:
             )
             text = log.read_text("utf-8")
             if not all(marker in text for marker in expected) or len(
-                live_members(receipt["before"])
+                live_members(receipt.get("before", []))
             ) < len(expected):
                 raise AssertionError(
                     f"The {name} timeout control did not finish setup"

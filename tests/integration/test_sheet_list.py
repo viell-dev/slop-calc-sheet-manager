@@ -382,13 +382,17 @@ def check_identity(context, desktop, menus):
             "the menu to act only on Alfa",
         )
         assert menu_hidden == ["Alfa"], menu_hidden
+        poll(lambda: labels(tree) == expected_labels(document), "the list to show Alfa hidden")
         while len(undo.getAllUndoActionTitles()) > depth:
             undo.undo()
         poll(lambda: sheets.getByName("Alfa").IsVisible, "undo to show Alfa again")
+        poll(lambda: labels(tree) == expected_labels(document), "the list to show Alfa restored")
 
     say("rename a selected sheet and give its name to another")
-    robot.click(tree, row_point(tree, 2))
-    robot.click(tree, row_point(tree, 3), modifiers=VCL_MOD1)
+    # These six rows are already visible. The picks must not rely on a scroll pause to let
+    # Undo's conservative identity refresh finish (#160).
+    robot.click(tree, row_point(tree, 2, scroll=False))
+    robot.click(tree, row_point(tree, 3, scroll=False), modifiers=VCL_MOD1)
     poll(lambda: selection(tree, order) == ["Charlie", "Delta"], "Charlie and Delta selected")
     sheets.getByName("Charlie").setName("Spare")
     sheets.getByName("Delta").setName("Charlie")

@@ -3,14 +3,10 @@
 Only public native panel peers are observed. Configuration changes stay in the runner's private
 profile and are restored before other suites run. Painted label/background pixels are covered
 by the corresponding real-input check; these assertions alone do not establish native painting.
-The initial pick retains public input/geometry diagnostics without retrying a failed click (#160).
+Keep the original initial-click sequence: input_trace records existing reads/posts without
+adding pre-click UNO observations that could mask a setup race (#160).
 """
 
-import json
-import time
-
-import unohelper
-from com.sun.star.awt import XMouseListener
 from main_thread import close_after
 from sheet_list_view import names, on_main_thread, open_list, poll, root, row_point, selection
 from teardown import Configured
@@ -18,89 +14,6 @@ from test_sheet_list import Robot
 
 from sheet_manager.theme import contrast, text_color
 from sheet_manager.uno_calc import prop, selected_tabs
-
-
-class _MouseEvents(unohelper.Base, XMouseListener):
-    """Record delivered event values only; never call UNO from a listener."""
-
-    def __init__(self):
-        self.events = []
-
-    def _record(self, kind, event):
-        self.events.append(
-            {
-                "kind": kind,
-                "point": [event.X, event.Y],
-                "buttons": event.Buttons,
-                "modifiers": event.Modifiers,
-                "clicks": event.ClickCount,
-            }
-        )
-
-    def mousePressed(self, e):
-        self._record("pressed", e)
-
-    def mouseReleased(self, e):
-        self._record("released", e)
-
-    def mouseEntered(self, e):
-        pass
-
-    def mouseExited(self, e):
-        pass
-
-    def disposing(self, Source):
-        pass
-
-
-def pick_state(context, document, tree, point):
-    controller = document.CurrentController
-    node = tree.getNodeForLocation(*point)
-    bounds = tree.getPosSize()
-    return {
-        "rows": names(tree),
-        "selection": selection(tree, names(tree)),
-        "point_target": node.DataValue if node is not None else None,
-        "bounds": [bounds.X, bounds.Y, bounds.Width, bounds.Height],
-        "visible": tree.isVisible(),
-        "enabled": tree.isEnabled(),
-        "focus": tree.hasFocus(),
-        "viewed": controller.ActiveSheet.Name,
-        "tabs": selected_tabs(context, controller),
-        "frame_active": tree.getToolkit().getActiveTopWindow() == controller.Frame.ContainerWindow,
-    }
-
-
-def pick_bravo(context, document, tree, output):
-    point = row_point(tree, 1)
-    diagnostics: dict[str, object] = {
-        "point": point,
-        "before": pick_state(context, document, tree, point),
-    }
-    listener = _MouseEvents()
-    transitions = []
-    started = time.monotonic()
-
-    def picked():
-        actual = selection(tree, names(tree))
-        if not transitions or actual != transitions[-1]["selection"]:
-            transitions.append({"seconds": time.monotonic() - started, "selection": actual})
-        return actual == ["Bravo"]
-
-    def finish():
-        tree.removeMouseListener(listener)
-        diagnostics.update(
-            after=pick_state(context, document, tree, point),
-            mouse_events=listener.events,
-            selection_transitions=transitions,
-        )
-        (output / "document-theme-initial-pick.json").write_text(
-            json.dumps(diagnostics, indent=2) + "\n", encoding="utf-8"
-        )
-
-    with Configured(lambda: tree.addMouseListener(listener), finish):
-        Robot(context).click(tree, point)
-        poll(picked, "the independent Bravo pick")
 
 
 def color_settings(context):
@@ -135,7 +48,7 @@ def check_selection_colors(style, source, background):
         assert contrast(*actual) >= 4.5
 
 
-def check_document_colors(context, desktop, output):
+def check_document_colors(context, desktop):
     settings = color_settings(context)
     scheme = scheme_of(settings)
     original = tuple(
@@ -156,7 +69,8 @@ def check_document_colors(context, desktop, output):
         document.UndoManager.clear()
         document.setModified(False)
         on_main_thread(context, toolkit.processEventsToIdle)
-        pick_bravo(context, document, tree, output)
+        Robot(context).click(tree, row_point(tree, 1))
+        poll(lambda: selection(tree, names(tree)) == ["Bravo"], "the independent Bravo pick")
         model = root(tree)
         assert model is not None
         row_height = tree.getNodeRect(model.getChildAt(0)).Height
@@ -248,4 +162,4 @@ def check_document_colors(context, desktop, output):
 
 
 def exercise(context, desktop, directory, output):
-    return check_document_colors(context, desktop, output)
+    return check_document_colors(context, desktop)

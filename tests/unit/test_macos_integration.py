@@ -279,13 +279,14 @@ def test_process_snapshot_keeps_only_members_of_the_owned_group(
         return_value=subprocess.CompletedProcess(
             [],
             0,
-            "42 42 S 501 /private/python\n43 42 Z 501 /private/office\n99 99 S 501 /other/app\n",
+            "42 42 S 501 /private/python\n43 42 Z 501\n99 99 S 501\n",
         )
     )
     monkeypatch.setattr(cli.subprocess, "run", command)
     members = cli.group_members(42)
     assert [member["pid"] for member in members] == [42, 43]
     assert [member["pid"] for member in cli.live_members(members)] == [42]
+    assert members[1]["command"] == ""
 
 
 @pytest.mark.parametrize("unsafe", [False, True])
@@ -306,3 +307,74 @@ def test_native_control_cannot_accept_a_command_that_did_not_time_out(
     monkeypatch.setattr(cli, "run", Mock())
     with pytest.raises(AssertionError, match="did not fail at its deadline"):
         cli.timeout_controls(tmp_path, {})
+
+
+@pytest.mark.parametrize("mode", ["context", "cause"])
+def test_wrapped_cleanup_failure_still_retains_the_application(tmp_path: Path, mode: str) -> None:
+    with pytest.raises(AssertionError), cli.private_directory(str(tmp_path)) as directory:
+        if mode == "context":
+            try:
+                raise cli.GroupCleanupError("live child")
+            except cli.GroupCleanupError:
+                raise AssertionError("later diagnostic failure") from None
+        raise AssertionError("later diagnostic failure") from cli.GroupCleanupError("live child")
+    assert directory.exists()
+
+
+def test_interrupted_cleanup_is_recorded_as_unverified(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(cli.sys, "platform", "darwin")
+    timeout = subprocess.TimeoutExpired(["client"], 1)
+    process = Mock(pid=47123)
+    process.wait.side_effect = timeout
+    monkeypatch.setattr(cli.subprocess, "Popen", Mock(return_value=process))
+    monkeypatch.setattr(cli, "stop_group", Mock(side_effect=KeyboardInterrupt()))
+    with pytest.raises(cli.GroupCleanupError) as raised:
+        cli.run(["client"], tmp_path / "client.log", {}, timeout=1)
+    assert raised.value.__cause__ is timeout
+    receipt = json.loads((tmp_path / "client.timeout.json").read_text("utf-8"))
+    assert receipt["cleanup_succeeded"] is False
+    assert "KeyboardInterrupt" in receipt["cleanup_error"]
+
+
+@pytest.mark.parametrize(
+    "fault", ["unverified", "live", "missing_after", "missing_before", "setup"]
+)
+def test_native_control_rejects_incomplete_or_unsuccessful_receipts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fault: str
+) -> None:
+    def run(command: list[str], log: Path, environment: dict[str, str], timeout: int = 120) -> None:
+        receipt = {
+            "cleanup_succeeded": fault != "unverified",
+            "before": [{"state": "S"}],
+            "after_signals": [{"state": "S" if fault == "live" else "Z"}],
+        }
+        if fault == "missing_after":
+            del receipt["after_signals"]
+        if fault == "missing_before":
+            del receipt["before"]
+        log.write_text("" if fault == "setup" else "term-ready\n", encoding="utf-8")
+        log.with_suffix(".timeout.json").write_text(json.dumps(receipt), encoding="utf-8")
+        raise subprocess.TimeoutExpired(command, timeout)
+
+    monkeypatch.setattr(cli, "run", run)
+    reason = "did not finish setup" if fault in ("missing_before", "setup") else "unverified group"
+    with pytest.raises(AssertionError, match=reason):
+        cli.timeout_controls(tmp_path, {})
+
+
+def test_drain_deadline_fails_without_reaping_a_live_group(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    if sys.platform == "win32":
+        pytest.skip("The installer executes only on macOS/POSIX")
+    monkeypatch.setattr(cli.sys, "platform", "darwin")
+    monkeypatch.setattr(cli.os, "killpg", Mock())
+    monkeypatch.setattr(cli, "group_members", Mock(return_value=[{"state": "S"}]))
+    monkeypatch.setattr(cli.time, "sleep", Mock())
+    monkeypatch.setattr(cli.time, "monotonic", Mock(side_effect=range(20)))
+    process = Mock(pid=47123)
+    with pytest.raises(TimeoutError, match="remain alive after SIGKILL"):
+        cli.stop_group(process, {})
+    process.wait.assert_not_called()

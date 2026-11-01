@@ -772,6 +772,7 @@ def main():
     for pattern in (
         "results.json",
         "input-observations.json",
+        "document-theme-initial-pick.json",
         "deck.png",
         "refusal.log",
         "resize-initial*.json",
@@ -793,8 +794,11 @@ def main():
     # Add once for all sessions; feature suites exercise packaged modules, not src/.
     sys.path.insert(0, str(package) + "/pythonpath")
     results: list[dict[str, object]] = []
+    complete = False
 
     def checkpoint() -> None:
+        for result in results:
+            result["run_complete"] = complete
         (output / "results.json").write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8")
 
     try:
@@ -872,6 +876,7 @@ def main():
                 lifecycle: dict[str, object] = {}
                 results.append({"lifecycle": lifecycle})
                 check_lifecycle(program, package, output / "lifecycle", lifecycle)
+        complete = True
     finally:
         checkpoint()
     print(json.dumps(results, indent=2))

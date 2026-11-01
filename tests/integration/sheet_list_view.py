@@ -240,8 +240,8 @@ def row_rect(tree, index, scroll=True):
                 raise
 
 
-def row_point(tree, index, fraction=0.5):
-    rect = row_rect(tree, index)
+def row_point(tree, index, fraction=0.5, *, scroll=True):
+    rect = row_rect(tree, index, scroll=scroll)
     point = rect.X + 12, rect.Y + int(rect.Height * fraction)
     record(
         "row_point",

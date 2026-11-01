@@ -45,6 +45,11 @@ The 1,000-sheet checks also measure context-menu construction and verify Delete 
 headless diagnostics before input starts and preserves failed runner status
 ([#152](https://github.com/viell-dev/slop-calc-sheet-manager/issues/152)). Its timeout and required
 success gate are unchanged.
+Static checks cover Linux, Windows and macOS API availability; native test failures retain
+more diagnostics, and the identity fixture waits for the list to finish refreshing after Undo
+([#159](https://github.com/viell-dev/slop-calc-sheet-manager/issues/159),
+[#160](https://github.com/viell-dev/slop-calc-sheet-manager/issues/160),
+[#162](https://github.com/viell-dev/slop-calc-sheet-manager/issues/162)).
 
 Install the OXT manually over 0.0.8 or an earlier build, restart LibreOffice when asked, and check
 its SHA-256 asset. LibreOffice's Extension Manager offers only stable releases, and there is none
