@@ -37,11 +37,18 @@ from rename_dialog import check_keyboard as check_rename_keyboard  # noqa: E402
 from rename_dialog import check_mouse as check_rename_mouse  # noqa: E402
 from rename_dialog import check_stale as check_rename_stale  # noqa: E402
 from run import office_session, wait_for  # noqa: E402
-from teardown import stalled_callbacks  # noqa: E402
+from teardown import Configured, stalled_callbacks  # noqa: E402
+from test_document_theme import (  # noqa: E402
+    check_selection_colors,
+    color_settings,
+    scheme_of,
+    set_colors,
+)
 from xinput import RIGHT, Pointer, XInput  # noqa: E402
 
 from sheet_manager.reorder import Action, Sheet, target_order  # noqa: E402
 from sheet_manager.sheet_list import list_name  # noqa: E402
+from sheet_manager.theme import contrast, text_color  # noqa: E402
 from sheet_manager.uno_calc import dispatch, select_tabs  # noqa: E402
 from sheet_manager.uno_menu import (  # noqa: E402
     DELETE,
@@ -357,6 +364,89 @@ def configure_desktop_opener(output):
 
 
 # Checks. Each returns evidence and raises AssertionError on failure.
+
+
+def check_document_colors(book):
+    """Actual native labels, selection, dividers and empty space follow a custom document."""
+    lab = book.lab
+    sample = Workbook(lab, "document-colours", ["Alfa", "Bravo", "Charlie"])
+    settings = color_settings(lab.context)
+    scheme = scheme_of(settings)
+    original = tuple(
+        scheme.getByName(name).getByName("Color")
+        for name in ("DocColor", "FontColor", "DocBoundaries")
+    )
+    evidence = {}
+    try:
+        sample.click(1)
+        root = view.root(sample.tree)
+        source_style = sample.document.CurrentController.Frame.ComponentWindow.StyleSettings
+        check_selection_colors(sample.tree.StyleSettings, source_style, source_style.FieldColor)
+        original_height = sample.tree.getNodeRect(sample.nodes()[0]).Height
+        before = sample.active(), sample.calc_tabs(), sample.undo_titles()
+        with Configured(lambda: None, lambda: set_colors(settings, original)):
+            for label, background, foreground in (
+                ("dark", 0x112233, 0xEEF4FF),
+                ("light", 0xF1EAD1, 0x342C1D),
+                ("poor-contrast", 0xFFFFFF, 0xFFFFFF),
+                (
+                    "selection-background",
+                    source_style.HighlightColor,
+                    text_color(source_style.HighlightColor, None),
+                ),
+            ):
+                set_colors(settings, (background, foreground, background))
+                wait_until(
+                    lambda expected=background: sample.tree.StyleSettings.FieldColor == expected,
+                    "the custom document colour",
+                )
+                view.on_main_thread(lab.context, sample.panel.getToolkit().processEventsToIdle)
+                style = sample.tree.StyleSettings
+                assert contrast(background, style.FieldTextColor) >= 4.5
+                assert contrast(background, style.ShadowColor) >= 3
+                check_selection_colors(style, source_style, background)
+                size = sample.tree.getOutputSize()
+                rows = [sample.tree.getNodeRect(node) for node in sample.nodes()]
+                assert rows[0].Height == original_height, (original_height, rows[0].Height)
+                data = {
+                    "offset": sample.pointer.offset,
+                    "width": size.Width,
+                    "height": size.Height,
+                    "background": background,
+                    "foreground": style.FieldTextColor,
+                    "expected_foreground": 0 if background == foreground else foreground,
+                    "highlight": style.HighlightColor,
+                    "highlight_text": style.HighlightTextColor,
+                    "border": style.ShadowColor,
+                    "rows": [
+                        {"x": row.X, "y": row.Y, "width": row.Width, "height": row.Height}
+                        for row in rows
+                    ],
+                }
+                stem = "document-colours-" + label
+                path = lab.output / (stem + ".json")
+                path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+                lab.screenshot(stem)
+                environment = {
+                    key: value
+                    for key, value in os.environ.items()
+                    if key not in ("PYTHONHOME", "PYTHONPATH", "LD_LIBRARY_PATH", "URE_BOOTSTRAP")
+                }
+                checked = subprocess.run(
+                    ["/usr/bin/python3", "-I", str(HERE / "theme_pixels.py"), str(path)],
+                    env=environment,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+                assert checked.returncode == 0, checked.stdout + checked.stderr
+                assert view.root(sample.tree) == root and sample.selection() == ["Bravo"]
+                assert (sample.active(), sample.calc_tabs(), sample.undo_titles()) == before
+                assert not sample.document.isModified()
+                evidence[label] = json.loads(checked.stdout)
+    finally:
+        sample.close()
+    return evidence
 
 
 def check_click_activates(book):
@@ -2455,6 +2545,7 @@ def run_checks(lab, output, only=()):
         ("ctrl_shift_selection", lambda: check_ctrl_shift_selection(book)),
         ("viewed_sheet_name", lambda: check_viewed_sheet_name(book)),
         ("row_paint_scroll", lambda: check_row_paint_scroll(book)),
+        ("document_colors", lambda: check_document_colors(book)),
         ("tab_selection_sync", lambda: check_tab_selection_sync(book)),
         ("selection_notice", lambda: check_selection_notice(book)),
         ("undo_own_move", lambda: check_undo_own_move(book)),
