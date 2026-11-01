@@ -18,11 +18,15 @@ Additional capabilities need an owner scope decision. The
 [release goal](https://github.com/viell-dev/slop-calc-sheet-manager/issues/120) owns the scope
 agreement and release conditions; the
 [release tracker](https://github.com/viell-dev/slop-calc-sheet-manager/issues/93) owns progress.
-Betas may deliver subsets of the fixes. A release candidate waits for the goal agreement,
-the required [human usability pass](https://github.com/viell-dev/slop-calc-sheet-manager/issues/130),
-and resolution of its blockers. Stable publication also requires the human-testing and
-defect-resolution gates below. Check those issues before preparing either stage; neither a
-prepared package nor a merged preparation PR settles an unanswered request.
+Betas may deliver subsets of the fixes. A release candidate waits for the required focused
+human usability review and resolution of its blockers.
+[#130](https://github.com/viell-dev/slop-calc-sheet-manager/issues/130) tracks preparation of the
+new request after engineering fixes and bug-finding checks; it is not an outstanding human
+checklist. Stable publication also requires the human-testing and defect-resolution gates below.
+The first stable 0.1.0 must be listed on extensions.libreoffice.org. Near readiness, prepare the
+listing material and an assigned owner issue with the exact account/sign-in actions before
+requesting access. Check the tracker before either stage; a prepared package or merged
+preparation PR does not settle readiness.
 
 ## Versions and titles
 
@@ -31,7 +35,8 @@ The constraint comes from the installed extension's version comparison, not from
 extensions.libreoffice.org. GitHub can host SemVer tags, and a directory listing may contain only
 stable builds, but neither changes how LibreOffice compares a manually installed test OXT with
 the next stable OXT. Every published build, stable or test, gets a GitHub release with its OXT
-and checksum; the extension directory is an optional discovery channel.
+and checksum. The first stable 0.1.0 also requires the extension-directory listing agreed in
+[#120](https://github.com/viell-dev/slop-calc-sheet-manager/issues/120).
 
 `extension/description.xml` is the only source of the extension version. Use exactly three plain
 dotted numbers, without a `v` prefix, leading zeroes, suffixes, or build metadata. When reserving
@@ -171,7 +176,9 @@ its platform inventory is not a requirement to make one person test every host.
 
 1. On a task branch, set the version in `extension/description.xml`. Move the changes being
    released into a nonempty `## VERSION - YYYY-MM-DD` section in `CHANGELOG.md`, retaining an
-   `Unreleased` section above it. The exact section body becomes the release notes; write for
+   `Unreleased` section above it. Set the date to the planned publication date before dispatching
+   the full release sweep. A later source change to that date needs fresh exact-revision CI and
+   sweep evidence. The exact section body becomes the release notes; write for
    users, without an agent callout or footer. Update compatibility and installation documentation
    if needed. Do not change the extension identifier. In the user guide, give the changes being
    released a versioned marker, `<Unreleased since="VERSION" />`, replacing untargeted

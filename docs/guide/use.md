@@ -16,12 +16,12 @@ in the left gutter marks the viewed sheet.
 Hidden, protected, and scenario sheets have those states written beside their names. The deck is
 also shown for read-only workbooks and follows the sidebar when it resizes, docks, or undocks.
 
-<Unreleased /> The list follows LibreOffice's document background colour. Text and dividers
-stay readable, including when a custom scheme would otherwise give the text and background the
-same colour. Selected rows keep the platform's selection and text colours together; if the new
-background hides the selection, the list uses a distinct selection colour with readable text.
-Sheet-tab colour squares keep their assigned colours. Appearance changes follow when the
-visible list is idle; they leave your picks and the workbook unchanged.
+<Unreleased since="0.0.9" /> The list follows LibreOffice's document background colour. Text and
+dividers stay readable, including when a custom scheme would otherwise give the text and
+background the same colour. Selected rows keep the platform's selection and text colours
+together; if the new background hides the selection, the list uses a distinct selection colour
+with readable text. Sheet-tab colour squares keep their assigned colours. Appearance changes
+follow when the visible list is idle; they leave your picks and the workbook unchanged.
 
 ## Find and select sheets
 
@@ -104,11 +104,11 @@ menu targets several sheets, every command for hidden sheets, and Delete for pro
 [Rename several sheets](#rename-several-sheets).
 They are also unavailable in a read-only document or one whose sheet structure is protected,
 Rename for a protected sheet, Delete while changes are recorded, and Delete and Hide when no other
-sheet would stay visible. <Unreleased /> Delete is also unavailable for either of two sheets whose
-names Calc confuses, because Undo can leave the sheet deleted; rename one of them first, as
-[Known issues](./known-issues.md) explains. Calc's own sheet tabs keep their full menu, including your
-customizations, for every other command. Duplicate Sheet and Move or Copy Sheet are only there;
-see [Known issues](./known-issues.md).
+sheet would stay visible. <Unreleased since="0.0.9" /> Delete is also unavailable for either of
+two sheets whose names Calc confuses, because Undo can leave the sheet deleted; rename one of
+them first, as [Known issues](./known-issues.md) explains. Calc's own sheet tabs keep their full
+menu, including your customizations, for every other command. Duplicate Sheet and Move or Copy
+Sheet are only there; see [Known issues](./known-issues.md).
 
 **Choosing a command.** <Unreleased since="0.0.5" /> Closing the menu without choosing anything
 changes nothing. A chosen command first checks its sheets again: if one was renamed, replaced or

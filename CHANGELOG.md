@@ -5,63 +5,49 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
-- Retry Linux test-image downloads after redirected mirror certificate failures, retaining TLS
-  and pinned-checksum verification ([#61](https://github.com/viell-dev/slop-calc-sheet-manager/issues/61)).
-- Require demonstrated Intel macOS headless packaged integration and lifecycle in the manual
-  release sweep; retain focused on-demand checks and explicit GUI/input/Apple Silicon limits
-  ([#145](https://github.com/viell-dev/slop-calc-sheet-manager/issues/145)).
-- Reduce routine verification to deterministic checks, documentation and current Linux host/input
-  coverage. Require a separate complete, exact-revision manual sweep before release validation or
-  publication; PR planning previews cannot supply that evidence
-  ([#143](https://github.com/viell-dev/slop-calc-sheet-manager/issues/143)).
-- Follow LibreOffice's document background in the sheet list, including its unused space. Keep
-  native text, selection and row dividers readable as the colour scheme changes, without moving
-  the picks or editing the workbook
-  ([#141](https://github.com/viell-dev/slop-calc-sheet-manager/issues/141)).
-- Refuse Delete Sheet for either of two names Calc confuses: Calc's Undo can otherwise lose the
-  deleted sheet. Rename one of them first; the refusal names both sheets
-  ([#138](https://github.com/viell-dev/slop-calc-sheet-manager/issues/138)).
-- Exercise view restoration after Undo with confusable sheet names, and Delete targeting after
-  removing the collision, against real LibreOffice
-  ([#128](https://github.com/viell-dev/slop-calc-sheet-manager/issues/128)).
-- Simplify contributor and agent guidance, consolidate the verification map, and separate current
-  limitations from upgrade advice. Release procedures and safety requirements are unchanged
-  ([#139](https://github.com/viell-dev/slop-calc-sheet-manager/issues/139)).
+## 0.0.9 - 2026-11-08
 
-## 0.0.9 - 2026-10-31
+Third beta towards the stable release 0.1.0, following 0.0.8. It improves the sheet list's
+appearance and accessibility, and refuses a Delete that Calc cannot safely undo. Requires
+LibreOffice 26.2.1 or later with Python support.
 
-Third beta towards the stable release 0.1.0, following 0.0.8. It exposes the list, its controls
-and the viewed sheet to assistive technology; the feature set and the visible behaviour are
-unchanged. Requires LibreOffice 26.2.1 or later with Python support.
-
+- Follow Calc's document background throughout the sheet list, including its unused space
+  ([#141](https://github.com/viell-dev/slop-calc-sheet-manager/issues/141)). Text and dividers stay
+  readable as the colour scheme changes. Native selection colours are retained unless the
+  document background hides the selection. Changing colours keeps the row height, picks, view
+  and workbook state.
+- Refuse Delete Sheet for either of two names that Calc confuses
+  ([#138](https://github.com/viell-dev/slop-calc-sheet-manager/issues/138)). For example, Calc can
+  accept both `ﬁ` and `fi` as sheet names but lose a deleted sheet when Undo tries to restore it.
+  The extension's menu disables Delete with a reason naming both sheets. Rename one of them
+  first. Calc's own tab menu and underlying name/formula handling remain outside this safeguard.
 - Name the list after the sheet Calc shows, for assistive technology
-  ([#83](https://github.com/viell-dev/slop-calc-sheet-manager/issues/83)). The list is now
-  named after the viewed sheet, for example "Sheets, current sheet: Bravo", and the name changes
-  when another sheet is shown. Until now only the painted arrow showed it, and the selected rows
-  could be different sheets. Rows still read the plain sheet name with its hidden, protected or
-  scenario state; tab colours are not announced.
-- Report the sheet list and its move buttons to assistive technology through the sidebar's
-  hierarchy ([#133](https://github.com/viell-dev/slop-calc-sheet-manager/issues/133)). The
-  panel kept its controls in a container that did not list them, so moving through the sidebar
-  never reached them, and with LibreOffice's gtk3 interface on Linux the accessibility bridge
-  reported nothing from the list: neither its focus nor its rows nor the name of the viewed
-  sheet. The buttons, the list and the footer messages are now listed in the order they
-  appear, and the gtk3 bridge reports their focus, rows and name changes; what a particular
-  screen reader announces is not verified. Clicking or dragging in the panel's empty margins
-  still leaves the sidebar where it is.
-- Keep a row selected through the accessibility interface when the list refreshes at the same
-  moment
-  ([#83](https://github.com/viell-dev/slop-calc-sheet-manager/issues/83)). If a sheet's
-  protection, visibility or colour changed just before, the refresh could put back the
-  previous selection.
+  ([#83](https://github.com/viell-dev/slop-calc-sheet-manager/issues/83)). For example,
+  "Sheets, current sheet: Bravo" changes when another sheet is shown. Rows retain their sheet
+  names and hidden, protected or scenario state. An accessibility selection also survives a
+  refresh that rebuilds the rows.
+- Expose the list, move buttons and footer through the sidebar's accessible hierarchy
+  ([#133](https://github.com/viell-dev/slop-calc-sheet-manager/issues/133)). The gtk3 bridge now
+  reports their focus, rows and viewed-sheet name changes. What a particular screen reader
+  announces remains unverified. Clicking or dragging in empty panel margins keeps the sidebar
+  docked.
 
-Install the OXT manually over 0.0.8 or an earlier build, restart LibreOffice when asked, and
-check its SHA-256 asset. LibreOffice's Extension Manager offers only stable releases, and there
-is none yet, so later test builds remain manual downloads. Known limits are in the
-[known issues](https://viell-dev.github.io/slop-calc-sheet-manager/guide/known-issues). The
-usability pass the stable release requires,
-[#130](https://github.com/viell-dev/slop-calc-sheet-manager/issues/130), was prepared on 0.0.8
-and applies to this build as well; the plan towards 0.1.0 is in
+Verification now includes packaged headless integration and removal on Intel macOS 15 with the
+official LibreOffice 26.8.2.2 build. Aqua rendering, real OS input, Apple Silicon, screen readers,
+GUI installation/update and upgrades from published builds on macOS remain unverified. Linux and
+Windows input checks continue, with broader platform checks required in a manual release sweep.
+Regression checks also exercise identifying-cell view restoration and guarded Delete/Undo with
+both measured confusable-name pairs
+([#128](https://github.com/viell-dev/slop-calc-sheet-manager/issues/128),
+[#145](https://github.com/viell-dev/slop-calc-sheet-manager/issues/145)).
+
+Install the OXT manually over 0.0.8 or an earlier build, restart LibreOffice when asked, and check
+its SHA-256 asset. LibreOffice's Extension Manager offers only stable releases, and there is none
+yet, so later test builds remain manual downloads. See the
+[known issues](https://viell-dev.github.io/slop-calc-sheet-manager/guide/known-issues) for the
+remaining limits. A focused human usability review is still required before a release candidate;
+[#130](https://github.com/viell-dev/slop-calc-sheet-manager/issues/130) tracks preparation of a new
+request. The plan towards 0.1.0 is in
 [#93](https://github.com/viell-dev/slop-calc-sheet-manager/issues/93).
 
 ## 0.0.8 - 2026-10-31
