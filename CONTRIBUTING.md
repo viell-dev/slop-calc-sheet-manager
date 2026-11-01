@@ -368,10 +368,6 @@ Each repeats the normal panel/accessibility/adapter prefix. Every outcome is ret
 initial-pick failure allows the remaining measurements but fails the command after all eight.
 Unexpected failures and unclean shutdowns stop it. This investigation is marked explicitly in
 the host/probe receipts and cannot replace integration, lifecycle or a full release sweep.
-The probe makes a separate instrumented OXT inside its output directory, leaving the normal
-package untouched and recording both checksums. Its wrappers retain Python-owned state in a
-bounded memory journal, without UNO getters or writes during the gesture, and emit it when
-the synthetic list is disposed. Instrumentation can still change scheduling.
 
 ### Soak painted sessions
 

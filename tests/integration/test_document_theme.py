@@ -3,9 +3,9 @@
 Only public native panel peers are observed. Configuration changes stay in the runner's private
 profile and are restored before other suites run. Painted label/background pixels are covered
 by the corresponding real-input check; these assertions alone do not establish native painting.
-Input listeners are attached before fixture cleanup, with the accessibility suite as a delivery
-control. Take detailed state only after a failed initial pick, never between cleanup and click
-(#160). A passing observed run does not establish a fix for the unobserved failure.
+Prepare and clean the hidden workbook before the view creates the list's structure monitor
+(#160). Optional input listeners have the accessibility suite as a delivery control. Take
+detailed state only after a failed initial pick. An observed pass alone is not causal evidence.
 """
 
 from input_trace import events_for
@@ -93,7 +93,12 @@ def check_document_colors(context, desktop, *, trace_input=True):
         scheme.getByName(name).getByName("Color")
         for name in ("DocColor", "FontColor", "DocBoundaries")
     )
-    document = desktop.loadComponentFromURL("private:factory/scalc", "_blank", 0, ())
+    # Finish synthetic edits and cleanup before a visible view can create the list's monitor.
+    # setModified(False) sends an unexplained modify notice; clicking before its deferred
+    # refresh correctly refuses the now-stale sheet proof (#160).
+    document = desktop.loadComponentFromURL(
+        "private:factory/scalc", "_blank", 0, (prop("Hidden", True),)
+    )
     try:
         controller, sheets = document.CurrentController, document.Sheets
         sheets.getByIndex(0).Name = "Alfa"
@@ -101,11 +106,12 @@ def check_document_colors(context, desktop, *, trace_input=True):
         sheets.insertNewByName("Charlie", 2)
         for index, name in enumerate(("Alfa", "Bravo", "Charlie")):
             sheets.getByIndex(index).getCellRangeByName("A1").String = name
+        document.UndoManager.clear()
+        document.setModified(False)
+        controller.Frame.ContainerWindow.setVisible(True)
         panel, tree = open_list(context, document, trace_input=trace_input)
         poll(lambda: names(tree) == ["Alfa", "Bravo", "Charlie"], "the theme fixture rows")
         toolkit = panel.getToolkit()
-        document.UndoManager.clear()
-        document.setModified(False)
         on_main_thread(context, toolkit.processEventsToIdle)
         robot = Robot(context)
         point = row_point(tree, 1)

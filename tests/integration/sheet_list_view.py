@@ -3,8 +3,8 @@
 The panel's ``XPanel.getDialog()`` window holds the list's tree control as a child; the tree's
 nodes carry the sheet names. No test hook exists in the extension.
 Input polls retain the fixtures' existing reads/posts through ``input_trace`` on failure (#160).
-Opt-in input listeners record scalar delivery/selection events only. Install them before
-fixture cleanup, never as extra state reads immediately before a click. Detailed reads run only
+Opt-in input listeners record scalar delivery/selection events only. Attach them during panel
+setup, never as extra state reads immediately before a click. Detailed reads run only
 after a failed poll; callback failures must not replace that assertion.
 """
 

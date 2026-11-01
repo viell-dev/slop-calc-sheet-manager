@@ -54,10 +54,14 @@ Failed integration input polls also retain a bounded trace of the fixtures' exis
 reads, row coordinates and posted pointer actions, without extra UNO reads, waits or retries
 ([#160](https://github.com/viell-dev/slop-calc-sheet-manager/issues/160)). The accessibility and
 theme fixtures can also record delivered mouse and selection events without making UNO calls
-from listeners. Successful theme results keep the initial input trace too. Observers attach
-before fixture cleanup; detailed theme state is read only after a failed pick. Passing an
-observed run does not explain an older
-unobserved failure, and unavailable observers are identified in the trace.
+from listeners. Successful theme results keep the initial input trace too; unavailable
+observers are identified explicitly. Detailed theme state is read only after a failed pick.
+The theme fixture finishes edits and cleanup while its workbook is hidden, before opening
+the panel. Resetting modified state after the list has loaded invalidates its structure proof;
+a click before the pending refresh is correctly cleared. Native journals established that
+setup race in #160. Preparing the fixture before the monitor exists preserves the identity
+safeguard. The optional paired input probe in CONTRIBUTING retains all eight outcomes using
+the normal package, with and without native delivery observers.
 Completed suites and rename benchmark cases are saved incrementally so an external timeout
 retains partial evidence; `run_complete` distinguishes the final result from partial checkpoints.
 The macOS helper records its owned process group on timeout and runs
