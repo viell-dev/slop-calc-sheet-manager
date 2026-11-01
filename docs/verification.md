@@ -27,6 +27,11 @@ revision; routine CI and PR planning previews cannot authorize publication. Work
 consistency and negative job/run evidence are checked by `test_ci_policy.py`, `test_release_ci.py`
 and `test_consistency.py`.
 
+Routine Linux uploads headless evidence before starting input, captures both phases' console
+output without hiding failures, and requires headless success before input. A hard job timeout
+can still prevent the final input artifact; absent logs cannot classify the original failure
+([#152](https://github.com/viell-dev/slop-calc-sheet-manager/issues/152)).
+
 **Windows desktop** uses real `SendInput` on a visible
 Windows Server 2025 desktop, the pinned `win` build and en-US layout. Its current evidence covers
 one 1024×768 desktop at 96 DPI. The full release sweep requires the complete suite; a separate

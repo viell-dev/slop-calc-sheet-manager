@@ -9,6 +9,10 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   unrelated sheet and both members of a confusable-name pair
   ([#22](https://github.com/viell-dev/slop-calc-sheet-manager/issues/22)). This adds benchmark
   evidence without changing the extension or imposing a timing limit.
+- Retain routine Linux headless diagnostics before input starts, preserve runner failures while
+  capturing console output, and stop input after a headless failure
+  ([#152](https://github.com/viell-dev/slop-calc-sheet-manager/issues/152)). The CI timeout and
+  required success gate remain unchanged.
 
 ## 0.0.9 - 2026-11-08
 
