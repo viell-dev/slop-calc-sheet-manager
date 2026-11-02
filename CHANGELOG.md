@@ -8,6 +8,8 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 - Refresh the pinned Python 3.12 development image.
 - Update the development checks image and local Node.js pin together to 24.22.0, keeping the
   documentation container example aligned.
+- Update setup-python to 7.1.0, Ruff to 0.17.2, and VitePress to 2.0.0-alpha.21 for development,
+  CI and documentation builds.
 
 ## 0.0.9 - 2026-11-02
 
