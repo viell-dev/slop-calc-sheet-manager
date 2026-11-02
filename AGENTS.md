@@ -279,9 +279,16 @@ Breaking one of these has hung or crashed LibreOffice, or let an action reach th
   tree control (`tests/integration/sheet_list_view.py`), and its `XEventListener`. Keep test hooks
   and failure-injection seams out of the shipped extension; inject failures through test-only
   forwarding adapters.
-- **Test documents** are opened visibly, even in headless runs, and every Calc document is closed
-  through `main_thread.close_document`: on Windows, closing one from the test's own thread
-  crashed LibreOffice ([#47](https://github.com/viell-dev/slop-calc-sheet-manager/issues/47)).
+- **Test documents** are visible before native UI assertions and input, even in headless runs.
+  The theme fixture alone prepares its workbook with `Hidden=True`, finishes edits and cleanup,
+  then shows the frame before opening the panel. This measured preparation exception prevents
+  cleanup from invalidating an already-visible list's structure proof
+  ([#160](https://github.com/viell-dev/slop-calc-sheet-manager/issues/160#issuecomment-6565110912)).
+  Windows proof-state controls and eight normal-package Mac cases verify the correction; all
+  theme, input and workbook-state checks still run visibly. Revisit the exception if Calc's
+  panel initialization or this fixture's cleanup changes. Every Calc document is closed through
+  `main_thread.close_document`: on Windows, closing one from the test's own thread crashed
+  LibreOffice ([#47](https://github.com/viell-dev/slop-calc-sheet-manager/issues/47)).
 - **PyUNO exceptions** reject a new `__traceback__`, so a UNO exception leaving a
   `@contextmanager` block, such as `office_session`, arrives as a RuntimeException about a
   traceback object ([#41](https://github.com/viell-dev/slop-calc-sheet-manager/issues/41)). Keep
