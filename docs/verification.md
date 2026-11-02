@@ -9,8 +9,9 @@ Record run results, deliberate-break experiments and review findings in the owni
 
 ## Where checks run
 
-- **Checks:** Ruff, strict Pyright, unit tests and byte-for-byte reproducible builds, on Python
-  3.12 and 3.14.
+- **Checks:** Ruff, strict Pyright for Linux, Windows and macOS API availability, unit
+  tests and byte-for-byte reproducible builds, on Python 3.12 and 3.14. Static platform targets do
+  not execute native behaviour.
 - **Integration:** routine CI uses the newest tested Linux build, headless. The manual full release
   sweep adds the minimum and newest tested 26.2, painted gtk3 on all three builds, the Windows pin
   headless, Intel macOS headless integration/lifecycle, and the unsupported-version refusal.
@@ -49,6 +50,28 @@ private paths, diagnostic ownership and failure propagation for version mismatch
 reports or diagnostic collection failure. Those checks are separate from the native evidence
 linked in #145. A standalone focused Mac run cannot replace the complete exact-revision sweep.
 A focused [human usability pass](./manual-tests.md) remains a separate release requirement.
+Failed integration input polls also retain a bounded trace of the fixtures' existing selection
+reads, row coordinates and posted pointer actions, without extra UNO reads, waits or retries
+([#160](https://github.com/viell-dev/slop-calc-sheet-manager/issues/160)). The accessibility and
+theme fixtures can also record delivered mouse and selection events without making UNO calls
+from listeners. Successful theme results keep the initial input trace too; unavailable
+observers are identified explicitly. Detailed theme state is read only after a failed pick.
+The theme fixture finishes edits and cleanup while its workbook is hidden, before opening
+the panel. Resetting modified state after the list has loaded invalidates its structure proof;
+a click before the pending refresh is correctly cleared. Native journals established that
+setup race in #160. Preparing the fixture before the monitor exists preserves the identity
+safeguard. The optional paired input probe in CONTRIBUTING retains all eight outcomes using
+the normal package, with and without native delivery observers.
+Completed suites and rename benchmark cases are saved incrementally so an external timeout
+retains partial evidence; `run_complete` distinguishes the final result from partial checkpoints.
+The macOS helper records its owned process group on timeout and runs
+native TERM/KILL controls before installing the app; a zombie-only signalling refusal is accepted
+only after reading member states. Unverified cleanup retains the private directory and fails
+([#162](https://github.com/viell-dev/slop-calc-sheet-manager/issues/162)).
+The Mac integration command has 30 minutes for the measured complete benchmark workload, with
+60 minutes for its job's installation, commands and evidence collection. Functional assertion
+deadlines and correctness checks remain separate; the enclosing release wait/job budgets are
+documented in [RELEASING.md](https://github.com/viell-dev/slop-calc-sheet-manager/blob/main/RELEASING.md).
 
 ## Installation, packaging and publication
 
