@@ -189,8 +189,8 @@ jobs:
   macos:
     name: macOS Intel packaged integration
     runs-on: macos-15-intel
-    # Internal command budgets total 43 minutes; allow cleanup and artifact upload too.
-    timeout-minutes: 50
+    # Allow room for native controls, command budgets, cleanup and artifact upload.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

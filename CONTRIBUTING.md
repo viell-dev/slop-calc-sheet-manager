@@ -78,8 +78,9 @@ Linux semantics; the release sweep also runs the complete check command on Windo
 ## Checks
 
 One command runs Ruff lint and format checks, Pyright, unit tests, and two builds whose bytes must
-match. Pyright uses Python 3.12 semantics and strict checking, with limited exceptions at the
-dynamic UNO boundary. The test stubs never ship in the extension.
+match. Pyright checks Linux, Windows and macOS API availability; this does not execute
+native behaviour on those platforms. It uses Python 3.12 semantics and strict checking, with
+limited exceptions at the dynamic UNO boundary. The test stubs never ship in the extension.
 
 Windows PowerShell 7:
 
@@ -360,6 +361,13 @@ Dispatch focused checks with `gh workflow run macos.yml --ref <branch>`, respect
 cadence above. Coverage is Intel macOS 15 headless packaged integration and lifecycle, with the
 runner requesting `svp`. Aqua rendering, real OS keyboard/mouse input, screen readers, Apple
 Silicon, GUI installation/update and upgrades from published builds on macOS are not established.
+
+For the unresolved initial theme pick in #160, `-f theme_pick_probe=true` instead runs eight
+fixed cases in fresh office profiles: original, observed, observed, original, repeated once.
+Each repeats the normal panel/accessibility/adapter prefix. Every outcome is retained; an
+initial-pick failure allows the remaining measurements but fails the command after all eight.
+Unexpected failures and unclean shutdowns stop it. This investigation is marked explicitly in
+the host/probe receipts and cannot replace integration, lifecycle or a full release sweep.
 
 ### Soak painted sessions
 

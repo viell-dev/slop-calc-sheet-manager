@@ -230,7 +230,7 @@ def require_workflow(policy: Policy, commit: str, publishing: bool, deadline: fl
 
 
 def require_ci(
-    commit: str, *, publishing: bool, preview: bool = False, timeout: float = 3000
+    commit: str, *, publishing: bool, preview: bool = False, timeout: float = 70 * 60
 ) -> str:
     if preview and publishing:
         raise ValueError("A PR preview cannot authorize publication")

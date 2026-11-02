@@ -46,7 +46,7 @@ jobs:
   validate:
     name: ${{ github.event_name == 'pull_request' && 'Release planning preview' || 'Release dry run' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 80
     permissions:
       contents: read
       actions: read
@@ -107,7 +107,7 @@ jobs:
       github.event_name == 'workflow_dispatch' && !inputs.dry_run &&
       github.ref == 'refs/heads/main' && github.repository == 'viell-dev/slop-calc-sheet-manager'
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 80
     permissions:
       contents: write
       actions: read
