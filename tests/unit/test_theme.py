@@ -38,6 +38,23 @@ def test_selection_is_synthesised_only_when_the_document_background_hides_it() -
     assert contrast(result.highlight, result.highlight_text) >= 4.5
 
 
+@pytest.mark.parametrize("highlight", [0x3DAEE9, 0xE9AD3D, 0x3DE979])
+def test_a_faint_native_selection_keeps_its_tint_on_a_white_document(highlight: int) -> None:
+    result = palette(0xFFFFFF, None, highlight, 0xFFFFFF, None, 0x31363B)
+    channels = [(result.highlight >> shift) & 255 for shift in (16, 8, 0)]
+    assert max(channels) - min(channels) >= 32, "The native tint became neutral grey"
+    assert contrast(result.background, result.highlight) >= 3
+    assert contrast(result.highlight, result.highlight_text) >= 4.5
+    assert result.border == 0x737373, "Selection adaptation changed the neutral border"
+
+
+def test_configured_ordinary_text_does_not_tint_the_adapted_selection() -> None:
+    ordinary = palette(0xFFFFFF, None, 0x3DAEE9, 0xFFFFFF, None, 0x31363B)
+    red_text = palette(0xFFFFFF, 0x880000, 0x3DAEE9, 0xFFFFFF, None, 0x31363B)
+    assert red_text.foreground == 0x880000
+    assert red_text.highlight == ordinary.highlight
+
+
 @pytest.mark.parametrize("background", [0, 0xFFFFFF, 0x1C1C1C, 0x808080, 0x112233, 0xFFFF00])
 @pytest.mark.parametrize("preferred", [None, -1, 0, 0xFFFFFF, 0x123456, 0x1000000])
 def test_unreadable_colours_are_replaced_together(background: int, preferred: int | None) -> None:

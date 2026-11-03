@@ -5,6 +5,9 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Keep the native selection tint when adapting it to the document background, instead of
+  replacing a light blue selection with grey in dark appearance
+  ([#167](https://github.com/viell-dev/slop-calc-sheet-manager/issues/167)).
 - Keep the previous visible sheet when hiding other sheets from the list, restoring its Calc
   tab group without the hidden sheets where safe
   ([#168](https://github.com/viell-dev/slop-calc-sheet-manager/issues/168)).

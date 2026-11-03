@@ -39,10 +39,13 @@ from rename_dialog import check_stale as check_rename_stale  # noqa: E402
 from run import office_session, wait_for  # noqa: E402
 from teardown import Configured, stalled_callbacks  # noqa: E402
 from test_document_theme import (  # noqa: E402
+    FAINT_BLUE_SOURCE,
+    STYLE_COLORS,
     check_selection_colors,
     color_settings,
     scheme_of,
     set_colors,
+    set_source_colors,
 )
 from xinput import RIGHT, Pointer, XInput  # noqa: E402
 
@@ -381,20 +384,27 @@ def check_document_colors(book):
         sample.click(1)
         root = view.root(sample.tree)
         source_style = sample.document.CurrentController.Frame.ComponentWindow.StyleSettings
+        native = tuple(getattr(source_style, name) for name in STYLE_COLORS)
         check_selection_colors(sample.tree.StyleSettings, source_style, source_style.FieldColor)
         original_height = sample.tree.getNodeRect(sample.nodes()[0]).Height
         before = sample.active(), sample.calc_tabs(), sample.undo_titles()
-        with Configured(lambda: None, lambda: set_colors(settings, original)):
-            for label, background, foreground in (
-                ("dark", 0x112233, 0xEEF4FF),
-                ("light", 0xF1EAD1, 0x342C1D),
-                ("poor-contrast", 0xFFFFFF, 0xFFFFFF),
+        with (
+            Configured(lambda: None, lambda: set_colors(settings, original)),
+            Configured(lambda: None, lambda: set_source_colors(lab.context, source_style, native)),
+        ):
+            for label, background, foreground, source in (
+                ("dark", 0x112233, 0xEEF4FF, native),
+                ("light", 0xF1EAD1, 0x342C1D, native),
+                ("poor-contrast", 0xFFFFFF, 0xFFFFFF, native),
                 (
                     "selection-background",
                     source_style.HighlightColor,
                     text_color(source_style.HighlightColor, None),
+                    native,
                 ),
+                ("faint-native-selection", 0xFFFFFF, 0, FAINT_BLUE_SOURCE),
             ):
+                set_source_colors(lab.context, source_style, source)
                 set_colors(settings, (background, foreground, background))
                 wait_until(
                     lambda expected=background: sample.tree.StyleSettings.FieldColor == expected,

@@ -20,7 +20,8 @@ also shown for read-only workbooks and follows the sidebar when it resizes, dock
 dividers stay readable, including when a custom scheme would otherwise give the text and
 background the same colour. Selected rows keep the platform's selection and text colours
 together; if the new background hides the selection, the list uses a distinct selection colour
-with readable text. Sheet-tab colour squares keep their assigned colours. Appearance changes
+with readable text. <Unreleased since="0.0.9" /> This adjustment keeps the native selection's
+tint where possible. Sheet-tab colour squares keep their assigned colours. Appearance changes
 follow when the visible list is idle; they leave your picks and the workbook unchanged.
 
 ## Find and select sheets

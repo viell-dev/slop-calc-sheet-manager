@@ -6,6 +6,8 @@ by the corresponding real-input check; these assertions alone do not establish n
 Prepare and clean the hidden workbook before the view creates the list's structure monitor
 (#160). Optional input listeners have the accessibility suite as a delivery control. Take
 detailed state only after a failed initial pick. An observed pass alone is not causal evidence.
+The faint-blue control changes only this document window's native palette. Restore it with the
+private document colours, then wait for the complete selection pair as well as the background.
 """
 
 from input_trace import events_for
@@ -75,6 +77,26 @@ def set_colors(settings, values):
     settings.commitChanges()
 
 
+STYLE_COLORS = (
+    "FieldColor",
+    "FieldTextColor",
+    "ShadowColor",
+    "HighlightColor",
+    "HighlightTextColor",
+)
+FAINT_BLUE_SOURCE = (0x31363B, 0xFFFFFF, 0x767676, 0x3DAEE9, 0xFFFFFF)
+
+
+def set_source_colors(context, style, values):
+    """A controlled native window palette, private to this synthetic document (#167)."""
+
+    def apply():
+        for name, value in zip(STYLE_COLORS, values, strict=True):
+            setattr(style, name, value)
+
+    on_main_thread(context, apply)
+
+
 def check_selection_colors(style, source, background):
     native = source.HighlightColor, source.HighlightTextColor
     actual = style.HighlightColor, style.HighlightTextColor
@@ -84,6 +106,10 @@ def check_selection_colors(style, source, background):
         assert actual[0] != native[0]
         assert contrast(background, actual[0]) >= 3
         assert contrast(*actual) >= 4.5
+        native_channels = [(native[0] >> shift) & 255 for shift in (16, 8, 0)]
+        if max(native_channels) - min(native_channels) >= 64:
+            channels = [(actual[0] >> shift) & 255 for shift in (16, 8, 0)]
+            assert max(channels) > min(channels), "The native selection tint became neutral"
 
 
 def check_document_colors(context, desktop, *, trace_input=True):
@@ -132,27 +158,23 @@ def check_document_colors(context, desktop, *, trace_input=True):
             document.isModified(),
         )
         source_style = controller.Frame.ComponentWindow.StyleSettings
-        native = tuple(
-            getattr(source_style, name)
-            for name in (
-                "FieldColor",
-                "FieldTextColor",
-                "ShadowColor",
-                "HighlightColor",
-                "HighlightTextColor",
-            )
-        )
+        native = tuple(getattr(source_style, name) for name in STYLE_COLORS)
         initial = tree.StyleSettings.FieldColor
         assert initial == source_style.FieldColor, "The private profile should use native white"
         check_selection_colors(tree.StyleSettings, source_style, initial)
         evidence = []
-        with Configured(lambda: None, lambda: set_colors(settings, original)):
-            for background, foreground, border in (
-                (0x112233, 0xEEF4FF, 0x708090),
-                (0xFFFFFF, 0xFFFFFF, 0xFFFFFF),
-                (0xF1EAD1, 0x342C1D, 0xF1EAD1),
-                (native[3], text_color(native[3], None), native[3]),
+        with (
+            Configured(lambda: None, lambda: set_colors(settings, original)),
+            Configured(lambda: None, lambda: set_source_colors(context, source_style, native)),
+        ):
+            for background, foreground, border, source in (
+                (0x112233, 0xEEF4FF, 0x708090, native),
+                (0xFFFFFF, 0xFFFFFF, 0xFFFFFF, native),
+                (0xF1EAD1, 0x342C1D, 0xF1EAD1, native),
+                (native[3], text_color(native[3], None), native[3], native),
+                (0xFFFFFF, 0, 0xFFFFFF, FAINT_BLUE_SOURCE),
             ):
+                set_source_colors(context, source_style, source)
                 set_colors(settings, (background, foreground, border))
                 poll(
                     lambda expected=background: tree.StyleSettings.FieldColor == expected,
@@ -180,16 +202,9 @@ def check_document_colors(context, desktop, *, trace_input=True):
                     "Bravo",
                     "Charlie",
                 ]
-                assert native == tuple(
-                    getattr(source_style, name)
-                    for name in (
-                        "FieldColor",
-                        "FieldTextColor",
-                        "ShadowColor",
-                        "HighlightColor",
-                        "HighlightTextColor",
-                    )
-                ), "The list changed the document window's own styles"
+                assert source == tuple(getattr(source_style, name) for name in STYLE_COLORS), (
+                    "The list changed the document window's own styles"
+                )
                 evidence.append(
                     {
                         "background": background,
@@ -197,9 +212,18 @@ def check_document_colors(context, desktop, *, trace_input=True):
                         "selection": style.HighlightColor,
                         "selection_text": style.HighlightTextColor,
                         "border": style.ShadowColor,
+                        "source_background": source[0],
+                        "source_selection": source[3],
                     }
                 )
-        poll(lambda: tree.StyleSettings.FieldColor == initial, "the original document colour")
+        poll(
+            lambda: (
+                tree.StyleSettings.FieldColor == initial
+                and (tree.StyleSettings.HighlightColor, tree.StyleSettings.HighlightTextColor)
+                == (native[3], native[4])
+            ),
+            "the original document and selection colours",
+        )
         check_selection_colors(tree.StyleSettings, source_style, initial)
     except BaseException as failure:
         close_after(context, document, failure)
