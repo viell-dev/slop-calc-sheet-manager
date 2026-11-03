@@ -6,11 +6,13 @@ positions come from those windows and their accessible list items, after calibra
 against a motion listener on the dialog's list, as the sheet list itself is calibrated.
 """
 
+import sys
 import time
 from typing import Any
 
 import uno
 import unohelper
+from button_pixels import capture as capture_disabled_buttons
 from com.sun.star.awt import XMouseMotionListener
 from run import wait_for
 from sheet_list_view import on_main_thread
@@ -269,6 +271,12 @@ def check_keyboard(book):
         assert dialog.labels()["lists"] == ["Sheets:"], evidence
         assert dialog.items() == [f"{name}   (unchanged)" for name in picks], dialog.state()
         assert not dialog.state()["rename_enabled"], dialog.state()
+        evidence["disabled_label_opened"] = capture_disabled_buttons(
+            book.lab,
+            {"Rename": dialog.buttons["Rename"]},
+            "rename-disabled-label",
+            dialog.calibrate().offset if sys.platform.startswith("linux") else None,
+        )
         assert (book.active(), book.calc_tabs(), book.selection()) == (*view, picks)
         assert book.order() == names and not book.undo_titles()
         type_text(book.lab, "a")  # The Find field has the focus first.
@@ -283,6 +291,7 @@ def check_keyboard(book):
         wait_for(lambda: dialog.items() == expected, "the replaced proposals")
         evidence["replaced"] = dialog.state()
         assert dialog.state()["rename_enabled"], dialog.state()
+        assert dialog.buttons["Rename"].getProperty("NativeWidgetLook")
         book.lab.input.tap("s", ("Alt_L",), pause=0.3)  # The Sheets list.
         book.lab.input.tap("Down", pause=0.3)
         wait_for(lambda: dialog.text(dialog.name) == "Ch4rlie", "the second row in the name field")
@@ -292,6 +301,12 @@ def check_keyboard(book):
         wait_for(lambda: "cannot contain" in dialog.state()["status"], "the refused name")
         evidence["refused"] = dialog.state()
         assert not dialog.state()["rename_enabled"] and "⚠" in dialog.items()[1]
+        evidence["disabled_label_refused"] = capture_disabled_buttons(
+            book.lab,
+            {"Rename": dialog.buttons["Rename"]},
+            "rename-refused-label",
+            dialog.calibrate().offset if sys.platform.startswith("linux") else None,
+        )
         book.lab.screenshot("rename-sheets-refused-name")
         book.lab.input.tap("a", ("Control_L",), pause=0.1)
         type_text(book.lab, "Bravo")  # Free once Bravo has its new name: a chain.

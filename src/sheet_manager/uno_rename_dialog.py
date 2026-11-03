@@ -18,6 +18,8 @@ document is changed only after the dialog has closed, by the caller.
   proposal, because the text equals the row's proposal already.
 - Rows are written in bulk when many change at once (Replace All): replacing list box items one
   at a time was slow through UNO, measured with 1,000 items (#102).
+- Rename keeps its real enablement while using the shared Linux disabled paint fallback
+  (`uno_calc.enable_button`, #166). Its native peer exists before the first `_update`/show.
 """
 
 from collections.abc import Callable
@@ -28,7 +30,7 @@ from com.sun.star.awt import XActionListener, XItemListener, XTextListener
 
 from sheet_manager.i18n import tr
 from sheet_manager.rename import Batch, Plan, quoted, row_label, summary
-from sheet_manager.uno_calc import MainThread
+from sheet_manager.uno_calc import MainThread, enable_button
 
 CANCEL = 2  # com.sun.star.awt.PushButtonType.CANCEL: closes the dialog without a result.
 POS = 3  # com.sun.star.awt.PosSize.POS: move without resizing.
@@ -266,7 +268,7 @@ class RenameDialog:
         status = note or found[self._row] or summary(self._batch, found)
         self._control("status").getModel().Label = status
         valid = bool(self._batch.changes()) and not any(found)
-        self._control("rename").getModel().Enabled = valid
+        enable_button(self._control("rename"), valid)
 
     def _write_rows(self, labels: list[str]) -> None:
         rows = self._control("rows")

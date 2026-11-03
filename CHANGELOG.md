@@ -5,6 +5,8 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Keep disabled move and Rename labels readable on Linux with LibreOffice's theme enabled
+  ([#166](https://github.com/viell-dev/slop-calc-sheet-manager/issues/166)).
 - Keep the native selection tint when adapting it to the document background, instead of
   replacing a light blue selection with grey in dark appearance
   ([#167](https://github.com/viell-dev/slop-calc-sheet-manager/issues/167)).
