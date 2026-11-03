@@ -5,6 +5,10 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Open bundled English quick help from the sidebar header's `?`, including the distinction
+  between list picks and Calc tabs, movement, Undo and recovery, and an online-guide link
+  ([#81](https://github.com/viell-dev/slop-calc-sheet-manager/issues/81)).
+
 - Keep disabled move and Rename labels readable on Linux with LibreOffice's theme enabled
   ([#166](https://github.com/viell-dev/slop-calc-sheet-manager/issues/166)).
 - Keep the native selection tint when adapting it to the document background, instead of

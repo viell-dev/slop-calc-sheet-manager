@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<helpdocument version="1.0">
+  <meta>
+    <topic id="sheet_manager_help" indexer="include" status="PUBLISH">
+      <title id="tit" xml-lang="en-US">Sheet Manager quick help</title>
+      <filename>/dev.viell.sheetmanager/index.xhp</filename>
+    </topic>
+  </meta>
+  <body>
+    <bookmark xml-lang="en-US" branch="hid/SIDEBAR_SHEETMANAGERDECK"
+              id="bm_deck" localize="false"/>
+    <paragraph role="heading" id="hd_main" level="1" xml-lang="en-US">Sheet Manager quick help</paragraph>
+    <paragraph role="paragraph" id="par_intro" xml-lang="en-US"><ahelp hid=".">Manage the sheets of the current Calc workbook from the sidebar.</ahelp> This short page is bundled with the installed extension and works offline. The full guide is online.</paragraph>
+    <paragraph role="heading" id="hd_picks" level="2" xml-lang="en-US">Picks, viewing and Calc tabs</paragraph>
+    <paragraph role="paragraph" id="par_picks" xml-lang="en-US">Click a row to pick it. Ctrl+click adds or removes a pick; Shift+click selects a range. Double-click a visible sheet, or press Enter, to view it. The arrow marks the sheet Calc is showing. Picking rows alone does not group Calc's tabs for editing.</paragraph>
+    <paragraph role="paragraph" id="par_group" xml-lang="en-US">A sheet command can group Calc's tabs. When the footer says “Edits affect … Calc tabs”, cell edits affect that group. Click one Calc tab, or view one sheet from the list, to end the group before editing cells.</paragraph>
+    <paragraph role="heading" id="hd_moves" level="2" xml-lang="en-US">Move and rename sheets</paragraph>
+    <paragraph role="paragraph" id="par_moves" xml-lang="en-US">Drag picked rows to an insertion line, or use Top, Up, Down and Bottom. The picked sheets keep their relative order. Right-click a row for sheet commands; a picked row targets all picks, and an unpicked row targets only itself. Menu or Shift+F10 targets the picks. Rename Sheets… opens one dialog when several sheets are targeted.</paragraph>
+    <paragraph role="heading" id="hd_recovery" level="2" xml-lang="en-US">Unavailable actions and recovery</paragraph>
+    <paragraph role="paragraph" id="par_recovery" xml-lang="en-US">Unavailable actions cannot run. Their help text explains restrictions such as a protected workbook structure or the last visible sheet. Use Ctrl+Z to undo a completed move, show or batch rename in one step; built-in sheet commands keep Calc's own undo behaviour. If sheet identity can no longer be verified, the list clears its picks rather than act on different sheets. Read any refusal or recovery message, check the viewed sheet and grouped tabs, then pick again.</paragraph>
+    <paragraph role="paragraph" id="par_online" xml-lang="en-US"><link href="https://viell-dev.github.io/slop-calc-sheet-manager/">Full Sheet Manager guide (online)</link> — detailed instructions, keyboard shortcuts, known issues and reporting a problem. The context menu's Sheet Manager Help (online) opens the same guide.</paragraph>
+  </body>
+</helpdocument>

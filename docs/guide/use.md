@@ -20,7 +20,7 @@ also shown for read-only workbooks and follows the sidebar when it resizes, dock
 dividers stay readable, including when a custom scheme would otherwise give the text and
 background the same colour. Selected rows keep the platform's selection and text colours
 together; if the new background hides the selection, the list uses a distinct selection colour
-with readable text. <Unreleased since="0.0.9" /> This adjustment keeps the native selection's
+with readable text. <Unreleased /> This adjustment keeps the native selection's
 tint where possible. Sheet-tab colour squares keep their assigned colours. Appearance changes
 follow when the visible list is idle; they leave your picks and the workbook unchanged.
 
@@ -68,7 +68,7 @@ so pressing Up or Down again moves the same sheets further.
 **Move buttons.** <Unreleased since="0.0.4" /> The **Top**, **Up**, **Down**, and **Bottom** buttons
 above the list run the same actions.
 
-<Unreleased since="0.0.9" /> Disabled move and Rename buttons keep their labels visible on Linux
+<Unreleased /> Disabled move and Rename buttons keep their labels visible on Linux
 with LibreOffice's theme enabled. They remain unavailable until their action is allowed.
 
 A move is one **Move Sheets** undo step. The move preserves the active sheet and Calc's tab
@@ -143,8 +143,11 @@ unavailable for these targets, because Calc cannot view a hidden sheet.
 The move actions follow the commands. Native popup rendering can hide unavailable entries and
 their reasons; see the [known issue](./known-issues.md).
 
-**Sheet Manager Help (online)** <Unreleased /> opens this guide in your browser. The header's
-native `?` uses an unavailable LibreOffice help topic; see [Known issues](./known-issues.md).
+**Sheet Manager Help (online)** <Unreleased /> opens this guide in your browser.
+<Unreleased /> The header's native `?` opens a short bundled English help page in LibreOffice's
+internal viewer. It explains picks versus Calc tabs, movement and recovery, and links to the
+full online guide. It works offline on builds with XML-help support; use the online menu action
+if that optional LibreOffice component is unavailable.
 
 ## Rename several sheets
 
