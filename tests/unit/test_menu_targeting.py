@@ -86,6 +86,10 @@ class Calc:
         self.on_state: Callable[[], None] | None = None
         # Where a UNO call fails: "query", "state", or "dispatch" (after Calc began the command).
         self.fail: str | None = None
+        self.on_dispatch: Callable[[], None] | None = None
+        self.on_activate: Callable[[], None] | None = None
+        self.hide_completed = True
+        self.arguments: tuple[Any, ...] = ()
 
     def by_name(self, name: str) -> Sheet:
         return next(sheet for sheet in self.sheets if sheet.name == name)
@@ -100,6 +104,9 @@ class Calc:
         self.active = sheet.name
         if sheet.name not in self.tabs:
             self.tabs = [sheet.name]
+        if self.on_activate is not None:
+            hook, self.on_activate = self.on_activate, None
+            hook()
 
     def select(self, context: object, frame: object, indices: list[int]) -> None:
         if self.refuse_selection:
@@ -158,10 +165,21 @@ def bound_menu(
     """SheetMenu's targeting methods from the source, bound to a fake Calc."""
     refusal = menu_function("command_refusal")
 
-    def record(url: str, arguments: object) -> None:
+    def record(url: str, arguments: tuple[Any, ...]) -> None:
         calc.dispatched.append(url)
+        calc.arguments = arguments
         if calc.fail == "dispatch":
             raise RuntimeError("injected failure inside the command")
+        if url == COMMANDS[HIDE] and calc.hide_completed:
+            index = calc.order().index(calc.active)
+            for name in calc.tabs:
+                calc.by_name(name).IsVisible = False
+            # Native Hide prefers the next visible sheet, then one before it.
+            order = calc.sheets[index:] + list(reversed(calc.sheets[:index]))
+            calc.active = next(sheet.name for sheet in order if sheet.IsVisible)
+            calc.tabs = [calc.active]
+        if calc.on_dispatch is not None:
+            calc.on_dispatch()
 
     def query(context: object, frame: object, command: str) -> tuple[str, object]:
         if calc.fail == "query":
@@ -178,6 +196,9 @@ def bound_menu(
             hook()
         return calc.enabled
 
+    def property_value(name: str, value: object) -> SimpleNamespace:
+        return SimpleNamespace(Name=name, Value=value)
+
     namespace: dict[str, Any] = {
         "Snapshot": object,
         "Callable": Callable,
@@ -186,6 +207,8 @@ def bound_menu(
         "tr": str,
         "_stale": _stale,
         "COMMANDS": COMMANDS,
+        "HIDE": HIDE,
+        "prop": property_value,
         "command_refusal": refusal,
         "query_command": query,
         "command_state": state,
@@ -202,7 +225,15 @@ def bound_menu(
             getActiveSheet=lambda: calc.by_name(calc.active), setActiveSheet=calc.set_active
         ),
     )
-    for name in ("capture_view", "restore_view", "group_calc_tabs", "_dispatch_refusal", "run"):
+    for name in (
+        "capture_view",
+        "_view_indices",
+        "restore_view",
+        "_after_hide",
+        "group_calc_tabs",
+        "_dispatch_refusal",
+        "run",
+    ):
         function = method(MENU, "SheetMenu", name, dict(namespace))
 
         def bind(*args: Any, function: Any = function) -> Any:
@@ -263,7 +294,6 @@ def fresh() -> Calc:
         (RENAME, ["Delta"], ("Delta", ["Delta"])),
         (INSERT, ["Delta"], ("Delta", ["Delta"])),
         (DELETE, ["Charlie", "Echo"], ("Charlie", ["Charlie", "Echo"])),
-        (HIDE, ["Charlie", "Echo"], ("Charlie", ["Charlie", "Echo"])),
     ],
 )
 def test_command_runs_on_exactly_its_targets_and_keeps_calc_there(
@@ -275,6 +305,102 @@ def test_command_runs_on_exactly_its_targets_and_keeps_calc_there(
     assert menu.run(item, calc.snapshot(), picked, lambda: True) == ""
     assert calc.dispatched == [COMMANDS[item]]
     assert calc.view() == view
+    assert calc.arguments == ()
+
+
+@pytest.mark.parametrize(
+    ("active", "tabs", "picked", "expected"),
+    [
+        ("Alfa", ["Alfa", "Bravo"], ["Charlie", "Echo"], ("Alfa", ["Alfa", "Bravo"])),
+        ("Alfa", ["Alfa", "Bravo"], ["Bravo"], ("Alfa", ["Alfa"])),
+        ("Charlie", ["Charlie"], ["Charlie"], ("Delta", ["Delta"])),
+    ],
+)
+def test_hide_restores_only_the_unaffected_visible_view(
+    active: str, tabs: list[str], picked: list[str], expected: tuple[str, list[str]]
+) -> None:
+    calc = Calc(NAMES, active, tabs)
+    menu = bound_menu(calc)
+    assert menu.run(HIDE, calc.snapshot(), picked, lambda: True) == ""
+    assert calc.view() == expected
+    assert [sheet.name for sheet in calc.sheets if not sheet.IsVisible] == picked
+    assert [(p.Name, p.Value) for p in calc.arguments] == [("SynchronMode", True)]
+
+
+@pytest.mark.parametrize("change", ["proof", "rename", "hide", "incomplete", "error"])
+def test_hide_does_not_restore_an_unproved_view(change: str) -> None:
+    calc = fresh()
+    observed = calc.snapshot()
+    menu = bound_menu(calc)
+    valid = True
+
+    def changed() -> None:
+        nonlocal valid
+        if change == "proof":
+            # A delete/reinsert with the same names can leave convincing handles.
+            valid = False
+        elif change == "rename":
+            calc.by_name("Alfa").name = "Other"
+        elif change == "hide":
+            calc.by_name("Bravo").IsVisible = False
+        elif change == "error":
+            menu._controller.setActiveSheet = Mock(side_effect=RuntimeError("restore failed"))
+
+    calc.hide_completed = change != "incomplete"
+    calc.on_dispatch = changed
+    reason = menu.run(HIDE, observed, ["Charlie"], lambda: valid)
+    assert "could not be restored safely" in reason
+    assert calc.active != "Alfa"
+    assert calc.dispatched == [COMMANDS[HIDE]]
+
+
+@pytest.mark.parametrize("change", ["move", "proof", "rename", "hide", "activate"])
+def test_hide_rechecks_restoration_after_activation(change: str) -> None:
+    calc = fresh()
+    observed = calc.snapshot()
+    menu = bound_menu(calc)
+    valid = True
+
+    def changed() -> None:
+        nonlocal valid
+        if change == "move":
+            echo = calc.by_name("Echo")
+            calc.sheets.remove(echo)
+            calc.sheets.insert(0, echo)
+        elif change == "proof":
+            valid = False
+        elif change == "rename":
+            calc.by_name("Bravo").name = "Other"
+        elif change == "hide":
+            calc.by_name("Bravo").IsVisible = False
+        else:
+            calc.active, calc.tabs = "Delta", ["Delta"]
+
+    calc.on_activate = changed
+    reason = menu.run(HIDE, observed, ["Charlie"], lambda: valid)
+    if change == "move":
+        assert reason == "" and calc.view() == ("Alfa", ["Alfa", "Bravo"])
+    else:
+        assert "could not be restored safely" in reason
+        assert calc.tabs != ["Alfa", "Bravo"]
+
+
+def test_hide_rechecks_proof_after_restoring_the_tab_group() -> None:
+    calc = fresh()
+    menu = bound_menu(calc)
+    valid = True
+
+    def invalidate() -> None:
+        nonlocal valid
+        valid = False
+
+    def after_activation() -> None:
+        calc.on_select = invalidate
+
+    calc.on_activate = after_activation
+    reason = menu.run(HIDE, calc.snapshot(), ["Charlie"], lambda: valid)
+    assert "could not be restored safely" in reason
+    assert not valid
 
 
 @pytest.mark.parametrize(
@@ -425,7 +551,7 @@ def test_failure_before_dispatch_restores_the_view(where: str) -> None:
     logged.assert_called_once()
 
 
-@pytest.mark.parametrize("item", [RENAME, INSERT, DELETE])
+@pytest.mark.parametrize("item", [RENAME, INSERT, DELETE, HIDE])
 def test_failure_inside_dispatch_keeps_calc_on_its_targets(item: int) -> None:
     """A UNO error once Calc began the command: it may have opened a dialog or acted already.
 
@@ -436,7 +562,7 @@ def test_failure_inside_dispatch_keeps_calc_on_its_targets(item: int) -> None:
     calc.fail = "dispatch"
     logged = Mock()
     menu = bound_menu(calc, logged)
-    picked = ["Charlie", "Echo"] if item == DELETE else ["Delta"]
+    picked = ["Charlie", "Echo"] if item in (DELETE, HIDE) else ["Delta"]
     reason = menu.run(item, calc.snapshot(), picked, lambda: True)
     assert calc.dispatched == [COMMANDS[item]]
     assert "may have" in reason, reason

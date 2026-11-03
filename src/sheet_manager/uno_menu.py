@@ -6,8 +6,9 @@ and tabs unchanged. A chosen built-in command is checked again when it runs, wha
 showed: its targets' identity and permissions; then Calc's selected tabs are set to exactly those
 targets, and Calc's own state for the command is read. Grouping and that query can run other code,
 so every check is repeated after them, with only reads before the dispatch. Calc stays on its
-targets afterwards: its dialogs can outlive the dispatch and act on the viewed sheet when
-confirmed (#100). A refusal after grouping restores the previous view.
+targets afterwards when its dialogs can outlive the dispatch and act on the viewed sheet when
+confirmed (#100). Hide completes synchronously and restores a still-visible previous view (#168).
+A refusal after grouping restores the previous view.
 
 This module owns context targeting, native tab grouping and restoration, and move enablement.
 
@@ -39,12 +40,18 @@ This module owns context targeting, native tab grouping and restoration, and mov
   already have opened the command's dialog or acted, so the view stays on the targets and the
   message says the outcome is uncertain; restoring could send a Rename or Insert dialog to another
   sheet (#100). `DisposedException` propagates: the view is gone.
-- A dispatched command keeps Calc on its targets, because Calc's asynchronous dialogs outlive the
+- Except Hide, a dispatched command keeps Calc on its targets: asynchronous dialogs outlive the
   dispatch, and Insert and Rename act on the sheet viewed at confirmation (#100). The document's
   `OnModeChanged` reports dialog lifetime for VCL and gtk3 dialogs, but native Qt dialogs never
   report it, so no restoration may wait for it or for a delay. Synchronous dialogs, such as
   Delete's confirmation, run inside the list's completion, which refreshes after the dispatch
   returns.
+- Hide alone requests synchronous dispatch: ExecuteTable's FID_TABLE_HIDE branch calls HideTable
+  directly in 26.2.1.2 and 26.8.2.2. After checking unchanged structural proof and all targets'
+  hidden state, restore the previous active sheet unless it was hidden, and its old tab group
+  minus the hidden targets. Recheck proof, names and visibility after activation before selecting
+  fresh indices; activation/selection callbacks may change the document. No timer or dialog
+  lifetime heuristic is used, and a dispatch exception never restores a potentially live dialog.
 - Panel disposal can close the list's queue inside the popup's nested loop (#63): the completion
   is then dropped, and nothing else outlives the popup.
 - A move captures the observed snapshot, refs and proof before it is posted, and uses the common
@@ -69,6 +76,7 @@ from sheet_manager.selection import Ref
 from sheet_manager.uno_calc import (
     command_label,
     command_state,
+    prop,
     query_command,
     report,
     select_tabs,
@@ -189,29 +197,71 @@ class SheetMenu:
             Ref(active, observed.handles[names.index(active)], names.index(active)), refs, visible
         )
 
-    def restore_view(self, view: MenuView, unchanged: Callable[[], bool]) -> None:
-        """Restore the view from before a refused command, to provable sheets only."""
+    def _view_indices(self, view: MenuView, unchanged: Callable[[], bool]) -> list[int] | None:
+        """Resolve a retained view only while its identities and visibility still hold."""
         if not unchanged():
-            return
+            return None
         refs = (view.active, *view.tabs)
         if any(ref.token.getName() != ref.name for ref in refs):
-            return
-        if not view.active.token.IsVisible:
-            return
+            return None
+        if not view.active.token.IsVisible or view.active.name not in {r.name for r in view.tabs}:
+            return None
         if frozenset(ref.name for ref in view.tabs if ref.token.IsVisible) != view.visible:
-            return
+            return None
         names = list(self._document.getSheets().getElementNames())
-        if any(ref.name not in names for ref in refs):
-            return
+        if any(ref.name not in names for ref in refs) or not unchanged():
+            return None
+        return sorted(names.index(ref.name) for ref in view.tabs)
+
+    def restore_view(self, view: MenuView, unchanged: Callable[[], bool]) -> bool:
+        """Restore only a provable view; callbacks between writes cannot reuse old indices."""
+        if self._view_indices(view, unchanged) is None:
+            return False
         if self._controller.getActiveSheet().getName() != view.active.name:
             self._controller.setActiveSheet(view.active.token)
-        indices = sorted(names.index(ref.name) for ref in view.tabs)
+        indices = self._view_indices(view, unchanged)
+        if indices is None:
+            return False
+        if self._controller.getActiveSheet().getName() != view.active.name:
+            raise RuntimeError(tr("Calc could not restore the view after the sheet menu."))
         select_tabs(self._context, self._frame, indices)
+        indices = self._view_indices(view, unchanged)
+        if indices is None:
+            return False
         if (
             self._controller.getActiveSheet().getName() != view.active.name
             or selected_tabs(self._context, self._controller) != indices
         ):
             raise RuntimeError(tr("Calc could not restore the view after the sheet menu."))
+        return True
+
+    def _after_hide(self, view: MenuView, observed: Snapshot, picked, unchanged) -> str:
+        """Restore an unaffected view after confirmed synchronous Hide, never after a dialog."""
+        message = tr(
+            "Calc's previous viewed sheet and selected tabs could not be restored safely. "
+            "Check them before editing."
+        )
+        try:
+            if not unchanged():
+                return message
+            names = [sheet.name for sheet in observed.sheets]
+            targets = [(name, observed.handles[names.index(name)]) for name in picked]
+            if any(handle.getName() != name or handle.IsVisible for name, handle in targets):
+                return message
+            if not unchanged():
+                return message
+            if view.active.name in picked:
+                return ""  # Calc must show another visible sheet when this one was hidden.
+            remaining = tuple(ref for ref in view.tabs if ref.name not in picked)
+            restored = self.restore_view(
+                MenuView(view.active, remaining, view.visible.difference(picked)), unchanged
+            )
+            return "" if restored else message
+        except DisposedException:
+            raise
+        except Exception:
+            report("restoring the view after hiding sheets")
+            return message
 
     def group_calc_tabs(self, picked: list[str]) -> bool:
         """Select exactly the picked sheets as Calc's tabs and confirm Calc did so.
@@ -292,7 +342,8 @@ class SheetMenu:
             reason = tr("Sheet Manager could not verify that this is safe.")
         if not reason and dispatcher is not None:
             try:
-                dispatcher.dispatch(url, ())
+                arguments = (prop("SynchronMode", True),) if item == HIDE else ()
+                dispatcher.dispatch(url, arguments)
             except DisposedException:
                 raise
             except Exception:
@@ -304,7 +355,7 @@ class SheetMenu:
                     "Calc reported an error while running the command, which may have started. "
                     "Calc stays on the targeted sheets; check them before editing."
                 )
-            return ""
+            return self._after_hide(view, observed, picked, unchanged) if item == HIDE else ""
         try:
             self.restore_view(view, unchanged)
         except DisposedException:

@@ -26,6 +26,9 @@ If Sheet Manager does not work in an environment where it is expected to, please
   ([#100](https://github.com/viell-dev/slop-calc-sheet-manager/issues/100)). Closing the menu
   without choosing a command changes nothing. A command refused because its sheets changed
   leaves the view as it was, unless the previous sheets can no longer be proved.
+  <Unreleased /> Hide Sheet is an exception: it restores a still-visible previous view and its
+  previous group without the hidden sheets, where safe. Hiding the viewed sheet itself leaves
+  Calc to choose another visible sheet.
 - **Header Help.** The header's native `?` opens LibreOffice's local error page for the generated
   `SIDEBAR_SHEETMANAGERDECK` help topic. No supported deck help-target setter is available. Use
   **Sheet Manager Help (online)** <Unreleased /> in the context menu to open this guide in your

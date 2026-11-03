@@ -192,11 +192,12 @@ def check_commands(context, document):
         select_tabs(context, frame, [0, 5])
         return view_of(context, document)
 
-    grouped_elsewhere()
+    before_view = grouped_elsewhere()
     assert run(context, document, HIDE, ["Bravo", "Delta"]) == ""
     hidden = [name for name in SIX if not sheets.getByName(name).IsVisible]
     evidence["hide"] = {"hidden": hidden, "undo": list(undo.AllUndoActionTitles)}
     assert hidden == ["Bravo", "Delta"] and len(undo.AllUndoActionTitles) == 1, evidence
+    assert view_of(context, document) == before_view, "Hide changed an unaffected view"
     undo.undo()
     assert all(sheets.getByName(name).IsVisible for name in SIX)
     undo.clear()
@@ -210,6 +211,37 @@ def check_commands(context, document):
     assert after == expected and len(undo.AllUndoActionTitles) == 1, evidence
     undo.undo()
     assert identities(document) == before, "One undo did not bring back the deleted sheets"
+    undo.clear()
+    return evidence
+
+
+def check_hide_views(context, document):
+    """Hide keeps an unaffected view and only the still-visible members of its old group."""
+    controller, sheets, undo = document.CurrentController, document.Sheets, document.UndoManager
+    evidence = []
+    for active, tabs, picked in (
+        ("Alfa", ["Alfa"], ["Charlie"]),
+        ("Alfa", ["Alfa", "Bravo", "Foxtrot"], ["Bravo"]),
+        ("Charlie", ["Charlie"], ["Charlie"]),
+    ):
+        controller.setActiveSheet(sheets.getByName(active))
+        select_tabs(context, controller.Frame, [SIX.index(name) for name in tabs])
+        undo.clear()
+        cells = identities(document)
+        before = view_of(context, document)
+        assert run(context, document, HIDE, picked) == ""
+        after = view_of(context, document)
+        assert all(not sheets.getByName(name).IsVisible for name in picked)
+        if active in picked:
+            assert after[0] not in picked and sheets.getByName(after[0]).IsVisible
+        else:
+            assert after == (active, [name for name in tabs if name not in picked]), (before, after)
+        assert all(sheets.getByName(name).IsVisible for name in after[1])
+        assert len(undo.AllUndoActionTitles) == 1
+        undo.undo()
+        assert all(sheets.getByName(name).IsVisible for name in SIX)
+        assert identities(document) == cells
+        evidence.append({"before": before, "targets": picked, "after": after, "undo": True})
     undo.clear()
     return evidence
 
@@ -282,18 +314,72 @@ def check_refusals(context, document):
 class Meddler(unohelper.Base, XActivationEventListener):
     """Another program's activation listener: when Calc views a sheet, it changes one, once."""
 
-    def __init__(self, change):
+    def __init__(self, change, target=None):
         self.change = change
+        self.target = target
+        self.applied = False
         self.seen = []
 
     def activeSpreadsheetChanged(self, aEvent):
         sheet: Any = aEvent.ActiveSheet
         self.seen.append(sheet.getName())
-        if len(self.seen) == 1:
+        if not self.applied and (self.target is None or sheet.getName() == self.target):
+            self.applied = True
             self.change()
 
     def disposing(self, Source):
         pass
+
+
+def check_hide_restoration_callbacks(context, desktop):
+    """Activation can move, replace or hide an old grouped sheet during restoration."""
+    return {
+        change: hide_restoration_callback(context, desktop, change)
+        for change in ("move", "replace", "hide")
+    }
+
+
+def hide_restoration_callback(context, desktop, change):
+    document = make_book(desktop)
+    controller, sheets = document.CurrentController, document.Sheets
+    controller.setActiveSheet(sheets.getByName("Alfa"))
+    select_tabs(context, controller.Frame, [0, 5])
+
+    def meddle():
+        if change == "move":
+            sheets.moveByName("Foxtrot", 0)
+        elif change == "replace":
+            sheets.removeByName("Foxtrot")
+            sheets.insertNewByName("Foxtrot", sheets.Count)
+            sheets.getByName("Foxtrot").getCellRangeByName("B1").String = "replacement"
+        else:
+            sheets.getByName("Foxtrot").IsVisible = False
+
+    listener = Meddler(meddle, target="Alfa")
+    controller.addActivationEventListener(listener)
+    try:
+        try:
+            result = {}
+            on_main_thread(
+                context,
+                lambda: result.update(reason=run(context, document, HIDE, ["Bravo", "Delta"])),
+            )
+            assert listener.applied, listener.seen
+            view = view_of(context, document)
+            if change == "move":
+                assert result["reason"] == "" and view == ("Alfa", ["Foxtrot", "Alfa"])
+            else:
+                assert "could not be restored safely" in result["reason"], result
+                assert view == ("Alfa", ["Alfa"]), (change, view)
+            assert all(not sheets.getByName(name).IsVisible for name in ("Bravo", "Delta"))
+            evidence = {"reason": result["reason"], "view": view, "events": listener.seen}
+        finally:
+            controller.removeActivationEventListener(listener)
+    except BaseException as failure:
+        close_after(context, document, failure)
+        raise
+    close_after(context, document)
+    return evidence
 
 
 def check_listener_changes(context, document):
@@ -394,6 +480,7 @@ def exercise(context, desktop, directory, output):
             "states": check_states(context, document, directory, desktop),
             "native_state": check_native_state(context, document),
             "commands": check_commands(context, document),
+            "hide_views": check_hide_views(context, document),
             "refusals": check_refusals(context, document),
             "listener_changes": check_listener_changes(context, document),
         }
@@ -401,4 +488,5 @@ def exercise(context, desktop, directory, output):
         close_after(context, document, failure)
         raise
     close_after(context, document)
+    result["hide_restoration_callbacks"] = check_hide_restoration_callbacks(context, desktop)
     return result
