@@ -1198,6 +1198,15 @@ def hide_through_menu(book, picked, opener):
     second = bool(book.lab.input.popup_windows())
     evidence = {"menu": entries, "hidden": hidden, "second_popup": second}
     assert hidden == picked and not second, evidence
+    if native_view[0] not in picked:
+        expected = native_view[0], [name for name in native_view[1] if name not in picked]
+        wait_until(
+            lambda: (book.active(), book.calc_tabs()) == expected,
+            "Hide to preserve the unaffected view and remaining tab group",
+        )
+    else:
+        assert book.active() not in picked
+    evidence["view_after_hide"] = [book.active(), book.calc_tabs()]
     assert len(book.undo_titles()) == len(before) + 1, book.undo_titles()
     undo = book.document.getUndoManager()
     while len(book.undo_titles()) > len(before):

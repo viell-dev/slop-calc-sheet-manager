@@ -114,13 +114,19 @@ Sheet are only there; see [Known issues](./known-issues.md).
 changes nothing. A chosen command first checks its sheets again: if one was renamed, replaced or
 hidden since the menu opened, or became protected where the command does not allow that, nothing
 runs and a message explains why. Calc's selected tabs are then set to exactly the targets, and Calc
-stays on them afterwards, as it does after its own tab menu, even if you cancel the command's
-dialog. If Calc reports an error once the command has started, Calc also stays on the targets
+stays on them afterwards, except for Hide Sheet below, even if you cancel the command's dialog.
+If Calc reports an error once the command has started, Calc also stays on the targets
 and a message asks you to check them. Insert Sheet and Rename Sheet apply to the viewed sheet
 when you confirm them. When several sheets were targeted, they stay grouped and the footer shows
 the group. Built-in commands keep Calc's confirmation and undo behaviour. Opening the menu leaves
 the list's picks unchanged; a command's result can still clear them under the sheet-identity
 rules, such as when a picked sheet is renamed or deleted.
+
+**Hiding other sheets.** <Unreleased /> Hide Sheet returns to the sheet you were viewing if it
+remains visible and can still be verified. Its previous Calc tab group is restored without the
+sheets just hidden. If you hide the viewed sheet itself, Calc chooses another visible sheet.
+If other changes prevent safe restoration, a message asks you to check the viewed sheet and
+grouped tabs before editing.
 
 **Mixed visibility.** <Unreleased since="0.0.4" /> When visible and hidden sheets are picked
 together, Calc's commands are unavailable for them; Show Sheet and the move actions remain.

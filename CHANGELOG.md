@@ -5,6 +5,9 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Keep the previous visible sheet when hiding other sheets from the list, restoring its Calc
+  tab group without the hidden sheets where safe
+  ([#168](https://github.com/viell-dev/slop-calc-sheet-manager/issues/168)).
 - Use plain text consistently for the move controls and menu actions, and label the context
   menu's Help link as online help ([#169](https://github.com/viell-dev/slop-calc-sheet-manager/issues/169),
   [#81](https://github.com/viell-dev/slop-calc-sheet-manager/issues/81)).
