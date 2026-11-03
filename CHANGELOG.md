@@ -5,10 +5,17 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+## 0.0.10 - 2026-11-03
+
+Fourth beta towards the stable release 0.1.0, following the 0.0.9 usability review. It improves
+disabled controls, selection colours and Hide behaviour, and adds bundled quick help. Requires
+LibreOffice 26.2.1 or later with Python support. The next
+[focused usability review](https://github.com/viell-dev/slop-calc-sheet-manager/issues/177)
+precedes an RC; this build remains a beta.
+
 - Open bundled English quick help from the sidebar header's `?`, including the distinction
   between list picks and Calc tabs, movement, Undo and recovery, and an online-guide link
   ([#81](https://github.com/viell-dev/slop-calc-sheet-manager/issues/81)).
-
 - Keep disabled move and Rename labels readable on Linux with LibreOffice's theme enabled
   ([#166](https://github.com/viell-dev/slop-calc-sheet-manager/issues/166)).
 - Keep the native selection tint when adapting it to the document background, instead of

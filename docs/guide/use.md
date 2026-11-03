@@ -20,7 +20,7 @@ also shown for read-only workbooks and follows the sidebar when it resizes, dock
 dividers stay readable, including when a custom scheme would otherwise give the text and
 background the same colour. Selected rows keep the platform's selection and text colours
 together; if the new background hides the selection, the list uses a distinct selection colour
-with readable text. <Unreleased /> This adjustment keeps the native selection's
+with readable text. <Unreleased since="0.0.10" /> This adjustment keeps the native selection's
 tint where possible. Sheet-tab colour squares keep their assigned colours. Appearance changes
 follow when the visible list is idle; they leave your picks and the workbook unchanged.
 
@@ -68,7 +68,7 @@ so pressing Up or Down again moves the same sheets further.
 **Move buttons.** <Unreleased since="0.0.4" /> The **Top**, **Up**, **Down**, and **Bottom** buttons
 above the list run the same actions.
 
-<Unreleased /> Disabled move and Rename buttons keep their labels visible on Linux
+<Unreleased since="0.0.10" /> Disabled move and Rename buttons keep their labels visible on Linux
 with LibreOffice's theme enabled. They remain unavailable until their action is allowed.
 
 A move is one **Move Sheets** undo step. The move preserves the active sheet and Calc's tab
@@ -126,7 +126,8 @@ the group. Built-in commands keep Calc's confirmation and undo behaviour. Openin
 the list's picks unchanged; a command's result can still clear them under the sheet-identity
 rules, such as when a picked sheet is renamed or deleted.
 
-**Hiding other sheets.** <Unreleased /> Hide Sheet returns to the sheet you were viewing if it
+**Hiding other sheets.** <Unreleased since="0.0.10" /> Hide Sheet returns to the sheet you were
+viewing if it
 remains visible and can still be verified. Its previous Calc tab group is restored without the
 sheets just hidden. If you hide the viewed sheet itself, Calc chooses another visible sheet.
 If other changes prevent safe restoration, a message asks you to check the viewed sheet and
@@ -143,8 +144,9 @@ unavailable for these targets, because Calc cannot view a hidden sheet.
 The move actions follow the commands. Native popup rendering can hide unavailable entries and
 their reasons; see the [known issue](./known-issues.md).
 
-**Sheet Manager Help (online)** <Unreleased /> opens this guide in your browser.
-<Unreleased /> The header's native `?` opens a short bundled English help page in LibreOffice's
+**Sheet Manager Help (online)** <Unreleased since="0.0.10" /> opens this guide in your browser.
+<Unreleased since="0.0.10" /> The header's native `?` opens a short bundled English help page in
+LibreOffice's
 internal viewer. It explains picks versus Calc tabs, movement and recovery, and links to the
 full online guide. It works offline on builds with XML-help support; use the online menu action
 if that optional LibreOffice component is unavailable.

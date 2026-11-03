@@ -96,7 +96,7 @@ Linux:
 
 To build without installing development tools, run `python tools/build.py` (or
 `& 'C:\Program Files\LibreOffice\program\python.exe' tools/build.py` on a Windows machine with
-only LibreOffice's Python). This writes `dist/sheet-manager-0.0.9.oxt` and its `.oxt.sha256` file.
+only LibreOffice's Python). This writes `dist/sheet-manager-0.0.10.oxt` and its `.oxt.sha256` file.
 The version comes only from `extension/description.xml`. Packaging uses explicit file lists,
 sorted ZIP members, fixed timestamps and permissions, LF text, and uncompressed members so that
 different zlib versions cannot change the result. Add new shipped modules to the allowlist in
@@ -164,7 +164,7 @@ On Windows, build and test the installed LibreOffice with its bundled Python:
 ```powershell
 $lo = 'C:\Program Files\LibreOffice\program'
 & "$lo\python.exe" tools/build.py
-& "$lo\python.exe" tests/integration/run.py --program $lo --oxt dist/sheet-manager-0.0.9.oxt
+& "$lo\python.exe" tests/integration/run.py --program $lo --oxt dist/sheet-manager-0.0.10.oxt
 ```
 
 On Linux, when using an official TDF installation at `/opt/libreoffice26.8`:
@@ -172,7 +172,7 @@ On Linux, when using an official TDF installation at `/opt/libreoffice26.8`:
 ```sh
 python3 tools/build.py
 /opt/libreoffice26.8/program/python tests/integration/run.py \
-  --program /opt/libreoffice26.8/program --oxt dist/sheet-manager-0.0.9.oxt
+  --program /opt/libreoffice26.8/program --oxt dist/sheet-manager-0.0.10.oxt
 ```
 
 Run the complete Linux matrix in Docker with these commands (PowerShell 7 and POSIX shells both
@@ -232,7 +232,7 @@ office's bundled Python (set `$lo` to its `program` directory as above):
 
 ```powershell
 & "$lo\python.exe" tests/integration/generate_workbooks.py --program $lo `
-  --oxt dist/sheet-manager-0.0.9.oxt --output test-results/workbooks --sheets 200 1000
+  --oxt dist/sheet-manager-0.0.10.oxt --output test-results/workbooks --sheets 200 1000
 ```
 
 It uses a separate private profile and saves only the synthetic workbooks it creates.
