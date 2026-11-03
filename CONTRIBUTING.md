@@ -208,6 +208,9 @@ python tools/linux_integration.py minimum --ui
 python tools/linux_integration.py current-26.8 --ui
 ```
 
+These private UI profiles enable LibreOffice's built-in Light theme, including the native
+disabled-button rendering path behind [#166](https://github.com/viell-dev/slop-calc-sheet-manager/issues/166).
+
 The input helper disables keyboard repeat on its private Xvfb display. Otherwise, a client
 descheduled between a flushed key press and release can turn an intended tap into several keys.
 A real-input regression pauses for one second with Down pressed and still expects one cursor

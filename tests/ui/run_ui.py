@@ -9,6 +9,10 @@ profile. The tests drive only real X input and observe only public UNO: the pane
 reaches the desktop only through its lab: ``lab.input`` (keysym names, ``popup_windows``,
 ``modal_dialog``), ``lab.place``, ``lab.screenshot`` and ``lab.failure_evidence``, never through
 X11 tools directly. ``run_named`` is the loop both runners share.
+
+Linux UI profiles enable the built-in Light theme before creating documents/lists (#166).
+Keep that startup condition: native disabled-button labels failed there, while theme-off
+profiles hid the defect. The independent button pixel checks reject the solid foreground mask.
 """
 
 import argparse
@@ -30,6 +34,7 @@ sys.path[:0] = [str(HERE), str(ROOT / "tests" / "integration"), str(ROOT / "src"
 import sheet_list_view as view  # noqa: E402
 import uno  # noqa: E402
 import unohelper  # noqa: E402
+from button_pixels import capture as capture_disabled_buttons  # noqa: E402
 from com.sun.star.awt import XMouseListener, XMouseMotionListener  # noqa: E402
 from main_thread import close_document  # noqa: E402
 from menu_lifetime import check_menu_queue_disposal  # noqa: E402
@@ -623,6 +628,21 @@ def check_drag_two_sheets(book, fraction, gap):
 
 def check_move_controls(book, shortcuts, buttons=False):
     evidence = {}
+    if buttons:
+        before = book.order(), book.active(), book.calc_tabs(), book.undo_titles()
+        view.on_main_thread(book.lab.context, book.tree.clearSelection)
+        peers = view.move_buttons(book.panel)
+        wait_until(
+            lambda: all(not p.isEnabled() for p in peers.values()), "no-pick buttons disabled"
+        )
+        tree_bounds = book.tree.getPosSize()
+        evidence["disabled_labels"] = capture_disabled_buttons(
+            book.lab,
+            peers,
+            "move-buttons-disabled-labels",
+            (book.pointer.offset[0] - tree_bounds.X, book.pointer.offset[1] - tree_bounds.Y),
+        )
+        assert (book.order(), book.active(), book.calc_tabs(), book.undo_titles()) == before
     for action, key in (
         ("top", "Home"),
         ("up", "Up"),
@@ -2678,6 +2698,16 @@ def main():
                 headless=False,
                 backtrace=arguments.backtrace,
                 vcl=vcl,
+                # Match the theme-enabled GTK3 route that hid disabled labels (#166).
+                settings="""<?xml version="1.0" encoding="UTF-8"?>
+<oor:items xmlns:oor="http://openoffice.org/2001/registry">
+<item oor:path="/org.openoffice.Office.Common/Appearance">
+<prop oor:name="LibreOfficeTheme" oor:op="fuse"><value>1</value></prop>
+<prop oor:name="ApplicationAppearance" oor:op="fuse"><value>1</value></prop></item>
+<item oor:path="/org.openoffice.Office.UI/ColorScheme">
+<prop oor:name="CurrentColorScheme" oor:op="fuse">
+<value>COLOR_SCHEME_LIBREOFFICE_LIGHT</value></prop>
+</item></oor:items>""",
             ) as (context, desktop, directory):
                 checks = run_checks(
                     Lab(context, desktop, directory, output), output, arguments.check or ()

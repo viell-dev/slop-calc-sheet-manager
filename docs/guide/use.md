@@ -68,6 +68,9 @@ so pressing Up or Down again moves the same sheets further.
 **Move buttons.** <Unreleased since="0.0.4" /> The **Top**, **Up**, **Down**, and **Bottom** buttons
 above the list run the same actions.
 
+<Unreleased since="0.0.9" /> Disabled move and Rename buttons keep their labels visible on Linux
+with LibreOffice's theme enabled. They remain unavailable until their action is allowed.
+
 A move is one **Move Sheets** undo step. The move preserves the active sheet and Calc's tab
 selection. Use Ctrl+Z to undo it. **Undo and Redo of a move.** <Unreleased since="0.0.8" /> Undo and
 Redo of the list's own move keep the list's picks, the viewed sheet and Calc's tab selection, so you

@@ -1,4 +1,13 @@
-"""Calc and toolkit helpers shared by the panel's parts. Only the panel uses them."""
+"""Calc and toolkit helpers shared by the panel's parts. Only the panel uses them.
+
+Linux disabled buttons use VCL painting (#166): GTK3's native path with LibreOfficeTheme=1
+paints a solid DisableColor over the label, also in a plain UNO dialog without the extension
+(official 26.8.1.1 and Arch 26.8.1-2). The supported NativeWidgetLook peer property avoids it
+without enabling a command. Restore native painting when enabled. UNO exposes no active VCL
+backend name, so other Linux backends share this disabled-face fallback; do not guess from the
+desktop or change application settings. Revisit after the native theme-enabled control passes
+in a fixed host. Windows/macOS painting is unchanged.
+"""
 
 import _thread
 import contextlib
@@ -6,6 +15,7 @@ import sys
 import time
 import traceback
 from collections.abc import Callable
+from typing import Any
 
 import uno
 import unohelper
@@ -35,6 +45,15 @@ def prop(name, value):
     item = PropertyValue()
     item.Name, item.Value = name, value
     return item
+
+
+def enable_button(button: Any, enabled: bool) -> None:
+    """Apply the real state first, then choose the Linux disabled paint route."""
+    button.getModel().Enabled = enabled
+    if sys.platform.startswith("linux"):
+        peer = button.getPeer()
+        if peer.getProperty("NativeWidgetLook") != enabled:
+            peer.setProperty("NativeWidgetLook", enabled)
 
 
 class _Callback(unohelper.Base, XCallback):
