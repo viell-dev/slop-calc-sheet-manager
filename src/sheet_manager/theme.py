@@ -2,7 +2,9 @@
 
 Keep the native selection/text pair together when it remains distinct or the document uses the
 host's field background. Only synthesise selection text when replacing the selection colour.
-Keep configured ordinary text when readable; otherwise use black/white text and neutral edges.
+Adapt a faint selection from its native colour, retaining its tint rather than starting at the
+document background (#167). Keep configured ordinary text when readable; otherwise use black/white
+text. Borders retain their separate neutral fallback.
 The document background and sheet-tab colour swatches are never adjusted.
 """
 
@@ -35,20 +37,31 @@ def text_color(background: int, preferred: int | None) -> int:
     return max((0, 0xFFFFFF), key=lambda color: contrast(background, color))
 
 
+def _blend(first: int, second: int, amount: float) -> int:
+    return sum(
+        round(((first >> shift) & 255) * (1 - amount) + ((second >> shift) & 255) * amount) << shift
+        for shift in (16, 8, 0)
+    )
+
+
 def _edge(background: int, preferred: int | None, foreground: int) -> int:
     if preferred is not None and _valid(preferred) and contrast(background, preferred) >= 3:
         return preferred
-    # The first sufficient blend keeps a divider or selection distinct without making every
+    # The first sufficient blend keeps a divider distinct without making every
     # edge as bright as the text. The readable foreground supplies a sufficient endpoint.
     for amount in (0.25, 0.4, 0.55, 0.7, 0.85, 1):
-        mixed = sum(
-            round(
-                ((background >> shift) & 255) * (1 - amount)
-                + ((foreground >> shift) & 255) * amount
-            )
-            << shift
-            for shift in (16, 8, 0)
-        )
+        mixed = _blend(background, foreground, amount)
+        if contrast(background, mixed) >= 3:
+            return mixed
+    return foreground
+
+
+def _selection(background: int, preferred: int) -> int:
+    # Blending toward black or white retains a native hue until the neutral endpoint is
+    # necessary. Pick the readable endpoint independently of configured ordinary text.
+    foreground = text_color(background, None)
+    for amount in (0.1, 0.2, 0.35, 0.5, 0.65, 0.8, 1):
+        mixed = _blend(preferred, foreground, amount)
         if contrast(background, mixed) >= 3:
             return mixed
     return foreground
@@ -73,7 +86,7 @@ def palette(
 ) -> Palette:
     text = text_color(background, foreground)
     keep_selection = background == native_background or contrast(background, highlight) >= 3
-    selection = highlight if keep_selection else _edge(background, highlight, text)
+    selection = highlight if keep_selection else _selection(background, highlight)
     return Palette(
         background,
         text,
