@@ -102,6 +102,11 @@ sorted ZIP members, fixed timestamps and permissions, LF text, and uncompressed 
 different zlib versions cannot change the result. Add new shipped modules to the allowlist in
 `tools/build.py` and to the package-content test.
 
+The OXT also includes one English XHP quick-help page, registered through its manifest as an
+extension help component. LibreOffice compiles it during installation; no HelpLinker SDK or
+generated help databases are shipped. Keep its short guidance consistent with the guide when
+changing selection, movement or recovery. The online guide remains the detailed manual.
+
 ## Tests
 
 [docs/verification.md](docs/verification.md) maps each promise the extension makes to the checks

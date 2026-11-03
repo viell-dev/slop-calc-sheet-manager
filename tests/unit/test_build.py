@@ -31,6 +31,7 @@ def test_two_builds_are_identical_and_allowlisted(tmp_path: Path) -> None:
             "sheet-manager.components",
             "registration.py",
             "icons/deck.svg",
+            "help/en/dev.viell.sheetmanager/index.xhp",
             "LICENSE.txt",
             *(
                 f"pythonpath/sheet_manager/{name}.py"
@@ -93,7 +94,21 @@ def test_metadata_and_registration_agree(tmp_path: Path) -> None:
         }
         assert entries["sheet-manager.components"] == "application/vnd.sun.star.uno-components"
         assert "registration.py" not in entries  # Passive registration, not executable discovery.
+        assert entries.pop("help/") == "application/vnd.sun.star.help"
         assert set(entries) <= set(archive.namelist())
+        help_page = ET.fromstring(archive.read("help/en/dev.viell.sheetmanager/index.xhp"))
+        sidebar = ET.fromstring(archive.read("Sidebar.xcu"))
+        deck = sidebar.find(f".//node[@{OOR}name='DeckList']/node")
+        assert deck is not None
+        deck_id = deck.findtext(f"prop[@{OOR}name='Id']/value")
+        assert deck_id is not None
+        bookmark = help_page.find(".//bookmark")
+        assert bookmark is not None
+        assert bookmark.attrib["branch"] == f"hid/SIDEBAR_{deck_id.upper()}"
+        assert help_page.findtext("meta/topic/filename") == "/dev.viell.sheetmanager/index.xhp"
+        assert [link.attrib["href"] for link in help_page.findall(".//link")] == [
+            "https://viell-dev.github.io/slop-calc-sheet-manager/"
+        ]
         components = ET.fromstring(archive.read("sheet-manager.components"))
         namespace = "{http://openoffice.org/2010/uno-components}"
         component = components.find(f"{namespace}component")

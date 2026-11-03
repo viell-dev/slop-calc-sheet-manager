@@ -143,8 +143,11 @@ unavailable for these targets, because Calc cannot view a hidden sheet.
 The move actions follow the commands. Native popup rendering can hide unavailable entries and
 their reasons; see the [known issue](./known-issues.md).
 
-**Sheet Manager Help (online)** <Unreleased /> opens this guide in your browser. The header's
-native `?` uses an unavailable LibreOffice help topic; see [Known issues](./known-issues.md).
+**Sheet Manager Help (online)** <Unreleased /> opens this guide in your browser.
+<Unreleased /> The header's native `?` opens a short bundled English help page in LibreOffice's
+internal viewer. It explains picks versus Calc tabs, movement and recovery, and links to the
+full online guide. It works offline on builds with XML-help support; use the online menu action
+if that optional LibreOffice component is unavailable.
 
 ## Rename several sheets
 

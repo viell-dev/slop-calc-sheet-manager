@@ -29,10 +29,11 @@ If Sheet Manager does not work in an environment where it is expected to, please
   <Unreleased /> Hide Sheet is an exception: it restores a still-visible previous view and its
   previous group without the hidden sheets, where safe. Hiding the viewed sheet itself leaves
   Calc to choose another visible sheet.
-- **Header Help.** The header's native `?` opens LibreOffice's local error page for the generated
-  `SIDEBAR_SHEETMANAGERDECK` help topic. No supported deck help-target setter is available. Use
-  **Sheet Manager Help (online)** <Unreleased /> in the context menu to open this guide in your
-  browser. Header hover sizing is also controlled by LibreOffice and its theme
+- **Header Help.** Through published 0.0.9, the extension has no registered topic for the header's `?`.
+  <Unreleased /> A bundled English entry page now supplies that topic on LibreOffice builds
+  with XML-help support. **Sheet Manager Help (online)** in the context menu remains available
+  for the full guide and builds without that optional component. Header hover sizing is
+  controlled by LibreOffice and its theme
   ([#81](https://github.com/viell-dev/slop-calc-sheet-manager/issues/81)).
 - **Unavailable menu actions.** Native popup rendering can hide disabled commands and move
   actions, and their help text. In the gen backend, use Down to highlight the first available

@@ -27,6 +27,7 @@ EXTENSION_FILES = (
     "Factories.xcu",
     "Sidebar.xcu",
     "icons/deck.svg",
+    "help/en/dev.viell.sheetmanager/index.xhp",
     "registration.py",
     "sheet-manager.components",
 )

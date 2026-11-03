@@ -38,6 +38,7 @@ from button_pixels import capture as capture_disabled_buttons  # noqa: E402
 from com.sun.star.awt import XMouseListener, XMouseMotionListener  # noqa: E402
 from main_thread import close_document  # noqa: E402
 from menu_lifetime import check_menu_queue_disposal  # noqa: E402
+from native_help import check_header as check_header_help  # noqa: E402
 from rename_dialog import check_keyboard as check_rename_keyboard  # noqa: E402
 from rename_dialog import check_mouse as check_rename_mouse  # noqa: E402
 from rename_dialog import check_stale as check_rename_stale  # noqa: E402
@@ -2606,6 +2607,7 @@ def run_checks(lab, output, only=()):
         ("rename_sheets_stale", lambda: check_rename_stale(book)),
         ("menu_queue_disposal", lambda: check_menu_queue_disposal(book)),
         ("help_menu", lambda: check_help_menu(book)),
+        ("header_help", lambda: check_header_help(book)),
         ("menu_hidden_only", lambda: check_menu_hidden_only(book)),
         ("menu_mixed_visibility", lambda: check_menu_mixed_visibility(book)),
         ("reload_accepts_real_input", lambda: check_reload_accepts_real_input(book)),
