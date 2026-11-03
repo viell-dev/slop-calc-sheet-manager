@@ -5,6 +5,9 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Use plain text consistently for the move controls and menu actions, and label the context
+  menu's Help link as online help ([#169](https://github.com/viell-dev/slop-calc-sheet-manager/issues/169),
+  [#81](https://github.com/viell-dev/slop-calc-sheet-manager/issues/81)).
 - Refresh the pinned Python 3.12 development image.
 - Update the development checks image and local Node.js pin together to 24.22.0, keeping the
   documentation container example aligned.

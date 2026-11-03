@@ -28,8 +28,8 @@ If Sheet Manager does not work in an environment where it is expected to, please
   leaves the view as it was, unless the previous sheets can no longer be proved.
 - **Header Help.** The header's native `?` opens LibreOffice's local error page for the generated
   `SIDEBAR_SHEETMANAGERDECK` help topic. No supported deck help-target setter is available. Use
-  **Sheet Manager Help** in the context menu for this guide. Header hover sizing is also controlled
-  by LibreOffice and its theme
+  **Sheet Manager Help (online)** <Unreleased /> in the context menu to open this guide in your
+  browser. Header hover sizing is also controlled by LibreOffice and its theme
   ([#81](https://github.com/viell-dev/slop-calc-sheet-manager/issues/81)).
 - **Unavailable menu actions.** Native popup rendering can hide disabled commands and move
   actions, and their help text. In the gen backend, use Down to highlight the first available

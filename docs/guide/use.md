@@ -133,8 +133,8 @@ unavailable for these targets, because Calc cannot view a hidden sheet.
 The move actions follow the commands. Native popup rendering can hide unavailable entries and
 their reasons; see the [known issue](./known-issues.md).
 
-**Sheet Manager Help** opens this guide. The header's native `?` uses an unavailable LibreOffice
-help topic; see [Known issues](./known-issues.md).
+**Sheet Manager Help (online)** <Unreleased /> opens this guide in your browser. The header's
+native `?` uses an unavailable LibreOffice help topic; see [Known issues](./known-issues.md).
 
 ## Rename several sheets
 
