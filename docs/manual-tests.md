@@ -97,7 +97,7 @@ instead. Take screenshots only of this workbook.
     (step 30). Picks, viewed sheet and Calc tab group stay unchanged while the menu is open.
     Choose Hide Sheet: exactly Charlie and Echo are hidden, and no second menu opens. Press
     Ctrl+Z. Right-click an unpicked row and press Esc: picks, view and Calc tab group remain
-    unchanged throughout. Sheet Manager Help opens the guide.
+    unchanged throughout. Sheet Manager Help (online) <Unreleased /> opens the guide in your browser.
 16. **Menu by keyboard.** Click "Golf" and press the Menu key; press Esc. Then press Shift+F10.
     Expected: the same menu opens each time, positioned at the Golf row, with Insert Sheet,
     Delete Sheet, Rename Sheet and Hide Sheet available.

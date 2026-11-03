@@ -254,7 +254,7 @@ class SheetMenu:
         popup.insertSeparator(popup.getItemCount())
         enabled |= self._add_actions(popup, observed, picked)
         popup.insertSeparator(popup.getItemCount())
-        popup.insertItem(HELP, tr("Sheet Manager Help"), 0, popup.getItemCount())
+        popup.insertItem(HELP, tr("Sheet Manager Help (online)"), 0, popup.getItemCount())
         return popup, enabled | {HELP}
 
     def run(self, item: int, observed: Snapshot, picked: list[str], unchanged) -> str:
@@ -365,10 +365,10 @@ class SheetMenu:
     def _add_actions(self, popup, observed, picked) -> set[int]:
         popup.hideDisabledEntries(False)
         labels = (
-            tr("⤒  Move to top (Alt+Home)"),
-            tr("↑  Move up (Alt+Up)"),
-            tr("↓  Move down (Alt+Down)"),
-            tr("⤓  Move to bottom (Alt+End)"),
+            tr("Move to top (Alt+Home)"),
+            tr("Move up (Alt+Up)"),
+            tr("Move down (Alt+Down)"),
+            tr("Move to bottom (Alt+End)"),
         )
         permission = move_availability(self._context, self._document)
         enabled: set[int] = set()
