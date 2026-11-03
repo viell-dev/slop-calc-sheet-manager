@@ -56,9 +56,9 @@ This module owns context targeting, native tab grouping and restoration, and mov
   is then dropped, and nothing else outlives the popup.
 - A move captures the observed snapshot, refs and proof before it is posted, and uses the common
   permission and plan checks and the full `apply_order` preflight.
-- The sidebar's native panel header generates its own help ID, for a topic that does not exist
-  (#81). The menu's Help links to the guide instead, without intercepting global help or changing
-  the installed help system.
+- The native sidebar header uses the generated SIDEBAR_SHEETMANAGERDECK ID, registered by the
+  bundled XHP entry page (#81). The menu's Help (online) opens the full guide; neither route
+  intercepts global help or edits LibreOffice's installed help files.
 """
 
 import time
