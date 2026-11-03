@@ -26,11 +26,13 @@ If Sheet Manager does not work in an environment where it is expected to, please
   ([#100](https://github.com/viell-dev/slop-calc-sheet-manager/issues/100)). Closing the menu
   without choosing a command changes nothing. A command refused because its sheets changed
   leaves the view as it was, unless the previous sheets can no longer be proved.
-  <Unreleased /> Hide Sheet is an exception: it restores a still-visible previous view and its
+  <Unreleased since="0.0.10" /> Hide Sheet is an exception: it restores a still-visible previous
+  view and its
   previous group without the hidden sheets, where safe. Hiding the viewed sheet itself leaves
   Calc to choose another visible sheet.
 - **Header Help.** Through published 0.0.9, the extension has no registered topic for the header's `?`.
-  <Unreleased /> A bundled English entry page now supplies that topic on LibreOffice builds
+  <Unreleased since="0.0.10" /> A bundled English entry page now supplies that topic on LibreOffice
+  builds
   with XML-help support. **Sheet Manager Help (online)** in the context menu remains available
   for the full guide and builds without that optional component. Header hover sizing is
   controlled by LibreOffice and its theme

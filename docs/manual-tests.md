@@ -96,10 +96,12 @@ instead. Take screenshots only of this workbook.
     desktops). <Unreleased since="0.0.6" /> Rename Sheets… is offered in Rename's place instead
     (step 30). Picks, viewed sheet and Calc tab group stay unchanged while the menu is open.
     Choose Hide Sheet: exactly Charlie and Echo are hidden, and no second menu opens.
-    <Unreleased /> If the previously viewed sheet remains visible, the view and its tab group
+    <Unreleased since="0.0.10" /> If the previously viewed sheet remains visible, the view and its
+    tab group
     return without the hidden sheets; otherwise Calc chooses another visible sheet. Press Ctrl+Z.
     Right-click an unpicked row and press Esc: picks, view and Calc tab group remain
-    unchanged throughout. Sheet Manager Help (online) <Unreleased /> opens the guide in your browser.
+    unchanged throughout. Sheet Manager Help (online) <Unreleased since="0.0.10" /> opens the guide
+    in your browser.
 16. **Menu by keyboard.** Click "Golf" and press the Menu key; press Esc. Then press Shift+F10.
     Expected: the same menu opens each time, positioned at the Golf row, with Insert Sheet,
     Delete Sheet, Rename Sheet and Hide Sheet available.
