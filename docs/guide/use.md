@@ -20,7 +20,7 @@ also shown for read-only workbooks and follows the sidebar when it resizes, dock
 dividers stay readable, including when a custom scheme would otherwise give the text and
 background the same colour. Selected rows keep the platform's selection and text colours
 together; if the new background hides the selection, the list uses a distinct selection colour
-with readable text. <Unreleased since="0.0.9" /> This adjustment keeps the native selection's
+with readable text. <Unreleased /> This adjustment keeps the native selection's
 tint where possible. Sheet-tab colour squares keep their assigned colours. Appearance changes
 follow when the visible list is idle; they leave your picks and the workbook unchanged.
 
@@ -68,7 +68,7 @@ so pressing Up or Down again moves the same sheets further.
 **Move buttons.** <Unreleased since="0.0.4" /> The **Top**, **Up**, **Down**, and **Bottom** buttons
 above the list run the same actions.
 
-<Unreleased since="0.0.9" /> Disabled move and Rename buttons keep their labels visible on Linux
+<Unreleased /> Disabled move and Rename buttons keep their labels visible on Linux
 with LibreOffice's theme enabled. They remain unavailable until their action is allowed.
 
 A move is one **Move Sheets** undo step. The move preserves the active sheet and Calc's tab
