@@ -5,6 +5,11 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Update the development checks image and local Node.js pin together to 24.22.1, including
+  the documentation container example.
+- Update development tools to pytest 9.2.0, Ruff 0.17.3, types-PyYAML 6.0.12.20261030 and
+  nodeenv 1.12.0. These dependencies do not ship in the extension.
+
 ## 0.0.10 - 2026-11-03
 
 Fourth beta towards the stable release 0.1.0, following the 0.0.9 usability review. It improves
