@@ -412,6 +412,10 @@ catalogue and published SHA-256, update the version, URL and digest together, an
 Always use `https://downloadarchive.documentfoundation.org/libreoffice/old/<full version>/`
 and the full four-part version in filenames: `stable/` downloads disappear when the offered
 releases change.
+The lab download allows 30 seconds to connect and four minutes per transfer, with retry starts
+confined to the first minute. This bounds download setup to about five minutes so a slow mirror
+cannot consume the routine job's 45-minute native testing budget. Its effective mirror and
+transfer measurements are logged; TLS and the pinned SHA-256 remain required.
 These pins do not discover newer releases automatically. Dependabot checks development tools,
 GitHub-owned actions and Docker base images weekly after a seven-day cooldown. Action references
 remain full commit SHAs, with their versions in comments. The checks image's two base images are

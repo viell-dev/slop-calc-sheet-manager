@@ -9,6 +9,8 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   the documentation container example.
 - Update development tools to pytest 9.2.0, Ruff 0.17.3, types-PyYAML 6.0.12.20261030 and
   nodeenv 1.12.0. These dependencies do not ship in the extension.
+- Bound LibreOffice lab downloads and log their mirror and transfer measurements, so a slow
+  mirror fails during setup instead of consuming the native CI testing budget.
 
 ## 0.0.10 - 2026-11-03
 
