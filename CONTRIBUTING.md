@@ -70,7 +70,7 @@ docker build --file ci/checks.Dockerfile --tag sheet-manager-checks .
 docker run --rm --network none --mount "type=bind,source=${PWD},target=/work" sheet-manager-checks
 ```
 
-This uses digest-pinned Python 3.12.15 and Node images, the latter at the `.nvmrc` version, and
+This uses digest-pinned Python 3.12.16 and Node images, the latter at the `.nvmrc` version, and
 hash-pinned development tools. It writes caches, test output and `dist/` into the checkout; the
 container is removed on exit. Rebuild the image after changing `requirements-dev.txt`. This checks
 Linux semantics; the release sweep also runs the complete check command on Windows.
@@ -455,7 +455,7 @@ container, from the repository root in PowerShell 7, and find the site in `test-
 New-Item -ItemType Directory -Force test-results/docs | Out-Null
 docker run --rm --env "SHEET_MANAGER_DOCS_COMMIT=$(git rev-parse HEAD)" `
   --mount "type=bind,source=${PWD},target=/src,readonly" `
-  --mount "type=bind,source=${PWD}/test-results/docs,target=/out" node:24.22.1-bookworm-slim `
+  --mount "type=bind,source=${PWD}/test-results/docs,target=/out" node:24.22.2-bookworm-slim `
   bash -c 'cp -r /src /build && cd /build && rm -rf node_modules && npm ci && npm run docs:build && cp -r docs/.vitepress/dist/. /out/'
 ```
 
