@@ -27,6 +27,10 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 - Keep a failed real-input check's record when its screenshot, desktop evidence or input
   clean-up also fails: the record is written first, and each later step's error is kept beside
   it ([#190](https://github.com/viell-dev/slop-calc-sheet-manager/issues/190)).
+- Split the real-input test runner into a shared workbook fixture, the Xvfb lab, the check loop
+  and check modules by subject, so that the Windows and update-dialog runners no longer import
+  the Linux runner; the checks, their order and their evidence are unchanged
+  ([#195](https://github.com/viell-dev/slop-calc-sheet-manager/issues/195)).
 
 ## 0.0.10 - 2026-11-03
 
