@@ -32,6 +32,9 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+      - uses: ./.github/actions/libreoffice-package
+        with:
+          lane: ${{ matrix.lane }}
       - name: Headless integration
         env:
           LANE: ${{ matrix.lane }}
@@ -62,6 +65,9 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+      - uses: ./.github/actions/libreoffice-package
+        with:
+          lane: ${{ matrix.lane }}
       - name: Painted integration with crash backtrace
         env:
           LANE: ${{ matrix.lane }}
@@ -87,6 +93,9 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+      - uses: ./.github/actions/libreoffice-package
+        with:
+          lane: unsupported
       - run: python3 tools/linux_integration.py unsupported
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
@@ -117,7 +126,13 @@ jobs:
       - run: python -m venv .venv
       - run: ./.venv/Scripts/python.exe -m pip install --require-hashes -r requirements-dev.txt
       - run: ./.venv/Scripts/python.exe tools/check.py
-      - run: ./ci/install-windows.ps1
+      - id: package
+        uses: ./.github/actions/libreoffice-package
+        with:
+          lane: windows
+      - run: ./ci/install-windows.ps1 -InstallerPath $env:LO_INSTALLER
+        env:
+          LO_INSTALLER: ${{ steps.package.outputs.path }}
       - name: Install, activate, resize, and close the panel
         run: |
           $package = (Get-ChildItem -LiteralPath dist -Filter '*.oxt').FullName
@@ -151,8 +166,14 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+      - id: package
+        uses: ./.github/actions/libreoffice-package
+        with:
+          lane: windows
       - name: Install the pinned LibreOffice MSI
-        run: ./ci/install-windows.ps1
+        run: ./ci/install-windows.ps1 -InstallerPath $env:LO_INSTALLER
+        env:
+          LO_INSTALLER: ${{ steps.package.outputs.path }}
       - name: Build the extension with LibreOffice's Python
         run: |
           & 'C:\Program Files\LibreOffice\program\python.exe' tools/build.py
@@ -176,6 +197,7 @@ jobs:
         with:
           name: windows-desktop
           path: |
+            test-results/libreoffice-package.log
             test-results/windows-desktop/
             dist/
           if-no-files-found: error
@@ -204,6 +226,9 @@ jobs:
           hdiutil help || true
           ditto -h || true
           curl --help
+      - uses: ./.github/actions/libreoffice-package
+        with:
+          lane: macos
       - name: Install privately and run with the bundled PyUNO interpreter
         run: python3 tools/macos_integration.py
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -211,6 +236,7 @@ jobs:
         with:
           name: macos-integration
           path: |
+            test-results/libreoffice-package.log
             test-results/macos/
             dist/
           if-no-files-found: error

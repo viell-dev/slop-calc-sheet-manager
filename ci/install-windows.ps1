@@ -1,9 +1,13 @@
+param(
+    [Parameter(Mandatory)]
+    [string]$InstallerPath
+)
+
 $ErrorActionPreference = 'Stop'
 $pin = (Get-Content -LiteralPath (Join-Path $PSScriptRoot 'libreoffice.json') -Raw |
     ConvertFrom-Json).windows
-$installerPath = Join-Path $env:RUNNER_TEMP 'sheet-manager-libreoffice.msi'
+$installerPath = (Resolve-Path -LiteralPath $InstallerPath).Path
 $logPath = Join-Path $env:RUNNER_TEMP 'sheet-manager-msi.log'
-Invoke-WebRequest -Uri $pin.url -OutFile $installerPath
 if ((Get-FileHash -LiteralPath $installerPath -Algorithm SHA256).Hash -ne $pin.sha256) {
     throw 'LibreOffice installer checksum mismatch'
 }
