@@ -37,6 +37,11 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 - Cache the pinned LibreOffice test installers by SHA-256 and verify them before use, avoiding
   repeat downloads from the TDF archive ([#215](https://github.com/viell-dev/slop-calc-sheet-manager/issues/215)).
 
+- Put installation and a worked example first in the README, and align the guide's Hide
+  summary and security policy with published behaviour
+  ([#197](https://github.com/viell-dev/slop-calc-sheet-manager/issues/197),
+  [#199](https://github.com/viell-dev/slop-calc-sheet-manager/issues/199)).
+
 ## 0.0.10 - 2026-11-03
 
 Fourth beta towards the stable release 0.1.0, following the 0.0.9 usability review. It improves
