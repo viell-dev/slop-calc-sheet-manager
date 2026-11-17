@@ -12,6 +12,7 @@ The footer stays separate, in `uno_status`.
   Space activate a button, while letters stay out of cells.
 - Alt+Home, Alt+Up, Alt+Down and Alt+End stay local to the focused list or move button, and a
   move returns focus to the tree.
+- Listener callbacks report a failure rather than raise it into LibreOffice (#189).
 - Linux disabled painting follows `uno_calc.enable_button` (#166). Measure both paint modes
   while disabled so that changing state never clips an enabled native label.
 """
@@ -22,7 +23,7 @@ import unohelper
 from com.sun.star.awt import XActionListener, XMouseListener
 
 from sheet_manager.i18n import tr
-from sheet_manager.uno_calc import enable_button
+from sheet_manager.uno_calc import enable_button, report
 
 ACTIONS = ("top", "up", "down", "bottom")
 
@@ -90,15 +91,23 @@ class MoveButtons(unohelper.Base, XActionListener, XMouseListener):
         return any(button.getPeer().hasFocus() for button in self.buttons.values())
 
     def actionPerformed(self, event):
-        self._request(str(event.ActionCommand))
+        try:
+            self._request(str(event.ActionCommand))
+        except Exception:
+            report("a move button")
 
     def mousePressed(self, event):
-        if event.Buttons & 1:
-            self._note_input()
+        self._note_button(event, "a press on a move button")
 
     def mouseReleased(self, event):
-        if event.Buttons & 1:
-            self._note_input()
+        self._note_button(event, "a release on a move button")
+
+    def _note_button(self, event, where):
+        try:
+            if event.Buttons & 1:
+                self._note_input()
+        except Exception:
+            report(where)
 
     def mouseEntered(self, event):
         pass

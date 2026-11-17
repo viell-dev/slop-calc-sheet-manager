@@ -12,9 +12,9 @@ from sheet_manager.i18n import tr
 
 class CalcStatus:
     def __init__(self, context, parent):
-        self._control = _text_control(context, parent)
+        self._control = text_control(context, parent)
         try:
-            self._notice_control = _text_control(context, parent)
+            self._notice_control = text_control(context, parent)
             self._height = 2 * max(16, self._control.getMinimumSize().Height) + 8
             self._tabs = ()
             self._notice = False
@@ -78,7 +78,8 @@ class CalcStatus:
             self._control.dispose()
 
 
-def _text_control(context, parent):
+def text_control(context, parent):
+    """A hidden multi-line label in `parent`, also used by the panel's failure message."""
     manager = context.ServiceManager
     model = manager.createInstanceWithContext("com.sun.star.awt.UnoControlFixedTextModel", context)
     model.MultiLine = True
