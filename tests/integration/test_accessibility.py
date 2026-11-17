@@ -41,9 +41,9 @@ from sheet_list_view import (
 from teardown import run_checks
 from test_sheet_list import VCL_RIGHT, Robot, say
 
+from sheet_manager.refresh_schedule import REFRESH_DELAY
 from sheet_manager.sheet_list import list_name
 from sheet_manager.uno_calc import select_tabs
-from sheet_manager.uno_list import REFRESH_DELAY
 from sheet_manager.uno_menu import MOVE_IDS
 
 NAME_CHANGED = uno.getConstantByName("com.sun.star.accessibility.AccessibleEventId.NAME_CHANGED")

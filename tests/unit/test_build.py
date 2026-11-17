@@ -40,6 +40,7 @@ def test_two_builds_are_identical_and_allowlisted(tmp_path: Path) -> None:
                     "i18n",
                     "keys",
                     "rename",
+                    "refresh_schedule",
                     "reorder",
                     "selection",
                     "sheet_list",
@@ -59,6 +60,7 @@ def test_two_builds_are_identical_and_allowlisted(tmp_path: Path) -> None:
                     "uno_reorder",
                     "uno_show",
                     "uno_structure",
+                    "uno_tabs",
                 )
             ),
         }

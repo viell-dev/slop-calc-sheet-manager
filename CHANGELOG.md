@@ -22,6 +22,9 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   the documentation container example.
 - Update development tools to pytest 9.2.0, Ruff 0.17.4, types-PyYAML 6.0.12.20261103 and
   nodeenv 1.12.0. These dependencies do not ship in the extension.
+- Move the sheet list's tab observation and refresh timing into modules of their own, with
+  documented state contracts; the list behaves as before
+  ([#194](https://github.com/viell-dev/slop-calc-sheet-manager/issues/194)).
 - Bound LibreOffice lab downloads and log their mirror and transfer measurements, so a slow
   mirror fails during setup instead of consuming the native CI testing budget.
 

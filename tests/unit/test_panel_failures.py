@@ -4,7 +4,6 @@ Native creation and disposal are covered in `tests/integration/test_adapter_fail
 """
 
 import contextlib
-import time
 from collections.abc import Mapping
 from types import SimpleNamespace
 from typing import Any
@@ -12,6 +11,7 @@ from unittest.mock import Mock
 
 import pytest
 
+from sheet_manager.refresh_schedule import RefreshSchedule
 from tests.unit.source_methods import method
 
 PANEL = "src/sheet_manager/uno_panel.py"
@@ -212,8 +212,12 @@ def test_move_button_callbacks_report_failures_and_keep_working(callback: str) -
 
 
 def refreshing_list(fail: int) -> tuple[Any, list[float]]:
-    """A list whose next `fail` refreshes raise; `scheduled` records the retry waits."""
+    """A list whose next `fail` refreshes raise; `scheduled` records the retry waits.
+
+    `owner.fire()` runs the latest retry timer, as LibreOffice's main loop would.
+    """
     scheduled: list[float] = []
+    timers: list[Any] = []
     calls = {"left": fail}
 
     def run(renamed: object) -> None:
@@ -221,31 +225,15 @@ def refreshing_list(fail: int) -> tuple[Any, list[float]]:
             calls["left"] -= 1
             raise RuntimeError("synthetic property-read failure")
 
-    owner = SimpleNamespace(
-        _disposed=False,
-        _stale_since=None,
-        _refresh_failures=0,
-        _refreshed_at=0.0,
-        _refresh_cost=0.0,
-        _refresh=run,
-        _schedule=scheduled.append,
-    )
-    namespace: dict[str, Any] = {
-        "time": time,
-        "Mapping": Mapping,
-        "REFRESH_RETRY": 0.5,
-        "REFRESH_RETRY_MAX": 8.0,
-        "REFRESH_RETRIES": 5,
-    }
-    mark = method(LIST, "SheetList", "_mark_stale", {})
-    failed = method(LIST, "SheetList", "_refresh_failed", namespace)
-    refresh = method(LIST, "SheetList", "refresh", namespace)
+    def later(seconds: float, work: Any, where: str) -> Any:
+        scheduled.append(seconds)
+        timers.append(work)
+        return SimpleNamespace(cancel=Mock())
 
-    def mark_stale(now: float) -> None:
-        mark(owner, now)
-
-    owner._mark_stale = mark_stale
-    owner._refresh_failed = lambda: failed(owner)
+    owner = SimpleNamespace(_disposed=False, _refresh=run)
+    owner._refreshes = RefreshSchedule(later, Mock())
+    owner.fire = lambda: timers[-1]()
+    refresh = method(LIST, "SheetList", "refresh", {"Mapping": Mapping})
     owner.refresh = lambda: refresh(owner)
     return owner, scheduled
 
@@ -255,10 +243,11 @@ def test_a_failed_refresh_stays_pending_and_retries_with_backoff() -> None:
     for _ in range(2):
         with pytest.raises(RuntimeError, match="property-read"):
             owner.refresh()
-        assert owner._stale_since is not None
+        assert owner._refreshes.stale
+        owner.fire()
     assert scheduled == [0.5, 1.0]
     owner.refresh()  # The retry succeeds with unchanged names and generation.
-    assert owner._stale_since is None and owner._refresh_failures == 0
+    assert not owner._refreshes.stale and owner._refreshes.failures == 0
     assert scheduled == [0.5, 1.0]
 
 
@@ -267,22 +256,22 @@ def test_retries_stop_after_the_limit_instead_of_looping() -> None:
     for _ in range(7):
         with pytest.raises(RuntimeError):
             owner.refresh()
+        owner.fire()
     assert scheduled == [0.5, 1.0, 2.0, 4.0, 8.0]
-    assert owner._stale_since is not None  # A later change refreshes again.
+    assert owner._refreshes.stale  # A later change refreshes again.
 
 
 def test_disposal_cancels_a_pending_retry() -> None:
     timer = SimpleNamespace(cancel=Mock())
+    refreshes = RefreshSchedule(Mock(return_value=timer), Mock())
+    refreshes.schedule(0.5)
     owner = SimpleNamespace(
         _disposed=False,
         _main=SimpleNamespace(closed=False),
         _scroll=1,
-        _refresh_timer=timer,
-        _view_token=object(),
-        _view_timer=None,
+        _refreshes=refreshes,
         _notice_token=None,
         _notice_timer=None,
-        _view_controls=None,
         _cleanup=SimpleNamespace(close=Mock()),
         _theme=object(),
     )

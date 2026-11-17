@@ -48,7 +48,7 @@ def test_menu_keeps_intent_and_pick_proof_before_a_fresh_snapshot(changed: str) 
         _activation_input=0,
         _monitor=monitor,
         _menu=SimpleNamespace(show=show),
-        _acknowledge_view=Mock(),
+        _tabs=SimpleNamespace(acknowledge=Mock()),
         refresh=Mock(),
         _ref=no_ref,
         names=lambda: ["Alfa", "Bravo"],
@@ -158,7 +158,7 @@ def test_move_request_keeps_its_snapshot_refs_and_proof_while_queued() -> None:
         _proven=7,
         post=post,
         _move_selection=move,
-        _note_view_input=Mock(),
+        _tabs=SimpleNamespace(note_input=Mock()),
         claim_window=Mock(),
     )
     request = method(
@@ -276,7 +276,7 @@ def test_owned_navigation_accumulates_while_the_ui_queue_is_paused() -> None:
         _selection_write_pending=False,
         _selection_scroll=False,
         _flush_selection=lambda: None,
-        _note_view_input=Mock(),
+        _tabs=SimpleNamespace(note_input=Mock()),
         names=lambda: names,
         _ref=ref,
         post=post,
