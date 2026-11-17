@@ -38,6 +38,9 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   mirror fails during setup instead of consuming the native CI testing budget.
 - Cache the pinned LibreOffice test installers by SHA-256 and verify them before use, avoiding
   repeat downloads from the TDF archive ([#215](https://github.com/viell-dev/slop-calc-sheet-manager/issues/215)).
+- Keep a failed real-input check's record when its screenshot, desktop evidence or input
+  clean-up also fails: the record is written first, and each later step's error is kept beside
+  it ([#190](https://github.com/viell-dev/slop-calc-sheet-manager/issues/190)).
 
 - Put installation and a worked example first in the README, and align the guide's Hide
   summary and security policy with published behaviour

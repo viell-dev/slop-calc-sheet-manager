@@ -349,9 +349,13 @@ screen, DPI, keyboard layout), each check's result, and the office's exit status
 and crash dumps; `ui-win/checks.json`, with each check's evidence or traceback and its duration;
 screenshots taken at menus, dialogs and drags; and the office log and the built OXT. A failed
 check also leaves `failed-<check>.png`, and its entry in `checks.json` records the foreground
-window, the pointer position and the office's visible top-level windows. The job fails on a failed
-check, an extension error in the office log, a nonzero exit, a forced shutdown, a fatal message or
-a crash dump, as the integration runner does; only startup is retried.
+window, the pointer position and the office's visible top-level windows. On both platforms that
+entry is written before the screenshot and desktop evidence are taken and held input is
+released; a step that fails adds its traceback under `diagnostic_errors`, keeping the check's
+own error and the remaining steps
+([#190](https://github.com/viell-dev/slop-calc-sheet-manager/issues/190)). The job fails on a
+failed check, an extension error in the office log, a nonzero exit, a forced shutdown, a fatal
+message or a crash dump, as the integration runner does; only startup is retried.
 
 Never run the suite on your own computer: its input goes to whatever has the focus.
 `winput.WinInput` refuses to start unless `SHEET_MANAGER_REAL_DESKTOP=1` is set, which only the
