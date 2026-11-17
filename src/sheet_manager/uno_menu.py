@@ -32,8 +32,9 @@ This module owns context targeting, native tab grouping and restoration, and mov
   dispatcher, and reads Calc's command state for that group. Grouping runs Calc's activation
   listeners and the query runs the frame's interceptors, either of which can move, rename, hide or
   protect a sheet, so after both it repeats the generation, `command_refusal`, and an exact tab
-  readback (a single target viewed). It then dispatches through the dispatcher already found,
-  without command-specific arguments, as Calc's menu does; only reads run in between.
+  readback (a single target viewed). It then dispatches through the dispatcher already found;
+  only reads run in between. Commands carry no arguments, as from Calc's menu, except Hide's
+  `SynchronMode` (below).
 - A refusal after grouping, including a failed grouping or a UNO error before the dispatch,
   restores the saved view against fresh indices, retained identities, proof, and the original
   visibility, never by raw indices. An error raised by the dispatch itself is different: Calc may
