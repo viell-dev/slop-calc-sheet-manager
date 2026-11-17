@@ -15,3 +15,13 @@ def method(path: str, owner: str, name: str, namespace: dict[str, Any]) -> Any:
     )
     exec(compile(ast.Module(body=[node], type_ignores=[]), path, "exec"), namespace)
     return namespace[name]
+
+
+def function(path: str, name: str, namespace: dict[str, Any]) -> Any:
+    """Load a module-level function the same way, with its globals supplied in `namespace`."""
+    tree = ast.parse((ROOT / path).read_text(encoding="utf-8"))
+    node = next(
+        node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == name
+    )
+    exec(compile(ast.Module(body=[node], type_ignores=[]), path, "exec"), namespace)
+    return namespace[name]

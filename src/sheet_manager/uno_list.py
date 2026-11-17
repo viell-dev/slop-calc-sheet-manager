@@ -109,6 +109,14 @@ list moves Tab and Shift+Tab focus itself, between its controls and, past either
 frame's component window: native sidebar traversal alone neither reaches these child peers nor
 leaves them reliably. Posted focus requests are refused when focus or the active frame moved.
 
+Window activation (#211). Calc's undo of the list's changes needs this window's view as its
+current one (#108), which follows LibreOffice's frame activation. LibreOffice can leave the frame
+of the focused window inactive: then real clicks in the list and Calc's own dialogs, such as Tab
+Color, left it so (26.8.2.2 gtk3), and moves refused while their controls stayed disabled. Every
+press, owned key and move request in the panel therefore posts one `claim_window`, which runs
+ahead of the input's own posted work and activates the frame if it is inactive, as a window
+activation does. Enablement does not depend on activation; the moves' preflight does.
+
 Saving from the list (#23). With gtk3, a save moves the focus from every sidebar control to the
 sheet while it stores, Calc's own panels included (measured with 26.8.1.1 and 26.8.2.2; gen keeps
 it). A save or Save As forwarded from the list therefore runs synchronously, returning after any
@@ -504,6 +512,7 @@ class SheetList:
         self._generation = 0
         self._user_picks = False  # Whether the picks came from the user rather than from Calc.
         self._busy = False
+        self._claim_pending = False  # A posted activation of this window (`claim_window`).
         self._menu = SheetMenu(context, frame, self.document, self.controller)
         self._keys = ListKeyHandler(self, Shortcuts(context, self.document))
         self._changed_at = 0.0  # The last document change.
@@ -1390,6 +1399,27 @@ class SheetList:
         """Stamp native control input before its queued action can use the picks."""
         self._input += 1
         self._note_view_input()
+        self.claim_window()
+
+    def claim_window(self) -> None:
+        """Post making this window Calc's active one, ahead of the input's own posted work.
+
+        Input in the panel is the user working in this window. LibreOffice activates a frame
+        when its window is activated, but after some window sequences it leaves the frame of a
+        focused window inactive, and neither clicks in it nor Calc's own dialogs changed that
+        (26.8.2.2 gtk3, #211). Calc's undo of the list's changes needs this frame's view
+        (#108), so moves refuse an inactive frame; a drop already activates it.
+        """
+        if not self._claim_pending and not self._disposed:
+            self._claim_pending = True
+            self.post(self._activate_window, "activating the document's window")
+
+    def _activate_window(self) -> None:
+        self._claim_pending = False
+        if self._disposed or self.frame.getController() != self.controller:
+            return  # Reload replaced this controller; its panel owns the new one.
+        if not self.frame.isActive():
+            self.frame.activate()
 
     def queue_input(self, function, where: str) -> None:
         """Stamp a key's intent before an older observation can precede its queued action."""
@@ -1562,6 +1592,7 @@ class SheetList:
             self._take_tree_selection(paint=False)
         self._input += 1
         self._note_view_input()
+        self.claim_window()  # Also for activation without a press or key, such as through AT.
         observed, picks, proof = self._observed, tuple(self._selection.picked), self._proven
         self.post(lambda: self._move_selection(action, observed, picks, proof), "moving sheets")
 
@@ -1648,6 +1679,7 @@ class SheetList:
     def mouse_pressed(self, event) -> None:
         self._input += 1
         self._note_view_input()
+        self.claim_window()
         row = self.geometry().row_at(event.Y)
         if event.Buttons & RIGHT:
             self._press = None

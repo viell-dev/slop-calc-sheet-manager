@@ -87,6 +87,7 @@ class ListKeyHandler(unohelper.Base, XKeyHandler):
             if not self._list.owns_keys():
                 return False
             owned = True
+            self._list.claim_window()  # Before any work this key posts, Tab's focus step too.
             # PyUNO passes a UNO char as uno.Char; its value is the one-character string.
             char = getattr(event.KeyChar, "value", event.KeyChar)
             route = route_key(event.KeyCode, event.Modifiers, char)

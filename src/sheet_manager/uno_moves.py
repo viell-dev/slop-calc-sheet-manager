@@ -4,6 +4,8 @@ This module owns the four controls above the list: their names, sizing, and refu
 The footer stays separate, in `uno_status`.
 
 - Enablement reads the structure monitor's generation without consuming undo or modify evidence.
+- Enablement never waits for Calc to count the window as active: a press or key on a button
+  activates it first (`SheetList.claim_window`), and the move's preflight requires it (#211).
 - Keyboard activation stamps input before native button handling, and queued focus requests
   reject newer input too.
 - Tab follows the visible button and list order and skips disabled controls. Native Enter and

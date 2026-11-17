@@ -104,7 +104,9 @@ future reorder commands with the same validation. `Plan` includes `before`, `tar
 
 The adapter refuses read-only documents, protected document structure, recorded changes, disabled
 or locked undo, zero configured undo steps, an inactive document frame, stale state, and no-op
-plans. It also refuses a plan in which a moved sheet's name would find another sheet when its call
+plans. The list's enablement checks the same permissions except the frame: input in the list
+activates its window first, because LibreOffice can leave the focused window's frame inactive
+([#211](https://github.com/viell-dev/slop-calc-sheet-manager/issues/211)). It also refuses a plan in which a moved sheet's name would find another sheet when its call
 runs: Calc accepts names that its own lookup cannot tell apart, such as `ﬁ` beside `fi`, finds
 whichever comes first for both, and `moveByName` is the only move the API offers
 ([#113](https://github.com/viell-dev/slop-calc-sheet-manager/issues/113)). Each call checks the

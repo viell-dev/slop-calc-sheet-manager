@@ -245,6 +245,15 @@ class Workbook:
         """Click the active sheet's row: the list gets the focus, nothing else changes."""
         self.click(self.order().index(self.active()))
 
+    def click_control(self, control):
+        """Click the middle of another panel control, placed from the tree's calibration."""
+        bounds, tree = control.getPosSize(), self.tree.getPosSize()
+        offset = (
+            self.pointer.offset[0] + bounds.X - tree.X,
+            self.pointer.offset[1] + bounds.Y - tree.Y,
+        )
+        Pointer(self.lab.input, offset).click(bounds.Width // 2, bounds.Height // 2)
+
     def double_click(self, index):
         point = self.point(index)
         self.pointer.click(*point, pause=0.02)
@@ -673,15 +682,7 @@ def check_move_controls(book, shortcuts, buttons=False):
         elif buttons:
             button = view.move_buttons(book.panel)[action.capitalize()]
             wait_until(button.isEnabled, "the visible move control to be enabled")
-            bounds, tree_bounds = button.getPosSize(), book.tree.getPosSize()
-            pointer = Pointer(
-                book.lab.input,
-                (
-                    book.pointer.offset[0] + bounds.X - tree_bounds.X,
-                    book.pointer.offset[1] + bounds.Y - tree_bounds.Y,
-                ),
-            )
-            pointer.click(bounds.Width // 2, bounds.Height // 2)
+            book.click_control(button)
         else:
             book.move_action(action)
         wait_until(lambda e=expected: book.order() == e, "the requested move")
@@ -695,6 +696,42 @@ def check_move_controls(book, shortcuts, buttons=False):
         wait_until(lambda b=before: book.order() == b, "one undo to restore the order")
         wait_until(lambda b=before: view.names(book.tree) == b, "the restored list order")
     return evidence
+
+
+def check_moves_after_inactive_frame(book):
+    """Input in the list activates its window, and enablement never waits for that (#211).
+
+    LibreOffice can leave the frame of the focused window inactive; then neither real clicks in
+    it nor Calc's own dialogs activated it, and the move buttons stayed disabled. `deactivate()`
+    makes that state on the private display; the window keeps the focus.
+    """
+    context, sheets = book.lab.context, book.document.getSheets()
+    peers = view.move_buttons(book.panel)
+    view.on_main_thread(context, book.frame.deactivate)
+    assert not book.frame.isActive()
+    view_before = book.active(), book.calc_tabs()
+    book.click(2)
+    book.click(5, modifiers=("Control_L",))
+    picked = [NAMES[2], NAMES[5]]
+    wait_until(lambda: book.selection() == picked, "two rows picked in the inactive window")
+    wait_until(book.frame.isActive, "real input in the list to activate its window")
+    wait_until(lambda: all(p.isEnabled() for p in peers.values()), "every move button enabled")
+    assert (book.order(), book.active(), book.calc_tabs()) == (NAMES, *view_before)
+    assert book.tree.hasFocus() and not book.undo_titles(), "Activation changed nothing else"
+    # Inactive again while Calc's switch refreshes the list and its enablement.
+    view.on_main_thread(context, book.frame.deactivate)
+    book.controller.setActiveSheet(sheets.getByIndex(1))
+    wait_until(lambda: book.selection() == [NAMES[1]], "the list to follow Calc's switch")
+    wait_until(peers["Down"].isEnabled, "Down enabled while the window is inactive")
+    assert not book.frame.isActive()
+    expected = list(target_order([Sheet(n) for n in NAMES], [NAMES[1]], "down"))
+    book.click_control(peers["Down"])
+    wait_until(lambda: book.order() == expected, "Down's move from the inactive window")
+    assert book.frame.isActive() and book.undo_titles() == ["Move Sheets"]
+    assert book.active() == NAMES[1] and book.calc_tabs() == [NAMES[1]]
+    book.document.getUndoManager().undo()
+    wait_until(lambda: book.order() == NAMES, "one undo restoring the order")
+    return {"activated_by_clicks": picked, "enabled_while_inactive": True, "moved": expected}
 
 
 def check_move_edges_and_refusal(book):
@@ -2578,6 +2615,7 @@ def run_checks(lab, output, only=()):
         ("move_menu", lambda: check_move_controls(book, False)),
         ("move_buttons", lambda: check_move_controls(book, False, buttons=True)),
         ("move_shortcuts", lambda: check_move_controls(book, True)),
+        ("moves_after_inactive_frame", lambda: check_moves_after_inactive_frame(book)),
         ("move_edges_and_refusal", lambda: check_move_edges_and_refusal(book)),
         ("move_focus_and_queued_navigation", lambda: check_move_focus_and_queued_navigation(book)),
         ("click_activates", lambda: check_click_activates(book)),

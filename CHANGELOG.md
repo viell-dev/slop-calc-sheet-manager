@@ -5,6 +5,10 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Keep the move buttons usable when LibreOffice treats the focused document window as
+  inactive. They could stay disabled while sheets were picked, until a dialog opened from the
+  list; clicking or typing in the list now makes its window active, as switching to it does
+  ([#211](https://github.com/viell-dev/slop-calc-sheet-manager/issues/211)).
 - Refresh the Debian 13 integration image digest and the checks image's Python to 3.12.16.
 - Update the development checks image and local Node.js pin together to 24.22.2, including
   the documentation container example.
