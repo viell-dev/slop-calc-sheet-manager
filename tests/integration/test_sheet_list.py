@@ -933,7 +933,7 @@ def measure_large_workbook(context, desktop, count):
     order = list(document.getSheets().getElementNames())
     poll(lambda: selection(tree, order) == [target.getName()], "a large list to follow", 120)
 
-    viewed = tree.getPeer().getProperty("XAccessible").getAccessibleContext()
+    viewed = tree.getProperty("XAccessible").getAccessibleContext()
 
     def activation_shown():
         # The refreshed rows name the viewed sheet, as the painted arrow marks it (#83).
