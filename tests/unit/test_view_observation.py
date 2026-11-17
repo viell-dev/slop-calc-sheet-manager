@@ -320,6 +320,7 @@ def test_queued_key_intent_prevents_an_older_observation_from_replacing_its_pick
     owner._note_view_input = lambda: note(owner)
     owner.note_input = lambda: note_input(owner)
     owner._acknowledge_view = Mock()
+    owner.claim_window = Mock()
 
     def queue_input(function: Any, where: str) -> None:
         queue(owner, function, where)

@@ -159,6 +159,7 @@ def test_move_request_keeps_its_snapshot_refs_and_proof_while_queued() -> None:
         post=post,
         _move_selection=move,
         _note_view_input=Mock(),
+        claim_window=Mock(),
     )
     request = method(
         "src/sheet_manager/uno_list.py", "SheetList", "queue_move", {"ACTIONS": ("top",)}

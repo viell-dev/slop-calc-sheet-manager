@@ -5,6 +5,10 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Keep the move buttons usable when LibreOffice treats the focused document window as
+  inactive. They could stay disabled while sheets were picked, until a dialog opened from the
+  list; clicking or typing in the list now makes its window active, as switching to it does
+  ([#211](https://github.com/viell-dev/slop-calc-sheet-manager/issues/211)).
 - Show a message with reopening and reporting guidance when the sheet list cannot open, instead
   of an empty deck ([#188](https://github.com/viell-dev/slop-calc-sheet-manager/issues/188)).
 - Retry a failed list refresh, so that a changed tab colour, visibility or protection is still

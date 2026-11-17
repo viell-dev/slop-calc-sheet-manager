@@ -165,6 +165,10 @@ def preflight(context: Any, document: Any, observed: Snapshot, plan: Plan) -> Av
         permission = plan_availability(move_availability(context, document), plan)
         if not permission.allowed:
             return permission
+        # Calc's undo of the moves needs this document's view as its current one (#108).
+        controller = document.getCurrentController()
+        if controller is None or not controller.getFrame().isActive():
+            return Availability(False, tr("Activate this document's window before moving sheets."))
         conflict = _lookup_conflict(document, plan)
         if conflict is not None:
             return Availability(
@@ -182,7 +186,12 @@ def preflight(context: Any, document: Any, observed: Snapshot, plan: Plan) -> Av
 
 
 def move_availability(context: Any, document: Any) -> Availability:
-    """Shared document permissions for enablement; execution still needs full preflight."""
+    """Shared document permissions for enablement; execution still needs full preflight.
+
+    Whether Calc counts the document's window as active is not a permission: input in the list
+    makes it active (`uno_list.SheetList.claim_window`), so the controls stay usable when
+    LibreOffice leaves the frame of a focused window inactive (#211). `preflight` requires it.
+    """
     try:
         if document.isReadonly():
             return Availability(False, tr("This document is read-only."))
@@ -198,9 +207,6 @@ def move_availability(context: Any, document: Any) -> Availability:
         # closed. An empty top-level stack instead has no titles at all.
         if undo.getAllUndoActionTitles() and not undo.isUndoPossible():
             return Availability(False, tr("Finish the current undo action before moving sheets."))
-        controller = document.getCurrentController()
-        if controller is None or not controller.getFrame().isActive():
-            return Availability(False, tr("Activate this document's window before moving sheets."))
         return Availability(True, undo_steps=capacity)
     except Exception as error:
         return Availability(

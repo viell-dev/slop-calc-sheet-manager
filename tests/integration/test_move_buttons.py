@@ -4,7 +4,15 @@ from typing import cast
 
 from com.sun.star.beans import PropertyValue
 from main_thread import close_after
-from sheet_list_view import move_buttons, names, open_list, poll, row_point, selection
+from sheet_list_view import (
+    move_buttons,
+    names,
+    on_main_thread,
+    open_list,
+    poll,
+    row_point,
+    selection,
+)
 from test_sheet_list import Robot
 
 from sheet_manager.reorder import Action, Sheet, target_order
@@ -47,6 +55,7 @@ def exercise(context, desktop, directory, output):
             document.UndoManager.undo()
             poll(lambda: list(sheets.ElementNames) == SIX, "one undo restoring the order")
         poll(lambda: names(tree) == SIX, "the list after the final undo")
+        inactive = check_inactive_window(context, document, tree, buttons, robot)
         robot.click(tree, row_point(tree, 2))
         poll(lambda: selection(tree, SIX) == [SIX[2]], "the pick before protecting the document")
         document.protect("synthetic")
@@ -83,4 +92,41 @@ def exercise(context, desktop, directory, output):
         close_after(context, document, failure)
         raise
     close_after(context, document)
-    return {"four_buttons_one_undo": True, "native_names_and_refusal_tooltips": True}
+    return {
+        "four_buttons_one_undo": True,
+        "native_names_and_refusal_tooltips": True,
+        "inactive_window": inactive,
+    }
+
+
+def check_inactive_window(context, document, tree, buttons, robot):
+    """Input in the list activates its window, and enablement never waits for that (#211).
+
+    LibreOffice can leave the frame of a focused window inactive, and neither clicks in it nor
+    Calc's own dialogs then changed that. `deactivate()` makes that state here.
+    """
+    sheets, undo = document.Sheets, document.UndoManager
+    frame = document.CurrentController.Frame
+    on_main_thread(context, frame.deactivate)
+    assert not frame.isActive()
+    robot.click(tree, row_point(tree, 1))
+    poll(lambda: selection(tree, SIX) == [SIX[1]], "a pick in the inactive window")
+    poll(frame.isActive, "the list's input to activate its window")
+    poll(buttons["Down"].isEnabled, "Down enabled after the pick")
+    # Inactive again while a switch in Calc refreshes the list and its enablement.
+    on_main_thread(context, frame.deactivate)
+    document.CurrentController.setActiveSheet(sheets.getByIndex(3))
+    poll(lambda: selection(tree, SIX) == [SIX[3]], "the list following Calc's switch")
+    poll(buttons["Up"].isEnabled, "Up enabled while the window is inactive")
+    assert not frame.isActive()
+    before = tuple(undo.AllUndoActionTitles)
+    size = buttons["Up"].getPosSize()
+    robot.click(buttons["Up"], (size.Width // 2, size.Height // 2))
+    expected = [SIX[0], SIX[1], SIX[3], SIX[2], SIX[4], SIX[5]]
+    poll(lambda: list(sheets.ElementNames) == expected, "Up's move from the inactive window")
+    assert frame.isActive()
+    assert tuple(undo.AllUndoActionTitles) == ("Move Sheets", *before)
+    undo.undo()
+    poll(lambda: list(sheets.ElementNames) == SIX, "one undo restoring the order")
+    poll(lambda: names(tree) == SIX, "the list after that undo")
+    return {"activated_by_a_pick": True, "enabled_while_inactive": True, "moved": expected}
