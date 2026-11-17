@@ -24,6 +24,11 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   nodeenv 1.12.0. These dependencies do not ship in the extension.
 - Bound LibreOffice lab downloads and log their mirror and transfer measurements, so a slow
   mirror fails during setup instead of consuming the native CI testing budget.
+- Make two intermittent test failures classify themselves. A failed pick after Reload keeps
+  the click's delivery, the list's selection events and later document modifications. The
+  real-input grid click is no longer repeated, and a failed one records whether it arrived late
+  ([#88](https://github.com/viell-dev/slop-calc-sheet-manager/issues/88),
+  [#42](https://github.com/viell-dev/slop-calc-sheet-manager/issues/42)).
 
 ## 0.0.10 - 2026-11-03
 
