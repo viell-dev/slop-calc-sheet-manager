@@ -6,16 +6,16 @@
     "sha256": "9807363c8fabf79fc3562f606ce1673c4b29c3c53baca513f84e762845a093b2"
   },
   "current-26.2": {
-    "version": "26.2.6.3",
+    "version": "26.2.7.3",
     "series": "26.2",
-    "url": "https://downloadarchive.documentfoundation.org/libreoffice/old/26.2.6.3/deb/x86_64/LibreOffice_26.2.6.3_Linux_x86-64_deb.tar.gz",
-    "sha256": "fd0e8f8f2408dd2e5b90286e60f3f97cf566ba441cd48cfc5bcc68067303e0bc"
+    "url": "https://downloadarchive.documentfoundation.org/libreoffice/old/26.2.7.3/deb/x86_64/LibreOffice_26.2.7.3_Linux_x86-64_deb.tar.gz",
+    "sha256": "8cd04a88396a9230264ff784ec89cc090cbfd0960c192483ba2b80fa53939416"
   },
   "current-26.8": {
-    "version": "26.8.2.2",
+    "version": "26.8.3.1",
     "series": "26.8",
-    "url": "https://downloadarchive.documentfoundation.org/libreoffice/old/26.8.2.2/deb/x86_64/LibreOffice_26.8.2.2_Linux_x86-64_deb.tar.gz",
-    "sha256": "8290c8f46cb33d6df8f681cb796e0697461ea070f86ec55b63c94d7eb9d9a476"
+    "url": "https://downloadarchive.documentfoundation.org/libreoffice/old/26.8.3.1/deb/x86_64/LibreOffice_26.8.3.1_Linux_x86-64_deb.tar.gz",
+    "sha256": "e7cd3538e85818ff9dd9bb65386769fde927011242aace5a144989f4000dcabf"
   },
   "unsupported": {
     "version": "26.2.0.3",
@@ -24,14 +24,14 @@
     "sha256": "e023d236a79b3fd55dcfee68a4169ac58f274f8e5e1c326dfeb414fb8b6e4bfb"
   },
   "macos": {
-    "version": "26.8.2.2",
+    "version": "26.8.3.1",
     "architecture": "x86_64",
-    "url": "https://downloadarchive.documentfoundation.org/libreoffice/old/26.8.2.2/mac/x86_64/LibreOffice_26.8.2.2_MacOS_x86-64.dmg",
-    "sha256": "0af062779cc17f6f852918b2424c745f7dd2d20d51d7fb8a0925eb92ec0417a7"
+    "url": "https://downloadarchive.documentfoundation.org/libreoffice/old/26.8.3.1/mac/x86_64/LibreOffice_26.8.3.1_MacOS_x86-64.dmg",
+    "sha256": "bb3c35d628780510915ad9e759d7ed898094d7985d01b2181bd1d4ecd94fd159"
   },
   "windows": {
-    "version": "26.8.2.2",
-    "url": "https://downloadarchive.documentfoundation.org/libreoffice/old/26.8.2.2/win/x86_64/LibreOffice_26.8.2.2_Win_x86-64.msi",
-    "sha256": "ff4b911403b67ee9e6249f820f9782c44bb32c94fdaa45b0da53a8e419e5307a"
+    "version": "26.8.3.1",
+    "url": "https://downloadarchive.documentfoundation.org/libreoffice/old/26.8.3.1/win/x86_64/LibreOffice_26.8.3.1_Win_x86-64.msi",
+    "sha256": "0e6918c273eabbdbbd800ee0dacbbf130a14c13c2e4cec861b06dd59e015bf94"
   }
 }
