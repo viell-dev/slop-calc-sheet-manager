@@ -17,8 +17,10 @@ from typing import cast
 
 if __package__:
     from .build import ROOT, build
+    from .libreoffice_package import ensure_package, read_pin
 else:
     from build import ROOT, build
+    from libreoffice_package import ensure_package, read_pin
 
 
 def require_supported_docker() -> None:
@@ -75,8 +77,7 @@ def main() -> None:
     else:
         uid, gid = 1000, 1000
     require_supported_docker()
-    pins = cast(dict[str, dict[str, str]], json.loads((ROOT / "ci/libreoffice.json").read_text()))
-    pin = pins[arguments.lane]
+    pin = read_pin(arguments.lane)
     fingerprint = hashlib.sha256(
         (ROOT / "ci/Dockerfile").read_bytes()
         + json.dumps(pin, sort_keys=True).encode()
@@ -94,7 +95,17 @@ def main() -> None:
     if not cached:
         if arguments.skip_build:
             print("No image matches this Dockerfile, pin, and UID/GID; rebuilding", flush=True)
-        command = ["docker", "build", "--file", str(ROOT / "ci/Dockerfile"), "--tag", image]
+        archive = ensure_package(arguments.lane, pin)
+        command = [
+            "docker",
+            "build",
+            "--file",
+            str(ROOT / "ci/Dockerfile"),
+            "--tag",
+            image,
+            "--build-context",
+            f"lo-package={archive.parent}",
+        ]
         for key in ("version", "series", "url", "sha256"):
             command.extend(["--build-arg", f"LO_{key.upper()}={pin[key]}"])
         command.extend(["--build-arg", f"TEST_UID={uid}", "--build-arg", f"TEST_GID={gid}"])
