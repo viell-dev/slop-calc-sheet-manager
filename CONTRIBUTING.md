@@ -199,10 +199,12 @@ gtk3 sessions save `deck.png`; `--screenshot` remains an alias for running both 
 
 The Linux helper needs curl 7.71 or newer and Docker with BuildKit. It keeps each verified
 archive under `.cache/libreoffice-packages/<sha256>/` and supplies it to the build in a read-only
-context. On a miss, curl downloads from the TDF archive over HTTPS with certificate verification,
-bounded timeouts and at most three retries, including after a redirected mirror's certificate
-failure. An exhausted download or checksum mismatch fails setup. Remove the affected cache file
-before retrying a corrupt local entry.
+context. On a miss, curl tries TDF's stable mirror network when the archive pin names a versioned
+build, then falls back to the archive if that route cannot supply the exact bytes. Both routes
+require HTTPS with certificate verification and share the download budget. The archive route
+allows at most three retries, including after a redirected mirror's certificate failure. An
+exhausted download or checksum mismatch on the final source fails setup. Remove the affected
+cache file before retrying a corrupt local entry.
 
 GitHub Actions restores the exact digest for the Linux archive, Windows MSI or macOS DMG and
 checks its SHA-256 before use. Only runs on `main` populate the shared cache, and the cache

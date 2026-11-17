@@ -7,11 +7,13 @@ entry, and publish the file atomically only after checking its SHA-256.
 import argparse
 import hashlib
 import json
+import math
 import os
 import re
 import subprocess
 import tempfile
 from pathlib import Path
+from time import monotonic
 from typing import cast
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -44,7 +46,7 @@ def verify_package(path: Path, expected: str) -> None:
         )
 
 
-def download_package(url: str, output: Path, *, desktop: bool) -> None:
+def download_package(url: str, output: Path, *, seconds: int, retries: int) -> None:
     # Retry short failures from the archive URL, including mirror certificate errors (#61).
     # Bound delays before they consume the integration budget (#203).
     subprocess.run(
@@ -60,12 +62,12 @@ def download_package(url: str, output: Path, *, desktop: bool) -> None:
             "--proto-redir",
             "=https",
             "--retry",
-            "2" if desktop else "3",
+            str(retries),
             "--retry-all-errors",
             "--connect-timeout",
             "30",
             "--max-time",
-            "600" if desktop else "240",
+            str(seconds),
             "--retry-max-time",
             "60",
             "--write-out",
@@ -78,6 +80,46 @@ def download_package(url: str, output: Path, *, desktop: bool) -> None:
         ],
         check=True,
     )
+
+
+def stable_download_url(archive: str) -> str | None:
+    # TDF publishes final builds under the three-part release name on its mirror network.
+    match = re.fullmatch(
+        r"https://downloadarchive\.documentfoundation\.org/libreoffice/old/"
+        r"((\d+\.\d+\.\d+)\.\d+)/(.+)",
+        archive,
+    )
+    if match is None:
+        return None
+    build, release, path = match.groups()
+    return f"https://download.documentfoundation.org/libreoffice/stable/{release}/" + path.replace(
+        f"LibreOffice_{build}_", f"LibreOffice_{release}_", 1
+    )
+
+
+def download_pinned(pin: dict[str, str], output: Path, *, desktop: bool) -> None:
+    deadline = monotonic() + (600 if desktop else 240)
+    archive = pin["url"]
+    mirror = stable_download_url(archive)
+    if mirror is not None:
+        try:
+            download_package(mirror, output, seconds=90, retries=0)
+            verify_package(output, pin["sha256"])
+        except (subprocess.CalledProcessError, ValueError) as error:
+            print(
+                f"Stable mirror did not supply the pinned package; trying the archive: {error}",
+                flush=True,
+            )
+            output.unlink(missing_ok=True)
+        else:
+            return
+    download_package(
+        archive,
+        output,
+        seconds=max(1, math.ceil(deadline - monotonic())),
+        retries=2 if desktop else 3,
+    )
+    verify_package(output, pin["sha256"])
 
 
 def ensure_package(lane: str, pin: dict[str, str]) -> Path:
@@ -93,8 +135,7 @@ def ensure_package(lane: str, pin: dict[str, str]) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="download-", dir=CACHE) as directory:
         received = Path(directory) / path.name
-        download_package(pin["url"], received, desktop=lane in {"windows", "macos"})
-        verify_package(received, pin["sha256"])
+        download_pinned(pin, received, desktop=lane in {"windows", "macos"})
         received.replace(path)
     return path
 
