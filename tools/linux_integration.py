@@ -11,9 +11,9 @@ import hashlib
 import json
 import os
 import subprocess
-from typing import cast
 
 from build import ROOT, build
+from libreoffice_package import ensure_package, read_pin
 
 
 def main() -> None:
@@ -51,8 +51,7 @@ def main() -> None:
             raise SystemExit("Run the integration helper as an unprivileged host user")
     else:
         uid, gid = 1000, 1000
-    pins = cast(dict[str, dict[str, str]], json.loads((ROOT / "ci/libreoffice.json").read_text()))
-    pin = pins[arguments.lane]
+    pin = read_pin(arguments.lane)
     fingerprint = hashlib.sha256(
         (ROOT / "ci/Dockerfile").read_bytes()
         + json.dumps(pin, sort_keys=True).encode()
@@ -70,7 +69,17 @@ def main() -> None:
     if not cached:
         if arguments.skip_build:
             print("No image matches this Dockerfile, pin, and UID/GID; rebuilding", flush=True)
-        command = ["docker", "build", "--file", str(ROOT / "ci/Dockerfile"), "--tag", image]
+        archive = ensure_package(arguments.lane, pin)
+        command = [
+            "docker",
+            "build",
+            "--file",
+            str(ROOT / "ci/Dockerfile"),
+            "--tag",
+            image,
+            "--build-context",
+            f"lo-package={archive.parent}",
+        ]
         for key in ("version", "series", "url", "sha256"):
             command.extend(["--build-arg", f"LO_{key.upper()}={pin[key]}"])
         command.extend(["--build-arg", f"TEST_UID={uid}", "--build-arg", f"TEST_GID={gid}"])
