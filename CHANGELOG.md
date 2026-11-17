@@ -5,6 +5,8 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Add contributor references for LibreOffice packaging, sidebar design and interface checks
+  ([#201](https://github.com/viell-dev/slop-calc-sheet-manager/issues/201)).
 - Keep verified package SHA-256 digests in deployed release history, so a replaced OXT and
   matching replacement checksum stop feed generation, and publish a release only when GitHub's
   digests of its uploaded files equal the files the workflow built

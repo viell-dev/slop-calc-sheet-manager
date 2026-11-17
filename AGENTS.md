@@ -266,6 +266,9 @@ Pure logic and `uno_` adapters live in [`src/sheet_manager/`](src/sheet_manager/
 current when their procedures or coverage change. [RELEASING.md](RELEASING.md) owns packaging,
 publication and feed procedures.
 
+For package, metadata and interface changes, use the
+[LibreOffice extension and interface guidance](docs/development/index.md#libreoffice-extension-and-interface-guidance).
+
 ### Rules for all code
 
 Breaking one of these has hung or crashed LibreOffice, or let an action reach the wrong sheet:
