@@ -249,7 +249,8 @@ Only the publishing job receives `contents: write`; no stored secret is needed.
 
 The workflow creates the numeric tag at that commit, creates a **draft** GitHub release with the
 stage's title, the changelog section, and the Pre-release flag for every stage but `stable`,
-uploads the OXT and checksum, verifies both are present, and only then publishes. A stable
+uploads the OXT and checksum, verifies that both are present and that GitHub's digest of each
+uploaded asset equals the file it built, and only then publishes. A stable
 release is also marked as GitHub's latest release; other stages are not. GitHub release
 immutability is disabled during early development. Keep it disabled unless the owner directs
 otherwise. An existing tag, published version, or draft is refused. Publication is serialized
@@ -292,8 +293,10 @@ the first matching description, so newest-first order matters. An empty feed adv
 before the first release. The stable feed excludes prereleases, including from its timestamp,
 so publishing a candidate does not change it.
 
-The site also contains `releases.json`, the history used by the last deployment. Generation
-compares it with the current releases and refuses removal, reclassification, changed metadata,
+The site also contains `releases.json`, the history used by the last deployment. Each record
+keeps the OXT's SHA-256 alongside its release metadata. Generation and release planning compare
+the downloaded OXT against both its sidecar and the deployed digest, so replacing both assets
+still fails. History validation also refuses removal, reclassification, changed metadata,
 or duplicate versions. Publication timestamps need not follow version order, so finishing an
 older draft cannot block future feeds. History requests bypass cached URLs. A missing site
 (HTTP 404) permits bootstrap only before any numeric version tag exists; afterwards it stops
@@ -302,6 +305,19 @@ Do not delete the Pages site or its history; restore the last deployed history i
 Generation and deployment share the `update-feeds` concurrency lock, so queued runs read fresh
 release data. Both the release workflow's caller job and the standalone Pages workflow hold it
 across the complete build and deployment; locking deployment alone would allow stale builds.
+
+For the digest migration, records from the older schema retain their metadata and gain the
+SHA-256 reconstructed by building each protected tag from 0.0.2 through 0.0.10 with its own
+`tools/build.py`. Those receipts are pinned in `tools/github_release.py` and were checked against
+the published assets ([#193](https://github.com/viell-dev/slop-calc-sheet-manager/issues/193)).
+They remain a second anchor: a deployed digest for one of those versions must also equal its
+receipt. A missing digest without a migration receipt stops generation. Recover the last deployed
+digest-bearing history, or verify a legacy digest from independent evidence before adding a
+receipt. If a package digest changes, investigate and recover the original verified bytes.
+The initial deployment of a newly published version records the bytes it verifies at that time.
+Publication has already compared GitHub's digests of the uploaded assets with the built files, so
+only a replacement between publication and that first deployment could be recorded; the live
+asset check after publication covers that window.
 
 The same deployment serves the user guide.
 
@@ -336,7 +352,8 @@ workflow's `release` event. The event trigger also handles a manually completed 
 Unit tests check numeric ordering, the suffix trap, stage titles and their refused stage/target
 combinations, the workflow's stage input, existing-version refusal,
 changelog boundaries, feed XML, stable-feed immutability, empty feeds, and history regression
-refusal. The normal Linux, Windows and Intel macOS integration lanes also run `test_updates.py`:
+refusal, including digest migration and a simultaneous OXT and sidecar replacement. The normal
+Linux, Windows and Intel macOS integration lanes also run `test_updates.py`:
 an older installed build's identifier is used to query generated feeds served on a loopback HTTP
 server.
 LibreOffice's `UpdateInformationProvider` returns the expected descriptions in newest-first
