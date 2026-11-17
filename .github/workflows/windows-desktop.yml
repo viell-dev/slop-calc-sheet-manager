@@ -34,8 +34,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - id: package
+        uses: ./.github/actions/libreoffice-package
+        with:
+          lane: windows
       - name: Install the pinned LibreOffice MSI
-        run: ./ci/install-windows.ps1
+        run: ./ci/install-windows.ps1 -InstallerPath $env:LO_INSTALLER
+        env:
+          LO_INSTALLER: ${{ steps.package.outputs.path }}
       - name: Build the extension and stage the public packages
         env:
           GH_TOKEN: ${{ github.token }}
@@ -83,7 +89,7 @@ jobs:
             --oxt $package --output test-results/research/integration
           if ($LASTEXITCODE -ne 0) { throw 'Integration failed' }
       - name: Analyse and remove raw dumps
-        if: always()
+        if: always() && steps.package.outcome == 'success'
         run: |
           $symbols = "srv*$env:RUNNER_TEMP\sym*https://dev-downloads.libreoffice.org/symstore/symbols;srv*$env:RUNNER_TEMP\sym*https://msdl.microsoft.com/download/symbols"
           & $env:LOPY research/analyse_dumps.py test-results/research $symbols $env:CDB
