@@ -1,0 +1,58 @@
+name: Synthetic painted sweep controls
+'on':
+  push:
+    branches:
+    - verify-painted-sweep-evidence
+permissions:
+  contents: read
+jobs:
+  controls:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        lane:
+        - first-fails
+        - input-interrupted
+    steps:
+    - name: Replace LibreOffice with a synthetic phase process
+      shell: bash
+      run: "mkdir -p \"$RUNNER_TEMP/fixture\"\ncat > \"$RUNNER_TEMP/fixture/python3\"\
+        \ <<'SH'\n#!/bin/bash\nif [[ \"$*\" == *'--sessions gtk3'* ]]; then\n  echo\
+        \ \"painted-$LANE\"\n  echo \"painted stderr\" >&2\n  if [[ \"$LANE\" == first-fails\
+        \ ]]; then exit 17; fi\nelse\n  echo \"input-started\"\n  sleep 80\nfi\nSH\n\
+        chmod +x \"$RUNNER_TEMP/fixture/python3\"\necho \"$RUNNER_TEMP/fixture\" >>\
+        \ \"$GITHUB_PATH\"\n"
+    - name: Painted integration with crash backtrace
+      shell: bash
+      env:
+        LANE: ${{ matrix.lane }}
+      run: 'set -o pipefail
+
+        mkdir -p test-results/ci
+
+        python3 tools/linux_integration.py "$LANE" --sessions gtk3 --backtrace 2>&1
+        | tee test-results/ci/painted.log
+
+        '
+    - name: Retain painted integration evidence before starting real input
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      if: always()
+      with:
+        name: linux-gtk3-${{ matrix.lane }}-painted
+        path: test-results/
+        if-no-files-found: error
+    - name: Real-input UI tests with gtk3 and gen
+      if: ${{ success() }}
+      shell: bash
+      env:
+        LANE: ${{ matrix.lane }}
+      run: 'set -o pipefail
+
+        mkdir -p test-results/ci
+
+        python3 tools/linux_integration.py "$LANE" --skip-build --ui --backtrace 2>&1
+        | tee test-results/ci/input.log
+
+        '
+      timeout-minutes: 1
