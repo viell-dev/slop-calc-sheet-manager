@@ -36,6 +36,9 @@ jobs:
           hdiutil help || true
           ditto -h || true
           curl --help
+      - uses: ./.github/actions/libreoffice-package
+        with:
+          lane: macos
       - name: Install privately and run with the bundled PyUNO interpreter
         env:
           THEME_PICK_PROBE: ${{ inputs.theme_pick_probe }}
@@ -50,6 +53,7 @@ jobs:
         with:
           name: ${{ inputs.theme_pick_probe && 'macos-theme-pick-probe' || 'macos-integration' }}
           path: |
+            test-results/libreoffice-package.log
             test-results/macos/
             dist/
           if-no-files-found: error
