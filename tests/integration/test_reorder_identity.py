@@ -258,6 +258,30 @@ def check_confusable_names(context, desktop, first, second):
         assert result.status == "done", result
         assert shown() == [True, True, True] and list(undo.AllUndoActionTitles) == ["Show Sheet"]
 
+        # Calc moves a sheet only by its name, and that name finds the first of the pair. With
+        # Last between them, the second reaches the top only by its own name: refused (#125).
+        sheets.moveByName("Last", 1)
+        undo.clear()
+        apart = (first, "Last", second)
+        assert tuple(sheets.ElementNames) == apart
+        observed = snapshot(document)
+        plan = plan_move(observed.sheets, [second], "top")
+        refused = apply_order(context, document, observed, plan)
+        assert refused.status == "refused" and "Rename one of them" in refused.message, refused
+        assert tuple(sheets.ElementNames) == apart and not undo.AllUndoActionTitles
+
+        # When preflight is fooled, the check before each call still stops the move.
+        lying = _LookupAfterPreflight(document)
+        observed = snapshot(lying)
+        plan = plan_move(observed.sheets, [second], "top")
+        assert preflight(context, lying, observed, plan).allowed
+        guarded = apply_order(context, lying, observed, plan)
+        assert guarded.status == "failed-restored" and "lookup" in guarded.detail, guarded
+        assert tuple(sheets.ElementNames) == apart and not undo.AllUndoActionTitles
+        assert identities() == ["first", "last", "second"]
+        sheets.moveByName("Last", 2)
+        assert tuple(sheets.ElementNames) == names and identities() == ["first", "second", "last"]
+
         # Moves restore the viewed sheet and Calc's tab group afterwards; view the second of the
         # pair with both grouped.
         views_after_undo: list[list[str]] = []
@@ -267,15 +291,15 @@ def check_confusable_names(context, desktop, first, second):
         assert selected_tabs(context, controller) == [0, 1]
         undo.clear()
 
-        def undo_move():
+        def undo_move(moved_back="first"):
             """Undo a move made with the second of the pair viewed, and wait for its view.
 
-            Calc's own Undo of a move views the sheets it moves back, here the first of the pair
-            last, and Calc's moves themselves never change the view. The restoration posted by
-            the move's markers (#91) then views the second again: `_restore_view`'s branch that
-            activates the viewed sheet by index, which by name would find the first. The first is
-            grouped too: Calc's tab selection then keeps viewing it, where a group of the second
-            alone would view the second again and hide an activation of the wrong sheet.
+            Calc's own Undo of a move views the sheets it moves back, here `moved_back` last, and
+            Calc's moves themselves never change the view. The restoration posted by the move's
+            markers (#91) then views the second again: `_restore_view`'s branch that activates
+            the viewed sheet by index, which by name would find the first. The first is grouped
+            too: Calc's tab selection then keeps viewing it, where a group of the second alone
+            would view the second again and hide an activation of the wrong sheet.
             """
             views = _Views()
             controller.addActivationEventListener(views)
@@ -283,11 +307,11 @@ def check_confusable_names(context, desktop, first, second):
                 undo.undo()
                 poll(
                     lambda: (
-                        "first" in views.seen
+                        moved_back in views.seen
                         and views.seen[-1] == "second"
                         and controller.ActiveSheet.getCellRangeByName("A1").String == "second"
                     ),
-                    "Calc's Undo to view the first sheet and the restoration the second",
+                    f"Calc's Undo to view the {moved_back} sheet and the restoration the second",
                     timeout=5,
                 )
             except AssertionError as error:
@@ -298,22 +322,20 @@ def check_confusable_names(context, desktop, first, second):
             assert selected_tabs(context, controller) == [0, 1], views.seen
             views_after_undo.append(views.seen)
 
-        # Calc moves a sheet only by its name, and this name finds the first of the pair.
+        # The second's own name finds the first, so its move to the bottom moves Last in front of
+        # it instead: the planner's equally short mirror image (#125).
         observed = snapshot(document)
         plan = plan_move(observed.sheets, [second], "bottom")
-        refused = apply_order(context, document, observed, plan)
-        assert refused.status == "refused" and "Rename one of them" in refused.message, refused
-        assert tuple(sheets.ElementNames) == names and not undo.AllUndoActionTitles
-
-        # When preflight is fooled, the check before each call still stops the move.
-        lying = _LookupAfterPreflight(document)
-        observed = snapshot(lying)
-        plan = plan_move(observed.sheets, [second], "bottom")
-        assert preflight(context, lying, observed, plan).allowed
-        guarded = apply_order(context, lying, observed, plan)
-        assert guarded.status == "failed-restored" and "lookup" in guarded.detail, guarded
-        assert tuple(sheets.ElementNames) == names and not undo.AllUndoActionTitles
-        assert identities() == ["first", "second", "last"]
+        assert [move.name for move in plan.moves] == [second]
+        moved = apply_order(context, document, observed, plan)
+        assert moved.message == "Sheets moved." and moved.moves == 1, moved
+        assert controller.ActiveSheet.Name == second
+        assert tuple(sheets.ElementNames) == (first, "Last", second)
+        assert identities() == ["first", "last", "second"]
+        assert list(undo.AllUndoActionTitles) == ["Move Sheets"]
+        undo_move("last")
+        assert tuple(sheets.ElementNames) == names and identities() == ["first", "second", "last"]
+        undo.clear()
 
         # The first of the pair is the one its name finds, so it moves.
         observed = snapshot(document)
