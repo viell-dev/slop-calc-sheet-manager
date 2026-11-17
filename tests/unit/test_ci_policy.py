@@ -81,19 +81,20 @@ def test_platform_sweeps_and_windows_investigations_are_manual_only() -> None:
 
 
 @pytest.mark.parametrize(
-    ("workflow_name", "job_name", "first_phase", "artifact"),
+    ("workflow_name", "job_name", "first_phase", "artifact", "final_artifact"),
     [
-        ("ci.yml", "linux", "--sessions headless", "linux-current-headless"),
+        ("ci.yml", "linux", "--sessions headless", "linux-current-headless", "linux-current"),
         (
             "release-sweep.yml",
             "linux-gtk3",
             "--sessions gtk3",
             "linux-gtk3-${{ matrix.lane }}-painted",
+            "linux-gtk3-${{ matrix.lane }}",
         ),
     ],
 )
 def test_linux_retains_early_failure_before_starting_input(
-    workflow_name: str, job_name: str, first_phase: str, artifact: str
+    workflow_name: str, job_name: str, first_phase: str, artifact: str, final_artifact: str
 ) -> None:
     workflow = yaml.load(
         (ROOT / ".github/workflows" / workflow_name).read_text("utf-8"), Loader=yaml.BaseLoader
@@ -116,6 +117,13 @@ def test_linux_retains_early_failure_before_starting_input(
         assert "set -o pipefail" in step["run"], "tee must not hide a failed runner"
         assert "2>&1 | tee test-results/ci/" in step["run"]
         assert step.get("continue-on-error", "false") == "false"
+    # The final upload keeps input evidence too; reusing the early name would fail every run.
+    final = steps[integration + 3]
+    assert final["uses"].startswith("actions/upload-artifact@")
+    assert final["if"] == "always()"
+    assert final["with"]["name"] == final_artifact != artifact
+    assert final["with"]["path"] == "test-results/"
+    assert final["with"]["if-no-files-found"] == "error"
 
 
 @pytest.mark.parametrize("result", [None, "failure", "skipped", "cancelled"])
