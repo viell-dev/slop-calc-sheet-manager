@@ -115,7 +115,7 @@ def settled_report(tracker, first, target, quiet=0.3, timeout=10):
     position at `target`. Waiting for a newer report rather than a fixed time keeps a late report
     from being missed; waiting for quiet keeps a further report of the earlier position, such as
     a corrected landing, from being taken for it. Fails, with both positions, if no newer report
-    arrives within `timeout` seconds.
+    arrives within `timeout` seconds, and if reports then keep changing for `timeout` seconds.
     """
     deadline = time.monotonic() + timeout
     latest = tracker.last
@@ -128,6 +128,7 @@ def settled_report(tracker, first, target, quiet=0.3, timeout=10):
         time.sleep(0.02)
         latest = tracker.last
     changed = time.monotonic()
+    deadline = changed + timeout
     while time.monotonic() - changed < quiet:
         if time.monotonic() > deadline:
             raise AssertionError(f"The tree kept reporting new positions after a move to {target}")
