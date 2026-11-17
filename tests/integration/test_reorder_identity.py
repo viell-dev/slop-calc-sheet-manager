@@ -281,6 +281,7 @@ def check_confusable_names(context, desktop, first, second):
         assert identities() == ["first", "last", "second"]
         sheets.moveByName("Last", 2)
         assert tuple(sheets.ElementNames) == names and identities() == ["first", "second", "last"]
+        observed = snapshot(document)  # Its handles, in the restored order, name the views below.
 
         # Moves restore the viewed sheet and Calc's tab group afterwards; view the second of the
         # pair with both grouped.
