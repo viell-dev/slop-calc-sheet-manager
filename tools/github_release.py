@@ -44,8 +44,9 @@ from tools.release_data import (  # noqa: E402
     version_parts,
 )
 
-# One-time migration receipts, rebuilt using tools/build.py from each protected release tag.
-# Only use them for records from the old digest-free schema. See RELEASING.md.
+# Independent receipts, rebuilt using tools/build.py from each protected release tag. Records from
+# the old digest-free schema take their digest from here, and a deployed digest for one of these
+# versions must also equal its receipt, so they remain a second anchor. See RELEASING.md.
 LEGACY_PACKAGE_DIGESTS = {
     "0.0.2": "f8a5e77784676a33e3a41b6fb9e4b9b125993205ca295f6b18b937e7a74f4ccd",
     "0.0.3": "780fb3761bbfdff3312bceaf03bfda1b86245b2fe58ac9382e6698df654c7b74",
@@ -138,13 +139,20 @@ def previous_builds() -> list[PublishedBuild]:
     records = cast(list[dict[str, Any]], json.loads(content))
     for record in records:
         version = record["version"]
+        receipt = LEGACY_PACKAGE_DIGESTS.get(version)
         if "sha256" not in record:
-            digest = LEGACY_PACKAGE_DIGESTS.get(version)
-            if digest is None:
+            if receipt is None:
                 raise ValueError(f"Missing independent package SHA-256 receipt for {version}")
-            record["sha256"] = digest
+            record["sha256"] = receipt
         elif not isinstance(record["sha256"], str):
             raise ValueError(f"Invalid package SHA-256 for {version}")
+        # validate_history refuses a malformed digest; a well-formed one must match its receipt.
+        elif (
+            receipt is not None
+            and re.fullmatch(r"[0-9a-f]{64}", record["sha256"])
+            and record["sha256"] != receipt
+        ):
+            raise ValueError(f"Deployed package SHA-256 disagrees with its receipt: {version}")
     return [PublishedBuild(**record) for record in records]
 
 
@@ -419,6 +427,15 @@ def main() -> None:
     assets = api(f"repos/{REPOSITORY}/releases/{release['id']}/assets")
     if {item["name"] for item in assets} != {package.name, package.name + ".sha256"}:
         raise ValueError("Draft must contain exactly the OXT and its checksum before publication")
+    # GitHub computes each asset's digest on upload: publish only the exact bytes built here, so
+    # the first Pages deployment records the verified package rather than whatever it downloads.
+    built = {
+        path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in (package, package.with_suffix(".oxt.sha256"))
+    }
+    for item in assets:
+        if item.get("digest") != f"sha256:{built[item['name']]}":
+            raise ValueError(f"Uploaded {item['name']} differs from the built file; not published")
     api(
         f"repos/{REPOSITORY}/releases/{release['id']}",
         method="PATCH",

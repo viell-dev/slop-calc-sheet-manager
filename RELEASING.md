@@ -249,7 +249,8 @@ Only the publishing job receives `contents: write`; no stored secret is needed.
 
 The workflow creates the numeric tag at that commit, creates a **draft** GitHub release with the
 stage's title, the changelog section, and the Pre-release flag for every stage but `stable`,
-uploads the OXT and checksum, verifies both are present, and only then publishes. A stable
+uploads the OXT and checksum, verifies that both are present and that GitHub's digest of each
+uploaded asset equals the file it built, and only then publishes. A stable
 release is also marked as GitHub's latest release; other stages are not. GitHub release
 immutability is disabled during early development. Keep it disabled unless the owner directs
 otherwise. An existing tag, published version, or draft is refused. Publication is serialized
@@ -309,10 +310,14 @@ For the digest migration, records from the older schema retain their metadata an
 SHA-256 reconstructed by building each protected tag from 0.0.2 through 0.0.10 with its own
 `tools/build.py`. Those receipts are pinned in `tools/github_release.py` and were checked against
 the published assets ([#193](https://github.com/viell-dev/slop-calc-sheet-manager/issues/193)).
-A missing digest without a migration receipt stops generation. Recover the last deployed
+They remain a second anchor: a deployed digest for one of those versions must also equal its
+receipt. A missing digest without a migration receipt stops generation. Recover the last deployed
 digest-bearing history, or verify a legacy digest from independent evidence before adding a
 receipt. If a package digest changes, investigate and recover the original verified bytes.
 The initial deployment of a newly published version records the bytes it verifies at that time.
+Publication has already compared GitHub's digests of the uploaded assets with the built files, so
+only a replacement between publication and that first deployment could be recorded; the live
+asset check after publication covers that window.
 
 The same deployment serves the user guide.
 

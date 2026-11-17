@@ -368,6 +368,8 @@ def test_pages_refuses_replacing_both_package_and_checksum(
     }
     history = tmp_path / "releases.json"
     description = (ROOT / "extension/description.xml").read_bytes()
+    # The synthetic package reuses the current version, which may have a pinned receipt.
+    monkeypatch.setattr(cli, "LEGACY_PACKAGE_DIGESTS", {})
 
     def downloads(module: str) -> str:
         buffer = io.BytesIO()
@@ -412,6 +414,13 @@ def test_legacy_history_migrates_only_from_independent_receipts(
 
     response.return_value = json.dumps([{**legacy, "version": "0.0.999"}]).encode()
     with pytest.raises(ValueError, match="Missing independent package SHA-256 receipt"):
+        cli.previous_builds()
+    # After migration the receipts stay a second anchor for the versions they cover.
+    later = {**legacy, "version": "0.0.999", "sha256": "c" * 64}
+    response.return_value = json.dumps([{**legacy, "sha256": digest}, later]).encode()
+    assert [item.sha256 for item in cli.previous_builds()] == [digest, "c" * 64]
+    response.return_value = json.dumps([{**legacy, "sha256": "a" * 64}]).encode()
+    with pytest.raises(ValueError, match="disagrees with its receipt: 0.0.10"):
         cli.previous_builds()
     for malformed in ("", None, digest.upper()):
         response.return_value = json.dumps([{**legacy, "sha256": malformed}]).encode()
@@ -519,12 +528,59 @@ def test_missing_history_only_bootstraps_before_any_version_was_reserved(
         cli.previous_builds()
 
 
-@pytest.mark.parametrize("missing_asset", [False, True])
+def test_planning_refuses_a_published_package_that_differs_from_deployed_history(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    deployed = PublishedBuild("0.0.1", True, "26.2.1", "2026-10-01T00:00:00Z", "a" * 64)
+    monkeypatch.setattr(cli, "paginated", Mock(return_value=[]))
+    monkeypatch.setattr(cli, "previous_builds", Mock(return_value=[deployed]))
+    monkeypatch.setattr(
+        cli, "published_builds", Mock(return_value=[replace(deployed, sha256="b" * 64)])
+    )
+    monkeypatch.setattr(cli, "build", Mock(side_effect=AssertionError("built after a change")))
+    with pytest.raises(ValueError, match="Published package SHA-256 changed: 0.0.1"):
+        cli.prepare(version(), "alpha", "", tmp_path)
+
+
+def test_publication_rechecks_published_packages_before_reserving_a_tag(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["release", "release", "--version", version(), "--stage", "alpha", "--publish"]
+        + ["--output", str(tmp_path)],
+    )
+    monkeypatch.setenv("GITHUB_REF", "refs/heads/main")
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
+    monkeypatch.setenv("RELEASE_COMMIT", "a" * 40)
+    monkeypatch.setattr(cli.subprocess, "check_output", Mock(return_value="a" * 40))
+    monkeypatch.setattr(cli, "paginated", Mock(return_value=[]))
+    monkeypatch.setattr(cli, "require_ci", Mock(return_value="https://example.invalid/ci/1"))
+    earlier = PublishedBuild("0.0.1", True, "26.2.1", "2026-10-01T00:00:00Z", "a" * 64)
+    monkeypatch.setattr(cli, "previous_builds", Mock(return_value=[earlier]))
+    # Planning sees the deployed package; it is replaced before publication starts writing.
+    monkeypatch.setattr(
+        cli,
+        "published_builds",
+        Mock(side_effect=[[earlier], [replace(earlier, sha256="b" * 64)]]),
+    )
+
+    def no_write(*args: object, **kwargs: object) -> None:
+        pytest.fail("Publication wrote to GitHub after a published package changed")
+
+    monkeypatch.setattr(cli, "api", no_write)
+    monkeypatch.setattr(cli.subprocess, "run", no_write)
+    with pytest.raises(ValueError, match="Published package SHA-256 changed: 0.0.1"):
+        cli.main()
+
+
+@pytest.mark.parametrize("fault", ["", "missing asset", "changed upload"])
 @pytest.mark.parametrize(("stage", "target_kind"), STAGE_REQUESTS)
 def test_publication_attaches_both_assets_to_draft_before_publishing(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-    missing_asset: bool,
+    fault: str,
     stage: str,
     target_kind: str,
 ) -> None:
@@ -558,7 +614,15 @@ def test_publication_attaches_both_assets_to_draft_before_publishing(
             return {"id": 37}
         if path.endswith("/assets"):
             names = [f"sheet-manager-{version()}.oxt", f"sheet-manager-{version()}.oxt.sha256"]
-            return [{"name": name} for name in (names[:1] if missing_asset else names)]
+            digests = {name: hashlib.sha256((tmp_path / name).read_bytes()) for name in names}
+            uploaded = [
+                {"name": name, "digest": "sha256:" + digests[name].hexdigest()} for name in names
+            ]
+            if fault == "missing asset":
+                return uploaded[:1]
+            if fault == "changed upload":
+                uploaded[0]["digest"] = "sha256:" + "0" * 64
+            return uploaded
         if method == "PATCH":
             assert data == {"draft": False, "make_latest": "false" if candidate else "true"}
         return {}
@@ -574,11 +638,15 @@ def test_publication_attaches_both_assets_to_draft_before_publishing(
 
     monkeypatch.setattr(cli, "api", api)
     monkeypatch.setattr(cli.subprocess, "run", upload)
-    if missing_asset:
-        with pytest.raises(ValueError, match="exactly the OXT and its checksum"):
+    if fault:
+        refusal = {
+            "missing asset": "exactly the OXT and its checksum",
+            "changed upload": "differs from the built file",
+        }[fault]
+        with pytest.raises(ValueError, match=refusal):
             cli.main()
     else:
         cli.main()
     assert events == ["POST refs", "POST releases", "upload", "GET assets"] + (
-        [] if missing_asset else ["PATCH 37"]
+        [] if fault else ["PATCH 37"]
     )
