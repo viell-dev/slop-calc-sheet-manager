@@ -1,10 +1,13 @@
 """Show hidden sheets as one undo step, with the reorder layer's safety rules.
 
-This is the one document change the list's own short menu makes, for selections that Calc's tab
-menu should not target: hidden or mixed-visibility sheets. Like ``uno_reorder.apply_order``,
-it verifies sheet identity and undo availability, refuses without undo or beyond the undo limit,
-groups and verifies the change, and recovers only its own undo group on failure. Call it
-synchronously on the UI thread.
+The list's sheet menu offers Show in Hide's place when any target is hidden. Calc cannot view a
+hidden sheet (#43), so the menu refuses Calc's own commands for such a selection
+(`uno_menu.command_refusal`); Show makes only its hidden targets visible. Show is one of the
+document changes the extension makes itself, beside the moves (``uno_reorder``) and Rename Sheets
+(``uno_rename``), so it keeps their safety rules. Like ``uno_reorder.apply_order``, it verifies
+sheet identity and undo availability, refuses without undo, beyond the undo limit, or while the
+document's window is inactive (Calc's undo needs that window's view, #108), groups and verifies the
+change, and recovers only its own undo group on failure. Call it synchronously on the UI thread.
 """
 
 from typing import Any

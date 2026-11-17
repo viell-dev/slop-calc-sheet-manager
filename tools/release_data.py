@@ -8,6 +8,7 @@ or test status from patch numbers, reserve a patch range, or treat an omitted st
 Untargeted builds are alpha iterations, not candidates for an inferred stable target; beta and rc
 builds name their agreed target. Published history is read from GitHub's flag and the packaged
 metadata, never from titles, so every earlier title scheme stays valid.
+History also records the verified package SHA-256. Atom feeds use only the update metadata.
 """
 
 import re
@@ -125,6 +126,7 @@ class PublishedBuild:
     prerelease: bool
     minimum: str
     published: str
+    sha256: str = ""
 
     @property
     def download(self) -> str:
@@ -139,20 +141,30 @@ class PublishedBuild:
 
 
 def validate_history(builds: list[PublishedBuild], previous: list[PublishedBuild]) -> None:
-    """Refuse rewritten history, removed builds, or duplicate versions.
+    """Refuse rewritten history, removed builds, invalid digests, or duplicate versions.
 
     A stalled draft may be completed after a newer version. Feeds remain version-sorted.
     """
-    by_version: dict[str, PublishedBuild] = {}
-    for build in builds:
-        version_parts(build.version)
-        version_parts(build.minimum)
-        if build.version in by_version:
-            raise ValueError(f"Duplicate published version: {build.version}")
-        by_version[build.version] = build
-    for old in previous:
-        if by_version.get(old.version) != old:
-            raise ValueError(f"Published build removed or changed: {old.version}")
+
+    def checked_index(records: list[PublishedBuild]) -> dict[str, PublishedBuild]:
+        by_version: dict[str, PublishedBuild] = {}
+        for build in records:
+            version_parts(build.version)
+            version_parts(build.minimum)
+            if build.version in by_version:
+                raise ValueError(f"Duplicate published version: {build.version}")
+            if not re.fullmatch(r"[0-9a-f]{64}", build.sha256):
+                raise ValueError(f"Invalid package SHA-256 for {build.version}")
+            by_version[build.version] = build
+        return by_version
+
+    current = checked_index(builds)
+    for version, old in checked_index(previous).items():
+        build = current.get(version)
+        if build is not None and build.sha256 != old.sha256:
+            raise ValueError(f"Published package SHA-256 changed: {version}")
+        if build != old:
+            raise ValueError(f"Published build removed or changed: {version}")
 
 
 def check_new_version(version: str, builds: list[PublishedBuild], tags: list[str]) -> None:
