@@ -82,8 +82,8 @@ create them in that order (#133, `uno_panel`).
 
 Following Calc's tabs and sidebar visibility (`uno_tabs`). The tab observer samples Calc's tab
 selection, which has no reliable change notification, and the list follows a change only when no
-newer list input or pending native pick exists. Every owned input stamps the list's input count and
-calls `TabObserver.note_input` from the listener.
+newer list input or pending native pick exists. Owned input raises the list's input count and
+calls `TabObserver.note_input`, which only posts the acknowledgement of Calc's preceding state.
 
 Notices and focus. Clearing a pick the user made shows a panel notice for `NOTICE_SECONDS`
 (`uno_status`); invalidating only the cursor, the anchor, or a press is silent. Never time out a
@@ -470,8 +470,9 @@ class SheetList:
     and `_activating` (the list's own `setActiveSheet`).
 
     Disposal. `dispose` closes the posting queue and the refresh schedule, then `_cleanup`
-    releases in reverse creation order: the tab observer, the listeners, then the controls. A
-    failed construction disposes what it had created.
+    releases in reverse creation order: the listeners, the controls, then the tab observer.
+    Work posted earlier still runs, so each part checks its own disposal when it does. A failed
+    construction disposes what it had created.
     """
 
     def __init__(self, context, frame, parent_window):
@@ -531,6 +532,19 @@ class SheetList:
         # switch; newer input in the list wins over it.
         self._input = 0
         self._activation_input = 0  # A newer successful activation revokes old menu restoration.
+        # Before any control or listener, so that all input finds it. Released last: until
+        # `start`, it has no timer, and its own disposal rejects work already posted.
+        self._tabs = TabObserver(
+            self._main,
+            frame,
+            self.controller,
+            self.document,
+            self._monitor,
+            selected_tabs_method(context),
+            self,
+            self._proven,
+        )
+        self._release_with(self._tabs.dispose)
         self._follow_input: int | None = None
         self._activating = False  # The list's own setActiveSheet call is running.
         self._press: _Press | None = None
@@ -617,18 +631,6 @@ class SheetList:
             lambda: self.controller.removeActivationEventListener(self._listeners["document"])
         )
         self._release_with(lambda: self.focus_changed(False))
-        # Created last, so that it is released first, before the controls and listeners.
-        self._tabs = TabObserver(
-            self._main,
-            frame,
-            self.controller,
-            self.document,
-            self._monitor,
-            selected_tabs_method(context),
-            self,
-            self._proven,
-        )
-        self._release_with(self._tabs.dispose)
         self.refresh()
         self.follow_calc_selection()
         self._tabs.start()
