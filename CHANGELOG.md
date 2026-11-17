@@ -5,6 +5,10 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Plan moves that reorder many sheets faster: planning the reversal of 10,000 sheets takes under
+  a second instead of three to seven on a loaded laptop, with the same moves. The planning
+  budget test now measures CPU time and reports it with the elapsed time
+  ([#214](https://github.com/viell-dev/slop-calc-sheet-manager/issues/214)).
 - Keep the move buttons usable when LibreOffice treats the focused document window as
   inactive. They could stay disabled while sheets were picked, until a dialog opened from the
   list; clicking or typing in the list now makes its window active, as switching to it does
