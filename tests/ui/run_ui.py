@@ -8,7 +8,9 @@ profile. The tests drive only real X input and observe only public UNO: the pane
 ``run_windows_ui.py`` runs many of these checks on a visible Windows desktop (#114), so a check
 reaches the desktop only through its lab: ``lab.input`` (keysym names, ``popup_windows``,
 ``modal_dialog``), ``lab.place``, ``lab.screenshot`` and ``lab.failure_evidence``, never through
-X11 tools directly. ``run_named`` is the loop both runners share.
+X11 tools directly. ``run_named`` is the loop both runners share. It writes a failed check's
+record before collecting that failure's screenshot and desktop state or releasing its input, and
+a failing diagnostic step is recorded beside the check's error, never in place of it (#190).
 
 Linux UI profiles enable the built-in Light theme before creating documents/lists (#166).
 Keep that startup condition: native disabled-button labels failed there, while theme-off
@@ -2678,8 +2680,9 @@ def run_checks(lab, output, only=()):
 def run_named(lab, book, output, checks, only=()):
     """Run `checks`, (name, function) pairs, each from a reset workbook; `only` selects some.
 
-    A failure keeps a screenshot and the lab's own evidence, and the next check still runs,
-    unless LibreOffice's main thread is stuck.
+    `checks.json` is rewritten after every check. A failed check's record, with its traceback,
+    is written before anything else runs; `after_failure` then keeps its diagnostics and cleans
+    up its input (#190). The next check still runs, unless LibreOffice's main thread is stuck.
     """
     if only:
         unknown = set(only) - {name for name, _ in checks}
@@ -2687,6 +2690,10 @@ def run_named(lab, book, output, checks, only=()):
             raise ValueError(f"Unknown checks: {sorted(unknown)}")
         checks = [(name, check) for name, check in checks if name in only]
     results = {}
+
+    def save():
+        (output / "checks.json").write_text(json.dumps(results, indent=2) + "\n", "utf-8")
+
     for name, check in checks:
         started = time.monotonic()
         try:
@@ -2694,19 +2701,54 @@ def run_named(lab, book, output, checks, only=()):
             results[name] = {"pass": True, "evidence": check()}
         except Exception:
             results[name] = {"pass": False, "error": traceback.format_exc()}
-            lab.screenshot(f"failed-{name}")
-            failure = lab.failure_evidence()
-            if failure:
-                results[name]["desktop"] = failure
-            lab.input.release_held()  # A press held across the failure would drag in the next.
-            for _ in range(2):
-                lab.input.tap("Escape", pause=0.3)
+            save()
+            after_failure(lab, name, results[name], save)
         results[name]["seconds"] = round(time.monotonic() - started, 2)
-        print(name, "pass" if results[name]["pass"] else "FAIL", flush=True)
-        (output / "checks.json").write_text(json.dumps(results, indent=2) + "\n", "utf-8")
+        failed_steps = ", ".join(results[name].get("diagnostic_errors", {}))
+        note = f" (diagnostics failed: {failed_steps})" if failed_steps else ""
+        print(name, ("pass" if results[name]["pass"] else "FAIL") + note, flush=True)
+        save()
         if stalled_callbacks():  # The main thread is stuck: no reset, check, or close (#52).
             raise TimeoutError(stalled_callbacks()[0])
     return results
+
+
+def after_failure(lab, name, record, save):
+    """Keep a failed check's screenshot and desktop state, then clean up its input.
+
+    Each step runs on its own, and `save` checkpoints the record after each. A step that raises
+    adds its traceback to `record["diagnostic_errors"]` under its name, and the later steps still
+    run: the check's own failure stays its `error`, and the check stays failed (#190). Every step
+    reaches only the display through the lab, never UNO, so they also run after a stalled main
+    thread, before `run_named` stops.
+    """
+
+    def screenshot():
+        lab.screenshot(f"failed-{name}")
+
+    def desktop():
+        evidence = lab.failure_evidence()
+        if evidence:
+            record["desktop"] = evidence
+
+    def release_held():
+        lab.input.release_held()  # A press held across the failure would drag in the next.
+
+    def escape():
+        for _ in range(2):
+            lab.input.tap("Escape", pause=0.3)
+
+    for step, action in (
+        ("screenshot", screenshot),
+        ("desktop", desktop),
+        ("release_held", release_held),
+        ("escape", escape),
+    ):
+        try:
+            action()
+        except Exception:
+            record.setdefault("diagnostic_errors", {})[step] = traceback.format_exc()
+        save()
 
 
 def main():
