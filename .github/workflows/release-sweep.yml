@@ -63,14 +63,29 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - name: Painted integration with crash backtrace
+        shell: bash
         env:
           LANE: ${{ matrix.lane }}
-        run: python3 tools/linux_integration.py "$LANE" --sessions gtk3 --backtrace
+        run: |
+          set -o pipefail
+          mkdir -p test-results/ci
+          python3 tools/linux_integration.py "$LANE" --sessions gtk3 --backtrace 2>&1 | tee test-results/ci/painted.log
+      - name: Retain painted integration evidence before starting real input
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: linux-gtk3-${{ matrix.lane }}-painted
+          path: test-results/
+          if-no-files-found: error
       - name: Real-input UI tests with gtk3 and gen
-        if: ${{ !cancelled() }}
+        if: ${{ success() }}
+        shell: bash
         env:
           LANE: ${{ matrix.lane }}
-        run: python3 tools/linux_integration.py "$LANE" --skip-build --ui --backtrace
+        run: |
+          set -o pipefail
+          mkdir -p test-results/ci
+          python3 tools/linux_integration.py "$LANE" --skip-build --ui --backtrace 2>&1 | tee test-results/ci/input.log
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:

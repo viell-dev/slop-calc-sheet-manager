@@ -33,6 +33,11 @@ output without hiding failures, and requires headless success before input. A ha
 can still prevent the final input artifact; absent logs cannot classify the original failure
 ([#152](https://github.com/viell-dev/slop-calc-sheet-manager/issues/152)).
 
+The release sweep also uploads its painted Linux evidence before input and starts input only
+after painted integration and upload succeed. Its two phase logs preserve the runner's exit
+status through `tee`. The early artifact can be inspected independently of the final input
+artifact ([#192](https://github.com/viell-dev/slop-calc-sheet-manager/issues/192)).
+
 **Windows desktop** uses real `SendInput` on a visible
 Windows Server 2025 desktop, the pinned `win` build and en-US layout. Its current evidence covers
 one 1024×768 desktop at 96 DPI. The full release sweep requires the complete suite; a separate

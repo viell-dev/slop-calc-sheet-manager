@@ -80,25 +80,38 @@ def test_platform_sweeps_and_windows_investigations_are_manual_only() -> None:
         assert set(workflow["on"]) == {"workflow_dispatch"}
 
 
-def test_routine_linux_retains_early_failure_before_starting_input() -> None:
+@pytest.mark.parametrize(
+    ("workflow_name", "job_name", "first_phase", "artifact"),
+    [
+        ("ci.yml", "linux", "--sessions headless", "linux-current-headless"),
+        (
+            "release-sweep.yml",
+            "linux-gtk3",
+            "--sessions gtk3",
+            "linux-gtk3-${{ matrix.lane }}-painted",
+        ),
+    ],
+)
+def test_linux_retains_early_failure_before_starting_input(
+    workflow_name: str, job_name: str, first_phase: str, artifact: str
+) -> None:
     workflow = yaml.load(
-        (ROOT / ".github/workflows/ci.yml").read_text("utf-8"), Loader=yaml.BaseLoader
+        (ROOT / ".github/workflows" / workflow_name).read_text("utf-8"), Loader=yaml.BaseLoader
     )
-    job = workflow["jobs"]["linux"]
+    job = workflow["jobs"][job_name]
     assert job["timeout-minutes"] == "45", "Diagnostic handling must not widen the job budget"
     steps = job["steps"]
-    headless = next(
-        i for i, step in enumerate(steps) if "--sessions headless" in step.get("run", "")
-    )
-    upload = steps[headless + 1]
+    integration = next(i for i, step in enumerate(steps) if first_phase in step.get("run", ""))
+    upload = steps[integration + 1]
     assert upload["uses"].startswith("actions/upload-artifact@")
     assert upload["if"] == "always()"
+    assert upload["with"]["name"] == artifact
     assert upload["with"]["path"] == "test-results/"
     assert upload["with"]["if-no-files-found"] == "error"
-    real_input = steps[headless + 2]
+    real_input = steps[integration + 2]
     assert "--ui --backtrace" in real_input["run"]
     assert real_input["if"] == "${{ success() }}"
-    for step in (steps[headless], real_input):
+    for step in (steps[integration], real_input):
         assert step["shell"] == "bash"
         assert "set -o pipefail" in step["run"], "tee must not hide a failed runner"
         assert "2>&1 | tee test-results/ci/" in step["run"]
