@@ -85,6 +85,9 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+      - uses: ./.github/actions/libreoffice-package
+        with:
+          lane: current-26.8
       - name: Current Linux headless integration
         shell: bash
         run: |
