@@ -35,6 +35,32 @@ together with the extension's update feeds.
 - [Reordering interface](../reordering.md): the contract between the sheet list and the
   operation that moves sheets.
 
+## LibreOffice extension and interface guidance
+
+- **Host contracts.** LibreOffice installs the OXT using the component paths and media types in
+  the manifest. The descriptor provides the package identity, version, minimum host and update
+  feed used for installation and updates. Use the [SDK Python extension example] as a reference
+  for the packaging structure. Keep the project's passive registration while packaged tests
+  show it works on supported hosts.
+- **Interface recommendations.** Consult the [LibreOffice Human Interface Guidelines] and the
+  design team's [sidebar discussion]. The latter records a historical design proposal.
+  Apply its recommendations on layout, minimum width, keyboard order, tooltips and disabled
+  feedback to this scrollable sheet list. Check altered controls with relevant font/scale and
+  contrast settings. Use the [verification map](../verification.md#interaction-and-accessibility)
+  for evidence boundaries. Accessible names and UNO events cover part of the experience.
+  Screen-reader use needs evidence from an assistive tool on the host.
+- **Metadata and distribution.** The [icon theme packaging example] illustrates optional
+  presentation metadata, including the Extension Manager icon, which is separate from the
+  sidebar deck icon. Verify the current [LibreOffice Extensions] submission rules when
+  preparing a listing. Follow the project's [release procedure] for its own distribution.
+
+[SDK Python extension example]: https://api.libreoffice.org/examples/python/minimal-extension/
+[LibreOffice Human Interface Guidelines]: https://wiki.documentfoundation.org/Design/Guidelines
+[sidebar discussion]: https://design.blog.documentfoundation.org/2016/04/17/our-happy-hour-how-libreoffice-sidebar-tenders-properties-and-functions/
+[icon theme packaging example]: https://design.blog.documentfoundation.org/2017/10/23/how-to-bundle-icon-themes/
+[LibreOffice Extensions]: https://extensions.libreoffice.org/
+[release procedure]: https://github.com/viell-dev/slop-calc-sheet-manager/blob/main/RELEASING.md
+
 ## Building the guide
 
 Follow the [documentation setup and checks](https://github.com/viell-dev/slop-calc-sheet-manager/blob/main/CONTRIBUTING.md#documentation)
