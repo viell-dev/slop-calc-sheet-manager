@@ -30,6 +30,11 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+if __package__:
+    from .libreoffice_package import ensure_package
+else:
+    from libreoffice_package import ensure_package
+
 ROOT = Path(__file__).resolve().parents[1]
 # Complete native benchmark work exceeded 20 minutes in retained phase receipts (#162).
 INTEGRATION_TIMEOUT = 30 * 60
@@ -381,24 +386,7 @@ def main() -> None:
         reports = Path.home() / "Library/Logs/DiagnosticReports"
         preceding = set(reports.glob("*"))
         with private_directory(os.environ["RUNNER_TEMP"]) as temporary:
-            image = temporary / "libreoffice.dmg"
-            run(
-                [
-                    "curl",
-                    "--fail",
-                    "--location",
-                    "--retry",
-                    "2",
-                    "--max-time",
-                    "600",
-                    "--output",
-                    str(image),
-                    pin["url"],
-                ],
-                output / "download.log",
-                environment,
-                660,
-            )
+            image = ensure_package("macos", pin)
             app = install(image, pin, temporary, output, environment)
             try:
                 wrapper = checked_binary(app, app / "Contents/Resources/python")

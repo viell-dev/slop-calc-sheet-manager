@@ -1,0 +1,39 @@
+name: Pinned LibreOffice package
+description: Restore or download one SHA-256-verified LibreOffice package
+inputs:
+  lane:
+    description: Package name in ci/libreoffice.json
+    required: true
+outputs:
+  path:
+    description: Workspace-relative path of the verified package
+    value: ${{ steps.pin.outputs.path }}
+runs:
+  using: composite
+  steps:
+    - id: pin
+      name: Read the package pin
+      shell: bash
+      env:
+        LANE: ${{ inputs.lane }}
+      run: python -m tools.libreoffice_package "$LANE" --github-outputs
+    - id: restore
+      name: Restore the exact package digest
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.pin.outputs.path }}
+        key: libreoffice-package-${{ steps.pin.outputs.sha256 }}
+    - name: Verify or fetch the pinned package
+      shell: bash
+      env:
+        LANE: ${{ inputs.lane }}
+      run: |
+        set -o pipefail
+        mkdir -p test-results
+        python -m tools.libreoffice_package "$LANE" 2>&1 | tee test-results/libreoffice-package.log
+    - name: Save the verified package from main
+      if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && steps.restore.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.pin.outputs.path }}
+        key: ${{ steps.restore.outputs.cache-primary-key }}

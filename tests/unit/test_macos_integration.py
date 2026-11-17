@@ -161,6 +161,7 @@ def native_commands_stubbed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
     )
     (tmp_path / "dist").mkdir()
     (tmp_path / "dist/fixture.oxt").write_bytes(b"test-only package placeholder")
+    monkeypatch.setattr(cli, "ensure_package", Mock(return_value=tmp_path / "libreoffice.dmg"))
     monkeypatch.setattr(cli, "install", Mock(return_value=tmp_path / "LibreOffice.app"))
 
     def binary(app: Path, path: Path) -> Path:
