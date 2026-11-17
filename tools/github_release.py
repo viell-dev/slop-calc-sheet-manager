@@ -2,6 +2,8 @@
 
 Routine CI authorizes PR planning previews only. Manual release dry runs and publication also
 require every full-sweep job for the exact revision; workflow-level success alone is insufficient.
+Pages and release planning validate downloaded packages against the previous deployment as well
+as against their current sidecars.
 """
 
 import argparse
@@ -41,6 +43,20 @@ from tools.release_data import (  # noqa: E402
     validate_history,
     version_parts,
 )
+
+# One-time migration receipts, rebuilt using tools/build.py from each protected release tag.
+# Only use them for records from the old digest-free schema. See RELEASING.md.
+LEGACY_PACKAGE_DIGESTS = {
+    "0.0.2": "f8a5e77784676a33e3a41b6fb9e4b9b125993205ca295f6b18b937e7a74f4ccd",
+    "0.0.3": "780fb3761bbfdff3312bceaf03bfda1b86245b2fe58ac9382e6698df654c7b74",
+    "0.0.4": "066d9fc7f2a187a838040d806863d3508e7414d8d28a45eb101d6c4e069b5d47",
+    "0.0.5": "bc59c94bc2919e6a44be476a5e5b559612652cdc774a6da1dbc5a129ea2d9332",
+    "0.0.6": "7b215984b0a206f0e329dce75d0bdc89bdd732dbd15239e99d5dc58c4c8e1edc",
+    "0.0.7": "9e4777477881e2ecd475d2f9000a071bfbfb1098cda3045e3174d0dd174a5bb8",
+    "0.0.8": "954049d3533c0e7876a276ef43dda4d800d503d32e428a8d8f0303d06b59a6ee",
+    "0.0.9": "174543f95e161152648ffc1e25d026b67650f67872f70bc28d89431904394d03",
+    "0.0.10": "7eca553e083ca083aa95ad1bdabb28ef8d48d6b7e5e2891b7d9315446dd9b354",
+}
 
 
 def api(path: str, *, method: str = "GET", data: dict[str, object] | None = None) -> Any:
@@ -100,13 +116,14 @@ def published_builds(releases: list[dict[str, Any]]) -> list[PublishedBuild]:
         package = download(base + name)
         checksum = download(base + name + ".sha256")
         assert package is not None and checksum is not None
-        if checksum.decode("ascii") != f"{hashlib.sha256(package).hexdigest()}  {name}\n":
+        digest = hashlib.sha256(package).hexdigest()
+        if checksum.decode("ascii") != f"{digest}  {name}\n":
             raise ValueError(f"Release {version} checksum does not match")
         with zipfile.ZipFile(io.BytesIO(package)) as archive:
             packaged_version, minimum = package_metadata(archive.read("description.xml"))
         if packaged_version != version:
             raise ValueError(f"Release tag {version} disagrees with packaged version")
-        builds.append(PublishedBuild(version, prerelease, minimum, release["published_at"]))
+        builds.append(PublishedBuild(version, prerelease, minimum, release["published_at"], digest))
     return builds
 
 
@@ -119,6 +136,15 @@ def previous_builds() -> list[PublishedBuild]:
             raise ValueError("Feed history is missing after a version tag was reserved; restore it")
         return []
     records = cast(list[dict[str, Any]], json.loads(content))
+    for record in records:
+        version = record["version"]
+        if "sha256" not in record:
+            digest = LEGACY_PACKAGE_DIGESTS.get(version)
+            if digest is None:
+                raise ValueError(f"Missing independent package SHA-256 receipt for {version}")
+            record["sha256"] = digest
+        elif not isinstance(record["sha256"], str):
+            raise ValueError(f"Invalid package SHA-256 for {version}")
     return [PublishedBuild(**record) for record in records]
 
 
@@ -351,9 +377,11 @@ def main() -> None:
     # Exercise prospective feeds too, without changing the deployed site.
     _, minimum = package_metadata((ROOT / "extension/description.xml").read_bytes())
     timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    package = args.output / f"sheet-manager-{args.version}.oxt"
+    digest = hashlib.sha256(package.read_bytes()).hexdigest()
     write_site(
         args.output / "site",
-        [*builds, PublishedBuild(args.version, prerelease, minimum, timestamp)],
+        [*builds, PublishedBuild(args.version, prerelease, minimum, timestamp, digest)],
     )
     if not args.publish:
         scope = "PR preview (full release sweep still required)" if preview else "Dry run"
@@ -362,9 +390,11 @@ def main() -> None:
     # Recheck state immediately before the first write. The workflow serializes publishers.
     current_releases = paginated(f"repos/{REPOSITORY}/releases?per_page=100")
     current_tags = paginated(f"repos/{REPOSITORY}/tags?per_page=100")
+    current_builds = published_builds(current_releases)
+    validate_history(current_builds, builds)
     check_new_version(
         args.version,
-        published_builds(current_releases),
+        current_builds,
         [item["name"] for item in current_tags] + [item["tag_name"] for item in current_releases],
     )
     api(
@@ -373,7 +403,6 @@ def main() -> None:
         data={"ref": f"refs/tags/{args.version}", "sha": commit},
     )
     release = api(f"repos/{REPOSITORY}/releases", method="POST", data=plan)
-    package = args.output / f"sheet-manager-{args.version}.oxt"
     subprocess.run(
         [
             "gh",
