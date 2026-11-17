@@ -27,8 +27,11 @@ tracks the new focused human review required before a release candidate or stabl
   Right-click targets the pointed row or existing picked set without changing picks or the viewed
   sheet.
   <Unreleased since="0.0.5" /> The menu also runs Calc's Insert, Delete, Rename and Hide sheet
-  commands on exactly its targets, and leaves Calc on them; Calc's sheet tabs keep their full
-  menu. It links to Help as well.
+  commands on exactly its targets. Insert, Delete and Rename leave Calc on the command's targets.
+  <Unreleased since="0.0.10" /> After Hide, Sheet Manager restores the previous viewed sheet and
+  the still-visible members of its tab group when it can verify them. If Hide hid the viewed
+  sheet, Calc chooses another visible sheet. Calc's sheet tabs keep their full menu, and the
+  list menu links to online help.
 - **Batch rename.** <Unreleased since="0.0.6" /> Rename two or more picked sheets in one dialog:
   literal Find and Replace All across the new names, individual corrections, and every problem shown
   before anything changes. The renames are one undo step, and the sheets stay picked under their new
