@@ -31,8 +31,14 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+      - id: package
+        uses: ./.github/actions/libreoffice-package
+        with:
+          lane: windows
       - name: Install the pinned LibreOffice MSI
-        run: ./ci/install-windows.ps1
+        run: ./ci/install-windows.ps1 -InstallerPath $env:LO_INSTALLER
+        env:
+          LO_INSTALLER: ${{ steps.package.outputs.path }}
       - name: Build the extension with LibreOffice's Python
         run: |
           & 'C:\Program Files\LibreOffice\program\python.exe' tools/build.py
@@ -56,6 +62,7 @@ jobs:
         with:
           name: windows-desktop
           path: |
+            test-results/libreoffice-package.log
             test-results/windows-desktop/
             dist/
           if-no-files-found: warn
