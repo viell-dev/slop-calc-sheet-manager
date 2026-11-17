@@ -20,6 +20,8 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 - Refresh the Debian 13 integration image digest and the checks image's Python to 3.12.16.
 - Update the development checks image and local Node.js pin together to 24.22.2, including
   the documentation container example.
+- Report unsupported rootless or UID-remapped Docker contexts before building the Linux lab
+  ([#191](https://github.com/viell-dev/slop-calc-sheet-manager/issues/191)).
 - Update development tools to pytest 9.2.0, Ruff 0.17.4, types-PyYAML 6.0.12.20261103 and
   nodeenv 1.12.0. These dependencies do not ship in the extension.
 - Bound LibreOffice lab downloads and log their mirror and transfer measurements, so a slow

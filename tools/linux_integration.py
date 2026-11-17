@@ -5,6 +5,8 @@
 # Never mount a host display socket or use an existing office profile. The Windows MSI installer,
 # `ci/install-windows.ps1`, is only for disposable CI runners; developer machines use their
 # existing installation.
+# Artifact mounts require direct UID/GID mapping. Refuse rootless and userns-remap daemons
+# before building rather than weakening the container user or the host directory permissions.
 
 import argparse
 import hashlib
@@ -13,7 +15,28 @@ import os
 import subprocess
 from typing import cast
 
-from build import ROOT, build
+if __package__:
+    from .build import ROOT, build
+else:
+    from build import ROOT, build
+
+
+def require_supported_docker() -> None:
+    info = subprocess.run(
+        ["docker", "info", "--format", "{{json .SecurityOptions}}"],
+        check=True,
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    options = cast(list[str] | None, json.loads(info.stdout))
+    for option in options or ():
+        mode = option.split(",", maxsplit=1)[0]
+        if mode in {"name=rootless", "name=userns"}:
+            raise SystemExit(
+                f"Docker reports {mode}. The Linux lab needs direct UID/GID mapping for "
+                "its writable results mount. Select Docker Desktop or a rootful Docker "
+                "context without userns-remap (check `docker context ls`)."
+            )
 
 
 def main() -> None:
@@ -51,6 +74,7 @@ def main() -> None:
             raise SystemExit("Run the integration helper as an unprivileged host user")
     else:
         uid, gid = 1000, 1000
+    require_supported_docker()
     pins = cast(dict[str, dict[str, str]], json.loads((ROOT / "ci/libreoffice.json").read_text()))
     pin = pins[arguments.lane]
     fingerprint = hashlib.sha256(

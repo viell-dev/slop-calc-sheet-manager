@@ -21,6 +21,11 @@ Record run results, deliberate-break experiments and review findings in the owni
   Real XTEST input exercises native dispatch and drag behaviour that synthetic UNO input cannot.
 - **Documentation:** guide build, offline feed combination and rendered synthetic-history checks.
 
+The Linux lab requires direct UID/GID mapping for its writable results mount. The helper
+rejects rootless and daemon-level remapped Docker contexts before building. Verification
+receipts for rootful Linux, rootless Docker and Docker Desktop are tracked in
+[#191](https://github.com/viell-dev/slop-calc-sheet-manager/issues/191).
+
 The required **Routine CI** aggregate checks every routine dependency on every PR and push to
 `main`, refusing missing, failed or skipped work. **Release sweep** is manual, on demand and at most
 weekly. Its aggregate and publication gate require every supported release lane for the exact
