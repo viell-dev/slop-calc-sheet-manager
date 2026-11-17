@@ -5,6 +5,9 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Add contributor references for LibreOffice packaging, sidebar design and interface checks
+  ([#201](https://github.com/viell-dev/slop-calc-sheet-manager/issues/201)).
+
 - Keep the move buttons usable when LibreOffice treats the focused document window as
   inactive. They could stay disabled while sheets were picked, until a dialog opened from the
   list; clicking or typing in the list now makes its window active, as switching to it does
