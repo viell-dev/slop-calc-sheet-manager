@@ -13,6 +13,8 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   a second instead of three to seven on a loaded laptop, with the same moves. The planning
   budget test now measures CPU time and reports it with the elapsed time
   ([#214](https://github.com/viell-dev/slop-calc-sheet-manager/issues/214)).
+- Add contributor references for LibreOffice packaging, sidebar design and interface checks
+  ([#201](https://github.com/viell-dev/slop-calc-sheet-manager/issues/201)).
 - Keep verified package SHA-256 digests in deployed release history, so a replaced OXT and
   matching replacement checksum stop feed generation, and publish a release only when GitHub's
   digests of its uploaded files equal the files the workflow built
@@ -44,6 +46,11 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   mirror fails during setup instead of consuming the native CI testing budget.
 - Cache the pinned LibreOffice test installers by SHA-256 and verify them before use, avoiding
   repeat downloads from the TDF archive ([#215](https://github.com/viell-dev/slop-calc-sheet-manager/issues/215)).
+
+- Put installation and a worked example first in the README, and align the guide's Hide
+  summary and security policy with published behaviour
+  ([#197](https://github.com/viell-dev/slop-calc-sheet-manager/issues/197),
+  [#199](https://github.com/viell-dev/slop-calc-sheet-manager/issues/199)).
 
 ## 0.0.10 - 2026-11-03
 
