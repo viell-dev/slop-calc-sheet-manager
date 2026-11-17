@@ -22,6 +22,10 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   the documentation container example.
 - Update development tools to pytest 9.2.0, Ruff 0.17.4, types-PyYAML 6.0.12.20261103 and
   nodeenv 1.12.0. These dependencies do not ship in the extension.
+- Correct contributor guidance in the list, menu and Show module docstrings: a single click
+  picks without switching sheets, Hide alone dispatches synchronously, and Show is one of
+  several changes the list makes itself
+  ([#200](https://github.com/viell-dev/slop-calc-sheet-manager/issues/200)).
 - Move the sheet list's tab observation and refresh timing into modules of their own, with
   documented state contracts; the list behaves as before
   ([#194](https://github.com/viell-dev/slop-calc-sheet-manager/issues/194)).

@@ -36,10 +36,13 @@ its sheets when it runs, never against the cached rows. A drop plans against the
 drag's start through `apply_order`, which refuses stale state, and is refused when the generation
 moved during the drag.
 
-Pointer input. A left press keeps the pressed sheet's handle, and its release activates only that
-sheet, still in that row (#28). If a refresh during the press moved the sheet or showed another
-under its name, the release has no effect at all: the list writes its own refs back, whatever the
-tree selected on release, so a newer pick made meanwhile, by following Calc or by keyboard, stays.
+Pointer input. A left press picks at once and keeps the pressed sheet's handle. A plain press
+on a picked row keeps the other picks, so that they can be dragged together; its release in the
+same row narrows the picks to that sheet, and only the release of a double click's second press
+activates it. Both act only on the pressed sheet, still in that row (#28). If a refresh during
+the press moved the sheet or showed another under its name, the release has no effect at all:
+the list writes its own refs back, whatever the tree selected on release, so a newer pick made
+meanwhile, by following Calc or by keyboard, stays.
 While a press is held, a refresh does not take the tree's selection as the user's; the press and
 release handlers do. A selected row's native release can move the tree's cursor before the
 queued mouse listener runs, so refusing that gesture also restores a surviving picked cursor,
