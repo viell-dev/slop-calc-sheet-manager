@@ -27,7 +27,7 @@ from tools.release_data import (
 
 
 def published(version: str, day: int, *, prerelease: bool = False) -> PublishedBuild:
-    return PublishedBuild(version, prerelease, "26.2.1", f"2026-10-{day:02}T00:00:00Z")
+    return PublishedBuild(version, prerelease, "26.2.1", f"2026-10-{day:02}T00:00:00Z", "a" * 64)
 
 
 def test_numeric_comparison_matches_integer_tuple_order() -> None:
@@ -160,7 +160,7 @@ def test_history_refuses_removal_reclassification_and_duplicate_versions() -> No
         [new],
         [published("0.0.90", 18), new],
         [old, old],
-        [PublishedBuild("0.0.90", True, "26.8.1", old.published), new],
+        [PublishedBuild("0.0.90", True, "26.8.1", old.published, old.sha256), new],
     ):
         with pytest.raises(ValueError):
             validate_history(builds, [old])

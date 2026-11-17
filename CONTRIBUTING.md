@@ -188,8 +188,11 @@ python tools/linux_integration.py unsupported
 The helper builds `ci/Dockerfile`, verifies the repository-pinned TDF archive checksum, builds the
 extension, and runs the container unprivileged with networking disabled. Source and the OXT are
 mounted read-only; only `test-results/<lane>/` is writable on the host. On Linux, run as a non-root
-user: the helper maps that user's UID/GID into the container so artifacts remain writable. The
-container has a temporary home directory. It uses Xvfb and Openbox inside the container and
+user against a rootful Docker daemon without `userns-remap`: the helper maps the host user's
+UID/GID directly into the container so artifacts remain writable. For a rootless or remapped
+daemon, select a compatible context with `docker context ls` and `docker context use`. Docker
+Desktop on Windows is supported. The container has a temporary home directory. It uses Xvfb
+and Openbox inside the container and
 never mounts a host display socket. `--skip-build` reuses only an image matching the Dockerfile,
 lane pin and host UID/GID; a missing or outdated image is rebuilt. `--sessions headless` (the
 default), `--sessions gtk3`, and `--sessions both` select independent office sessions. Painted
