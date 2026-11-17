@@ -19,6 +19,19 @@ Update LibreOffice, then install Sheet Manager again. See [Requirements](./insta
 
 If it still does not appear, [report it](./report.md) with LibreOffice's version information.
 
+## The deck shows a message instead of the sheet list
+
+<Unreleased /> If the Sheet Manager deck says that Sheet Manager could not open its sheet list,
+the list failed to start for this document; earlier versions left the deck empty instead.
+
+1. **Reopen.** Close and reopen the document. If the message stays, restart LibreOffice.
+2. **Report it** if it happens again, as described in [Report a problem](./report.md). Include
+   the error name shown in brackets, LibreOffice's version information, and what you did before
+   opening the document. The message never includes your sheet names. On Linux, starting
+   LibreOffice from a terminal with `soffice` also prints the technical details after a line
+   beginning with `Sheet Manager:`; check that they name no private sheets before including
+   them.
+
 ## LibreOffice crashes or misbehaves after installing
 
 1. **Start in Safe Mode.** Select **Help ▸ Restart in Safe Mode**. If LibreOffice does not start

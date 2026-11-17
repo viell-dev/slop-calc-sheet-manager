@@ -35,7 +35,9 @@ refresh's cost; other changes wait for a pause, with a bounded wait. Bulk API ch
 Windows from seconds to over a minute. Rows can therefore be out of date when the user acts on
 them, so every action checks its sheets when it runs, never against the cached rows. A drop plans
 against the snapshot of the drag's start through `apply_order`, which refuses stale state, and is
-refused when the generation moved during the drag.
+refused when the generation moved during the drag. A failed refresh leaves its changes pending
+and retries with a bounded backoff (`_refresh_failed`, #186); only a successful one marks the
+list current.
 
 Pointer input. A left press keeps the pressed sheet's handle, and its release activates only that
 sheet, still in that row (#28). If a refresh during the press moved the sheet or showed another
@@ -220,6 +222,9 @@ MIME = "application/x-sheet-manager-sheets"
 REFRESH_DELAY = 0.2  # Quiet time after a change before the list reads the sheets again.
 REFRESH_COST_FACTOR = 4  # Wait at least this many times as long as the last refresh took.
 REFRESH_MAX_WAIT = 2.0  # During continuous changes, refresh at least this often (scaled too).
+REFRESH_RETRY = 0.5  # The first wait before retrying a failed refresh; it doubles each time,
+REFRESH_RETRY_MAX = 8.0  # up to this,
+REFRESH_RETRIES = 5  # and after this many failures in a row only a new change retries (#186).
 SCROLL_INTERVAL = 0.1
 VIEW_INTERVAL = 0.25
 HIDDEN_VIEW_INTERVAL = 1.0
@@ -509,6 +514,7 @@ class SheetList:
         self._changed_at = 0.0  # The last document change.
         self._stale_since: float | None = None  # The first change not yet shown.
         self._refresh_cost = 0.0  # How long the last refresh took.
+        self._refresh_failures = 0  # Failed refreshes since the last one that succeeded.
         self._refreshed_at = 0.0  # When it ended.
         # Counts the user's own input in the list, as the list's mouse and key handlers see
         # it. A request to follow Calc's selection remembers the count when Calc reported the
@@ -689,10 +695,29 @@ class SheetList:
         started = time.monotonic()
         try:
             self._refresh(renamed or {})
+        except BaseException:
+            self._refresh_failed()
+            raise
+        else:
+            self._stale_since = None
+            self._refresh_failures = 0
         finally:
             self._refreshed_at = time.monotonic()
             self._refresh_cost = self._refreshed_at - started
-            self._stale_since = None
+
+    def _refresh_failed(self) -> None:
+        """Keep the changes the failed refresh did not show pending, and retry them (#186).
+
+        A property change, such as a tab colour, moves neither the names nor the generation,
+        so nothing else would ask for it again. Retries back off and stop after
+        `REFRESH_RETRIES` failures in a row, rather than report an error in a loop; a later
+        document change or sheet switch then refreshes again.
+        """
+        self._mark_stale(time.monotonic())
+        self._refresh_failures += 1
+        if self._refresh_failures <= REFRESH_RETRIES:
+            wait = REFRESH_RETRY * 2 ** (self._refresh_failures - 1)
+            self._schedule(min(wait, REFRESH_RETRY_MAX))
 
     def _refresh(self, renamed: Mapping[str, str]) -> None:
         """Read the sheets, drop every pick that is no longer its sheet, and show the rest.
