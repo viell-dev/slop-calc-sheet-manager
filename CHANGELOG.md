@@ -25,6 +25,11 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 - Bound LibreOffice lab downloads and log their mirror and transfer measurements, so a slow
   mirror fails during setup instead of consuming the native CI testing budget.
 
+- Put installation and a worked example first in the README, and align the guide's Hide
+  summary and security policy with published behaviour
+  ([#197](https://github.com/viell-dev/slop-calc-sheet-manager/issues/197),
+  [#199](https://github.com/viell-dev/slop-calc-sheet-manager/issues/199)).
+
 ## 0.0.10 - 2026-11-03
 
 Fourth beta towards the stable release 0.1.0, following the 0.0.9 usability review. It improves

@@ -203,14 +203,22 @@ reconsider. The owner may report a defect themselves, in their own words.
   The surfaces that repeat these facts are:
   - the README;
   - the user guide in `docs/`;
+  - the [bundled quick help](extension/help/en/dev.viell.sheetmanager/index.xhp) and the
+    [Extension Manager description](extension/description-en.txt);
   - SECURITY.md;
   - CHANGELOG.md;
   - the release notes;
   - the repository's About text, homepage, and topics on GitHub.
-- **One delivery.** Update every affected surface in the same pull request.
-  `tests/unit/test_consistency.py` compares what can be compared mechanically. Prose is reviewed
-  for meaning. After a change that affects the About text or the homepage, read the live settings
-  and correct them.
+- **Affected-surface review.** Use the inventory above for behaviour, compatibility and release
+  changes. Update each affected surface in the same pull request. Compare short descriptions with
+  the detailed instructions and their applicable build: the published baseline for the online
+  guide and the package's own behaviour for shipped Help and the Extension Manager description.
+  Review the meaning of descriptions of picks and Calc tabs, command effects, undo and recovery,
+  and limits where they are mentioned. `tests/unit/test_consistency.py` checks repeated facts
+  such as versions, identifiers and the feed URL. `tools/check_release_page.py` checks downloads
+  and availability markers against synthetic release histories. Review behaviour prose against
+  the implementation and its verification evidence. If the About text or homepage is affected,
+  read the live GitHub settings and correct them.
 - **Document ownership.** Keep the README focused on purpose, capabilities, compatibility and entry
   points. Contributor commands belong in CONTRIBUTING.md, current coverage and limits in
   docs/verification.md, and release procedures in RELEASING.md. This file holds agent instructions

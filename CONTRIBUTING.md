@@ -104,8 +104,8 @@ different zlib versions cannot change the result. Add new shipped modules to the
 
 The OXT also includes one English XHP quick-help page, registered through its manifest as an
 extension help component. LibreOffice compiles it during installation; no HelpLinker SDK or
-generated help databases are shipped. Keep its short guidance consistent with the guide when
-changing selection, movement or recovery. The online guide remains the detailed manual.
+generated help databases are shipped. For reviewing shipped text and the online guide, follow the
+[affected-surface review in AGENTS.md](AGENTS.md#public-surfaces-and-documentation).
 
 ## Tests
 
