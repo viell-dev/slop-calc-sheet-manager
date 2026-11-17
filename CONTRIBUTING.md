@@ -197,9 +197,17 @@ gtk3 sessions save `deck.png`; `--screenshot` remains an alias for running both 
 `--sessions` is omitted. The `unsupported` lane asserts that
 26.2.0 refuses installation for a dependency error and leaves the extension uninstalled.
 
-The image download retries from the archive URL after errors, including a redirected mirror's
-certificate failure, with at most three retries. TLS verification and the pinned SHA-256 gate
-remain required; an exhausted download or checksum mismatch fails the build.
+The Linux helper needs curl 7.71 or newer and Docker with BuildKit. It keeps each verified
+archive under `.cache/libreoffice-packages/<sha256>/` and supplies it to the build in a read-only
+context. On a miss, curl downloads from the TDF archive over HTTPS with certificate verification,
+bounded timeouts and at most three retries, including after a redirected mirror's certificate
+failure. An exhausted download or checksum mismatch fails setup. Remove the affected cache file
+before retrying a corrupt local entry.
+
+GitHub Actions restores the exact digest for the Linux archive, Windows MSI or macOS DMG and
+checks its SHA-256 before use. Only runs on `main` populate the shared cache, and the cache
+contains only public installer files. A changed pin or an evicted entry takes the same bounded
+download path.
 
 Image changes retain older `sheet-manager-ci:<version>-<fingerprint>` tags locally; list them with
 `docker image ls sheet-manager-ci` and remove obsolete tags explicitly with `docker image rm <tag>`

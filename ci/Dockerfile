@@ -11,13 +11,10 @@ ARG LO_VERSION
 ARG LO_SERIES
 ARG LO_URL
 ARG LO_SHA256
-# Bound mirror delays before they consume the native CI budget (#203). Retry from the archive
-# URL after short failures; retain TLS and digest verification (#61).
-RUN test -n "$LO_VERSION" && test -n "$LO_SERIES" && test -n "$LO_URL" && test -n "$LO_SHA256" \
-    && curl --fail --location --retry 3 --retry-all-errors \
-        --connect-timeout 30 --max-time 240 --retry-max-time 60 \
-        --write-out '\nLibreOffice download: code=%{http_code} bytes=%{size_download} seconds=%{time_total} speed=%{speed_download} url=%{url_effective}\n' \
-        "$LO_URL" -o /tmp/libreoffice.tar.gz \
+# The host helper supplies the verified archive in a read-only named context. Recheck it here
+# before extraction, including when building directly with a caller-supplied context.
+RUN --mount=type=bind,from=lo-package,source=libreoffice.tar.gz,target=/tmp/libreoffice.tar.gz \
+    test -n "$LO_VERSION" && test -n "$LO_SERIES" && test -n "$LO_URL" && test -n "$LO_SHA256" \
     && echo "$LO_SHA256  /tmp/libreoffice.tar.gz" | sha256sum --check --strict - \
     && mkdir /tmp/libreoffice /opt/ci-metadata \
     && tar -xzf /tmp/libreoffice.tar.gz -C /tmp/libreoffice \
@@ -26,7 +23,7 @@ RUN test -n "$LO_VERSION" && test -n "$LO_SERIES" && test -n "$LO_URL" && test -
     && ln -s "/opt/libreoffice$LO_SERIES" /opt/lo \
     && printf '%s\n%s\n%s\n' "$LO_VERSION" "$LO_URL" "$LO_SHA256" > /opt/ci-metadata/download.txt \
     && dpkg-query -W > /opt/ci-metadata/packages.tsv \
-    && rm -rf /tmp/libreoffice /tmp/libreoffice.tar.gz /var/lib/apt/lists/*
+    && rm -rf /tmp/libreoffice /var/lib/apt/lists/*
 
 ARG TEST_UID=1000
 ARG TEST_GID=1000
