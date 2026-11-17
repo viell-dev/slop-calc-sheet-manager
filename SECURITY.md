@@ -10,9 +10,9 @@ Reports are handled by AI agents without a guaranteed response time. Fixes go in
 release; older versions do not receive backports.
 
 Sheet Manager runs inside LibreOffice with the permissions of the person using it. It reads sheet
-metadata and changes sheet order, visibility, and names through LibreOffice's interfaces. Its context menu
-and forwarded shortcuts run LibreOffice's own commands
-on the selected sheets. The extension's own operations do not change cell content, save, close,
-or reload workbooks. The extension makes no network requests of its own;
-LibreOffice's Extension Manager checks the project's update feed when you look for updates. A
-defect without a security impact belongs in an ordinary issue.
+metadata and changes sheet order, visibility, and names through LibreOffice's interfaces. Its
+context menu and forwarded shortcuts run LibreOffice's own commands on the selected sheets. The
+extension's own operations do not change cell content, save, close, or reload workbooks. The
+extension makes no network requests of its own; LibreOffice's Extension Manager checks the
+project's update feed when you look for updates. A defect without a security impact belongs in an
+ordinary issue.
