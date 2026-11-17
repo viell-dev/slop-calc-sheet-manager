@@ -28,6 +28,15 @@ def row_label(row: SheetRow) -> str:
     return f"{label} ({', '.join(states)})" if states else label
 
 
+def node_text(rows: list[SheetRow]) -> list[tuple[str, str]]:
+    """What the tree's nodes hold for these rows: each sheet name and its label.
+
+    The current-sheet arrow and the tab-colour swatch are painted from the rows and stored in no
+    node, so rows that differ only in them can keep the nodes (`uno_list`, #22).
+    """
+    return [(row.name, row_label(row)) for row in rows]
+
+
 def list_name(active: str | None) -> str:
     """The list's accessible name, naming the sheet Calc shows, which the painted arrow marks.
 

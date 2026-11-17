@@ -63,9 +63,10 @@ If Sheet Manager does not work in an environment where it is expected to, please
   ([#133](https://github.com/viell-dev/slop-calc-sheet-manager/issues/133)). No screen reader runs
   in the checks: they read LibreOffice's accessibility interface,
   and the gtk3 bridge was probed once. Windows screen readers have not been tried.
-- **Large lists.** The list rebuilds after changes. During rapid sheet switches the active-sheet
-  marker, and <Unreleased since="0.0.9" /> the list's accessible name, can lag; timing measurements
-  and the remaining work are in
+- **Large lists.** The list rebuilds after renames, moves and changes to visibility or
+  protection. <Unreleased /> Switching sheets and changing tab colours only repaint it. In
+  workbooks with many sheets, the active-sheet marker, and <Unreleased since="0.0.9" /> the list's
+  accessible name, can still lag during rapid sheet switches; the measurements are in
   [#22](https://github.com/viell-dev/slop-calc-sheet-manager/issues/22).
 - **Final row divider.** At the end of a long list, the last row's lower divider can be absent.
   The painter leaves an ambiguous boundary pixel clear to keep decorations off scrollbars

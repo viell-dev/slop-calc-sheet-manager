@@ -101,7 +101,7 @@ documented in [RELEASING.md](https://github.com/viell-dev/slop-calc-sheet-manage
 | Delayed observations and refreshes cannot overwrite newer input or activate stale rows | `test_view_observation.py`, `test_pointer_observation.py`, `test_assistive_selection.py`; integration stale-click cases; real-input `newer_selection_kept`, `press_then_change`, `newer_pick_survives_voided_press` | Checks, integration and Linux UI. Ordering adapters do not establish native visibility or selection behaviour. Held-press checks wait for the list's own listener via `Workbook.hold`; changes before it runs are ordered before the press (#134). |
 | This window's native tabs and grouped-editing status follow without rebuilding rows or replacing independent picks | `test_sync_sheet_list.py:check_tabs`; observation unit tests; real-input synchronization checks | Integration, Checks and Linux UI. Tabs are sampled about every 0.25 seconds between interactions, not received as timestamped events. |
 | Observation pauses while hidden and stays bound to the correct view through window changes and reload | `test_sync_sheet_list.py:check_hidden`, `check_views`, `check_reload`; `reload_accepts_real_input`; visibility/timer unit tests | Integration, Checks and Linux UI; minimize requires a painted session. Visibility is checked about once a second. Input during native initialization may still clear conservatively (#88). |
-| Rows show each sheet's own order, viewed state, visibility, protection, scenarios and colour | Unit/integration `test_sheet_list.py`; `test_reorder_identity.py:check_confusable_names` | Checks and integration. Property changes rebuild the native model; rapid switches can lag (#22). |
+| Rows show each sheet's own order, viewed state, visibility, protection, scenarios and colour | Unit/integration `test_sheet_list.py`, `test_refresh_rebuild.py`; `test_reorder_identity.py:check_confusable_names` | Checks and integration. <Unreleased /> Sheet switches and tab colours repaint the rows and keep the native model; name, order, visibility, protection and scenario changes rebuild it, because the hidden-root tree reparents every row when a node's label or image changes (26.2.1.2 and 26.8.2.2, #22). Rapid switches can still lag. |
 | Names Calc confuses still use the picked sheet's handle; unsafe name-based moves are refused | `check_confusable_names` with `ﬁ`/`fi` and `I`/`ı`; `test_reorder.py:lookup_conflict` against an independent replay model | Integration and Checks. Exercises rows, Show, Hide, moves, per-call guards and batch rename. Grouped-tab Undo forces view reactivation and checks its activation sequence by identifying cells; menu Delete refuses either side of a confusable pair without changing the view, data or undo history (#138), then deletes exactly the second sheet as one undo step after the other is renamed, with complete restoration on Undo. Only two measured pairs and English locales; scenario combinations remain unverified. Calc's formula lookup remains defective (#113), and some moves are refused (#125). |
 
 The structural monitor's guarantees, notification rules and unavoidable limits are specified in
@@ -187,7 +187,9 @@ measurements, not limits:
 - `rename-performance-headless.json`: complete batches and Undo, three runs at 200 sheets and one
   at 1,000, across the UNO bridge.
 - `test_sheet_list.py:measure_large_workbook`: list opening and tab following at 1,000 sheets.
-  Activation settles selection/model rebuilding before the separate tab-only measurement.
+  Activation waits until the tree's accessible name names the viewed sheet, and asserts that the
+  native model was kept, before the separate tab-only measurement. Three tab colours must also
+  keep the model; four protection changes time the label rebuilds that still replace it.
   Menu construction records three consecutive `SheetMenu.build` samples with unique names,
   then an unrelated pick and each member of a `ﬁ`/`fi` pair at the last two indices. Delete stays
   enabled for the unrelated sheet and refuses either collision member, without changing sheet
@@ -197,7 +199,7 @@ measurements, not limits:
   sample selection or timing threshold. Results are retained under `large_workbook.menu_build`
   in the integration session's JSON, alongside lane artifacts identifying the office and Python
   versions and the tested environment.
-  Property-driven rebuild cost remains tracked in
+  The native reparenting and an in-process profile of the rebuild are recorded in
   [#22](https://github.com/viell-dev/slop-calc-sheet-manager/issues/22).
 
 All inputs are synthetic. Workbooks stay in memory unless the contributor explicitly runs the

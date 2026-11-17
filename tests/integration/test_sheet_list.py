@@ -46,7 +46,7 @@ from sheet_list_view import (
 from teardown import Configured, run_checks
 
 from sheet_manager import keys, uno_list
-from sheet_manager.sheet_list import SheetRow, row_label, tab_color
+from sheet_manager.sheet_list import SheetRow, list_name, row_label, tab_color
 from sheet_manager.uno_calc import select_tabs
 from sheet_manager.uno_menu import DELETE, HIDE, INSERT, RENAME, SheetMenu
 from sheet_manager.uno_reorder import snapshot
@@ -933,19 +933,18 @@ def measure_large_workbook(context, desktop, count):
     order = list(document.getSheets().getElementNames())
     poll(lambda: selection(tree, order) == [target.getName()], "a large list to follow", 120)
 
-    def activation_painted():
-        parent = root(tree)
-        return (
-            parent is not None
-            and parent != inactive_model
-            and parent.getChildCount() == count
-            and parent.getChildAt(count // 2).getDisplayValue() == target.getName()
-        )
+    viewed = tree.getPeer().getProperty("XAccessible").getAccessibleContext()
+
+    def activation_shown():
+        # The refreshed rows name the viewed sheet, as the painted arrow marks it (#83).
+        return viewed.getAccessibleName() == list_name(target.getName())
 
     # The lightweight observer can follow the selection before the preceding activation's
-    # rate-limited row repaint. Finish that repaint before isolating tab-only model retention.
-    poll(activation_painted, "the active marker before tab-only timing", 120)
+    # rate-limited row refresh. Finish that refresh before isolating tab-only model retention.
+    poll(activation_shown, "the active marker before tab-only timing", 120)
     followed = time.monotonic() - started
+    # Only the painted arrow moved, so the nodes stay (#22).
+    assert root(tree) == inactive_model, "A sheet switch must retain the native model"
     before = root(tree)
     assert before is not None
     started = time.monotonic()
@@ -957,24 +956,34 @@ def measure_large_workbook(context, desktop, count):
     document.getSheets().getByIndex(0).getCellRangeByName("A1").setValue(42)
     time.sleep(0.8)
     assert root(tree) == before, "An ordinary edit must retain the native model"
-    repaints = []
     first = document.getSheets().getByIndex(0)
-    for color in (0x2A6099, 0x993322, 0x228833):
+    for color in (0x2A6099, 0x993322, -1):
+        first.TabColor = color
+        time.sleep(0.8)
+        assert root(tree) == before, "A tab colour is painted; it must retain the native model"
+    rebuilds = []
+    # Protection changes the label, which only a new model can show (#22).
+    for protect in (True, False, True, False):
         previous = root(tree)
         assert previous is not None
         started = time.monotonic()
-        first.TabColor = color
+        if protect:
+            first.protect("")
+        else:
+            first.unprotect("")
         poll(
             lambda previous=previous: root(tree) not in (None, previous),
-            "a large tab-colour repaint",
+            "a large label rebuild",
             120,
         )
-        repaints.append(round(time.monotonic() - started, 4))
+        rebuilds.append(round(time.monotonic() - started, 4))
         current = root(tree)
         assert current is not None
         assert current.getChildCount() == count
         assert current.getChildAt(0).DataValue == order[0]
         assert current.getChildAt(count - 1).DataValue == order[-1]
+        label = current.getChildAt(0).getDisplayValue()
+        assert label == row_label(SheetRow(order[0], protected=protect)), label
     menu = measure_large_menu(context, document, count)
     close_workbook(context, document)
     return {
@@ -984,7 +993,8 @@ def measure_large_workbook(context, desktop, count):
         "tab_only_seconds": round(tab_followed, 4),
         "tab_only_same_model": True,
         "cell_edit_same_model": True,
-        "tab_color_repaint_seconds": repaints,
+        "tab_color_same_model": True,
+        "label_rebuild_seconds": rebuilds,
         "menu_build": menu,
         "method": "100ms polling; wall times include debounce/backpressure; no performance gate",
     }

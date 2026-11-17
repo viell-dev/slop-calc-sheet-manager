@@ -7,7 +7,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from sheet_manager.sheet_list import SheetRow, list_name
+from sheet_manager.sheet_list import SheetRow, list_name, node_text
 from tests.unit.source_methods import method
 
 SOURCE = "src/sheet_manager/uno_list.py"
@@ -140,7 +140,12 @@ def refresher(change: str) -> Any:
         SOURCE,
         "SheetList",
         "_refresh",
-        {"snapshot": Mock(return_value=observed), "read_rows": read_rows, "Mapping": Mapping},
+        {
+            "snapshot": Mock(return_value=observed),
+            "read_rows": read_rows,
+            "Mapping": Mapping,
+            "node_text": node_text,
+        },
     )
     owner.document = owner.controller = None
     return owner, lambda: refresh(owner, {})

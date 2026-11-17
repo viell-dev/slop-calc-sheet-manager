@@ -20,9 +20,13 @@ of them from other threads or in the middle of a change.
 
 The tree. The list is a borderless `TreeControl`, so that it is a direct child of the panel
 window, with a hidden root. With a hidden root, the tree peer mishandles every data-model change
-event and re-parents all rows under the root, so nodes are never changed in place: a refresh
-builds a new data model and restores the selection, scroll position, and keyboard cursor.
-`uno_rows` paints the rows.
+event and re-parents all rows under the root, so nodes are never changed in place: changing a
+node's label, even to the same text, or its image shows the root and collapses every row under
+it, while a `DataValue` change alone does not (measured with 26.2.1.2 and 26.8.2.2, #22). A
+refresh that changes a name or label builds a new data model and restores the selection, scroll
+position, and keyboard cursor. One that changes only painted state, the current-sheet arrow or a
+tab colour, keeps the nodes and repaints: replacing 1,000 nodes was most of such a refresh's
+cost. `uno_rows` paints the rows.
 
 Colours (#141). `uno_theme` reads Calc's resolved document background and applies a readable
 palette to the tree's native labels and row decorations. The existing visible-view sampler
@@ -173,7 +177,14 @@ from sheet_manager.keys import (
 from sheet_manager.rename import Batch
 from sheet_manager.reorder import Action, plan_move
 from sheet_manager.selection import Ref, Selection, structure_kept
-from sheet_manager.sheet_list import RowGeometry, SheetRow, list_name, ordered, row_label
+from sheet_manager.sheet_list import (
+    RowGeometry,
+    SheetRow,
+    list_name,
+    node_text,
+    ordered,
+    row_label,
+)
 from sheet_manager.uno_calc import (
     Later,
     MainThread,
@@ -757,15 +768,22 @@ class SheetList:
         else:
             dropped = self._selection.carry(renamed)
         self._proven = generation
-        changed = rows != self.rows or not self._nodes
+        rebuild = not self._nodes or node_text(rows) != node_text(self.rows)
+        repaint = rows != self.rows
         self._observed = observed
         self._handles = dict(
             zip((sheet.name for sheet in observed.sheets), observed.handles, strict=True)
         )
-        if changed:
+        if rebuild:
             self._rebuild(rows)
-        elif dropped or tuple(self._selection.names()) != self._shown:
-            self._apply_selection()
+        else:
+            # Only painted state changed, such as the current sheet or a tab colour: keep the
+            # nodes, whose replacement costs the whole tree (#22), and repaint.
+            self.rows = rows
+            if dropped or tuple(self._selection.names()) != self._shown:
+                self._apply_selection()
+            elif repaint:
+                self.peer.invalidate(0)
         if (
             pending is not None
             and self._generation == drops
@@ -844,7 +862,7 @@ class SheetList:
             self.set_bounds(*self._bounds)
 
     def _rebuild(self, rows: list[SheetRow]) -> None:
-        """Replace the whole data model.
+        """Replace the whole data model, when a name or label changed (`node_text`).
 
         With a hidden root, the tree control mishandles every change event of the data model:
         changing one node's text re-parents all rows under a newly shown root. So the list
