@@ -5,6 +5,14 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Show a message with reopening and reporting guidance when the sheet list cannot open, instead
+  of an empty deck ([#188](https://github.com/viell-dev/slop-calc-sheet-manager/issues/188)).
+- Retry a failed list refresh, so that a changed tab colour, visibility or protection is still
+  shown afterwards ([#186](https://github.com/viell-dev/slop-calc-sheet-manager/issues/186)).
+- Finish closing the panel when part of its cleanup fails, and keep a failure in a move button's
+  callback from reaching LibreOffice
+  ([#187](https://github.com/viell-dev/slop-calc-sheet-manager/issues/187),
+  [#189](https://github.com/viell-dev/slop-calc-sheet-manager/issues/189)).
 - Refresh the Debian 13 integration image digest and the checks image's Python to 3.12.16.
 - Update the development checks image and local Node.js pin together to 24.22.2, including
   the documentation container example.

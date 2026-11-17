@@ -9,6 +9,12 @@ as the start of undocking the sidebar (measured with the `win` interface; gtk3's
 does not undock). VCL hit-tests children in creation order, so the backdrop is created after the
 list's controls and lies below them; create every control before it.
 
+Failures (#187, #188). If the sheet list cannot be created, the panel shows a short message,
+naming only the error's type, with reopening and reporting guidance; the traceback goes to the
+log. Disposal attempts every owned cleanup and every listener notification even when an
+earlier one fails, reporting each failure rather than raising into LibreOffice, and a partly
+constructed panel disposes what it created.
+
 Until #133 the panel was a page-less tab control, which consumes presses but whose accessible
 context lists only tabs, so its children were unreachable. It also crashed VCL's access-key walk on
 every Shift, Ctrl, or Alt change (#18, #31) unless it sat inside a plain window. Keep any
@@ -27,8 +33,10 @@ from com.sun.star.container import NoSuchElementException
 from com.sun.star.lang import EventObject, XComponent, XServiceInfo
 from com.sun.star.ui import LayoutSize, XSidebarPanel, XToolPanel, XUIElement, XUIElementFactory
 
+from sheet_manager.i18n import tr
 from sheet_manager.uno_calc import report
 from sheet_manager.uno_list import SheetList
+from sheet_manager.uno_status import text_control
 
 FACTORY = "dev.viell.sheetmanager.PanelFactory"
 RESOURCE_URL = "private:resource/toolpanel/SheetManager/Panel"
@@ -62,26 +70,58 @@ class SheetPanel(
         self._parent = arguments["ParentWindow"]
         self._listeners = []
         self._disposed = False
+        self._attached = False
+        self.list = self._failure = self._backdrop = None
         bounds = self._parent.getPosSize()
         toolkit = self._parent.getToolkit()
         # The controls are the window's own children, so that its accessible context lists them.
         self.Window = _create_window(toolkit, "window", self._parent, bounds)
-        self.list = None
+        try:
+            self._initialize(context, toolkit, bounds)
+        except BaseException:
+            self.dispose()  # Everything created after the window, and the window.
+            raise
+
+    def _initialize(self, context, toolkit, bounds):
         try:
             self.list = SheetList(context, self.Frame, self.Window)
             self.list.set_bounds(bounds.Width, bounds.Height)
-        except Exception:
+        except Exception as error:
             if self.list is not None:
                 with suppress(Exception):
                     self.list.dispose()
                 self.list = None
-            # An empty panel is better than a sidebar that fails to open.
+            # A message is better than a sidebar that fails to open, or an empty panel.
             report("creating the sheet list")
+            self._show_failure(context, type(error).__name__, bounds)
         # An enabled plain window leaves a press unhandled, and VCL starts undocking the sidebar;
         # a disabled one swallows it. Created last, so that it lies below every control.
         self._backdrop = _create_window(toolkit, "window", self.Window, bounds)
         self._backdrop.setEnable(False)
         self._parent.addWindowListener(self)
+        self._attached = True
+
+    def _show_failure(self, context, kind, bounds):
+        """Tell the user that the list failed and what to do; the error's message stays in the log.
+
+        Only its type is shown: a message could name the workbook's sheets.
+        """
+        try:
+            failure = self._failure = text_control(context, self.Window)
+            failure.getModel().Label = tr(
+                "Sheet Manager could not open its sheet list ({error}). Close and reopen the "
+                "document, or restart LibreOffice. If it happens again, see Troubleshooting in "
+                "the Sheet Manager guide to report it."
+            ).format(error=kind)
+            self._place_failure(bounds.Width, bounds.Height)
+            failure.setVisible(True)
+        except Exception:
+            report("showing that the sheet list failed")
+
+    def _place_failure(self, width, height):
+        failure = self._failure
+        if failure is not None:
+            failure.setPosSize(8, 8, max(width - 16, 0), max(height - 16, 0), POSSIZE)
 
     def getRealInterface(self):
         return self
@@ -101,17 +141,31 @@ class SheetPanel(
         if self._disposed:
             return
         self._disposed = True
-        self._parent.removeWindowListener(self)
-        if self.list is not None:
-            try:
-                self.list.dispose()
-            except Exception:
-                report("disposing the sheet list")
-        self._backdrop.dispose()
-        self.Window.dispose()
+        steps = (
+            ("detaching the panel", self._detach),
+            ("disposing the sheet list", getattr(self.list, "dispose", None)),
+            ("disposing the failure message", getattr(self._failure, "dispose", None)),
+            ("disposing the panel backdrop", getattr(self._backdrop, "dispose", None)),
+            ("disposing the panel window", self.Window.dispose),
+        )
+        for where, work in steps:
+            if work is not None:
+                try:
+                    work()
+                except Exception:
+                    report(where)
         listeners, self._listeners = self._listeners, []
+        event = EventObject(self)
         for listener in listeners:
-            listener.disposing(EventObject(self))
+            try:
+                listener.disposing(event)
+            except Exception:
+                report("telling a listener that the panel was disposed")
+
+    def _detach(self):
+        if self._attached:
+            self._attached = False
+            self._parent.removeWindowListener(self)
 
     def addEventListener(self, listener):
         if self._disposed:
@@ -124,11 +178,13 @@ class SheetPanel(
             self._listeners.remove(listener)
 
     def windowResized(self, event):
-        if not self._disposed:
+        backdrop = self._backdrop  # Created before the panel listens for resizing.
+        if not self._disposed and backdrop is not None:
             self.Window.setPosSize(0, 0, event.Width, event.Height, POSSIZE)
-            self._backdrop.setPosSize(0, 0, event.Width, event.Height, POSSIZE)
+            backdrop.setPosSize(0, 0, event.Width, event.Height, POSSIZE)
             if self.list is not None:
                 self.list.set_bounds(event.Width, event.Height)
+            self._place_failure(event.Width, event.Height)
 
     def windowMoved(self, event):
         pass
