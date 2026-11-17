@@ -274,6 +274,12 @@ The release sweep's Windows jobs and the Windows desktop workflow verify a pinne
 silently installing it; this installation script is for disposable CI runners, not a contributor's
 existing installation.
 
+The macOS harness audits the former group after each ordinary command exit. If it finds a live
+process or cannot establish that the group stopped, it retains the private application and
+reports the result in a `*.group.json` receipt where possible. A command timeout still fails.
+Timeout receipts record a bounded TERM drain and any escalation to KILL before the leader is
+reaped.
+
 ### Routine CI and release sweeps
 
 Every PR and push to `main` runs the two Python check versions, Documentation, and **Linux current**:

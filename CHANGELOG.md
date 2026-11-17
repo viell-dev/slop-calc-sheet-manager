@@ -24,6 +24,8 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   nodeenv 1.12.0. These dependencies do not ship in the extension.
 - Bound LibreOffice lab downloads and log their mirror and transfer measurements, so a slow
   mirror fails during setup instead of consuming the native CI testing budget.
+- Audit former macOS test process groups after exit and give timed-out groups a bounded TERM
+  drain before KILL ([#163](https://github.com/viell-dev/slop-calc-sheet-manager/issues/163)).
 
 ## 0.0.10 - 2026-11-03
 

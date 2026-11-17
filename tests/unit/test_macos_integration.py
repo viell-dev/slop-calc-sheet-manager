@@ -14,6 +14,11 @@ import pytest
 from tools import macos_integration as cli
 
 
+@pytest.fixture(autouse=True)
+def native_cli_arguments(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(sys, "argv", ["macos_integration.py"])
+
+
 def test_checksum_failure_prevents_mounting_or_running_a_payload(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -237,11 +242,13 @@ def test_timeout_stops_only_the_new_private_process_group_before_propagating_fai
     monkeypatch.setattr(cli.subprocess, "Popen", popen)
     monkeypatch.setattr(cli.os, "killpg", kill)
     monkeypatch.setattr(cli.time, "sleep", Mock())
-    monkeypatch.setattr(cli, "group_members", Mock(return_value=[{"state": "Z"}]))
+    monkeypatch.setattr(
+        cli, "group_members", Mock(side_effect=[[{"state": "S"}], [{"state": "Z"}]])
+    )
     with pytest.raises(subprocess.TimeoutExpired):
         cli.run(["client"], tmp_path / "client.log", {}, timeout=1)
     assert popen.call_args.kwargs["start_new_session"] is True
-    assert kill.call_args_list == [((47123, signal.SIGTERM),), ((47123, signal.SIGKILL),)]
+    kill.assert_called_once_with(47123, signal.SIGTERM)
 
 
 @pytest.mark.parametrize("state", ["Z", "S"])
@@ -256,7 +263,7 @@ def test_permission_error_is_accepted_only_for_a_proved_stopped_group(
     process.wait.side_effect = [timeout, None]
     monkeypatch.setattr(cli.subprocess, "Popen", Mock(return_value=process))
     monkeypatch.setattr(
-        cli.os, "killpg", Mock(side_effect=[None, PermissionError("refused")]), raising=False
+        cli.os, "killpg", Mock(side_effect=PermissionError("refused")), raising=False
     )
     monkeypatch.setattr(cli.time, "sleep", Mock())
     monkeypatch.setattr(cli, "group_members", Mock(return_value=[{"state": state}]))
@@ -347,14 +354,18 @@ def test_native_control_rejects_incomplete_or_unsuccessful_receipts(
     def run(command: list[str], log: Path, environment: dict[str, str], timeout: int = 120) -> None:
         receipt = {
             "cleanup_succeeded": fault != "unverified",
-            "before": [{"state": "S"}],
+            "before": [{"state": "S"}, {"state": "S"}],
             "after_signals": [{"state": "S" if fault == "live" else "Z"}],
+            "kill_escalated": False,
         }
         if fault == "missing_after":
             del receipt["after_signals"]
         if fault == "missing_before":
             del receipt["before"]
-        log.write_text("" if fault == "setup" else "term-ready\n", encoding="utf-8")
+        log.write_text(
+            "" if fault == "setup" else "term-parent-ready\nterm-child-ready\nterm-child-drained\n",
+            encoding="utf-8",
+        )
         log.with_suffix(".timeout.json").write_text(json.dumps(receipt), encoding="utf-8")
         raise subprocess.TimeoutExpired(command, timeout)
 
@@ -378,3 +389,45 @@ def test_drain_deadline_fails_without_reaping_a_live_group(
     with pytest.raises(TimeoutError, match="remain alive after SIGKILL"):
         cli.stop_group(process, {})
     process.wait.assert_not_called()
+
+
+@pytest.mark.parametrize("returncode", [0, 17])
+@pytest.mark.parametrize("audit_result", ["clear", "live", "unavailable"])
+def test_post_reap_audit_never_signals_and_retains_uncertain_application(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, returncode: int, audit_result: str
+) -> None:
+    monkeypatch.setattr(cli.sys, "platform", "darwin")
+    process = Mock(pid=47123)
+    process.wait.return_value = returncode
+    monkeypatch.setattr(cli.subprocess, "Popen", Mock(return_value=process))
+    kill = Mock()
+    monkeypatch.setattr(cli.os, "killpg", kill, raising=False)
+
+    def inspect(group: int) -> list[dict[str, str]]:
+        process.wait.assert_called_once_with(timeout=120)
+        assert group == process.pid
+        if audit_result == "unavailable":
+            raise OSError("process snapshot failed")
+        return [{"state": "S" if audit_result == "live" else "Z"}]
+
+    monkeypatch.setattr(cli, "group_members", inspect)
+    log = tmp_path / "client.log"
+    if audit_result != "clear":
+        with (
+            pytest.raises(cli.GroupCleanupError, match="could not be proved stopped"),
+            cli.private_directory(str(tmp_path)) as private,
+        ):
+            cli.run(["client"], log, {})
+        assert private.exists()
+        receipt = json.loads(log.with_suffix(".group.json").read_text("utf-8"))
+        assert receipt["group"] == 47123
+        assert receipt["client_returncode"] == returncode
+        assert ("members" in receipt) is (audit_result == "live")
+    elif returncode:
+        with pytest.raises(subprocess.CalledProcessError) as error:
+            cli.run(["client"], log, {})
+        assert error.value.returncode == returncode
+    else:
+        cli.run(["client"], log, {})
+        assert not log.with_suffix(".group.json").exists()
+    kill.assert_not_called()
