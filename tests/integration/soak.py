@@ -1,15 +1,18 @@
 """Measure independent painted sessions with and without the extension; never retry a failure."""
 
-# A session that this process finds still running at SESSION_SECONDS fails with status 124. The
+# A session that this process has not seen finish by SESSION_SECONDS fails with status 124. It
+# reads the clock only after the wait returns, so a runner whose exit it first sees after the
+# limit, as when this process was not scheduled across it, fails too, even if the runner
+# finished just before it: the exit's time is not known, only when it was seen (#275). The
 # runner gets the same moment as its deadline, as an absolute time on the monotonic clock that
 # both share (`SHEET_MANAGER_DEADLINE_MONOTONIC`), so its own start-up cannot move it later. There
 # its stall watch records the stall, tries to save stacks and stops the launcher it started
 # (#45); CAPTURE_GRACE_SECONDS more lets it do that and exit before its process group is killed.
 # Keep the grace above the watch's CAPTURE_SECONDS and STOP_SECONDS together (`office_process`; a
 # unit test checks it): a stalled session's shutdown adds no release wait or terminate request
-# (`end_office`). Kill the group before reaping the runner: until it is reaped, its process ID,
-# which is the group's, cannot pass to a new process. A runner that exits after the limit while
-# this process is not scheduled reports its own status (#244).
+# (`end_office`). Kill the group before reaping the runner, a late one too: the wait leaves the
+# runner unreaped, and until it is reaped, its process ID, which is the group's, cannot pass to a
+# new process.
 # The summary gives each session's status and what its `results.json` says, and points to the
 # session's directory; it draws no conclusion of its own about stalls or when a limit fell, which
 # the session's results and receipts record. Before its first session the soak removes every
@@ -38,16 +41,17 @@ MODES = ("installed", "absent")
 SESSION_NAME = re.compile(r"[0-9]{3}")  # Sessions are numbered 001 to 100.
 
 
-def wait_unreaped(process: subprocess.Popen[bytes], seconds: float) -> None:
-    """Wait up to `seconds` for `process` to exit, leaving it unreaped."""
+def wait_unreaped(process: subprocess.Popen[bytes], seconds: float) -> bool:
+    """Wait up to `seconds` for `process` to exit, leaving it unreaped; return whether it had."""
     if sys.platform != "linux":
         raise RuntimeError("Run the soak inside the Linux test image")
     try:
         handle = os.pidfd_open(process.pid)
-    except ProcessLookupError:  # Not possible while it is unreaped; nothing to wait for.
-        return
+    except ProcessLookupError:  # Not possible while it is unreaped; it has gone.
+        return True
     try:
-        select.select([handle], [], [], seconds)  # A pidfd turns readable when its process exits.
+        # A pidfd turns readable when its process exits.
+        return bool(select.select([handle], [], [], seconds)[0])
     finally:
         os.close(handle)
 
@@ -83,26 +87,28 @@ def run_session(
 ) -> int:
     """Run one runner in its own process group; return its status, or 124 after `limit` seconds.
 
-    A runner found still running at `limit` fails whatever happens next; it then has `grace`
-    seconds to write its stall evidence and exit, and its whole group is killed after that. The
-    runner's deadline is this same moment.
+    A runner that this process has not seen exit by `limit` fails whatever happens next; it then
+    has `grace` seconds to write its stall evidence and exit, and its whole group is killed after
+    that. The runner's deadline is this same moment.
     """
+    if sys.platform != "linux":  # Before the runner starts: its wait needs a pidfd.
+        raise RuntimeError("Run the soak inside the Linux test image")
     deadline = time.monotonic() + limit
     environment = dict(os.environ, SHEET_MANAGER_DEADLINE_MONOTONIC=repr(deadline))
     environment.pop("SHEET_MANAGER_DEADLINE_SECONDS", None)
     process = subprocess.Popen(
         command, stdout=log, stderr=subprocess.STDOUT, start_new_session=True, env=environment
     )
-    try:
-        return process.wait(timeout=max(0.0, deadline - time.monotonic()))
-    except subprocess.TimeoutExpired:
-        if sys.platform != "linux":
-            raise
-        wait_unreaped(process, grace)
-        with contextlib.suppress(ProcessLookupError):
-            os.killpg(process.pid, signal.SIGKILL)
-        process.wait()
-        return 124
+    # Read the clock after the wait, which reaps nothing: an exit first seen after the deadline is
+    # a timeout (#275), and its runner is still unreaped when its group is killed.
+    exited = wait_unreaped(process, max(0.0, deadline - time.monotonic()))
+    if exited and time.monotonic() < deadline:
+        return process.wait()
+    wait_unreaped(process, grace)
+    with contextlib.suppress(ProcessLookupError):
+        os.killpg(process.pid, signal.SIGKILL)
+    process.wait()
+    return 124
 
 
 def main():

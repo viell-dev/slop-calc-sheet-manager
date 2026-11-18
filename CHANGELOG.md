@@ -12,6 +12,11 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   each of its threads stopped, while its processes are listed, and the stall receipt and a forced
   shutdown's results record what the stop saw of each. This changes the test runner, not the
   extension ([#266](https://github.com/viell-dev/slop-calc-sheet-manager/issues/266)).
+- The painted soak now fails a session whose end it first sees after the session's 180-second
+  limit, as when the soak's own process was not scheduled across that limit, instead of recording
+  the runner's own status, which let a session that ended late pass. This changes the test
+  runner, not the extension
+  ([#275](https://github.com/viell-dev/slop-calc-sheet-manager/issues/275)).
 - Give each CI job that runs LibreOffice time to keep the stacks of a stall at any point in a
   run of its measured length: routine CI's Linux job and the release sweep's Linux gtk3 jobs now
   have 60 minutes instead of 45, the sweep's headless Linux jobs 35 instead of 30, and its

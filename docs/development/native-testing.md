@@ -313,8 +313,10 @@ per-session runner logs, office logs, results and debugger traces, plus a job su
 session, including unreadable or missing results, fails the job after all measurements finish.
 The soak passes `--suites none` to skip feature suites and their performance workbooks within its
 180-second per-session limit; ordinary integration runs keep all feature suites enabled. A
-session that the soak finds still running at that limit fails with status 124; one that exits
-after it while the soak's own process is not scheduled reports its own status
+session that the soak has not seen finish by that limit fails with status 124. The soak reads the
+clock only after its wait returns, so a session whose end it first sees after the limit, as when
+its own process was not scheduled across it, fails too, even if the runner finished just before
+the limit: the soak knows when it saw the exit, not when the exit happened
 ([#275](https://github.com/viell-dev/slop-calc-sheet-manager/issues/275)). Its runner has the
 same moment as its deadline, passed as an absolute time on the container's monotonic clock
 (`SHEET_MANAGER_DEADLINE_MONOTONIC`), so the runner's own start-up cannot move it later. When the

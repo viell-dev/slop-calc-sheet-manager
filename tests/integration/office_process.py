@@ -108,8 +108,8 @@ def enclosing_deadline(environment: Mapping[str, str]) -> float | None:
     The soak passes an absolute time (`SHEET_MANAGER_DEADLINE_MONOTONIC`), so that its own limit
     and this process's deadline are one moment whatever this process's start-up takes: on Linux,
     where the soak runs, `time.monotonic()` is CLOCK_MONOTONIC, one clock for every process on
-    the machine. `SHEET_MANAGER_DEADLINE_SECONDS`, for trying the deadline by hand, counts from
-    this module's import.
+    the machine. `SHEET_MANAGER_DEADLINE_SECONDS` counts from this module's import; the macOS
+    helper sets it for its integration runner, and it can also try the deadline by hand.
     """
     if absolute := environment.get("SHEET_MANAGER_DEADLINE_MONOTONIC"):
         return float(absolute)
