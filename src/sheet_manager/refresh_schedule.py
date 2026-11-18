@@ -20,8 +20,9 @@ which, unless a timer is already pending or the schedule is closed, creates the 
 `later` (`uno_calc.MainThread.later`): its worker waits on a thread of its own and then posts to
 the main thread, as listeners may. No UNO call and no refresh runs on the notifying thread. The
 timer's work (`_fire`, then the owner's `due`, which may call `measure`) and the remaining
-methods run on LibreOffice's main thread. The class takes no lock: it relies on LibreOffice's main lock, which listeners and
-the main thread hold (`uno_calc.start_thread`), to order `changed` against that work.
+methods run on LibreOffice's main thread. The class takes no lock: it relies on LibreOffice's
+main lock, which listeners and the main thread hold (`uno_calc.start_thread`), to order `changed`
+against that work.
 
 It owns the refresh timer and the timing state. At most one timer is pending; `close` cancels it
 and refuses new ones, so a timer already queued when the list is disposed does nothing, and
