@@ -190,22 +190,43 @@ shared close helpers, settings restore or terminate request starts afterwards. T
 calls, and any already under way, continue until the office stops: among them a close that the
 shared helper had already posted to the main thread on Windows
 ([#261](https://github.com/viell-dev/slop-calc-sheet-manager/issues/261)), and an Escape tap of
-the update dialog's cleanup, which checks for a stall before each tap. The runner then saves the client's
-Python stacks and the office's native stacks as `stall-*` files for up to 60 seconds; a step or
-result that arrives later is not recorded. It starts stopping the office when they are saved or
-when the 60 seconds end, even if the test client, a debugger or a receipt write is still blocked,
-and the stop itself is bounded by its own limits, about 60 seconds more. The session's
-`office_progress_stall` says what each step did, and `stall_wait_timed_out` marks a session that
-stopped waiting for the capture before it finished. Under `--backtrace` the gdb wrapper writes the
-native stacks into its trace; on Windows, CDB at its standard path writes them. Without the
-wrapper no debugger attaches on Linux, and macOS has no debugger in this path, so only the client's
-stacks are kept there
+the update dialog's cleanup, which checks for a stall before each tap. For up to 60 seconds the
+runner then tries to save the client's Python stacks and the office's native stacks as `stall-*`
+files; a step or result that arrives later is not recorded. It starts stopping the office
+(`stop_process`) when those steps end or when the 60 seconds end, even if the test client, a
+debugger or a receipt write is still blocked, and the stop itself is bounded by its own limits,
+about 60 seconds more. Under `--backtrace` the runner sends the gdb wrapper's `soffice.bin`
+SIGINT, after which gdb normally prints every thread's stack into its trace; on Windows, CDB at
+its standard path writes them. Without the wrapper no debugger attaches on Linux, and macOS has
+no debugger in this path, so only the client's stacks are tried there
 ([#45](https://github.com/viell-dev/slop-calc-sheet-manager/issues/45)). Only a `soffice.bin`
 still identified as the session's own is examined; on Linux that includes its launcher, so after
 the gdb wrapper's startup restart has replaced it, the first launcher's tree is not read.
 `SHEET_MANAGER_STALL_SECONDS` lowers the limit to try this, and `SHEET_MANAGER_DEADLINE_SECONDS`
 ends a run that many seconds after its start the same way; `tools/linux_integration.py` passes
 both into the container. Neither is a test timeout.
+
+The receipt and the session's `office_progress_stall` record what the watch did and saw, not
+what follows from it:
+
+- `client_stacks` and each `office_stacks` entry's `file` name the files the watch wrote. An
+  entry's `method` says what was tried for that process, such as CDB's exit status or the SIGINT
+  sent to the gdb wrapper's inferior. A sent SIGINT is not saved stacks: the stacks are those in
+  the session's `gdbtrace-*.log`, if gdb printed them, and `wrapper_exit_status` is present when
+  the wrapper exited within the 60 seconds.
+- `office_search` says what the process listing returned: no `soffice.bin` under the launcher, or
+  that the listing was not used because the launcher's ID no longer names it. Neither shows that
+  no office was running.
+- `launcher_exit_status` is the launcher's exit status after the stop, or `null` if it had not
+  exited. It is not the office's: a `soffice.bin` can outlive its launcher.
+- `diagnostic_errors` holds each step that failed, and under `capture` the step that had not
+  finished when the 60 seconds ended; `collection_finished` is true only if every step returned
+  before then.
+- The receipt is rewritten as the evidence grows, and only the watch's last snapshot has
+  `watch_finished`. A receipt without it is partial, as when the runner exited first, and a write
+  that failed is in the session's `receipt_error`. The session's `office_progress_stall` is the
+  snapshot taken when the runner stopped waiting; `stall_wait_timed_out` marks a wait that ended
+  before the watch finished.
 
 An enclosing time limit can still end a stalled run before its stacks are saved and uploaded:
 detection, the capture, the stop and the upload take up to about 18 minutes after the last
@@ -214,7 +235,7 @@ begins later than that before a job's `timeout-minutes`, or before the macOS hel
 integration command limit, may be lost at that limit. On recent runs this covers the second half
 of every Linux real-input phase and most of the Windows integration job
 ([#244](https://github.com/viell-dev/slop-calc-sheet-manager/issues/244)). The soak, below,
-records the stall of a session that reaches its own limit during startup or its checks.
+gives each runner its own limit as the deadline.
 
 The painted resize check repeats the initial request if a late maximize changes its geometry;
 `resize-initial-*.json` retains requests and measurements
@@ -230,20 +251,24 @@ per-session runner logs, office logs, results and debugger traces, plus a job su
 session, including unreadable or missing results, fails the job after all measurements finish.
 The soak passes `--suites none` to skip feature suites and their performance workbooks within its
 180-second per-session limit; ordinary integration runs keep all feature suites enabled. A
-session still running at that limit fails with status 124. Its runner has the same moment as its
-deadline, passed as an absolute time on the container's monotonic clock
+session that the soak finds still running at that limit fails with status 124; one that exits
+after it while the soak's own process is not scheduled reports its own status
+([#244](https://github.com/viell-dev/slop-calc-sheet-manager/issues/244)). Its runner has the
+same moment as its deadline, passed as an absolute time on the container's monotonic clock
 (`SHEET_MANAGER_DEADLINE_MONOTONIC`), so the runner's own start-up cannot move it later. When the
-limit falls during startup or the checks, the runner's stall watch records the stall, saves what
-stacks it can and stops the office; the soak waits 150 more seconds before it kills the session's
-process group. The watch runs from the office's launch until the checks end, so a limit reached
-while installing or shutting down, which have time limits of their own, records no stall. The
-summary lists each session's `stall-*.json` receipts. Its Limit column says only what the
-session's files show: `stall recorded` when there is a receipt, whose entries say which stacks
-were kept; `after the checks: no stall recorded` when the runner recorded that its checks ended
-before the deadline (`checks_ended_before_deadline`); otherwise `no stall recorded; phase
-unknown`. Feature suites never run in the absent-extension control. The soak disables startup
-retries too, so
-every attempted session contributes to the measurement. The absent-extension control repeats the
+limit falls during startup or the checks, the runner's stall watch records the stall, tries to
+save stacks and stops the office; the soak waits 150 more seconds before it kills the session's
+process group. Installation, before the office's launch, is not watched: when the limit passes
+during an installation that then succeeds, the watch finds the deadline already passed at the
+launch and records a startup stall, so the receipt shows when the watch found the stall, not when
+the limit passed. The watch ends
+with the checks, so a limit reached while shutting down records no stall; the session's
+`checks_ended_before_deadline` shows that its checks ended in time. The summary gives each
+session's runner status and what its `results.json` says, and names its directory, which holds
+its results, runner log and any `stall-*.json` receipts; the soak empties that directory before
+the session starts, so nothing there comes from an earlier soak. Feature suites never run in the
+absent-extension control. The soak disables startup retries too, so every attempted session
+contributes to the measurement. The absent-extension control repeats the
 Calc/save/reopen-read-only/Writer lifecycle and frame requests, but cannot exercise the panel or
 its disposal. It is a control, not equivalent extension coverage.
 

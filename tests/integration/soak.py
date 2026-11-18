@@ -1,29 +1,32 @@
 """Measure independent painted sessions with and without the extension; never retry a failure."""
 
-# A session that has not finished within SESSION_SECONDS fails with status 124. The runner gets
-# the same moment as its deadline, as an absolute time on the monotonic clock that both share
-# (`SHEET_MANAGER_DEADLINE_MONOTONIC`), so its own start-up cannot move it later. There its stall
-# watch records the stall, keeps what stacks it can and stops the office (#45);
+# A session that this process finds still running at SESSION_SECONDS fails with status 124. The
+# runner gets the same moment as its deadline, as an absolute time on the monotonic clock that
+# both share (`SHEET_MANAGER_DEADLINE_MONOTONIC`), so its own start-up cannot move it later. There
+# its stall watch records the stall, tries to save stacks and stops the office (#45);
 # CAPTURE_GRACE_SECONDS more lets it do that and exit before its process group is killed. Keep
 # the grace above the watch's CAPTURE_SECONDS and STOP_SECONDS together (`office_process`; a unit
-# test checks it). The watch runs from the office's launch until the session's checks end, so a
-# limit reached while installing or shutting down, which have limits of their own, records no
-# stall. The summary's Limit column claims only what the session's files show: a stall receipt,
-# or the runner's record that its checks ended before the deadline; otherwise the phase is
-# unknown. Kill the group before reaping the runner: until it is reaped, its process ID, which is
-# the group's, cannot pass to a new process.
+# test checks it). Kill the group before reaping the runner: until it is reaped, its process ID,
+# which is the group's, cannot pass to a new process. A runner that exits after the limit while
+# this process is not scheduled reports its own status (#244).
+# The summary gives each session's status and what its `results.json` says, and points to the
+# session's directory; it draws no conclusion of its own about stalls or when a limit fell, which
+# the session's results and receipts record. Each session starts in an emptied directory, so that
+# nothing the summary reads or points to comes from an earlier soak, even if the runner never
+# reaches its own clean-up.
 
 import argparse
 import contextlib
 import json
 import os
 import select
+import shutil
 import signal
 import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Any, TextIO
+from typing import TextIO
 
 SESSION_SECONDS = 180
 CAPTURE_GRACE_SECONDS = 150
@@ -73,22 +76,6 @@ def run_session(
         return 124
 
 
-def limit_outcome(status: int, results: list[dict[str, Any]] | None, stalls: list[str]) -> str:
-    """For the summary: what a session's files show about when it reached its limit.
-
-    A receipt shows that the stall was recorded; which stacks its capture kept is in the receipt.
-    The runner records that its checks ended before the deadline only when its watch closed
-    before it. Without either, when the limit fell is not known.
-    """
-    if status != 124:
-        return ""
-    if stalls:
-        return "stall recorded"
-    if results and all(result.get("checks_ended_before_deadline") for result in results):
-        return "after the checks: no stall recorded"
-    return "no stall recorded; phase unknown"
-
-
 def main():
     if sys.platform != "linux":
         raise SystemExit("Run the soak inside the Linux test image")
@@ -110,15 +97,22 @@ def main():
         "Runner status and office/wrapper exit are separate; "
         "debugger fatal markers also fail a run.",
         "",
+        "Each session's `results.json`, `runner.log` and any `stall-*.json` receipts are in the "
+        "directory under Files, which the soak empties before the session starts.",
+        "",
         "| Mode | Session | Runner exit | Office/wrapper exit | Fatal markers | Assertions | "
-        "Stall | Limit | Results error |",
-        "| --- | ---: | ---: | --- | --- | --- | --- | --- | --- |",
+        "Results error | Files |",
+        "| --- | ---: | ---: | --- | --- | --- | --- | --- |",
     ]
     try:
         for mode in ("installed", "absent"):
             for number in range(1, arguments.soak + 1):
-                directory = output / mode / f"{number:03d}"
-                directory.mkdir(parents=True, exist_ok=True)
+                files = f"{mode}/{number:03d}"
+                directory = output / files
+                # An earlier soak's files there would pass for this session's.
+                if directory.exists():
+                    shutil.rmtree(directory)
+                directory.mkdir(parents=True)
                 command = [
                     sys.executable,
                     str(Path(__file__).with_name("run.py")),
@@ -148,13 +142,11 @@ def main():
                 except (json.JSONDecodeError, OSError) as error:
                     results = None
                     results_error = f"{type(error).__name__}: {error}"
-                stalls = sorted(path.name for path in directory.glob("stall-*.json"))
-                limit = limit_outcome(status, results, stalls)
                 row = {
                     "mode": mode,
                     "session": number,
                     "runner_exit": status,
-                    "limit": limit,
+                    "files": files,
                     "results": results,
                     "results_error": results_error,
                 }
@@ -171,7 +163,7 @@ def main():
                 )
                 summary.append(
                     f"| {mode} | {number} | {status} | {office} | {markers} | {assertions} | "
-                    f"{', '.join(stalls)} | {limit} | {results_error or ''} |"
+                    f"{results_error or ''} | `{files}/` |"
                 )
     finally:
         output.mkdir(parents=True, exist_ok=True)

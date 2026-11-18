@@ -235,7 +235,7 @@ def test_a_session_that_keeps_making_progress_is_never_stopped(
 def test_checks_that_end_before_the_deadline_are_recorded_as_such(
     runner: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    # The soak tells a limit reached after the checks from one of unknown phase by this alone.
+    # A session found past the soak's limit shows by this that its checks had ended in time.
     monkeypatch.setattr(office_process, "DEADLINE", time.monotonic() + 60)
 
     def body(*args: Any) -> dict[str, object]:
@@ -276,7 +276,7 @@ def test_a_wait_that_ends_before_the_capture_is_recorded_apart_from_its_evidence
         release.set()
     assert isinstance(raised, AssertionError | RuntimeError), raised
     assert result["stall_wait_timed_out"] is True
-    assert "capture_finished" not in result["office_progress_stall"]
+    assert "watch_finished" not in result["office_progress_stall"]
     assert not result["run_complete"] and result["office_exit_code"] != 0
 
 
@@ -300,11 +300,14 @@ def test_a_session_without_progress_fails_with_its_stacks_in_time(
     stall = result["office_progress_stall"]
     assert stall["cause"] == "no progress" and stall["limit_seconds"] == LIMIT
     assert LIMIT <= stall["idle_seconds"] < 2 * LIMIT
-    assert stall["office_stopped"] and stall["capture_finished"]
+    assert stall["launcher_exit_status"] is not None and stall["watch_finished"]
     assert "diagnostic_errors" not in stall and "stall_wait_timed_out" not in result
     assert "No test progress" in result["office_stalled_callbacks"][0]
     assert result["office_exit_code"] != 0
-    assert json.loads((output / stall["receipt"]).read_text(encoding="utf-8"))["office_stopped"]
+    assert (
+        json.loads((output / stall["receipt"]).read_text(encoding="utf-8"))["launcher_exit_status"]
+        is not None
+    )
     client = (output / stall["client_stacks"]).read_text(encoding="utf-8")
     assert "blocked_uno_call" in client  # The client's stack shows where it waited.
 
@@ -337,7 +340,7 @@ def test_a_failed_diagnostic_never_turns_a_stall_into_a_pass(
     stall = result["office_progress_stall"]
     assert "UnicodeDecodeError" in stall["diagnostic_errors"]["office_1"]
     assert stall["office_stacks"]["1"] == {"method": None, "file": None}
-    assert stall["office_stopped"]
+    assert stall["launcher_exit_status"] is not None
     assert result["office_stalled_callbacks"]
 
 
@@ -360,7 +363,7 @@ def test_a_stall_during_startup_ends_the_session_without_a_retry(
     assert len(office.launches) == 1  # Never retried.
     assert result["failure_stage"] == "startup" and not result["run_complete"]
     stall = result["office_progress_stall"]
-    assert stall["cause"] == "no progress" and stall["office_stopped"]
+    assert stall["cause"] == "no progress" and stall["launcher_exit_status"] is not None
     assert result["office_stalled_callbacks"]
     assert result["longest_progress_interval_seconds"] >= LIMIT
     startup = json.loads((output / "startup-True-0.json").read_text(encoding="utf-8"))
@@ -448,7 +451,10 @@ def test_the_gdb_wrappers_startup_restart_hands_the_new_office_to_the_watch(
     assert isinstance(raised, AssertionError | RuntimeError), raised
     assert len(office.launches) == 2 and result["office_startup_restart"] == 81
     stall = result["office_progress_stall"]
-    assert stall["launcher_pid"] == office.launches[1].pid and stall["office_stopped"]
+    assert (
+        stall["launcher_pid"] == office.launches[1].pid
+        and stall["launcher_exit_status"] is not None
+    )
     assert LIMIT <= times["stopped"] - times["progress"] < 2 * LIMIT
 
 
@@ -478,7 +484,9 @@ def test_a_stall_during_the_restart_launches_no_unwatched_office(
 
     def after_the_capture(trace: str) -> bool:
         deadline = time.monotonic() + 20
-        while not (receipt.exists() and "office_stopped" in receipt.read_text(encoding="utf-8")):
+        while not (
+            receipt.exists() and "launcher_exit_status" in receipt.read_text(encoding="utf-8")
+        ):
             assert time.monotonic() < deadline, "The watch never stopped the first office"
             time.sleep(0.02)
         return recognize(trace)
@@ -502,7 +510,10 @@ def test_a_stall_during_the_restart_launches_no_unwatched_office(
     assert isinstance(raised, TimeoutError), raised
     assert result["failure_stage"] == "startup" and not result["run_complete"]
     stall = result["office_progress_stall"]
-    assert stall["launcher_pid"] == office.launches[0].pid and stall["office_stopped"]
+    assert (
+        stall["launcher_pid"] == office.launches[0].pid
+        and stall["launcher_exit_status"] is not None
+    )
 
 
 def test_a_hung_collector_cannot_keep_a_blocked_session_running(
@@ -541,8 +552,8 @@ def test_a_hung_collector_cannot_keep_a_blocked_session_running(
     assert isinstance(raised, AssertionError | RuntimeError), raised
     assert times["stopped"] - times["capturing"] < budget + 1
     stall = result["office_progress_stall"]
-    assert stall["office_stopped"] and stall["collection_finished"] is False
-    assert "did not finish" in stall["diagnostic_errors"]["capture"]
+    assert stall["launcher_exit_status"] is not None and stall["collection_finished"] is False
+    assert "had not finished" in stall["diagnostic_errors"]["capture"]
     assert not result["run_complete"]
 
 
@@ -602,7 +613,10 @@ def test_no_document_close_starts_during_the_capture(
     raised, result, _ = session(runner, monkeypatch, tmp_path, Office(), body, watch=watch)
     assert closes == [], "A document close started after the stall was recorded"
     assert isinstance(raised, TimeoutError | AssertionError), raised
-    assert not result["run_complete"] and result["office_progress_stall"]["office_stopped"]
+    assert (
+        not result["run_complete"]
+        and result["office_progress_stall"]["launcher_exit_status"] is not None
+    )
 
 
 def test_no_writer_close_starts_after_a_stall(runner: Any, monkeypatch: pytest.MonkeyPatch) -> None:

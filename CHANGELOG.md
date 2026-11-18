@@ -8,12 +8,13 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 - When Replace All finds matching text but changes no proposed names, Rename Sheets explains
   this in the status and through the button's accessible name
   ([#259](https://github.com/viell-dev/slop-calc-sheet-manager/issues/259)).
-- Fail a test session that stops making progress for 15 minutes, keeping the test client's and
-  LibreOffice's stacks, instead of waiting for the CI job's time limit without evidence. A soak
-  session that reaches its 180-second limit during startup or its checks records the stall too,
-  and the soak's summary says a session reached it after its checks only when the runner recorded
-  that; the stacks of a stall late in a CI job may be lost at the job's limit
-  ([#45](https://github.com/viell-dev/slop-calc-sheet-manager/issues/45),
+- Fail a test session that stops making progress for 15 minutes instead of waiting for the CI
+  job's time limit without evidence: the runner records the stall, tries to save the test
+  client's and LibreOffice's stacks, stops LibreOffice, and records what it tried and saw. A soak
+  session that reaches its 180-second limit during startup or its checks records the stall too.
+  The soak empties each session's directory before the session starts, and its summary points
+  there instead of judging stalls. The stacks of a stall late in a CI job may be lost at the job's
+  limit ([#45](https://github.com/viell-dev/slop-calc-sheet-manager/issues/45),
   [#244](https://github.com/viell-dev/slop-calc-sheet-manager/issues/244)).
 - Make name syntax and conflicts in other rows available from New name in Rename Sheets.
   Replace All and Rename also expose refusals through their accessible names, including an empty

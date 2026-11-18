@@ -30,13 +30,13 @@ gtk3 saves a screenshot.
 #   Never extend this startup handling into retrying test assertions or shutdown failures.
 # - Failed input polls retain only existing fixture reads/posts, without extra UNO calls (#160).
 # - Save completed suites as they finish: an external timeout can bypass Python finally (#162).
-# - A session with no progress for `office_process.STALL_SECONDS`, from its launch, fails,
-#   saves its client and office stacks and stops its office (#45); a stall is never retried.
-#   Report progress at suite and check boundaries; never use the limit as a test timeout.
-#   Hand the gdb wrapper's replacement office to the watch with `StallWatch.follow`, and stop
-#   it before any UNO call when the watch refuses it after a stall. A watch closes only before
-#   its deadline, so the session records `checks_ended_before_deadline` then; the soak's summary
-#   relies on it.
+# - A session with no progress for `office_process.STALL_SECONDS`, from its launch, fails;
+#   its watch tries to save the client and office stacks, then stops the office (#45). A stall
+#   is never retried. Report progress at suite and check boundaries; never use the limit as a
+#   test timeout. Hand the gdb wrapper's replacement office to the watch with
+#   `StallWatch.follow`, and stop it before any UNO call when the watch refuses it after a
+#   stall. A watch closes only before its deadline, so the session records
+#   `checks_ended_before_deadline` then. Record what the session observed, not what it implies.
 # - Install only through `add_package`, which records each install's elapsed time and keeps a
 #   timeout a failure (#235). Do not raise `INSTALL_SECONDS` without measured normal installs.
 
@@ -273,7 +273,7 @@ def office_session(
         )
         # Watch from the launch: a UNO call that never returns, startup's included, would
         # otherwise hold the run until an enclosing limit, without evidence (#45). The watch
-        # records the stall, saves the stacks and stops the office first.
+        # records the stall, tries to save the stacks, then stops the office.
         start_session()
         watch = StallWatch(
             process,
@@ -327,7 +327,8 @@ def office_session(
                                     # so it is stopped before any UNO call reaches it (#45).
                                     stop_process(process)
                                     raise TimeoutError(
-                                        "The stall watch stopped the office during startup"
+                                        "The stall watch had recorded a stall when the gdb "
+                                        "wrapper's replacement office started"
                                     ) from None
                                 continue
                         raise RuntimeError("Private soffice exited during startup") from None
@@ -340,7 +341,7 @@ def office_session(
             )
             desktop.getComponents().hasElements()  # Detect the post-connect startup crash.
             if watch.stalled:
-                raise TimeoutError("The stall watch stopped the office during startup")
+                raise TimeoutError("The stall watch recorded a stall during startup")
         except Exception:
             # A stall is never retried: it ends the session as a failure.
             stall = watch.close()

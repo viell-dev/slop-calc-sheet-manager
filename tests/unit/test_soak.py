@@ -2,12 +2,12 @@
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -194,12 +194,8 @@ def test_the_group_is_killed_before_its_leader_is_reaped(
     assert unreaped == [True]  # It had exited, and was reaped only after the kill.
 
 
-@pytest.mark.skipif(
-    sys.platform != "linux", reason="The soak runs only inside the Linux test image"
-)
-def test_a_limit_reached_after_the_checks_is_told_apart_in_the_summary(tmp_path: Path) -> None:
-    # The watch ends with the session's checks, so a limit that falls in shutdown keeps no stacks;
-    # the summary says so, from the runner's own record, instead of leaving an unexplained 124.
+def scaled_soak(tmp_path: Path, runner: str) -> tuple[subprocess.CompletedProcess[str], Path]:
+    """Run the real soak, with a 1-second session limit, over `runner` as its run.py."""
     source = (ROOT / "tests/integration/soak.py").read_text(encoding="utf-8")
     for before, after in (
         ("SESSION_SECONDS = 180", "SESSION_SECONDS = 1"),
@@ -208,16 +204,7 @@ def test_a_limit_reached_after_the_checks_is_told_apart_in_the_summary(tmp_path:
         assert source.count(before) == 1
         source = source.replace(before, after)
     (tmp_path / "soak.py").write_text(source, encoding="utf-8")
-    (tmp_path / "run.py").write_text(
-        "import json, pathlib, sys, time\n"
-        "output = pathlib.Path(sys.argv[sys.argv.index('--output') + 1])\n"
-        "result = {'assertions_passed': True, 'office_exit_code': 0, 'run_complete': True,\n"
-        "          'checks_ended_before_deadline': True}\n"
-        "(output / 'results.json').write_text(json.dumps([result]))\n"
-        "if '--without-extension' not in sys.argv:\n"
-        "    time.sleep(1.5)  # A shutdown that outlasts the limit.\n",
-        encoding="utf-8",
-    )
+    (tmp_path / "run.py").write_text(runner, encoding="utf-8")
     output = tmp_path / "results"
     process = subprocess.run(
         [
@@ -236,13 +223,76 @@ def test_a_limit_reached_after_the_checks_is_told_apart_in_the_summary(tmp_path:
         text=True,
         timeout=60,
     )
+    return process, output
+
+
+PAST_THE_LIMIT = """
+import json, pathlib, sys, time
+output = pathlib.Path(sys.argv[sys.argv.index('--output') + 1])
+if '--without-extension' not in sys.argv:
+    (output / 'results.json').write_text(json.dumps([RESULT]))
+    time.sleep(1.5)  # Past the limit, after the results were written.
+else:
+    (output / 'results.json').write_text(json.dumps([{'assertions_passed': True}]))
+"""
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="The soak runs only inside the Linux test image"
+)
+@pytest.mark.parametrize(
+    "result",
+    [
+        # A stall the runner recorded without a receipt, as when the receipt could not be written.
+        {"office_exit_code": None, "office_progress_stall": {"receipt_error": "synthetic"}},
+        # Checks that ended before the deadline, then a shutdown past it.
+        {"assertions_passed": True, "office_exit_code": 0, "checks_ended_before_deadline": True},
+    ],
+)
+def test_the_summary_reports_and_points_but_draws_no_stall_conclusion(
+    tmp_path: Path, result: dict[str, object]
+) -> None:
+    # Each conclusion the summary drew from a session's files was contradicted by another
+    # artifact in some case; it now gives the status and the results, and names the files (#45).
+    process, output = scaled_soak(tmp_path, PAST_THE_LIMIT.replace("RESULT", repr(result)))
     assert process.returncode == 1, process.stdout + process.stderr
-    installed, absent = json.loads((output / "soak-results.json").read_text(encoding="utf-8"))
-    assert installed["runner_exit"] == 124
-    assert installed["limit"] == "after the checks: no stall recorded"
-    assert absent["runner_exit"] == 0 and absent["limit"] == ""
     summary = (output / "soak-summary.md").read_text(encoding="utf-8")
-    assert "| after the checks: no stall recorded |" in summary
+    (row,) = (line for line in summary.splitlines() if line.startswith("| installed |"))
+    assert not re.search(r"\bstall", row), row
+    installed, absent = json.loads((output / "soak-results.json").read_text(encoding="utf-8"))
+    assert installed["runner_exit"] == 124 and installed["results"] == [result]
+    assert installed["files"] == "installed/001" and absent["files"] == "absent/001"
+    assert set(installed) == {"mode", "session", "runner_exit", "files", "results", "results_error"}
+    header = (
+        "| Mode | Session | Runner exit | Office/wrapper exit | Fatal markers | Assertions | "
+        "Results error | Files |"
+    )
+    assert header in summary
+    office = [result.get("office_exit_code")]
+    assertions = bool(result.get("assertions_passed"))
+    assert row == f"| installed | 1 | 124 | {office} | [] | {assertions} |  | `installed/001/` |"
+    assert "| absent | 1 | 0 | [None] | [] | True |  | `absent/001/` |" in summary
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="The soak runs only inside the Linux test image"
+)
+def test_each_session_starts_in_an_emptied_directory(tmp_path: Path) -> None:
+    # An earlier soak's results and receipts must not pass for a session that wrote none, as when
+    # it is stopped before its own clean-up (#45).
+    for mode in ("installed", "absent"):
+        earlier = tmp_path / "results" / mode / "001"
+        earlier.mkdir(parents=True)
+        (earlier / "results.json").write_text(json.dumps([{"assertions_passed": True}]))
+        (earlier / "stall-False-0.json").write_text("{}")
+        (earlier / "stall-False-0-client-stacks.txt").write_text("an earlier soak")
+    process, output = scaled_soak(tmp_path, "import time\ntime.sleep(1.5)\n")
+    assert process.returncode == 1, process.stdout + process.stderr
+    rows = json.loads((output / "soak-results.json").read_text(encoding="utf-8"))
+    assert [row["runner_exit"] for row in rows] == [124, 124]
+    assert all(row["results"] is None and row["results_error"] for row in rows)
+    for mode in ("installed", "absent"):
+        assert sorted(path.name for path in (output / mode / "001").iterdir()) == ["runner.log"]
 
 
 # The real runner, in a soak session whose start-up is slow, with the reviewer's two cases: checks
@@ -300,38 +350,7 @@ def test_a_limit_in_the_checks_is_recorded_whatever_the_runners_start_up_takes(
     assert stalls == ["stall-True-0.json"], log_text
     assert result["office_progress_stall"]["cause"] == "deadline"
     assert not result["run_complete"] and "checks_ended_before_deadline" not in result
-    assert soak.limit_outcome(status, [result], stalls) == "stall recorded"
     if case == "receipt only":
-        # The summary claims a recorded stall, and no more: no stack bytes were kept.
+        # The receipt records the stall, and no stack bytes were kept.
         assert sum(path.stat().st_size for path in output.glob("*stacks.txt")) == 0
         assert "client_stacks" in result["office_progress_stall"]["diagnostic_errors"]
-
-
-OUTCOMES: list[tuple[int, list[dict[str, Any]] | None, list[str], str]] = [
-    (0, [{"assertions_passed": True}], [], ""),
-    (1, [{}], ["stall-False-0.json"], ""),
-    # A receipt shows the stall was recorded, even when its capture kept no stack bytes.
-    (
-        124,
-        [{"office_progress_stall": {"office_stacks": {}}}],
-        ["stall-True-0.json"],
-        "stall recorded",
-    ),
-    (
-        124,
-        [{"assertions_passed": True, "checks_ended_before_deadline": True}],
-        [],
-        "after the checks: no stall recorded",
-    ),
-    # Passed checks show that they ended, not when.
-    (124, [{"assertions_passed": True}], [], "no stall recorded; phase unknown"),
-    (124, [{}], [], "no stall recorded; phase unknown"),
-    (124, None, [], "no stall recorded; phase unknown"),
-]
-
-
-@pytest.mark.parametrize(("status", "results", "stalls", "outcome"), OUTCOMES)
-def test_the_limit_column_names_each_outcome(
-    status: int, results: list[dict[str, Any]] | None, stalls: list[str], outcome: str
-) -> None:
-    assert soak.limit_outcome(status, results, stalls) == outcome
