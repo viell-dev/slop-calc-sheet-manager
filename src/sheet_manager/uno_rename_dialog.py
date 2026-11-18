@@ -277,6 +277,7 @@ class RenameDialog:
         valid = bool(self._batch.changes()) and not any(found)
         enable_button(self._control("rename"), valid)
         reason = found[self._row]
+        # Batch.problems returns message text for both syntax errors and conflicts.
         conflict = reason if reason and not problem(self._batch.proposals[self._row]) else ""
         self._show_edit_conflict(conflict)
 
@@ -286,7 +287,8 @@ class RenameDialog:
         peer = self._control("name").getPeer()
         if self._edit_label is None:
             self._edit_label = str(peer.getProperty("AccessibleName"))
-        name = f"{self._edit_label} {reason}" if reason else self._edit_label
+        # Localizing this composition may need a translatable template (#170).
+        name = " ".join(filter(None, (self._edit_label, reason)))
         peer.setProperty("AccessibleName", name)
         self._edit_conflict = reason
 

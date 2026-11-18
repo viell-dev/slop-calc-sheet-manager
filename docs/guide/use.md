@@ -183,7 +183,8 @@ name is refused when it:
   `ss`, or the dotted and dotless i (`I`, `İ`, `i`, `ı`).
 
 With a screen reader, move to **Sheets** to hear the reason with the proposal. <Unreleased />
-Orca on GTK3 and NVDA on Windows also announce a name conflict while focus stays in **New name**.
+In tests with Orca on Linux (gtk3) and NVDA on Windows, each reader announced a name conflict
+while focus stayed in **New name**. See [known issues](./known-issues.md#known-issues) for limits.
 
 Names are used exactly as typed. Spaces at either end are kept, and the list shows such names in
 quotation marks. Sheets can swap names, or pass them around in a cycle; the dialog renames them
