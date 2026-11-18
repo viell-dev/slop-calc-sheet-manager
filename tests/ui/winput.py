@@ -4,7 +4,7 @@ Only for a disposable GitHub-hosted runner, whose job runs in the active console
 (#114): `.github/workflows/windows-desktop.yml` opts in with SHEET_MANAGER_REAL_DESKTOP=1.
 The input goes to whatever window has the focus on that desktop, so never run it on a person's
 computer. It is the Windows counterpart of `xinput.XInput`, with the same interface and the same
-X keysym names, so that `xinput.Pointer` and the shared checks of `run_ui.py` drive either.
+X keysym names, so that `xinput.Pointer` and the shared checks (`*_checks.py`) drive either.
 
 Rules for changing it:
 
