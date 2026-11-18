@@ -300,7 +300,9 @@ stall when the soak's own limit falls during startup or their checks; installati
 watched, so a limit that passes there is found at the launch that follows. `test_soak.py` runs
 the real runner with a slow start-up across that limit. The soak's summary draws no conclusion of
 its own about stalls: it reports each session's status and results and points to the session's
-directory, which the soak empties first, so that nothing in it comes from an earlier soak.
+directory. Before its first session the soak removes every numbered session directory that an
+earlier soak left, so that the output holds only its own sessions; `test_soak.py` checks this
+after a longer soak, and that it follows no symbolic link and removes nothing else (#268).
 `test_install_timing.py` checks that each package installation's elapsed time is recorded and
 that one exceeding its limit still fails, with that time and unopkg's output kept (#235).
 Windows crash dumps matter even when the office exits with status zero. Only startup is retried;

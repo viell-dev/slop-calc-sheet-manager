@@ -12,14 +12,17 @@
 # this process is not scheduled reports its own status (#244).
 # The summary gives each session's status and what its `results.json` says, and points to the
 # session's directory; it draws no conclusion of its own about stalls or when a limit fell, which
-# the session's results and receipts record. Each session starts in an emptied directory, so that
-# nothing the summary reads or points to comes from an earlier soak, even if the runner never
-# reaches its own clean-up.
+# the session's results and receipts record. Before its first session the soak removes every
+# numbered session directory (`<output>/<mode>/<NNN>`) that an earlier soak left, so that the
+# output holds only this soak's sessions and nothing the summary reads or points to comes from an
+# earlier one, even if a runner never reaches its own clean-up (#268). It removes nothing else:
+# a symbolic link there, including a mode directory that is one, is unlinked, never followed.
 
 import argparse
 import contextlib
 import json
 import os
+import re
 import select
 import shutil
 import signal
@@ -31,6 +34,8 @@ from typing import TextIO
 
 SESSION_SECONDS = 180
 CAPTURE_GRACE_SECONDS = 150
+MODES = ("installed", "absent")
+SESSION_NAME = re.compile(r"[0-9]{3}")  # Sessions are numbered 001 to 100.
 
 
 def wait_unreaped(process: subprocess.Popen[bytes], seconds: float) -> None:
@@ -45,6 +50,29 @@ def wait_unreaped(process: subprocess.Popen[bytes], seconds: float) -> None:
         select.select([handle], [], [], seconds)  # A pidfd turns readable when its process exits.
     finally:
         os.close(handle)
+
+
+def remove_sessions(output: Path) -> None:
+    """Remove every numbered session directory that an earlier soak left in `output`'s modes.
+
+    Only `<output>/<mode>/<NNN>` is removed. A symbolic link is unlinked, never followed: a mode
+    directory that is one, or a session entry. `shutil.rmtree` removes a directory's tree without
+    following the links inside it, and refuses a link that replaced the directory meanwhile.
+    """
+    for mode in MODES:
+        directory = output / mode
+        if directory.is_symlink():
+            directory.unlink()
+            continue
+        if not directory.is_dir():
+            continue
+        for entry in directory.iterdir():
+            if not SESSION_NAME.fullmatch(entry.name):
+                continue
+            if entry.is_symlink() or not entry.is_dir():
+                entry.unlink(missing_ok=True)
+            else:
+                shutil.rmtree(entry)
 
 
 def run_session(
@@ -99,20 +127,20 @@ def main():
         "debugger fatal markers also fail a run.",
         "",
         "Each session's `results.json`, `runner.log` and any `stall-*.json` receipts are in the "
-        "directory under Files, which the soak empties before the session starts.",
+        "directory under Files. The soak removed every earlier session directory before its "
+        "first session.",
         "",
         "| Mode | Session | Runner exit | Office/wrapper exit | Fatal markers | Assertions | "
         "Results error | Files |",
         "| --- | ---: | ---: | --- | --- | --- | --- | --- |",
     ]
     try:
-        for mode in ("installed", "absent"):
+        # An earlier soak's files would pass for this soak's, or be uploaded beside them.
+        remove_sessions(output)
+        for mode in MODES:
             for number in range(1, arguments.soak + 1):
                 files = f"{mode}/{number:03d}"
                 directory = output / files
-                # An earlier soak's files there would pass for this session's.
-                if directory.exists():
-                    shutil.rmtree(directory)
                 directory.mkdir(parents=True)
                 command = [
                     sys.executable,

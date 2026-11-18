@@ -298,6 +298,47 @@ def test_each_session_starts_in_an_emptied_directory(tmp_path: Path) -> None:
         assert sorted(path.name for path in (output / mode / "001").iterdir()) == ["runner.log"]
 
 
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="The soak runs only inside the Linux test image"
+)
+def test_an_earlier_longer_soaks_sessions_are_removed_and_no_link_is_followed(
+    tmp_path: Path,
+) -> None:
+    # After `--soak 2`, a `--soak 1` into the same output kept `installed/002`, which the
+    # artifact then carried as if it were this soak's (#268).
+    output = tmp_path / "results"
+    earlier = output / "installed" / "002"
+    earlier.mkdir(parents=True)
+    (earlier / "results.json").write_text(json.dumps([{"assertions_passed": True}]))
+    (earlier / "stall-False-0.json").write_text("{}")
+    (output / "installed" / "003").write_text("a file where a session was")
+    (output / "installed" / "notes.txt").write_text("not a session")
+    outside = tmp_path / "outside"
+    for name in ("linked", "mode"):
+        (outside / name / "002").mkdir(parents=True)
+        (outside / name / "002" / "results.json").write_text("[]")
+    (output / "installed" / "004").symlink_to(outside / "linked", target_is_directory=True)
+    (output / "absent").symlink_to(outside / "mode", target_is_directory=True)
+    (output / "elsewhere" / "002").mkdir(parents=True)
+    runner = (
+        "import json, pathlib, sys\n"
+        "output = pathlib.Path(sys.argv[sys.argv.index('--output') + 1])\n"
+        "(output / 'results.json').write_text(json.dumps([{'assertions_passed': True}]))\n"
+    )
+    process, _ = scaled_soak(tmp_path, runner)
+    assert process.returncode == 0, process.stdout + process.stderr
+    assert sorted(path.name for path in (output / "installed").iterdir()) == ["001", "notes.txt"]
+    assert not (output / "absent").is_symlink()
+    assert sorted(path.name for path in (output / "absent").iterdir()) == ["001"]
+    # Nothing outside `<output>/<mode>` is removed, and nothing is written through a link.
+    for name in ("linked", "mode"):
+        assert sorted(path.name for path in (outside / name).iterdir()) == ["002"]
+        assert (outside / name / "002" / "results.json").read_text() == "[]"
+    assert (output / "elsewhere" / "002").is_dir()
+    rows = json.loads((output / "soak-results.json").read_text(encoding="utf-8"))
+    assert [row["files"] for row in rows] == ["installed/001", "absent/001"]
+
+
 # The real runner, in a soak session whose start-up is slow, with the reviewer's two cases: checks
 # that make progress across the soak's limit, and a stall whose capture keeps no stack bytes.
 SESSION = """
