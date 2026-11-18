@@ -55,13 +55,15 @@ while the tree shows a native selection the intake has not taken treats it the s
 the clearing notice: it was made against rows whose handles no longer prove their sheets. So
 does a refresh whose new model replaced such a selection and that fails before showing it again
 in full: the picks it superseded are dropped, and a queued write clears the rows the tree still
-shows, as settling does. Rows, their handles and their proof change together once a new data
-model is shown, so a row of a refused model still maps to the handle it was read with; and a
-rebuild does not need the cached nodes, which LibreOffice rejects after a setter installed its
-model and then failed, for its scroll position. A failed `invalidate` after a complete write is
-not retried: the tree and `_shown` agree, and the next write repaints. No native trigger for
-these failures is known; LibreOffice's tree calls have failed only while the control was being
-disposed.
+shows, as settling does. While `_shown` is None and the list holds no picks, as until such a
+write runs, Space toggles nothing and only asks for the write: the tree may show the cursor's
+row selected, and toggling it on would pick a row the user meant to deselect. Rows, their
+handles and their proof change together once a new data model is shown, so a row of a refused
+model still maps to the handle it was read with; and a rebuild does not need the cached nodes,
+which LibreOffice rejects after a setter installed its model and then failed, for its scroll
+position. A failed `invalidate` after a complete write is not retried: the tree and `_shown`
+agree, and the next write repaints. No native trigger for these failures is known;
+LibreOffice's tree calls have failed only while the control was being disposed.
 
 Pointer input. A left press picks at once and keeps the pressed sheet's handle. A plain press
 on a picked row keeps the other picks, so that they can be dragged together; its release in the
@@ -1256,6 +1258,14 @@ class SheetList:
             self._selection.take(names, self._handles, names)
             self._selection.cursor = cursor or self._ref(names[0])
         elif code == SPACE:
+            if self._shown is None and not self._selection.picked:
+                # The list holds no picks, but the tree may still show rows until a queued write
+                # clears them, as after a drop (`_settle_shown`, `_refresh`). The user toggles what
+                # the tree shows, which the list cannot tell: toggling the cursor's row on could
+                # pick a row the user saw selected and meant to deselect (#257). The key only
+                # asks for the write, and the next toggle acts on the tree it leaves.
+                self._queue_selection(scroll=True)
+                return
             self._selection.choose(names[current], self._handles, names, toggle=True)
         else:
             target = {

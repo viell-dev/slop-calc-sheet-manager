@@ -1003,3 +1003,49 @@ def test_a_failed_rebuild_after_a_lost_proof_tells_the_clearing_once() -> None:
     assert len(owner.notices) == notices + 1
     recover(owner)
     assert owner.tree.shown() == [] and move_to_top(owner) is None
+
+
+def settled_with_delta_left_selected() -> Any:
+    """Bravo left unknown, then Delta, the cursor's row, selected alone through accessibility;
+    the tab sample's intake drops Bravo, and the write that clears Delta is still queued."""
+    owner = bravo_left_unknown()
+    owner.tree.assistive_only("Delta")
+    owner._take_tree_selection(paint=False, defer=True)  # The sample, before its queue runs.
+    assert picks(owner) == [] and owner.tree.shown() == ["Delta"] and cursor(owner) == "Delta"
+    return owner
+
+
+def failed_refresh_with_bravo_left_selected() -> Any:
+    """As `bravo_superseded_by_a_failed_reshow`, but with the refresh run alone, so that the
+    write that clears Bravo, the cursor's row, is still queued."""
+    owner = sheet_list(Book(list(NAMES)))
+    click(owner, 1)
+    owner.tree.assistive_only("Foxtrot")
+    owner.faults.fail("clearSelection")
+    owner.book.sheet("Alfa").color = 0x336699
+    with pytest.raises(NativeFailure):
+        owner.refresh()
+    assert picks(owner) == [] and owner.tree.shown() == ["Bravo"] and cursor(owner) == "Bravo"
+    return owner
+
+
+@pytest.mark.parametrize(
+    "setup",
+    [
+        pytest.param(settled_with_delta_left_selected, id="after settling"),
+        pytest.param(failed_refresh_with_bravo_left_selected, id="after a failed refresh"),
+    ],
+)
+def test_a_toggle_key_before_the_clearing_write_picks_nothing(setup: Callable[[], Any]) -> None:
+    """A key handled after a drop and before its queued write, as a key already waiting when
+    the intake or the failed refresh returned can be. The tree still showed the cursor's row,
+    which the list no longer held, so Ctrl+Space toggled it on: the row the user saw selected
+    and meant to deselect was picked, and Move to Top moved it. The toggle now changes no pick;
+    the queued write clears the tree, and the next toggle acts on what that leaves."""
+    owner = setup()
+    owner.tree_key(SPACE, MOD1)
+    owner.run_queue()
+    assert picks(owner) == [] and owner.tree.shown() == []
+    assert move_to_top(owner) is None
+    key(owner, SPACE, MOD1)
+    assert picks(owner) == [cursor(owner)] and owner.tree.shown() == picks(owner)
