@@ -131,11 +131,14 @@ class Dialog:
         walk(root, 0)
         return sorted(found, key=lambda c: (c.getLocationOnScreen().Y, c.getLocationOnScreen().X))
 
-    def text(self, window):
-        """An edit field's text, from the accessible text field at the same height."""
+    def edit(self, window):
+        """The accessible edit field at the same height as its outer window."""
         fields = self._accessible("TEXT")
         assert len(fields) == 3, [field.getAccessibleName() for field in fields]
-        return fields[(self.find, self.replace, self.name).index(window)].getText()
+        return fields[(self.find, self.replace, self.name).index(window)]
+
+    def text(self, window):
+        return self.edit(window).getText()
 
     def _items(self):
         return self._accessible("LIST_ITEM")
@@ -326,7 +329,7 @@ def check_keyboard(book):
             dialog.calibrate().offset if sys.platform.startswith("linux") else None,
         )
         book.lab.screenshot("rename-sheets-refused-name")
-        field = dialog._accessible("TEXT")[-1]
+        field = dialog.edit(dialog.name)
         assert field.getAccessibleStateSet() & FOCUSED
         assert field.getAccessibleName() == "New name:"
         changes = NameChanges()
