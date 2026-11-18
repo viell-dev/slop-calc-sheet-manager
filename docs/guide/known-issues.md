@@ -64,10 +64,14 @@ If Sheet Manager does not work in an environment where it is expected to, please
   read LibreOffice's accessibility interface. Separate screen-reader probes used Orca on Linux
   (gtk3) and NVDA on Windows. NVDA did not read the focused list rows in the Windows probe
   ([#249](https://github.com/viell-dev/slop-calc-sheet-manager/issues/249)).
-  <Unreleased /> In Rename Sheets, both readers announced a conflict in the focused **New name**
-  field in the tested configurations. If the proposal changes from a conflict to an invalid
-  name, the field returns to its ordinary name even though Rename is still unavailable.
-  Use **Sheets** to hear the proposal and its current reason
+  <Unreleased /> In Rename Sheets, Orca and NVDA spoke name refusals in **New name** and on the
+  focused **Replace All** and **Rename** buttons in the tested configurations. Orca repeated
+  “New name” before the reason. Use **Sheets** to hear each affected proposal and its reason.
+  When a synthetic paste contained an embedded null character, the Linux gtk3 edit retained it
+  and refused the name. The Windows edit took the text before the null character, so the dialog
+  validated that shorter name.
+  The speech probes cover Orca on gtk3/X11 and NVDA on Windows in English. Braille, other
+  configurations, and other backends remain unverified
   ([#254](https://github.com/viell-dev/slop-calc-sheet-manager/issues/254)).
 - **Large lists.** The list rebuilds after changes. During rapid sheet switches the active-sheet
   marker, and <Unreleased since="0.0.9" /> the list's accessible name, can lag; timing measurements

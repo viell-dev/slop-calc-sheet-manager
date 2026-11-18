@@ -219,6 +219,14 @@ def plan_renames(names: Sequence[str], renames: Iterable[tuple[str, str]]) -> Pl
     return Plan(before, tuple((name, changes[name]) for name in changed), after, tuple(steps))
 
 
+@dataclass(frozen=True)
+class ReplacementResult:
+    """Whether any proposal matched and how many proposals changed."""
+
+    matched: bool
+    changed: int
+
+
 class Batch:
     """The rename dialog's proposals for its targets, in document order."""
 
@@ -231,17 +239,21 @@ class Batch:
     def set(self, index: int, name: str) -> None:
         self.proposals[index] = name
 
-    def replace_all(self, find: str, replacement: str) -> int:
-        """Replace literal, case-sensitive `find` in every proposal; the number changed."""
+    def replace_all(self, find: str, replacement: str) -> ReplacementResult:
+        """Replace literal, case-sensitive text. An empty search has no matches."""
         if not find:
-            return 0
+            return ReplacementResult(matched=False, changed=0)
+        if find == replacement:
+            return ReplacementResult(
+                matched=any(find in proposal for proposal in self.proposals), changed=0
+            )
         changed = 0
         for index, proposal in enumerate(self.proposals):
             renamed = proposal.replace(find, replacement)
             if renamed != proposal:
                 self.proposals[index] = renamed
                 changed += 1
-        return changed
+        return ReplacementResult(matched=bool(changed), changed=changed)
 
     def reset(self) -> None:
         self.proposals = list(self.targets)
@@ -268,6 +280,26 @@ def row_label(old: str, new: str, reason: str = "") -> str:
     else:
         label = f"{shown(old)}   →   {shown(new)}"
     return f"{label}   ⚠ {reason}" if reason else label
+
+
+def first_row_refusal(batch: Batch, found: Sequence[str]) -> str:
+    """The first refused sheet and its reason, in document order."""
+    # Localizing the sheet and reason together may need a translatable template (#170).
+    return next(
+        (
+            f"{quoted(sheet)}: {reason}"
+            for sheet, reason in zip(batch.targets, found, strict=True)
+            if reason
+        ),
+        "",
+    )
+
+
+def field_refusal(batch: Batch, row: int, found: Sequence[str]) -> str:
+    """The selected proposal's reason, or the first other row's reason while editing."""
+    if not batch.proposals[row]:
+        return ""
+    return found[row] or first_row_refusal(batch, found)
 
 
 def summary(batch: Batch, found: Sequence[str]) -> str:

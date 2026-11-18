@@ -5,6 +5,13 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- When Replace All finds matching text but changes no proposed names, Rename Sheets explains
+  this in the status and through the button's accessible name
+  ([#259](https://github.com/viell-dev/slop-calc-sheet-manager/issues/259)).
+- Make name syntax and conflicts in other rows available from New name in Rename Sheets.
+  Replace All and Rename also expose refusals through their accessible names, including an empty
+  Find field or a replacement with no matches
+  ([#254](https://github.com/viell-dev/slop-calc-sheet-manager/issues/254)).
 - Calibrate the rename dialog's real-input clicks on points of the dialog's own window, located
   from its buttons, rather than of its accessible area, which includes the window manager's
   frame. On the Windows desktop the frame's borders kept the dialog from reporting nearly every

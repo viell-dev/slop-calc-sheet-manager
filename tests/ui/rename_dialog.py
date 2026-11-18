@@ -1,7 +1,7 @@
 """The Rename Sheets dialog through real keyboard and mouse input (#102).
 
 The dialog is found as the visible dialog window over the document, and observed through public
-UNO only: its child windows' text, items, and enabled state, and their accessible names. Pointer
+UNO only: its child windows' text, items, enabled state, focus and accessible name events. Pointer
 positions come from those windows and their accessible list items, after calibrating the input
 against a motion listener on the dialog's own background, with the lab's `Tracker` and
 `settled_report` that calibrate the sheet list. The calibration's points cover the dialog's own
@@ -35,7 +35,7 @@ REJECTED_POINTS = 3
 
 
 class NameChanges(unohelper.Base, XAccessibleEventListener):
-    """Record UNO name-change events from the edit peer."""
+    """Record UNO name-change events from a control peer."""
 
     def __init__(self):
         self.names = []
@@ -146,7 +146,9 @@ class Dialog:
         assert len(plain) == 4, [sorted(_types(c)) for c in children]
         self.find, self.replace, self.rows, self.name = plain
         self.buttons = {
-            self.accessible_name(c): c for c in children if "com.sun.star.awt.XButton" in _types(c)
+            self.accessible(c).getAccessibleName(): c
+            for c in children
+            if "com.sun.star.awt.XButton" in _types(c)
         }
         assert set(self.buttons) == {"Replace All", "Reset All", "Rename", "Cancel"}, self.buttons
         texts = sorted((c for c in children if "com.sun.star.awt.XFixedText" in _types(c)), key=top)
@@ -156,8 +158,8 @@ class Dialog:
         self.calibration: dict[str, Any] | None = None
 
     @staticmethod
-    def accessible_name(window):
-        return window.getProperty("XAccessible").getAccessibleContext().getAccessibleName()
+    def accessible(window):
+        return window.getProperty("XAccessible").getAccessibleContext()
 
     def _accessible(self, role_name):
         """The dialog's accessible descendants with this role, top to bottom."""
@@ -420,7 +422,19 @@ def check_keyboard(book):
                 dialog.calibrate().offset if sys.platform.startswith("linux") else None,
             )
             book.lab.screenshot("rename-sheets-refused-name")
-            assert field.getAccessibleName() == "New name:"
+            syntax_name = f"New name: {evidence['refused']['status']}"
+            wait_for(lambda: syntax_name in changes.names, "the syntax refusal on the edit")
+            assert field.getAccessibleName() == syntax_name
+            assert field.getAccessibleStateSet() & FOCUSED
+            events_before_edit = len(changes.names)
+            type_text(book.lab, "x")  # The same forbidden character remains in the proposal.
+            wait_for(lambda: dialog.text(dialog.name) == "a/bx", "the longer invalid name")
+            book.lab.input.tap("a", ("Control_L",), pause=0.1)
+            book.lab.input.tap("BackSpace", pause=0.2)
+            wait_for(lambda: "cannot be empty" in dialog.state()["status"], "the empty proposal")
+            wait_for(lambda: field.getAccessibleName() == "New name:", "the ordinary edit name")
+            assert set(changes.names[events_before_edit:]) == {"New name:"}, changes.names
+            changes.names.clear()
 
             book.lab.input.tap("a", ("Control_L",), pause=0.1)
             type_text(book.lab, "Echo")  # Already used by an unpicked sheet.
@@ -452,6 +466,17 @@ def check_keyboard(book):
             assert field.getAccessibleName() == near_name
             assert not dialog.state()["rename_enabled"]
 
+            book.lab.input.tap("End")
+            book.lab.input.tap("slash", ("Shift_L",), pause=0.2)
+            wait_for(
+                lambda: syntax_name in changes.names, "the conflict replaced by a syntax reason"
+            )
+            assert field.getAccessibleName() == syntax_name
+            assert field.getAccessibleStateSet() & FOCUSED
+            assert not dialog.state()["rename_enabled"]
+            # The next reason comes after any events from the same-conflict edit.
+            assert changes.names[events_before_edit] == syntax_name, changes.names
+
             book.lab.input.tap("a", ("Control_L",), pause=0.1)
             type_text(book.lab, "Bravo")  # Free once Bravo has its new name: a chain.
             wait_for(lambda: dialog.state()["rename_enabled"], "a valid batch again")
@@ -459,12 +484,11 @@ def check_keyboard(book):
             assert field.getAccessibleName() == "New name:"
             assert field.getAccessibleStateSet() & FOCUSED
             evidence["edit_name_changes"] = list(changes.names)
-            # The restore event comes after any events from the same-reason edit.
-            assert changes.names[events_before_edit] == "New name:", changes.names
             # A single peer update can deliver consecutive duplicate events.
             assert [name for name, _ in groupby(changes.names)] == [
                 duplicate_name,
                 near_name,
+                syntax_name,
                 "New name:",
             ], changes.names
         finally:
@@ -559,6 +583,128 @@ def check_mouse(book):
     return evidence
 
 
+def check_other_row(book):
+    """When the edited row becomes valid, expose the refusal on the other proposal."""
+    picks = ["Bravo", "Charlie"]
+    pick(book, picks)
+    keys = book.lab.input
+
+    def edit(text):
+        keys.tap("a", ("Control_L",), pause=0.1)
+        type_text(book.lab, text)
+
+    dialog = open_dialog(book, picks, lambda: keys.tap("Menu", pause=0.4))
+    try:
+        keys.tap("n", ("Alt_L",))
+        edit("Gamma")
+        wait_for(lambda: dialog.state()["rename_enabled"], "a free proposal for Bravo")
+        keys.tap("s", ("Alt_L",))
+        keys.tap("Down")
+        keys.tap("n", ("Alt_L",))
+        edit("Bravo")
+        wait_for(lambda: dialog.items()[1] == "Charlie   →   Bravo", "a free proposal for Charlie")
+        keys.tap("s", ("Alt_L",))
+        keys.tap("Up")
+        keys.tap("n", ("Alt_L",))
+        field = dialog.edit(dialog.name)
+        changes = NameChanges()
+        field.addAccessibleEventListener(changes)
+        try:
+            edit("Bravo")
+            reason = "Another sheet is already named “Bravo”."
+            expected = f"New name: “Charlie”: {reason}"
+            wait_for(lambda: dialog.items()[1].endswith(reason), "the conflict on Charlie's row")
+            wait_for(lambda: expected in changes.names, "the other row's reason on the edit")
+            assert field.getAccessibleName() == expected
+            assert field.getAccessibleStateSet() & FOCUSED
+            assert not dialog.state()["rename_enabled"]
+            edit("Gamma")
+            wait_for(lambda: dialog.state()["rename_enabled"], "both proposals valid again")
+            wait_for(lambda: changes.names[-1:] == ["New name:"], "the ordinary edit name")
+        finally:
+            field.removeAccessibleEventListener(changes)
+        return {"name_changes": changes.names}
+    finally:
+        keys.tap("Escape", pause=0.5)
+        wait_closed(book)
+
+
+def check_replace_conflict(book):
+    """Replace All's mnemonic focuses the button and exposes the result of each attempt."""
+    picks = ["Bravo", "Charlie"]
+    pick(book, picks)
+    keys = book.lab.input
+    dialog = open_dialog(book, picks, lambda: keys.tap("Menu", pause=0.4))
+    try:
+        button = dialog.accessible(dialog.buttons["Replace All"])
+        field = dialog.edit(dialog.name)
+        changes = NameChanges()
+        button.addAccessibleEventListener(changes)
+
+        def replace(expected, status):
+            keys.tap("n", ("Alt_L",), pause=0.2)
+            assert field.getAccessibleStateSet() & FOCUSED
+            event_count = len(changes.names)
+            keys.tap("a", ("Alt_L",), pause=0.4)
+            wait_for(lambda: len(changes.names) > event_count, "the reason on Replace All")
+            actual = dialog.status.getText()
+            assert actual == status, actual
+            assert changes.names[-1] == expected
+            assert button.getAccessibleName() == expected
+            assert button.getAccessibleStateSet() & FOCUSED
+
+        try:
+            reason = "Type the text to find first."
+            replace(f"Replace All {reason}", reason)
+            keys.tap("f", ("Alt_L",), pause=0.2)
+            type_text(book.lab, "Missing")
+            keys.tap("p", ("Alt_L",), pause=0.2)
+            type_text(book.lab, "Missing")
+            reason = "No new name contains “Missing”."
+            replace(f"Replace All {reason}", reason)
+            keys.tap("f", ("Alt_L",), pause=0.2)
+            keys.tap("a", ("Control_L",), pause=0.1)
+            type_text(book.lab, "Bravo")
+            keys.tap("p", ("Alt_L",), pause=0.2)
+            keys.tap("a", ("Control_L",), pause=0.1)
+            type_text(book.lab, "Bravo")
+            before = dialog.items()
+            reason = "The replacement did not change any proposed names."
+            replace(f"Replace All {reason}", reason)
+            assert dialog.items() == before
+            assert not dialog.state()["rename_enabled"]
+            events_before_retry = list(changes.names)
+            keys.tap("space", pause=0.4)
+            on_main_thread(book.lab.context, lambda: None)
+            assert dialog.status.getText() == reason
+            assert button.getAccessibleName() == f"Replace All {reason}"
+            assert changes.names == events_before_retry
+            keys.tap("p", ("Alt_L",), pause=0.2)
+            keys.tap("a", ("Control_L",), pause=0.1)
+            type_text(book.lab, "Echo")
+            reason = "Another sheet is already named “Echo”."
+            expected = f"Replace All “Bravo”: {reason}"
+            replace(expected, reason)
+            wait_for(lambda: dialog.items()[0].endswith(reason), "the replacement conflict")
+            assert not dialog.state()["rename_enabled"]
+            events_before_retry = list(changes.names)
+            keys.tap("space", pause=0.4)
+            on_main_thread(book.lab.context, lambda: None)
+            assert dialog.items()[0].endswith(reason)
+            assert dialog.status.getText() == reason
+            assert button.getAccessibleName() == expected
+            assert changes.names == events_before_retry
+            keys.tap("e", ("Alt_L",), pause=0.4)  # Reset All.
+            wait_for(lambda: changes.names[-1:] == ["Replace All"], "the ordinary button name")
+            assert button.getAccessibleName() == "Replace All"
+        finally:
+            button.removeAccessibleEventListener(changes)
+        return {"name_changes": changes.names}
+    finally:
+        keys.tap("Escape", pause=0.5)
+        wait_closed(book)
+
+
 def check_stale(book):
     """A target renamed elsewhere while the dialog is open: Rename refuses, and says why."""
     names = book.order()
@@ -574,13 +720,37 @@ def check_stale(book):
         wait_for(lambda: dialog.state()["rename_enabled"], "a valid batch")
         book.document.getSheets().getByName(names[3]).Name = "Elsewhere"  # Another program.
         history = book.undo_titles()
-        book.lab.input.tap("r", ("Alt_L",), pause=0.8)
-        wait_for(lambda: "changed while this dialog" in dialog.state()["status"], "the refusal")
-        evidence["refused"] = dialog.state()
+        book.lab.input.tap("n", ("Alt_L",), pause=0.2)
+        assert dialog.edit(dialog.name).getAccessibleStateSet() & FOCUSED
+        button = dialog.accessible(dialog.buttons["Rename"])
+        changes = NameChanges()
+        button.addAccessibleEventListener(changes)
+        try:
+            book.lab.input.tap("r", ("Alt_L",), pause=0.4)
+            reason = "The sheets changed while this dialog was open. Cancel and try again."
+            wait_for(lambda: dialog.status.getText() == reason, "the stale-target refusal")
+            expected = f"Rename {reason}"
+            wait_for(lambda: expected in changes.names, "the refusal on Rename")
+            assert button.getAccessibleName() == expected
+            assert button.getAccessibleStateSet() & FOCUSED
+            events_before_retry = list(changes.names)
+            book.lab.input.tap("space", pause=0.4)
+            on_main_thread(book.lab.context, lambda: None)
+            assert changes.names == events_before_retry
+            evidence["refused"] = dialog.state()
+            book.lab.screenshot("rename-sheets-stale")
+            book.lab.input.tap("n", ("Alt_L",), pause=0.2)
+            book.lab.input.tap("a", ("Control_L",), pause=0.1)
+            type_text(book.lab, "Gamma")
+            wait_for(lambda: changes.names[-1:] == ["Rename"], "the ordinary Rename name")
+            assert button.getAccessibleName() == "Rename"
+            assert dialog.state()["name"] == "Gamma"
+            evidence["name_changes"] = changes.names
+        finally:
+            button.removeAccessibleEventListener(changes)
         assert find_dialog(book) is not None, "A refused batch closed the dialog"
         assert book.order() == [n if n != names[3] else "Elsewhere" for n in names]
         assert book.undo_titles() == history
-        book.lab.screenshot("rename-sheets-stale")
         book.lab.input.tap("Escape", pause=0.5)
         wait_closed(book)
         assert book.undo_titles() == history, "Cancel after a refusal changed the document"
