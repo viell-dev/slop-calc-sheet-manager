@@ -457,7 +457,7 @@ def test_a_failed_diagnostic_never_turns_a_stall_into_a_pass(
     office = Office()
     target = office_process.Process(1, 0, "soffice.bin", 0)
 
-    def broken(*args: Any, **kwargs: Any) -> str:
+    def broken(*args: Any, **kwargs: Any) -> office_process.StackAttempt:
         raise UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")
 
     def finishes_late(context: Any, desktop: Any, directory: Path) -> dict[str, object]:
@@ -662,10 +662,10 @@ def test_a_hung_collector_cannot_keep_a_blocked_session_running(
     entered, release = threading.Event(), threading.Event()
     target = office_process.Process(1, 0, "soffice.bin", 0)
 
-    def hung(*args: Any, **kwargs: Any) -> str:
+    def hung(*args: Any, **kwargs: Any) -> office_process.StackAttempt:
         entered.set()
         release.wait(30)
-        return "too late"
+        return office_process.StackAttempt("too late")
 
     office = Office()
     times: dict[str, float] = {}
@@ -729,10 +729,10 @@ def test_no_document_close_starts_during_the_capture(
         def close(self, deliver: bool) -> None:
             closes.append(teardown.stalled_callbacks())
 
-    def stacks(*args: Any, **kwargs: Any) -> str:
+    def stacks(*args: Any, **kwargs: Any) -> office_process.StackAttempt:
         capturing.set()
         release.wait(10)
-        return "synthetic stacks"
+        return office_process.StackAttempt("synthetic stacks")
 
     def body(context: Any, desktop: Any, directory: Path) -> dict[str, object]:
         teardown.note_progress()
