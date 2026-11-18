@@ -3,10 +3,14 @@
 Keep the application in this job's temporary directory, never /Applications. Verify the DMG
 before mounting it, use LibreOffice's own Python wrapper, and let the existing runner own every
 profile/process and assertion. A prepared lane is not macOS coverage until its native run passes.
-Each command owns a new process group; timeout cleanup stops it before removing the application.
+Each command owns a new process group. Ordinary exits are audited without signals: the former
+group may take EXIT_GRACE to empty, and a member still live afterwards fails the command (#163).
+A descendant that starts its own session or group leaves the audit's view. Timeout cleanup
+allows a bounded TERM drain before escalating to KILL; a failed snapshot is never proof.
 Darwin can refuse signals to zombie-only groups; verify member states before accepting that
 case. Never reap the leader before signalling/draining its group, or signal it after reaping.
-An unverified cleanup retains the private directory. Native controls exercise both TERM and KILL.
+An unverified or interrupted cleanup retains the private directory. Native controls exercise
+both TERM and KILL. Detach the image whenever an attach may have mounted it.
 Keep the workflow timeout above the commands' combined budgets, including cleanup and upload.
 Every failure, including diagnostic collection, leaves the host result marked unsuccessful.
 """
@@ -37,6 +41,10 @@ else:
 ROOT = Path(__file__).resolve().parents[1]
 # Complete native benchmark work exceeded 20 minutes in retained phase receipts (#162).
 INTEGRATION_TIMEOUT = 30 * 60
+TERM_GRACE = 3
+KILL_GRACE = 5
+# A child may outlive its reaped client briefly and then exit on its own.
+EXIT_GRACE = 3
 
 
 class GroupCleanupError(RuntimeError):
@@ -92,6 +100,16 @@ def signal_group(group: int, sig: int, receipt: dict[str, Any]) -> None:
             raise
 
 
+def drain_group(group: int, seconds: int) -> list[dict[str, Any]]:
+    deadline = time.monotonic() + seconds
+    while True:
+        members = group_members(group)
+        remaining = deadline - time.monotonic()
+        if not live_members(members) or remaining <= 0:
+            return members
+        time.sleep(min(0.05, remaining))
+
+
 def stop_group(process: subprocess.Popen[Any], receipt: dict[str, Any]) -> None:
     if sys.platform != "darwin":
         raise RuntimeError("Private process-group cleanup requires macOS")
@@ -99,20 +117,69 @@ def stop_group(process: subprocess.Popen[Any], receipt: dict[str, Any]) -> None:
         receipt["before"] = group_members(process.pid)
     except Exception as error:
         receipt["before_error"] = repr(error)  # A diagnostic failure cannot prevent the stop.
+    receipt["term_grace_seconds"] = TERM_GRACE
+    receipt["kill_escalated"] = False
     signal_group(process.pid, signal.SIGTERM, receipt)
-    time.sleep(0.5)
-    signal_group(process.pid, signal.SIGKILL, receipt)
-    deadline = time.monotonic() + 5
-    while True:
-        members = group_members(process.pid)
-        receipt["after_signals"] = members
-        if not live_members(members):
-            break
-        if time.monotonic() >= deadline:
-            raise TimeoutError("Private process-group members remain alive after SIGKILL")
-        time.sleep(0.05)
+    members = None
+    try:
+        members = drain_group(process.pid, TERM_GRACE)
+        receipt["after_term"] = members
+    except Exception as error:
+        receipt["term_grace_error"] = repr(error)  # Not proof that TERM stopped the group.
+    if members is None or live_members(members):
+        receipt["kill_escalated"] = True
+        signal_group(process.pid, signal.SIGKILL, receipt)
+        members = drain_group(process.pid, KILL_GRACE)
+    receipt["after_signals"] = members
+    if live_members(members):
+        raise TimeoutError("Private process-group members remain alive after SIGKILL")
     process.wait(timeout=5)  # Reap only after the group is stopped. Never signal this ID again.
     receipt["cleanup_succeeded"] = True
+
+
+def audit_exited_group(group: int, returncode: int, log: Path) -> None:
+    """Observe a reaped client's former group until it empties, failing if it does not.
+
+    wait() has already reaped the leader, so the ID may be reused once the group empties: never
+    signal it. A reuse during the grace can only cause a false failure, never a false pass.
+    """
+    receipt: dict[str, Any] = {
+        "group": group,
+        "client_returncode": returncode,
+        "exit_grace_seconds": EXIT_GRACE,
+    }
+    path = log.with_suffix(".group.json")
+    cause: BaseException | None = None
+    try:
+        members = group_members(group)
+        if not live_members(members):
+            return
+        receipt["members"] = members
+        members = drain_group(group, EXIT_GRACE)
+        receipt["after_grace"] = members
+    # An interrupted audit leaves the group unverified, so it must also retain the application.
+    except BaseException as error:
+        cause = error
+        receipt["audit_error"] = repr(error)
+        reason = f"the audit failed: {error!r}"
+    else:
+        remaining = len(live_members(members))
+        if not remaining:
+            # Keep evidence of the late exit; a failure to write it fails the command.
+            receipt["proved_stopped"] = True
+            path.write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
+            return
+        reason = f"{remaining} live member(s) remained after {EXIT_GRACE} s"
+    receipt["proved_stopped"] = False
+    failure = GroupCleanupError(
+        f"Private group {group} could not be proved stopped after the client exited with "
+        f"status {returncode}: {reason}"
+    )
+    try:
+        path.write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
+    except Exception as error:
+        failure.add_note(f"Retaining group audit diagnostics also failed: {error!r}")
+    raise failure from cause
 
 
 @contextmanager
@@ -167,7 +234,7 @@ def run(command: list[str], log: Path, environment: dict[str, str], timeout: int
             start_new_session=True,
         )
         try:
-            process.wait(timeout=timeout)
+            returncode = process.wait(timeout=timeout)
         except subprocess.TimeoutExpired as failure:
             receipt: dict[str, Any] = {
                 "command": command,
@@ -178,7 +245,7 @@ def run(command: list[str], log: Path, environment: dict[str, str], timeout: int
             cleanup_error = None
             try:
                 stop_group(process, receipt)
-            except BaseException as error:
+            except BaseException as error:  # An interrupted stop is unverified too.
                 cleanup_error = error
                 receipt["cleanup_error"] = repr(error)
             try:
@@ -192,15 +259,34 @@ def run(command: list[str], log: Path, environment: dict[str, str], timeout: int
                     f"Private group {process.pid} cleanup failed: {cleanup_error}"
                 ) from failure
             raise
-        if process.returncode:
-            raise subprocess.CalledProcessError(process.returncode, command)
+        except BaseException as error:
+            # The leader stays unreaped and its group unverified, so the application is retained.
+            raise GroupCleanupError(f"Private group {process.pid} wait was interrupted") from error
+        audit_exited_group(process.pid, returncode, log)
+        if returncode:
+            raise subprocess.CalledProcessError(returncode, command)
 
 
 def timeout_controls(output: Path, environment: dict[str, str]) -> None:
     """Prove native stopped-group handling before running an installed application."""
     controls = {}
+    term_child = (
+        "import signal,time\n"
+        "def stop(signum, frame):\n"
+        "    time.sleep(1)\n"
+        "    print('term-child-drained', flush=True)\n"
+        "    raise SystemExit(0)\n"
+        "signal.signal(signal.SIGTERM, stop)\n"
+        "print('term-child-ready', flush=True)\n"
+        "time.sleep(60)\n"
+    )
     for name, source in (
-        ("term", "import time; print('term-ready', flush=True); time.sleep(60)"),
+        (
+            "term",
+            "import subprocess,sys,time; "
+            f"subprocess.Popen([sys.executable, '-c', {term_child!r}]); "
+            "print('term-parent-ready', flush=True); time.sleep(60)",
+        ),
         (
             "kill",
             "import signal,subprocess,sys,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); "
@@ -221,9 +307,7 @@ def timeout_controls(output: Path, environment: dict[str, str]) -> None:
                 raise AssertionError(
                     f"The {name} timeout control left an unverified group"
                 ) from failure
-            expected = (
-                ["term-ready"] if name == "term" else ["kill-parent-ready", "kill-child-ready"]
-            )
+            expected = [f"{name}-parent-ready", f"{name}-child-ready"]
             text = log.read_text("utf-8")
             if not all(marker in text for marker in expected) or len(
                 live_members(receipt.get("before", []))
@@ -231,6 +315,12 @@ def timeout_controls(output: Path, environment: dict[str, str]) -> None:
                 raise AssertionError(
                     f"The {name} timeout control did not finish setup"
                 ) from failure
+            if receipt.get("kill_escalated") is not (name == "kill"):
+                raise AssertionError(
+                    f"The {name} timeout control escalated incorrectly"
+                ) from failure
+            if name == "term" and "term-child-drained" not in text:
+                raise AssertionError("The cooperative child did not drain after TERM") from failure
             controls[name] = receipt
         else:
             raise AssertionError(f"The {name} timeout control did not fail at its deadline")
@@ -256,16 +346,20 @@ def install(
         )
     mount = temporary / "mount"
     mount.mkdir()
-    run(
-        ["hdiutil", "attach", "-nobrowse", "-readonly", "-mountpoint", str(mount), str(image)],
-        output / "mount.log",
-        environment,
-    )
     app = temporary / "LibreOffice.app"
+    attached = False
     try:
+        # A failed attach can still have mounted the image, for example when its group audit fails.
+        run(
+            ["hdiutil", "attach", "-nobrowse", "-readonly", "-mountpoint", str(mount), str(image)],
+            output / "mount.log",
+            environment,
+        )
+        attached = True
         run(["ditto", str(mount / "LibreOffice.app"), str(app)], output / "copy.log", environment)
     finally:
-        run(["hdiutil", "detach", str(mount)], output / "unmount.log", environment)
+        if attached or mount.is_mount():
+            run(["hdiutil", "detach", str(mount)], output / "unmount.log", environment)
     return app
 
 

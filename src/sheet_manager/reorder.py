@@ -131,8 +131,8 @@ def plan_order(sheets: Sequence[Sheet], target: Sequence[str]) -> Plan:
 def _plan_order(sheets: tuple[Sheet, ...], destination: tuple[str, ...]) -> Plan:
     # A maximum-weight increasing subsequence keeps complete scenario blocks still.
     # Any common subsequence extends to the whole of each block it intersects.
-    # A Fenwick prefix-maximum tree finds that subsequence in O(B log B).
-    # Simulating the K actual moves with Python lists costs O(KN).
+    # A Fenwick prefix-maximum tree finds that subsequence in O(B log B), and a Fenwick count
+    # tree gives each move's index in O(log N), so planning costs O(N log N) (#214).
     groups = blocks(sheets)
     before = tuple(sheet.name for sheet in sheets)
     ordered = ordered_blocks(sheets, destination)
@@ -160,20 +160,53 @@ def _plan_order(sheets: tuple[Sheet, ...], destination: tuple[str, ...]) -> Plan
     while cursor >= 0:
         keep.update(ordered[cursor])
         cursor = previous[cursor]
-    work = list(before)
+    return Plan(tuple(sheets), destination, _moves(before, destination, keep))
+
+
+def _moves(
+    before: tuple[str, ...], destination: tuple[str, ...], keep: set[str]
+) -> tuple[Move, ...]:
+    """Move every sheet not kept, right to left, directly in front of its successor in the target.
+
+    Each run of moved sheets then stands together directly in front of the next kept sheet in the
+    target, or at the end, so the sheets moved before stand behind the moving sheet's place, and
+    the sheets not yet moved keep their original order. So a move's final index is the number of
+    sheets not yet moved that started in front of that kept sheet, or all of them, less one if the
+    moving sheet is among them. The sheet needs no call when it is the last of them; one that
+    started behind the kept sheet always moves. A Fenwick tree over the original positions counts
+    the sheets not yet moved, so each move costs O(log N).
+    """
+    count = len(before)
+    tree = [0] * (count + 1)  # One-based counts of the sheets not yet moved.
+    for node in range(1, count + 1):
+        tree[node] += 1
+        parent = node + (node & -node)
+        if parent <= count:
+            tree[parent] += tree[node]
+
+    def unmoved_in_front(index: int) -> int:
+        total = 0
+        while index:
+            total += tree[index]
+            index -= index & -index
+        return total
+
+    position = {name: index for index, name in enumerate(before)}
     moves: list[Move] = []
-    anchor: str | None = None
+    kept = count  # The original position of the next kept sheet in the target, or the end.
     for name in reversed(destination):
-        if name not in keep:
-            source = work.index(name)
-            following = len(work) if anchor is None else work.index(anchor)
-            final_index = following - (source < following)
-            if source != final_index:
-                moves.append(Move(name, final_index))
-                work.insert(final_index, work.pop(source))
-        anchor = name
-    assert tuple(work) == destination
-    return Plan(tuple(sheets), destination, tuple(moves))
+        index = position[name]
+        if name in keep:
+            kept = index
+            continue
+        final_index = unmoved_in_front(kept) - (index < kept)
+        if unmoved_in_front(index) != final_index:
+            moves.append(Move(name, final_index))
+        node = index + 1
+        while node <= count:
+            tree[node] -= 1
+            node += node & -node
+    return tuple(moves)
 
 
 def plan_move(

@@ -104,8 +104,8 @@ different zlib versions cannot change the result. Add new shipped modules to the
 
 The OXT also includes one English XHP quick-help page, registered through its manifest as an
 extension help component. LibreOffice compiles it during installation; no HelpLinker SDK or
-generated help databases are shipped. Keep its short guidance consistent with the guide when
-changing selection, movement or recovery. The online guide remains the detailed manual.
+generated help databases are shipped. For reviewing shipped text and the online guide, follow the
+[affected-surface review in AGENTS.md](AGENTS.md#public-surfaces-and-documentation).
 
 ## Tests
 
@@ -188,8 +188,11 @@ python tools/linux_integration.py unsupported
 The helper builds `ci/Dockerfile`, verifies the repository-pinned TDF archive checksum, builds the
 extension, and runs the container unprivileged with networking disabled. Source and the OXT are
 mounted read-only; only `test-results/<lane>/` is writable on the host. On Linux, run as a non-root
-user: the helper maps that user's UID/GID into the container so artifacts remain writable. The
-container has a temporary home directory. It uses Xvfb and Openbox inside the container and
+user against a rootful Docker daemon without `userns-remap`: the helper maps the host user's
+UID/GID directly into the container so artifacts remain writable. For a rootless or remapped
+daemon, select a compatible context with `docker context ls` and `docker context use`. Docker
+Desktop on Windows is supported. The container has a temporary home directory. It uses Xvfb
+and Openbox inside the container and
 never mounts a host display socket. `--skip-build` reuses only an image matching the Dockerfile,
 lane pin and host UID/GID; a missing or outdated image is rebuilt. `--sessions headless` (the
 default), `--sessions gtk3`, and `--sessions both` select independent office sessions. Painted
@@ -232,6 +235,8 @@ A real-input regression pauses for one second with Down pressed and still expect
 step. These tests exercise explicit key events, not the operating system's timed repeat behavior.
 
 Inside the container, `tests/ui/run_ui.py --check NAME` (repeatable) selects checks.
+`run_ui.py` lists the checks in order; they live in `tests/ui/*_checks.py` by subject, with the
+shared workbook fixture and its rules in `workbook.py`.
 Results and screenshots are in `test-results/<lane>/ui-gtk3/` and `ui-gen/`.
 Windows synthetic input bypasses key handlers and cannot start a native drag; use the
 [visible Windows desktop](#visible-windows-desktop) workflow for those paths. Human usability
@@ -305,6 +310,11 @@ and Intel macOS headless packaged integration and lifecycle.
 Its **Full release sweep** aggregate requires every lane. Any test or shutdown failure fails the
 job; artifacts are required, and no error message is an allowed crash.
 
+The sweep's Linux gtk3 jobs upload `linux-gtk3-<lane>-painted` before starting real input.
+Input requires successful painted integration and evidence upload. Both phases retain their
+console output in `test-results/ci/`. If the job is interrupted during input, start with the
+painted artifact and the job log.
+
 Batch cross-platform sweeps to at most once per week, on demand rather than on every PR. Check the
 recent Actions history and record the chosen revision and last platform run in the release issue
 before dispatch. If that revision changes, its sweep cannot authorize another revision: finish
@@ -328,9 +338,10 @@ Windows session 0. The workflow installs the MSI pinned in `ci/libreoffice.json`
 Tip of the Day and the first-start dialog turned off, and the synthetic 80-sheet workbook
 maximised to the desktop with the Sheet Manager deck shown. `tests/ui/winput.py` sends keys and
 pointer input through Windows' `SendInput` with the same interface as the X11 helper, so the suite
-runs the checks of `run_ui.py` and `rename_dialog.py` themselves rather than copies, and reads the
-results back through public UNO as on Linux. Window and screen geometry are read from the live
-desktop; nothing assumes the runner's present 1024×768 screen at 96 DPI.
+runs the shared checks of `tests/ui/*_checks.py` and `rename_dialog.py` themselves rather than
+copies, with `workbook.py`'s fixture and `check_loop.py`'s loop, and reads the results back
+through public UNO as on Linux. Window and screen geometry are read from the live desktop;
+nothing assumes the runner's present 1024×768 screen at 96 DPI.
 
 The [verification map](docs/verification.md#the-visible-windows-desktop) identifies the shared
 checks this workflow runs and the paths it does not cover. Its artifacts establish functional
@@ -346,9 +357,13 @@ screen, DPI, keyboard layout), each check's result, and the office's exit status
 and crash dumps; `ui-win/checks.json`, with each check's evidence or traceback and its duration;
 screenshots taken at menus, dialogs and drags; and the office log and the built OXT. A failed
 check also leaves `failed-<check>.png`, and its entry in `checks.json` records the foreground
-window, the pointer position and the office's visible top-level windows. The job fails on a failed
-check, an extension error in the office log, a nonzero exit, a forced shutdown, a fatal message or
-a crash dump, as the integration runner does; only startup is retried.
+window, the pointer position and the office's visible top-level windows. On both platforms that
+entry is written before the screenshot and desktop evidence are taken and held input is
+released; a step that fails adds its traceback under `diagnostic_errors`, keeping the check's
+own error and the remaining steps
+([#190](https://github.com/viell-dev/slop-calc-sheet-manager/issues/190)). The job fails on a
+failed check, an extension error in the office log, a nonzero exit, a forced shutdown, a fatal
+message or a crash dump, as the integration runner does; only startup is retried.
 
 Never run the suite on your own computer: its input goes to whatever has the focus.
 `winput.WinInput` refuses to start unless `SHEET_MANAGER_REAL_DESKTOP=1` is set, which only the
@@ -374,6 +389,16 @@ a contributor's existing installation. The existing integration runner supplies 
 synthetic fixtures, lifecycle checks and shutdown assertions. The artifact includes interpreter,
 version, installer and integration logs, plus new user diagnostic reports identifying that
 private app. System-wide or delayed crash reports are not established by this collection.
+
+Each native command runs in its own process group. After an ordinary exit, including a nonzero
+one, the helper watches the former group for up to three seconds without sending signals. A
+member still alive after that, or a failed or interrupted observation, fails the command, retains
+the private application and leaves a `*.group.json` receipt where possible; a member that exits
+within the bound is recorded in the same receipt without failing. A descendant that starts its
+own session or process group is outside this audit. A command timeout still fails: its
+`*.timeout.json` receipt records a three-second TERM drain and any escalation to KILL, and the
+leader is reaped only after its group has stopped. A failed attach that left the image mounted
+is still detached.
 
 Dispatch focused checks with `gh workflow run macos.yml --ref <branch>`, respecting the platform
 cadence above. Coverage is Intel macOS 15 headless packaged integration and lifecycle, with the
@@ -452,12 +477,12 @@ npm run docs:dev
 ```
 
 `npm run docs:build` builds it as CI does; a broken link between pages fails the build.
-`python tools/check_release_page.py` also builds empty and synthetic release histories, checking
-channel separation, version order, rendered OXT/checksum links, and markers beside instructions
-that are not published yet. It covers preparation with old history, publication, and an older
-stable release alongside a newer test build, in the required docs job.
-Its disposable build output uses the operating system's temporary directory; it never publishes
-a build.
+`python tools/check_release_page.py` also builds synthetic histories in the required docs job.
+It checks channel separation, version order, OXT/checksum links, and guide instructions before
+and after publication of the source version, including an older stable release beside a newer
+test build. A small fixture site renders the actual marker component across every numeric
+version found in the guide and the source version in one build. The check uses disposable
+fixtures and output.
 Some Windows security policies block the native module that VitePress's bundler loads. Then build in a
 container, from the repository root in PowerShell 7, and find the site in `test-results/docs/`:
 
@@ -471,11 +496,17 @@ docker run --rm --env "SHEET_MANAGER_DOCS_COMMIT=$(git rev-parse HEAD)" `
 
 Write for users of the extension. A user-visible change updates the guide in the same pull
 request. Mark new behaviour where it appears with an inline `<Unreleased />` inside its paragraph
-(for example, `Move buttons: <Unreleased /> ...`). When preparing its release, set
+(for example, `Move buttons: <Unreleased /> ...`). Put the marker after introductory text on the
+same line, since Markdown can render a line that starts with the tag as a separate HTML block.
+When preparing its release, set
 `<Unreleased since="VERSION" />` to the first numeric version containing it; keep that marker
 in the source. The site shows **Unreleased** until published history reaches that version in the
 latest stable release, or the newest test build before any stable release. A source version,
 tag, or draft does not establish availability. An abandoned preparation keeps its markers.
+New marker versions automatically enter the component check. When a new marked capability
+needs its placement beside a particular instruction checked, add a distinctive excerpt to
+`FIRST_PUBLISHED` in `tools/check_release_page.py` when assigning its first published version.
+Update that excerpt if you rewrite the checked instruction.
 Documentation-only corrections use the same build and synthetic-history checks and deploy from
 `main` without changing a software version or tag; verify the deployed notice's source commit.
 Every page is listed in the sidebar in `docs/.vitepress/config.mts`, and
