@@ -5,6 +5,9 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Enter, type-ahead and the keyboard menu key no longer report a failure on stderr when the
+  document or the sidebar closes between the key and its queued work, which now does nothing
+  once the list is closed ([#282](https://github.com/viell-dev/slop-calc-sheet-manager/issues/282)).
 - A double click in the list now activates its sheet after the mouse listener returns, as Enter
   already did: LibreOffice runs that listener without the global lock that reading Calc's
   selected tabs needs ([#269](https://github.com/viell-dev/slop-calc-sheet-manager/issues/269)).
