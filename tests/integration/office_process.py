@@ -517,7 +517,12 @@ class StallWatch:
                 "office_processes", lambda: self.find(process.pid, end - time.monotonic())
             )
             if targets == []:
-                self._update(office_search="no soffice.bin among the session's processes")
+                searched = sys.platform in ("linux", "win32")
+                self._update(
+                    office_search="no soffice.bin among the session's processes"
+                    if searched
+                    else f"native stacks are not read on {sys.platform}"
+                )
             interrupted = False
             for target in targets or []:
                 path = self.output / f"{self.prefix}-office-{target.pid}-stacks.txt"

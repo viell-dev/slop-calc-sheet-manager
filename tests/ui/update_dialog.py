@@ -356,6 +356,8 @@ def main():
     parser.add_argument("--backtrace", action="store_true")
     arguments = parser.parse_args()
     arguments.output.mkdir(parents=True, exist_ok=True)
+    for stale in arguments.output.rglob("stall-*"):  # An earlier run's stall evidence (#45).
+        stale.unlink()
     result: dict[str, object] = {"vcl": "gen"}
     try:
         # Deployment state survives our controlled restart, then the profile is removed.
