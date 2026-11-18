@@ -176,3 +176,55 @@ def rename_candidates(book, dialog, record, marker):
         dialog.name.setProperty("AccessibleName", "")
         dialog.name.setProperty("HelpText", "The selected sheet's new name.")
         dialog.status.setProperty("AccessibleName", "")
+def stock_sidebar(book, record, marker):
+    """A stock TreeControl parented by the same sidebar window as Sheet Manager's tree."""
+    context = book.lab.context
+    manager = context.ServiceManager
+    controls = []
+
+    def setup():
+        create = manager.createInstanceWithContext
+        model = create("com.sun.star.awt.tree.TreeControlModel", context)
+        model.Border = 0
+        model.RootDisplayed = False
+        data = create("com.sun.star.awt.tree.MutableTreeDataModel", context)
+        root = data.createNode("Root", False)
+        for name in ("Sidebar control Alpha", "Sidebar control Bravo", "Sidebar control Charlie"):
+            root.appendChild(data.createNode(name, False))
+        data.setRoot(root)
+        model.DataModel = data
+        control = create("com.sun.star.awt.tree.TreeControl", context)
+        control.setModel(model)
+        control.createPeer(book.panel.getToolkit(), book.panel)
+        control.setPosSize(4, 15, 210, 90, 15)
+        peer = control.getPeer()
+        peer.setProperty("AccessibleName", "Stock sidebar tree")
+        control.setVisible(True)
+        book.tree.setVisible(False)
+        node = acc(peer)
+        listener = Events()
+        node.addAccessibleEventListener(listener)
+        controls.extend([control, node, listener])
+
+    on_main_thread(context, setup)
+    control, node, listener = controls
+    try:
+        marker("Focus stock sidebar tree by click and then Down")
+        x, y, _, _ = describe(node)["screen"]
+        Pointer(book.lab.input, (0, 0)).click(x + 26, y + 11)
+        book.lab.input.tap("Down", pause=0.8)
+        if book.lab.input.__class__.__name__ == "WinInput":
+            marker("Report NVDA focus on stock sidebar tree via Insert+Tab")
+            book.lab.input.tap("Tab", ("Insert",), pause=0.8)
+        marker("Stock sidebar tree focus complete")
+        record["stock_sidebar_tree"] = {
+            "tree": describe(node), "events": listener.report(),
+            "hierarchy": walk(context, book.panel, control.getPeer()),
+        }
+        book.lab.screenshot("stock-sidebar")
+    finally:
+        def clear():
+            node.removeAccessibleEventListener(listener)
+            control.dispose()
+            book.tree.setVisible(True)
+        on_main_thread(context, clear)

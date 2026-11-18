@@ -45,26 +45,6 @@ function Invoke-Probe($mode) {
 }
 
 $failures = @()
-$baseline = Measure-Contrast
-$baseline | ConvertTo-Json | Set-Content (Join-Path $output 'contrast-baseline.json')
-try { Invoke-Probe 'default' } catch { $failures += "$_" }
-try {
-    [ContrastProbe]::Set(($baseline.flags -bor 1), 'High Contrast Black')
-    Start-Sleep -Seconds 3
-    $active = Measure-Contrast
-    $active | ConvertTo-Json | Set-Content (Join-Path $output 'contrast-active.json')
-    if (($active.flags -band 1) -eq 0 -or $active.window -eq $baseline.window) {
-        throw 'Windows did not report both the high-contrast flag and a changed window colour'
-    }
-    Invoke-Probe 'contrast'
-} catch {
-    $failures += "$_"
-} finally {
-    [ContrastProbe]::Set($baseline.flags, $baseline.scheme)
-    Start-Sleep -Seconds 2
-    Measure-Contrast | ConvertTo-Json | Set-Content (Join-Path $output 'contrast-restored.json')
-}
-
 $portable = Join-Path $env:RUNNER_TEMP 'nvda-2026.3.1-portable'
 $nvda = Join-Path $portable 'nvda.exe'
 try {

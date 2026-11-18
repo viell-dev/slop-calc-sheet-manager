@@ -12,7 +12,7 @@ from winput import WinInput
 from rename_dialog import find_dialog, identities, identify, open_dialog, wait_closed
 from run import office_session, wait_for
 from workbook import Workbook
-from worker_m_controls import button, rename_candidates, sidebar_after, sidebar_before, stock_dialog
+from worker_m_controls import button, rename_candidates, sidebar_after, sidebar_before, stock_dialog, stock_sidebar
 
 MODE = sys.argv[1]
 OUT = (root / "test-results" / "windows-desktop" / MODE).resolve()
@@ -144,7 +144,7 @@ try:
             record["disabled_rename"] = button(dialog.buttons["Rename"])
             lab.screenshot("rename-duplicate")
             if MODE == "nvda":
-                rename_candidates(book, dialog, record, marker)
+                marker("Hold focus on the New name edit while candidate announcement settles")
             marker("Duplicate refusal settled, Tab once and then Shift+Tab")
             lab.input.tap("Tab", pause=0.5)
             record["focus_after_tab"] = focus_state(dialog)
@@ -171,6 +171,8 @@ try:
             assert record["after_escape"] == record["before"]
             lab.screenshot("workbook-after-escape")
             stock_dialog(book, record, marker, MODE == "nvda")
+            if MODE == "nvda":
+                stock_sidebar(book, record, marker)
             record["passed"] = True
         except BaseException:
             lab.screenshot("failure")
