@@ -262,6 +262,7 @@ def test_retries_stop_after_the_limit_instead_of_looping() -> None:
 
 
 def test_disposal_cancels_a_pending_retry() -> None:
+    """Also a construction that failed before the tab observer existed: there is no `_tabs`."""
     timer = SimpleNamespace(cancel=Mock())
     refreshes = RefreshSchedule(Mock(return_value=timer), Mock())
     refreshes.schedule(0.5)

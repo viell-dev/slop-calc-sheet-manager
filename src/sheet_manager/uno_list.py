@@ -445,8 +445,11 @@ class _Document(unohelper.Base, XModifyListener, XActivationEventListener):
 class SheetList:
     """The coordinator of one panel's sheet list: its controls, picks, input and actions.
 
-    Threads. Listener callbacks only record state or post work (`MainThread.post`); everything
-    else runs on LibreOffice's main thread, and posted work re-checks what it relies on.
+    Threads. Listener callbacks only record state or post work through `MainThread`; everything
+    else runs on LibreOffice's main thread, and posted work re-checks what it relies on. The
+    modify listener reaches the refresh schedule on the notifying thread (`document_modified`,
+    `RefreshSchedule.changed`), and toolkit listeners reach the tab observer only through
+    `TabObserver.note_input`.
 
     Collaborators, each owning its own state: `_refreshes` decides when to refresh
     (`refresh_schedule`), `_tabs` follows Calc's tabs and the sidebar (`uno_tabs`, for which this
@@ -465,17 +468,30 @@ class SheetList:
     follow, and `_activation_input` counts successful activations, which revoke older menu
     restoration.
 
-    Barriers. While any of these holds, native selection, cursor and tab changes are not taken as
-    the user's: `_pointer_depth` (inside a mouse listener), `_press` (a held left press, voided by
-    a drop of all picks), `_selection_write_pending` (a coalesced tree write is queued),
-    `_restoring_cursor` (the list is writing the tree), `_context_target` and `_menu_context` (a
-    right-click target, an open or completing menu), `_drag`, `_busy` (a move or rename runs),
-    and `_activating` (the list's own `setActiveSheet`).
+    Barriers keep the list's own transient state from being taken as the user's. Each guards
+    only the operations named here:
 
-    Disposal. `dispose` closes the posting queue and the refresh schedule, then `_cleanup`
-    releases in reverse creation order: the listeners, the controls, then the tab observer.
-    Work posted earlier still runs, so each part checks its own disposal when it does. A failed
-    construction disposes what it had created.
+    - Native tree-selection intake (`_take_tree_selection`, also when a refresh or a tab sample
+      defers it) waits while `_pointer_depth` (inside a mouse listener), `_press` (a held left
+      press, voided by a drop of all picks), `_selection_write_pending` (a coalesced tree write
+      is queued), `_context_target` (a right-click target) or `_menu_context` (an open or
+      completing menu) holds. Native cursor intake (`cursor_changed`) waits for the same, and
+      also while `_restoring_cursor` (the list is writing the tree).
+    - Tab observation (`observation_paused`) waits while `_busy` (a move or rename runs),
+      `_pointer_depth`, `_restoring_cursor`, `_press`, `_drag`, the menu's popup or
+      `_menu_context` holds; the observer adds the document's locks and an own replay's view. A
+      pending tree write alone does not pause it: the owned input behind that write raised
+      `_input` and posted an acknowledgement, which keep a sample from following Calc state
+      older than that input.
+    - `_activating` (the list's own `setActiveSheet`) makes Calc's report of that switch the
+      list's own, so it is not followed. `_busy` also defers timed refreshes and refuses moves
+      and drags.
+
+    Disposal. `dispose` closes the posting queue, the refresh schedule and the tab observer
+    first, then `_cleanup` releases the listeners and controls in reverse creation order.
+    Closing the queue does not revoke work already queued, which runs after `dispose` or, if a
+    native release dispatches events, during it; so each part checks its own disposal when such
+    work runs. A failed construction disposes what it had created.
     """
 
     def __init__(self, context, frame, parent_window):
@@ -535,8 +551,8 @@ class SheetList:
         # switch; newer input in the list wins over it.
         self._input = 0
         self._activation_input = 0  # A newer successful activation revokes old menu restoration.
-        # Before any control or listener, so that all input finds it. Released last: until
-        # `start`, it has no timer, and its own disposal rejects work already posted.
+        # Before any control or listener, so that all input finds it; `dispose` disposes it
+        # before releasing them.
         self._tabs = TabObserver(
             self._main,
             frame,
@@ -547,7 +563,6 @@ class SheetList:
             self,
             self._proven,
         )
-        self._release_with(self._tabs.dispose)
         self._follow_input: int | None = None
         self._activating = False  # The list's own setActiveSheet call is running.
         self._press: _Press | None = None
@@ -673,6 +688,11 @@ class SheetList:
         self._main.closed = True
         self._scroll = 0
         self._refreshes.close()
+        # Before the native release below: if that dispatches events, a tick or acknowledgement
+        # already queued runs, and closing the queue does not revoke it. A failed construction
+        # may not have created the observer yet.
+        if hasattr(self, "_tabs"):
+            self._tabs.dispose()
         self._notice_token = None
         if self._notice_timer is not None:
             self._notice_timer.cancel()

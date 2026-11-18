@@ -93,9 +93,11 @@ def test_closing_cancels_the_timer_and_refuses_new_ones() -> None:
     due = Mock()
     refreshes = RefreshSchedule(later, due)
     refreshes.changed()
+    assert refreshes.pending
     work = later.call_args.args[1]
     refreshes.close()
     timer.cancel.assert_called_once_with()
+    assert not refreshes.pending
     work()  # Already queued when the list was disposed.
     due.assert_not_called()
     refreshes.changed()

@@ -5,6 +5,7 @@ host is a fake list built from `SheetList`'s own `TabHost` methods, so these che
 how the list pauses observation and follows Calc.
 """
 
+import contextlib
 import time
 from collections.abc import Mapping
 from types import SimpleNamespace
@@ -469,6 +470,63 @@ def test_disposal_cancels_the_chain_and_rejects_an_already_queued_tick() -> None
     tick()  # Already in the native queue when the list was disposed.
     tabs.visible.assert_not_called()
     assert live.main.later.call_count == 1
+
+
+def shown_sidebar(owner: Any, live: Any) -> None:
+    """Make `visible()` find the list's deck shown and its panel expanded."""
+    panel = SimpleNamespace(isExpanded=lambda: True)
+    panels = SimpleNamespace(getByName=Mock(return_value=panel))
+    deck = SimpleNamespace(isActive=lambda: True, getPanels=lambda: panels)
+    decks = SimpleNamespace(getByName=Mock(return_value=deck))
+    sidebar = SimpleNamespace(isVisible=lambda: True, getDecks=lambda: decks)
+    owner.controller.getSidebar = lambda: sidebar
+    live.frame.getController = Mock(return_value=owner.controller)
+    live.frame.getContainerWindow = lambda: SimpleNamespace(IsMinimized=False)
+
+
+@pytest.mark.parametrize("queued", ["tick", "acknowledgement"])
+def test_list_disposal_rejects_observer_work_that_runs_during_its_cleanup(queued: str) -> None:
+    """Work already queued runs if releasing the list's listeners or controls dispatches events.
+
+    Closing the posting queue cannot revoke it, so the list disposes the observer before that
+    release. The work may not read Calc's view, follow its tabs, or schedule another sample.
+    """
+    owner, tabs, live = observer()
+    shown_sidebar(owner, live)
+    timer = SimpleNamespace(cancel=Mock())
+    live.main.later.return_value = timer
+    tabs.start()
+    if queued == "tick":
+        work = live.main.later.call_args.args[1]
+    else:
+        tabs.note_input()
+        work = live.main.post.call_args.args[0]
+    live.indices = (0, 2)  # A tab change that a live tick would follow.
+    owner._main, owner._scroll = live.main, 1
+    owner._refreshes = SimpleNamespace(close=Mock())
+    owner._notice_token, owner._notice_timer = None, None
+    owner._cleanup = contextlib.ExitStack()
+    owner._cleanup.callback(work)  # Run by a native release, such as removing a listener.
+    method(SOURCE, "SheetList", "dispose", {})(owner)
+    live.frame.getController.assert_not_called()
+    live.invoke.assert_not_called()
+    owner._select.assert_not_called()
+    assert live.main.later.call_count == 1
+    timer.cancel.assert_called_once_with()
+
+
+def test_stop_schedules_no_further_sample_but_an_outstanding_tick_runs_once() -> None:
+    owner, tabs, live = observer()
+    tabs.start()
+    tick = live.main.later.call_args.args[1]
+    tabs.visible = Mock(return_value=True)
+    tabs.stop()
+    live.indices = (0, 2)
+    tick()  # Scheduled before the stop: it still samples, and can follow, once.
+    owner._select.assert_called_once_with(["Alfa", "Charlie"], "Alfa")
+    assert live.main.later.call_count == 1  # It schedules no successor.
+    tabs.acknowledge()  # Nor does a later acknowledgement sample again.
+    assert tabs.visible.call_count == 1
 
 
 def test_calcs_view_during_an_own_replay_is_neither_followed_nor_a_baseline() -> None:

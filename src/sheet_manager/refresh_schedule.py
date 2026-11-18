@@ -13,11 +13,18 @@ This class decides only when. `uno_list.SheetList`, its one owner, decides wheth
 refresh waits during Calc's replay of an Undo and is skipped while a move runs, which refreshes
 when it ends.
 
-Contract: use one instance per list, only on LibreOffice's main thread. It owns the refresh timer
-and the timing state. At most one timer is pending; `close` cancels it and refuses new ones, so
-a timer already queued when the list is disposed does nothing. `stale` holds from the first
-change not yet shown until a refresh succeeds. It imports no UNO, so tests drive it with a fake
-clock and timers.
+Contract: use one instance per list. `changed` is the list's modify-listener entry point and can
+run on the notifying thread (`uno_list.SheetList.document_modified`). It only records the
+change's time and staleness and schedules the timer through `later`, which waits on a thread of
+its own and then posts to the main thread (`uno_calc.MainThread.later`), as listeners may. Every
+other method, and the timer's work, runs on LibreOffice's main thread. The class takes no lock:
+it relies on LibreOffice's main lock, which listeners and the main thread hold
+(`uno_calc.start_thread`), to order `changed` against that work.
+
+It owns the refresh timer and the timing state. At most one timer is pending; `close` cancels it
+and refuses new ones, so a timer already queued when the list is disposed does nothing, and
+`pending` is false from then on. `stale` holds from the first change not yet shown until a
+refresh succeeds. It imports no UNO, so tests drive it with a fake clock and timers.
 """
 
 import time
@@ -67,8 +74,8 @@ class RefreshSchedule:
 
     @property
     def pending(self) -> bool:
-        """Whether a refresh timer is waiting."""
-        return self._timer is not None
+        """Whether a refresh timer is waiting; never after `close`, which cancels it."""
+        return self._timer is not None and not self._closed
 
     def close(self) -> None:
         self._closed = True
@@ -91,7 +98,10 @@ class RefreshSchedule:
             self.cost = self.refreshed_at - started
 
     def changed(self) -> None:
-        """A document change: refresh once changes pause, or at the latest after a bounded wait."""
+        """A document change: refresh once changes pause, or at the latest after a bounded wait.
+
+        The one method a listener calls, possibly on another thread; it only records and posts.
+        """
         now = self._clock()
         self.changed_at = now
         self._mark_stale(now)

@@ -28,9 +28,10 @@ posts. The observer owns its timer chain, the cached sidebar wrappers, and the b
 sampled active sheet and tabs, with the names, the structure generation, and the host's input
 count they were sampled at. A sample follows Calc only when the state changed from that baseline,
 under the same names and generation, with no newer host input, no pending acknowledgement, and no
-native picks still awaiting the host's queued intake. `stopped` ends observation for good once
-the view is gone; `dispose` also rejects queued ticks. The host owns the picks and decides how
-to follow (`TabHost`).
+native picks still awaiting the host's queued intake. `stop` ends observation for good once the
+view is gone, although a tick already scheduled still samples once; `dispose` also rejects
+queued ticks and acknowledgements, and the host disposes the observer before releasing its own
+listeners and controls. The host owns the picks and decides how to follow (`TabHost`).
 """
 
 from typing import Any, Protocol
@@ -123,7 +124,12 @@ class TabObserver:
         return self._stopped
 
     def stop(self) -> None:
-        """The view is gone, for example while a menu command ran: observe it no more."""
+        """The view is gone, for example while a menu command ran: schedule no further sample.
+
+        A tick already scheduled still runs once, and can follow Calc's tabs if the view is in
+        fact still shown; acknowledgements and refreshes no longer sample. `dispose` also
+        rejects that tick.
+        """
         self._stopped = True
 
     def start(self) -> None:
