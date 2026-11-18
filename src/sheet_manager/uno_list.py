@@ -453,16 +453,16 @@ class SheetList:
     `TabObserver.note_input`. VCL runs the mouse listeners on the main thread, from one user
     event it posts after its own input handling, but releases the solar mutex around them
     (`VCLXWindow`'s callback queue; measured with gtk3 and gen in 26.2.1.2 and 26.8.2.2). Their
-    reads and writes of the list's tree and buttons are toolkit calls, which take the mutex
-    themselves; Calc's tab getter does not, so a double click posts its activation, as Enter
-    does (#269). The drag gesture is the exception: VCL calls its listener within
-    its own mouse-move handling, rather than queued as the mouse listeners are, and `start_drag`
-    starts the drag there, with the gesture's event as `startDrag`'s trigger. Before that it
-    checks `_current_picks`, which can write the list's own tree and buttons as the mouse
-    handlers do, the document's read-only and protection flags, and `is_current`, which reads
-    the sheets and the retained handles. None of these reads Calc's view or tabs. A drag on
-    stale rows is refused and posts its refresh, whose tab sample must not run in the listener
-    (#264).
+    other calls, to the list's tree and buttons and to the retained sheet handles, are UNO
+    methods that take the mutex themselves; Calc's tab getter does not, so a double click posts
+    its activation, as Enter does (#269). The drag gesture is the exception: VCL calls its
+    listener within its own mouse-move handling, rather than queued as the mouse listeners are,
+    and `start_drag` starts the drag there, with the gesture's event as `startDrag`'s trigger.
+    Before that it checks `_current_picks`, which can write the list's own tree and buttons as
+    the mouse handlers do, the document's read-only and protection flags, and `is_current`,
+    which reads the sheets and the retained handles. None of these reads Calc's view or tabs. A
+    drag on stale rows is refused and posts its refresh, whose tab sample must not run in the
+    listener (#264).
 
     Collaborators, each owning its own state: `_refreshes` decides when to refresh
     (`refresh_schedule`), `_tabs` follows Calc's tabs and the sidebar (`uno_tabs`, for which this
