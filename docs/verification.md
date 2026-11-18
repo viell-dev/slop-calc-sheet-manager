@@ -258,11 +258,16 @@ dialog's own window, inside the measured Openbox and Windows frames that the dia
 area includes, where the dialog reports nothing; from the Windows frame, each calibration took
 about a minute (#253).
 Before termination, every session waits until the office has run the UNO releases the test
-process sent, because an office that exits while it runs them can crash (#242);
-`test_client_releases.py` drops 2,000 release markers in a live office and requires the wait to
-cover all of them. Sessions fail on nonzero exits, forced
-shutdowns, fatal messages, crash dumps, stalled main-thread callbacks, held terminate requests or
-releases left running.
+process sent before the wait, because an office that exits while it runs them can crash (#242).
+The integration suite `test_client_releases.py` drops 2,000 dialog models in a live office. When
+the wait returns, the office must have signalled every one's release as it ran it, and a retained
+model must still be unsignalled. Releases sent during the wait are outside it, such as from a
+document that a failed check left open. The unit tests of the same name check that each step of
+the wait ends within its limit, including a blocked garbage collection, and that a bridge that
+disconnects after the marker is queued fails the wait. `test_office_process.py` checks that the
+wait, the terminate request and the exit share one deadline. Sessions fail on nonzero exits,
+forced shutdowns, fatal messages, crash dumps, stalled main-thread callbacks, held terminate
+requests or releases left running.
 `test_install_timing.py` checks that each package installation's elapsed time is recorded and
 that one exceeding its limit still fails, with that time and unopkg's output kept (#235).
 Windows crash dumps matter even when the office exits with status zero. Only startup is retried;

@@ -6,9 +6,11 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 ## Unreleased
 
 - End each LibreOffice test session only after the office has run the UNO releases the test
-  process sent. An office asked to terminate while it still ran them, as after the 1,000-sheet
-  check, could crash at exit in a LibreOffice bridge thread, with or without the extension. This
-  changes the test runner, not the extension
+  process sent before the session's end. An office asked to terminate while it still ran them,
+  as after the 1,000-sheet check, could crash at exit in a LibreOffice bridge thread, with or
+  without the extension. Releases sent during that wait are not covered, such as from a document
+  that a failed check left open. The wait, the terminate request and the office's exit now share
+  one 30-second limit. This changes the test runner, not the extension
   ([#242](https://github.com/viell-dev/slop-calc-sheet-manager/issues/242)).
 - Make name syntax and conflicts in other rows available from New name in Rename Sheets.
   Replace All and Rename also expose refusals through their accessible names, including an empty

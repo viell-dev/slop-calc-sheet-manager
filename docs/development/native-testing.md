@@ -175,21 +175,27 @@ seconds on Linux, Windows and macOS. An installation that takes longer fails the
 ([#235](https://github.com/viell-dev/slop-calc-sheet-manager/issues/235)).
 
 A document close that takes more than 60 seconds fails the session. After a stalled callback,
-try no further closes or configuration restores: stop only the runner's own office. A terminate
-request held for 30 seconds also fails and forces shutdown. The runner must produce failed results
-instead of hanging or reporting success. The safeguards and investigations are in
+try no further closes or configuration restores: stop only the runner's own office. Graceful
+shutdown has 30 seconds in all, shared by the release wait below, the terminate request and the
+office's exit: a request still held, or an office still running, when they run out fails the
+session and forces shutdown. The runner must produce failed results instead of hanging or
+reporting success. The safeguards and investigations are in
 [#47](https://github.com/viell-dev/slop-calc-sheet-manager/issues/47),
 [#50](https://github.com/viell-dev/slop-calc-sheet-manager/issues/50), and
 [#40](https://github.com/viell-dev/slop-calc-sheet-manager/issues/40).
 
-Before asking the office to terminate, the runner waits until the office has run every UNO
-release the test process sent, as `tests/integration/client_releases.py` describes. LibreOffice
-runs releases in order on one bridge thread that no other call waits for, so a check that drops
-many sheet handles just before the session ends can leave them running during shutdown. An
-office that exits meanwhile can crash in a `cppu_threadpool` thread, in
+Before asking the office to terminate, the runner waits until the office has run the UNO
+releases the test process sent before the wait, as `tests/integration/client_releases.py`
+describes. LibreOffice runs releases in order on one bridge thread that no other call waits for,
+so a check that drops many sheet handles just before the session ends can leave them running
+during shutdown. An office that exits meanwhile can crash in a `cppu_threadpool` thread, in
 `cppu::getCaughtException`, with or without the extension
-([#242](https://github.com/viell-dev/slop-calc-sheet-manager/issues/242)). The wait shares the
-30-second limit; releases that do not finish in time stop the office and fail the session.
+([#242](https://github.com/viell-dev/slop-calc-sheet-manager/issues/242)). Releases sent during
+the wait are not covered. A session normally ends with no documents open, but a document that a
+failed check left open can still call the test process's listeners, which can send more. A wait
+that does not finish in time, or whose bridge disconnected, stops the office and fails the
+session with the unfinished step in `office_unsettled_releases`. `office_release_wait_seconds`
+and `office_shutdown_seconds` record how long the wait and the whole shutdown took.
 
 The painted resize check repeats the initial request if a late maximize changes its geometry;
 `resize-initial-*.json` retains requests and measurements
