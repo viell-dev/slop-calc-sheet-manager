@@ -4,7 +4,7 @@ This map describes the maintained implementation on `main`: its promises, curren
 known evidence limits. It is not a release-readiness receipt. The guide's notice identifies the
 published baseline; behaviour absent from it remains marked **Unreleased**. Update this map when
 a promise or its checks change. Commands and fixture safeguards belong in
-[CONTRIBUTING.md](https://github.com/viell-dev/slop-calc-sheet-manager/blob/main/CONTRIBUTING.md#tests).
+[Native LibreOffice testing](./development/native-testing.md).
 Record run results, deliberate-break experiments and review findings in the owning issue or PR.
 
 ## Where checks run
@@ -48,9 +48,10 @@ job-level timeout or cancellation during the painted phase itself is not exercis
 
 **Windows desktop** uses real `SendInput` on a visible
 Windows Server 2025 desktop, the pinned `win` build and en-US layout. Its current evidence covers
-one 1024×768 desktop at 96 DPI. The full release sweep requires the complete suite; a separate
-manual workflow supports focused investigation. Commands and cadence are in
-[CONTRIBUTING.md](https://github.com/viell-dev/slop-calc-sheet-manager/blob/main/CONTRIBUTING.md#routine-ci-and-release-sweeps).
+one 1024×768 desktop at 96 DPI. Windows 11 and input methods are outside this lane. The full
+release sweep requires the complete suite. See
+[Hosted checks](./development/hosted-checks.md#visible-windows-desktop) for focused dispatch
+and cadence.
 
 No automated lane runs a screen reader. Native Wayland input, distribution packages,
 Flatpak, Snap, Arm and other themes or scaling are not established by these checks.
@@ -82,8 +83,8 @@ The theme fixture finishes edits and cleanup while its workbook is hidden, befor
 the panel. Resetting modified state after the list has loaded invalidates its structure proof;
 a click before the pending refresh is correctly cleared. Native journals established that
 setup race in #160. Preparing the fixture before the monitor exists preserves the identity
-safeguard. The optional paired input probe in CONTRIBUTING retains all eight outcomes using
-the normal package, with and without native delivery observers.
+safeguard. The [optional paired input probe](./development/hosted-checks.md#macos-packaged-integration)
+retains all eight outcomes using the normal package, with and without native delivery observers.
 Completed suites and rename benchmark cases are saved incrementally so an external timeout
 retains partial evidence; `run_complete` distinguishes the final result from partial checkpoints.
 The macOS helper records its owned process group on timeout and runs
@@ -224,7 +225,7 @@ not limits:
   [#22](https://github.com/viell-dev/slop-calc-sheet-manager/issues/22).
 
 All inputs are synthetic. Workbooks stay in memory unless the contributor explicitly runs the
-inspection generator described in CONTRIBUTING.md.
+[inspection workbook generator](./development/native-testing.md#inspection-workbooks).
 
 ## The visible Windows desktop
 
@@ -263,7 +264,7 @@ traces. The Xvfb helper disables key repeat; `single_tap_after_client_pause` ver
 step after a one-second held key. Operating-system timed repeat is outside that check.
 
 Fixture procedures and artifact diagnosis are in
-[CONTRIBUTING.md](https://github.com/viell-dev/slop-calc-sheet-manager/blob/main/CONTRIBUTING.md#failures-and-shutdown).
+[Native LibreOffice testing](./development/native-testing.md#failures-and-shutdown).
 Lifecycle failure evidence is in
 [#40](https://github.com/viell-dev/slop-calc-sheet-manager/issues/40),
 [#48](https://github.com/viell-dev/slop-calc-sheet-manager/issues/48), and

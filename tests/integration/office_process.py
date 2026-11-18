@@ -24,7 +24,8 @@ its start), and stops its office so that the blocked call fails. Rules for chang
 - The limit is not a test timeout, and never shorten it to speed up a run. The slowest measured
   suite took 649 s (Intel macOS `test_reorder`, #162), so the benchmarks also report progress at
   each workbook and repetition; each session records its `longest_progress_interval_seconds`.
-- An enclosing limit that ends the run first still wins; CONTRIBUTING.md says where.
+- An enclosing limit that ends the run first still wins; `docs/development/native-testing.md`
+  says where (#244).
 """
 
 import faulthandler
