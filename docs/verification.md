@@ -286,8 +286,10 @@ graceful shutdown's 30 seconds, and a healthy session whose release wait outlast
 limit, which must not be taken for a stall. `test_office_process.py` checks the receipt's single
 writer, held receipt writes, late results, failed process listings, collector deadlines, a
 launcher whose ID may have been reused or whose identity was never taken, with an empty listing
-too, and what the receipt says of an interrupt and the wrapper's exit. A close already posted to
-the main thread on Windows before the stall still runs (#261).
+too, and what the receipt says of an interrupt and the wrapper's exit. The watch waits for the
+gdb wrapper because the stack collector reports that it sent the interrupt, not because of the
+receipt's wording; a test rewords it both ways (#267). A close already posted to the main thread
+on Windows before the stall still runs (#261).
 The stacks of a stall that begins within about 18 minutes of a job's or the macOS helper's time
 limit may be lost there (#244). Soak sessions share one deadline with their runner and record the
 stall when the soak's own limit falls during startup or their checks; installation is not

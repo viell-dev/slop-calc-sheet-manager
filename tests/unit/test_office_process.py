@@ -19,6 +19,7 @@ import pytest
 from tests.integration import office_process, teardown
 from tests.integration.office_process import (
     Process,
+    StackAttempt,
     StallWatch,
     assert_clean_shutdown,
     descendants,
@@ -404,13 +405,13 @@ def test_a_session_without_progress_tries_its_stacks_and_stops_its_launcher(
     target = Process(process.pid, os.getpid(), "soffice.bin", 1)
     seen: list[tuple[Process, bool, list[str], bool]] = []
 
-    def native(found: Process, path: Path, *, debugger_parent: bool, end: float) -> str:
+    def native(found: Process, path: Path, *, debugger_parent: bool, end: float) -> StackAttempt:
         # The stall is recorded and on disk before any stack is read.
         receipt = (tmp_path / "stall-True-0.json").exists()
         seen.append((found, debugger_parent, teardown.stalled_callbacks(), receipt))
         assert 0 < end - time.monotonic() <= 60
         path.write_text("Thread 1 (main)", encoding="utf-8")
-        return "fake debugger"
+        return StackAttempt("fake debugger")
 
     stall = watch(process, tmp_path, find=offices(target), stacks=native).start()
     wait_until(lambda: process.poll() is not None)
@@ -498,10 +499,10 @@ def test_no_close_or_restore_starts_while_stacks_are_taken(tmp_path: Path, sessi
     process = sleeper()
     capturing, release = threading.Event(), threading.Event()
 
-    def slow(target: Process, path: Path, **options: Any) -> str:
+    def slow(target: Process, path: Path, **options: Any) -> StackAttempt:
         capturing.set()
         assert release.wait(20)
-        return "slow debugger"
+        return StackAttempt("slow debugger")
 
     target = Process(process.pid, os.getpid(), "soffice.bin", 1)
     stall = watch(process, tmp_path, find=offices(target), stacks=slow).start()
@@ -524,10 +525,10 @@ def test_a_hung_collector_cannot_delay_the_stop(tmp_path: Path, session: None) -
     process = sleeper()
     entered, release = threading.Event(), threading.Event()
 
-    def hung(target: Process, path: Path, **options: Any) -> str:
+    def hung(target: Process, path: Path, **options: Any) -> StackAttempt:
         entered.set()
         release.wait(30)
-        return "too late"
+        return StackAttempt("too late")
 
     target = Process(process.pid, os.getpid(), "soffice.bin", 1)
     stall = watch(process, tmp_path, budget=0.5, find=offices(target), stacks=hung).start()
@@ -624,10 +625,10 @@ def test_the_receipt_is_never_replaced_by_an_older_snapshot(
     receipt = tmp_path / "stall-True-0.json"
     capturing, release = threading.Event(), threading.Event()
 
-    def slow(target: Process, path: Path, **options: Any) -> str:
+    def slow(target: Process, path: Path, **options: Any) -> StackAttempt:
         capturing.set()
         assert release.wait(20)
-        return "collected"
+        return StackAttempt("collected")
 
     write, main = Path.write_text, threading.main_thread()
 
@@ -696,11 +697,11 @@ def test_a_held_receipt_write_neither_delays_the_stop_nor_admits_a_late_result(
             release.wait(10)
         replace(source, target)
 
-    def late(target: Process, path: Path, *, end: float, **options: Any) -> str:
+    def late(target: Process, path: Path, *, end: float, **options: Any) -> StackAttempt:
         times["end"] = end
         time.sleep(max(0.0, end + 0.05 - time.monotonic()))
         times["returned"] = time.monotonic()
-        return "a result after the budget's end"
+        return StackAttempt("a result after the budget's end")
 
     def timed_stop(office: subprocess.Popen[str]) -> None:
         times["stop"] = time.monotonic()
@@ -805,9 +806,9 @@ def test_no_native_stacks_unless_the_launchers_id_still_names_it(
     target = Process(office.pid, process.pid, "soffice.bin", 1)
     touched: list[Process] = []
 
-    def stacks(found: Process, path: Path, **options: Any) -> str:
+    def stacks(found: Process, path: Path, **options: Any) -> StackAttempt:
         touched.append(found)
-        return "read"
+        return StackAttempt("read")
 
     stall = watch(process, tmp_path, limit=0.5, find=offices(target), stacks=stacks)
     if launcher == "reaped":
@@ -849,9 +850,9 @@ def test_a_launcher_whose_identity_was_never_taken_is_not_trusted(
     target = Process(office.pid, process.pid, "soffice.bin", 1)
     touched: list[Process] = []
 
-    def stacks(found: Process, path: Path, **options: Any) -> str:
+    def stacks(found: Process, path: Path, **options: Any) -> StackAttempt:
         touched.append(found)
-        return "read"
+        return StackAttempt("read")
 
     stall = watch(process, tmp_path, limit=0.5, find=offices(target), stacks=stacks)
     listed = office_process.linux_process
@@ -954,17 +955,21 @@ def test_an_interrupt_to_the_gdb_wrapper_is_recorded_as_sent_not_as_saved_stacks
         how = native_stacks(
             target, tmp_path / "x.txt", debugger_parent=True, end=time.monotonic() + 5
         )
-        assert how == (
+        assert how == StackAttempt(
             f"SIGINT sent through its pidfd to {target.pid}, traced by gdb {os.getpid()}; "
-            "whatever gdb printed is in the session's gdbtrace log"
+            "whatever gdb printed is in the session's gdbtrace log",
+            interrupted=True,
         )
         assert target_process.wait(10) != 0  # The interrupt reached it.
     finally:
         stop_process(target_process)
 
 
-def interrupted(*args: Any, **kwargs: Any) -> str:
-    return "SIGINT sent through its pidfd to 1, traced by gdb 2; whatever gdb printed is there"
+def interrupted(*args: Any, **kwargs: Any) -> StackAttempt:
+    return StackAttempt(
+        "SIGINT sent through its pidfd to 1, traced by gdb 2; whatever gdb printed is there",
+        interrupted=True,
+    )
 
 
 @pytest.mark.parametrize("wrapper", ["exits", "held"])
@@ -1002,6 +1007,43 @@ def test_the_gdb_wrappers_exit_is_recorded_only_when_it_was_seen(
         stop_process(process)
 
 
+@pytest.mark.parametrize(
+    "attempt",
+    [
+        StackAttempt("synthetic: the inferior was interrupted", interrupted=True),
+        StackAttempt("SIGINT synthetic: nothing was sent"),
+    ],
+    ids=["reworded interrupt", "interrupt-like text"],
+)
+def test_the_wrapper_wait_follows_the_attempt_not_its_text(
+    tmp_path: Path, session: None, attempt: StackAttempt
+) -> None:
+    # The watch read whether gdb was interrupted from the start of its own message, so rewording
+    # it would have dropped the wait and `wrapper_exit_status` with it (#267).
+    process = subprocess.Popen(
+        [sys.executable, "-c", "import sys, time; time.sleep(1); sys.exit(3)"], text=True
+    )
+    target = Process(process.pid, os.getpid(), "soffice.bin", 1)
+
+    def stacks(*args: Any, **kwargs: Any) -> StackAttempt:
+        return attempt
+
+    stall = watch(
+        process, tmp_path, budget=10, debugger_parent=True, find=offices(target), stacks=stacks
+    ).start()
+    try:
+        wait_until(teardown.stalled_callbacks)
+        evidence = stall.close()
+        assert evidence is not None and evidence["collection_finished"]
+        assert evidence["office_stacks"][str(process.pid)]["method"] == attempt.method
+        if attempt.interrupted:
+            assert evidence["wrapper_exit_status"] == 3
+        else:
+            assert "wrapper_exit_status" not in evidence
+    finally:
+        stop_process(process)
+
+
 def test_a_failed_windows_listing_is_an_error_not_an_empty_tree() -> None:
     fails = "import sys; sys.stderr.write('synthetic CIM failure'); sys.exit(1)"
     failing = [sys.executable, "-c", fails]
@@ -1035,7 +1077,7 @@ def test_without_the_gdb_wrapper_no_debugger_attaches_by_process_id(
             target, tmp_path / "stacks.txt", debugger_parent=False, end=time.monotonic() + 5
         )
         assert not attached.exists(), "A debugger attached by process ID"
-        assert "gdb wrapper" in how
+        assert "gdb wrapper" in how.method and not how.interrupted
     finally:
         stop_process(process)
 
@@ -1057,8 +1099,8 @@ def test_every_failed_capture_step_is_recorded_and_the_launcher_still_stopped(
     assert teardown.stalled_callbacks()
 
 
-def skipped(*args: Any, **kwargs: Any) -> str:
-    return "skipped: not the gdb wrapper's inferior (tracer 0)"
+def skipped(*args: Any, **kwargs: Any) -> StackAttempt:
+    return StackAttempt("skipped: not the gdb wrapper's inferior (tracer 0)")
 
 
 def test_an_interrupt_waits_for_the_gdb_wrapper_only_when_it_was_sent(
@@ -1128,12 +1170,14 @@ def test_a_real_office_tree_is_found_and_a_changed_identity_is_skipped(tmp_path:
         assert office_processes(os.getpid(), end) == found  # Grandchildren of this test too.
         assert office_processes(found[0].pid, end) == []
         stale = dataclasses.replace(found[0], started=found[0].started - 1)
-        assert "no longer has its listed" in native_stacks(
-            stale, tmp_path / "x.txt", debugger_parent=True, end=end
+        assert (
+            "no longer has its listed"
+            in native_stacks(stale, tmp_path / "x.txt", debugger_parent=True, end=end).method
         )
         # An office that is not a gdb inferior never gets the wrapper's interrupt.
         how = native_stacks(found[1], tmp_path / "y.txt", debugger_parent=True, end=end)
-        assert how.startswith("skipped: not the gdb wrapper's inferior")
+        assert how.method.startswith("skipped: not the gdb wrapper's inferior")
+        assert not how.interrupted
     finally:
         if sys.platform != "win32":
             os.killpg(launcher.pid, signal.SIGKILL)
@@ -1152,7 +1196,7 @@ def test_a_real_office_tree_is_found_on_windows(tmp_path: Path) -> None:
         end = time.monotonic() + 5
         assert (
             "no longer has its listed"
-            in native_stacks(stale, tmp_path / "x.txt", debugger_parent=False, end=end)
+            in native_stacks(stale, tmp_path / "x.txt", debugger_parent=False, end=end).method
             or not office_process.CDB.exists()
         )
     finally:

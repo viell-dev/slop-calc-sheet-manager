@@ -5,6 +5,11 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- The stall watch now waits for LibreOffice's gdb wrapper after an interrupt because its stack
+  collector reports that it sent one, rather than by reading the start of its own receipt text,
+  so rewording that text can no longer drop the wait and the wrapper's recorded exit status. This
+  changes the test runner, not the extension
+  ([#267](https://github.com/viell-dev/slop-calc-sheet-manager/issues/267)).
 - A drag begun on sheet list rows that are out of date is still refused, but the list now
   refreshes after LibreOffice's drag-gesture callback returns rather than inside it, so that the
   refresh's reading of Calc's selected tabs no longer runs in that callback
