@@ -2,8 +2,9 @@
 
 The dialog is found as the visible dialog window over the document, and observed through public
 UNO only: its child windows' text, items, and enabled state, and their accessible names. Pointer
-positions come from those windows and their accessible list items, after calibrating the X input
-against a motion listener on the dialog's list, as the sheet list itself is calibrated.
+positions come from those windows and their accessible list items, after calibrating the input
+against a motion listener on the dialog's own background, with the lab's `Tracker` and
+`settled_report` that calibrate the sheet list.
 """
 
 import sys
@@ -14,7 +15,7 @@ import uno
 import unohelper
 from button_pixels import capture as capture_disabled_buttons
 from com.sun.star.accessibility import XAccessibleEventListener
-from com.sun.star.awt import XMouseMotionListener
+from lab import Tracker, settled_report
 from run import wait_for
 from sheet_list_view import on_main_thread
 from xinput import Pointer
@@ -24,6 +25,10 @@ from sheet_manager.uno_menu import RENAME, RENAME_SHEETS
 
 FOCUSED = uno.getConstantByName("com.sun.star.accessibility.AccessibleStateType.FOCUSED")
 NAME_CHANGED = uno.getConstantByName("com.sun.star.accessibility.AccessibleEventId.NAME_CHANGED")
+# Calibration (#232): how long the dialog may take to report the confirming second move before
+# the next point is tried, and how many points may fail to confirm before calibration fails.
+CONFIRM_SECONDS = 2
+REJECTED_POINTS = 3
 
 
 class NameChanges(unohelper.Base, XAccessibleEventListener):
@@ -40,20 +45,14 @@ class NameChanges(unohelper.Base, XAccessibleEventListener):
         pass
 
 
-class Tracker(unohelper.Base, XMouseMotionListener):
-    """Records where a window last saw the pointer, in its own coordinates."""
-
-    def __init__(self):
-        self.last = None
-
-    def mouseMoved(self, e):
-        self.last = (e.X, e.Y)
-
-    def mouseDragged(self, e):
-        self.last = (e.X, e.Y)
-
-    def disposing(self, Source):
-        pass
+def _reported(tracker, before, seconds):
+    """Whether the window reports a position other than `before` within `seconds`."""
+    deadline = time.monotonic() + seconds
+    while tracker.last in (None, before):
+        if time.monotonic() > deadline:
+            return False
+        time.sleep(0.01)
+    return True
 
 
 def _types(window):
@@ -165,7 +164,18 @@ class Dialog:
         }
 
     def calibrate(self):
-        """Find the dialog's screen offset: move the pointer over its background."""
+        """Find the dialog's screen offset from where the dialog says the pointer is.
+
+        Between the rows of controls the dialog's own background takes the pointer, so points
+        are tried until the dialog reports one. It hears a move only when LibreOffice's main
+        thread gets to it, so a report can arrive after the pointer has gone on to the next
+        point; taking the first report after a fixed wait could read it for that point's (#232).
+        As for the sheet list (`Lab.calibrate`, #209), a point counts only when a second move,
+        2 pixels further on both axes, is reported too, each report read with `settled_report`
+        once the reports have stopped. The two reports must differ by that move. Otherwise one
+        of them belongs to another point, or the second move went over a control, and the next
+        point is tried; only a pair of moves can produce reports that differ by exactly (2, 2).
+        """
         if self.pointer is not None:
             return self.pointer
         tracker = Tracker()
@@ -173,19 +183,33 @@ class Dialog:
         try:
             root = self.window.getProperty("XAccessible").getAccessibleContext()
             origin, size = root.getLocationOnScreen(), root.getSize()
-            # Between the rows of controls the dialog's own background takes the pointer.
-            for y in range(origin.Y + 2, origin.Y + size.Height, 3):
-                for x in (origin.X + 4, origin.X + size.Width // 2, origin.X + size.Width - 5):
-                    tracker.last = None
-                    self.book.lab.input.move(x, y)
-                    deadline = time.monotonic() + 0.15
-                    while tracker.last is None and time.monotonic() < deadline:
-                        time.sleep(0.01)
-                    if tracker.last is not None:
-                        local = tracker.last
-                        self.pointer = Pointer(self.book.lab.input, (x - local[0], y - local[1]))
-                        return self.pointer
-            raise AssertionError("The pointer never reached the dialog's background")
+            points = [
+                (x, y)
+                for y in range(origin.Y + 2, origin.Y + size.Height, 3)
+                for x in (origin.X + 4, origin.X + size.Width // 2, origin.X + size.Width - 5)
+            ]
+            rejected = []
+            for x, y in points:
+                tracker.last = None
+                self.book.lab.input.move(x, y)
+                if not _reported(tracker, None, 0.15):
+                    continue
+                first = settled_report(tracker, None, (x, y))
+                self.book.lab.input.move(x + 2, y + 2)
+                second = None
+                if _reported(tracker, first, CONFIRM_SECONDS):
+                    second = settled_report(tracker, first, (x + 2, y + 2))
+                if second == (first[0] + 2, first[1] + 2):
+                    # The pair agrees, so either report gives the offset.
+                    self.pointer = Pointer(self.book.lab.input, (x - first[0], y - first[1]))
+                    return self.pointer
+                rejected.append({"point": (x, y), "reports": [first, second]})
+                if len(rejected) == REJECTED_POINTS:
+                    break
+            raise AssertionError(
+                "The dialog never confirmed a point on its background; the points whose "
+                f"reports did not follow a 2-pixel second move: {rejected}"
+            )
         finally:
             self.window.removeMouseMotionListener(tracker)
 
