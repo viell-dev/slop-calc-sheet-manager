@@ -178,15 +178,31 @@ A row that cannot be renamed shows ⚠ and the reason, and Rename stays unavaila
 is correct. The status line below the list explains the selected row, or counts the changes. A new
 name is refused when it:
 
-- is empty, contains `:` `\` `/` `?` `*` `[` or `]`, or begins or ends with an apostrophe;
+- is empty, contains `:` `\` `/` `?` `*` `[` `]` or a null character, or begins or ends with an
+  apostrophe;
 - is another sheet's name, now or after the renames;
 - is too close to another sheet's name: Calc treats names that differ only in letter case as the
   same name, and the dialog also refuses a few pairs that LibreOffice can confuse, such as `ß` and
   `ss`, or the dotted and dotless i (`I`, `İ`, `i`, `ı`).
 
-With a screen reader, move to **Sheets** to hear the reason with the proposal. <Unreleased />
-In tests with Orca on Linux (gtk3) and NVDA on Windows, each reader announced a name conflict
-while focus stayed in **New name**. See [known issues](./known-issues.md#known-issues) for limits.
+With a screen reader, move to **Sheets** with Alt+S and use the arrow keys to hear each refused
+proposal and its reason. <Unreleased /> **New name** reports the selected proposal's refusal
+while you edit. If that proposal is valid and another is refused, the field gives the first
+affected sheet and its reason. Clearing **New name** leaves the empty-name reason on its preview
+row. As you start typing again, the field can repeat a refusal on another row. An apostrophe at
+the end of a proposal can trigger a warning as you type, for example at `Bob'` on the way to
+`Bob's`. When the proposal becomes valid and no other row is refused, the field returns to its
+ordinary name.
+
+<Unreleased /> **Replace All** reports when Find is empty, when there are no matches, or when the
+search matches but the replacement leaves every proposed name unchanged. It reports the first
+affected sheet and reason if the replacement leaves a refused proposal. If you repeat the same
+replacement and the first press already replaced every match, the conflict stays available on
+the button. If the sheets changed since the dialog opened, **Rename** gives the refusal and asks
+you to cancel and try again. Pressing **Rename** again while it has focus and the reason is the
+same produces no new announcement. Move focus away and back with Tab or Shift+Tab to hear the
+button's result again before editing a proposal or selecting another row.
+See [known issues](./known-issues.md#known-issues) for tested screen-reader behavior.
 
 Names are used exactly as typed. Spaces at either end are kept, and the list shows such names in
 quotation marks. Sheets can swap names, or pass them around in a cycle; the dialog renames them

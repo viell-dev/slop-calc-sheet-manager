@@ -9,7 +9,10 @@ from sheet_manager.rename import (
     TEMPORARY,
     Batch,
     Plan,
+    ReplacementResult,
     conflict,
+    field_refusal,
+    first_row_refusal,
     plan_renames,
     problem,
     problems,
@@ -17,6 +20,30 @@ from sheet_manager.rename import (
     shown,
     summary,
 )
+
+
+def test_field_refusal_prefers_selected_then_first_other_row():
+    batch = Batch(("Overview", "Alpha", "Bravo", "Charlie", "Delta"), ("Alpha", "Charlie", "Delta"))
+    batch.set(0, "Alpha?")
+    batch.set(2, "Overview")
+    found = batch.problems()
+    assert first_row_refusal(batch, found) == f"“Alpha”: {found[0]}"
+    assert field_refusal(batch, 2, found) == "Another sheet is already named “Overview”."
+    assert field_refusal(batch, 1, found) == f"“Alpha”: {found[0]}"
+
+
+def test_field_refusal_keeps_empty_proposal_quiet_even_when_another_row_is_refused():
+    batch = Batch(("Alpha", "Bravo", "Charlie"), ("Bravo", "Charlie"))
+    assert not first_row_refusal(batch, batch.problems())
+    assert not field_refusal(batch, 1, batch.problems())
+    batch.set(0, "Alpha")
+    batch.set(1, "")
+    found = batch.problems()
+    assert found[0] and found[1]
+    assert not field_refusal(batch, 1, found)
+    batch.set(1, "Delta")
+    assert field_refusal(batch, 1, batch.problems()) == f"“Bravo”: {found[0]}"
+
 
 # Measured with official LibreOffice 26.2.1.2 (Linux) and 26.8.1.1 (Windows), English locales, in
 # both directions (#102): "refused" means Calc's rename refused the second name beside the first;
@@ -300,11 +327,12 @@ def test_batch_replace_all_is_literal_case_sensitive_and_cumulative() -> None:
         ["WIP North", "WIP South", "wip West", "WIP.x"],
     )
     assert batch.targets == ("WIP North", "WIP South", "wip West", "WIP.x")
-    assert batch.replace_all("WIP ", "") == 2
+    assert batch.replace_all("WIP ", "") == ReplacementResult(matched=True, changed=2)
     assert batch.proposals == ["North", "South", "wip West", "WIP.x"]
-    assert batch.replace_all(".", "-") == 1  # Literal, not a pattern.
-    assert batch.replace_all("", "x") == 0
-    assert batch.replace_all("South", "S") == 1
+    assert batch.replace_all(".", "-") == ReplacementResult(matched=True, changed=1)
+    assert batch.replace_all("", "x") == ReplacementResult(matched=False, changed=0)
+    assert batch.replace_all("missing", "x") == ReplacementResult(matched=False, changed=0)
+    assert batch.replace_all("South", "S") == ReplacementResult(matched=True, changed=1)
     assert batch.proposals == ["North", "S", "wip West", "WIP-x"]
     assert batch.changes() == 3 and batch.problems() == ["", "", "", ""]
     batch.set(2, "North")
@@ -313,6 +341,17 @@ def test_batch_replace_all_is_literal_case_sensitive_and_cumulative() -> None:
         batch.plan()
     batch.reset()
     assert batch.proposals == list(batch.targets) and batch.changes() == 0
+
+
+@pytest.mark.parametrize(("find", "matched"), [("Draft", True), ("draft", False), ("", False)])
+def test_batch_identical_replacement_reports_whether_proposals_match(
+    find: str, matched: bool
+) -> None:
+    batch = Batch(["Draft North", "Draft South"], ["Draft North", "Draft South"])
+    result = batch.replace_all(find, find)
+    assert result.matched is matched
+    assert result.changed == 0
+    assert batch.proposals == ["Draft North", "Draft South"]
 
 
 def test_targets_follow_document_order() -> None:
