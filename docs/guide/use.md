@@ -277,7 +277,9 @@ its selection when it cannot establish that the picked sheets are still the same
 includes inserting or deleting sheets, undo and redo, and some macro or unrecorded changes.
 A notice explains conservative clearing of a user-made selection. Pick the sheets again before acting.
 <Unreleased /> A selection made through assistive technology that the list has not taken yet is
-cleared the same way ([#265](https://github.com/viell-dev/slop-calc-sheet-manager/issues/265)).
+cleared the same way ([#265](https://github.com/viell-dev/slop-calc-sheet-manager/issues/265)), and
+so is the selection when LibreOffice fails to show it in the list
+([#257](https://github.com/viell-dev/slop-calc-sheet-manager/issues/257)).
 
 **Undo and Redo of the list's moves.** <Unreleased since="0.0.8" /> Undo and Redo of a move the list
 made itself, by dragging, a move button, the menu or a shortcut, keep the picks and the view. The

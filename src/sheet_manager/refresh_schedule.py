@@ -158,7 +158,8 @@ class RefreshSchedule:
         Retries back off and stop after `REFRESH_RETRIES` failures in a row, rather than report
         an error in a loop; a later document change or sheet switch then refreshes again. The
         owner also calls this, outside `measure`, for a selection write that may have stopped
-        partway: the retried refresh writes the selection again (`uno_list`, #257).
+        partway: the retried refresh settles what the tree shows and writes the list's
+        selection (`uno_list`, #257).
         """
         self._mark_stale(self._clock())
         self.failures += 1
