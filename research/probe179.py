@@ -13,6 +13,7 @@ import argparse
 import json
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -103,12 +104,12 @@ def soffice_bin_pid(profile: pathlib.Path) -> int:
     marker = profile.as_uri()
     command = (
         "Get-CimInstance Win32_Process -Filter \"Name='soffice.bin'\" | "
-        "ForEach-Object { '{0}`t{1}' -f $_.ProcessId, $_.CommandLine }"
+        "ForEach-Object { '{0}|{1}' -f $_.ProcessId, $_.CommandLine }"
     )
     output = subprocess.run(
         ["pwsh", "-NoProfile", "-Command", command], capture_output=True, text=True, timeout=60
     ).stdout
-    matches = [line.split("\t", 1)[0] for line in output.splitlines() if marker in line]
+    matches = [line.split("|", 1)[0] for line in output.splitlines() if marker in line]
     assert len(matches) == 1, (marker, output)
     return int(matches[0])
 
@@ -280,11 +281,14 @@ def main():
         started = time.time()
         record = run_case(out, order, mode == "cdb", a.assets.resolve())
         dumps = record.get("after", {}).get("office_crash_dumps", [])
-        crashed = bool(dumps) or "FIRST-CHANCE-AV" in (
-            (out / "cdb.log").read_text(encoding="utf-8", errors="replace")
-            if (out / "cdb.log").exists() else "")
+        trace = ((out / "cdb.log").read_text(encoding="utf-8", errors="replace")
+                 if (out / "cdb.log").exists() else "")
+        crashed = bool(dumps) or "FIRST-CHANCE-AV" in trace
         line = {"case": out.name, "passed": bool(record.get("assertions_passed")),
-                "crash": crashed, "seconds": round(time.time() - started, 1)}
+                "crash": crashed, "seconds": round(time.time() - started, 1),
+                "traced": {key: len(re.findall(rf"^{key}", trace, re.M)) for key in (
+                    "VIEW-CTOR", "ACTIVATE", "DEACTIVATE", "NOTIFY", "FORGET", "DELAYTIMER",
+                    "ENGINE-CREATE", "SCMOD-CONFIGURATION-CHANGED")} if trace else None}
         summary.append(line)
         print(json.dumps(line), flush=True)
         (base / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
