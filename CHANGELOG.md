@@ -10,6 +10,9 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   check, could crash at exit in a LibreOffice bridge thread, with or without the extension. This
   changes the test runner, not the extension
   ([#242](https://github.com/viell-dev/slop-calc-sheet-manager/issues/242)).
+- Expose the selected proposal's name conflict on the focused New name field in Rename Sheets,
+  so a screen reader can announce the refusal while the user stays in the edit
+  ([#247](https://github.com/viell-dev/slop-calc-sheet-manager/issues/247)).
 - Record how long each integration-test installation of the package takes, as `install_seconds`
   in the results, and keep the elapsed time and unopkg's output when an installation exceeds its
   90-second limit, which still fails the session. The local testing guide says how to tell such a

@@ -20,6 +20,11 @@ document is changed only after the dialog has closed, by the caller.
   at a time was slow through UNO, measured with 1,000 items (#102).
 - Rename keeps its real enablement while using the shared Linux disabled paint fallback
   (`uno_calc.enable_button`, #166). Its native peer exists before the first `_update`/show.
+- The visible status label exposes changes on an unfocused accessible object. For a name
+  conflict, also put the reason in the New name edit peer's accessible name (#247). This
+  raises NAME_CHANGED on the edit itself without moving focus. Keep its original label and
+  restore it when the conflict clears. Typing through an empty or incomplete name does not
+  announce an extra error through this route.
 """
 
 from collections.abc import Callable
@@ -29,7 +34,7 @@ import unohelper
 from com.sun.star.awt import XActionListener, XItemListener, XTextListener
 
 from sheet_manager.i18n import tr
-from sheet_manager.rename import Batch, Plan, quoted, row_label, summary
+from sheet_manager.rename import Batch, Plan, problem, quoted, row_label, summary
 from sheet_manager.uno_calc import MainThread, enable_button
 
 CANCEL = 2  # com.sun.star.awt.PushButtonType.CANCEL: closes the dialog without a result.
@@ -69,6 +74,8 @@ class RenameDialog:
         self._pending: set[str] = set()
         self._row = 0
         self._labels: list[str] = []
+        self._edit_label: str | None = None
+        self._edit_conflict = ""
         self._result: Plan | None = None
         self._dialog: Any = None
 
@@ -269,6 +276,21 @@ class RenameDialog:
         self._control("status").getModel().Label = status
         valid = bool(self._batch.changes()) and not any(found)
         enable_button(self._control("rename"), valid)
+        reason = found[self._row]
+        # Batch.problems returns message text for both syntax errors and conflicts.
+        conflict = reason if reason and not problem(self._batch.proposals[self._row]) else ""
+        self._show_edit_conflict(conflict)
+
+    def _show_edit_conflict(self, reason: str) -> None:
+        if reason == self._edit_conflict:
+            return
+        peer = self._control("name").getPeer()
+        if self._edit_label is None:
+            self._edit_label = str(peer.getProperty("AccessibleName"))
+        # Localizing this composition may need a translatable template (#170).
+        name = " ".join(filter(None, (self._edit_label, reason)))
+        peer.setProperty("AccessibleName", name)
+        self._edit_conflict = reason
 
     def _write_rows(self, labels: list[str]) -> None:
         rows = self._control("rows")
