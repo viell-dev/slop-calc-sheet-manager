@@ -941,6 +941,118 @@ def test_activation_does_nothing_once_the_list_is_disposed() -> None:
     assert live.active == "Alfa" and not queued
 
 
+class ClosedControl:
+    """A control after `dispose`: every call fails, as a disposed toolkit control's do."""
+
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    def __getattr__(self, name: str) -> Any:
+        def call(*arguments: object) -> Any:
+            self.calls.append(name)
+            raise RuntimeError(f"{name} on a disposed control")
+
+        return call
+
+
+@pytest.mark.parametrize("closed", ["document", "sidebar"])
+@pytest.mark.parametrize("key", ["Return", "Menu", "type-ahead"])
+def test_a_keys_queued_work_does_nothing_once_the_list_is_disposed(key: str, closed: str) -> None:
+    """#282: a key's queued work can run after `dispose`, which does not revoke it.
+
+    Closing the document or the sidebar right after the key disposes the list, and with the
+    document its structure monitor, whose check then raises. The work runs through the shipped
+    key handler, `queue_input` and `MainThread`'s callback, so a read of the picks, the monitor
+    or the closed tree before the disposal check is reported as the key's failure.
+    """
+    from sheet_manager.keys import (
+        CONTEXTMENU,
+        RETURN,
+        SHIFT,
+        SPACE,
+        TAB,
+        A,
+        KeyRoute,
+        TypeAhead,
+        button_route,
+        find_prefix,
+        route_key,
+    )
+    from sheet_manager.sheet_list import ordered
+
+    owner, live, _, queued = click_list()
+    owner.tree, owner.peer = ClosedControl(), ClosedControl()
+    owner._shown, owner._selection_write_pending, owner._context_target = ("Alfa",), False, None
+    owner._type_ahead, owner._cursor = TypeAhead(), "Alfa"
+    owner.claim_window, owner._open_menu = Mock(), Mock()
+    owner.owns_keys = owner.owns_tree_keys = lambda: True
+    checked = Mock(side_effect=owner._monitor.check)
+    owner._monitor.check = checked
+
+    def bind(name: str, namespace: dict[str, Any]) -> None:
+        loaded = method(SOURCE, "SheetList", name, namespace)
+
+        def bound(*arguments: object) -> Any:
+            return loaded(owner, *arguments)
+
+        setattr(owner, name, bound)
+
+    for name, namespace in (
+        ("note_input", {}),
+        ("queue_input", {}),
+        ("selected_names", {"ordered": ordered}),
+        ("_take_tree_selection", {}),
+        ("_current_picks", {"Ref": Ref}),
+        ("_ref", {"Ref": Ref}),
+        ("_focus_row", {}),
+        ("_move_tree_cursor", {"SINGLE": 0, "MULTI": 2}),
+        ("activate_selection", {}),
+        ("open_menu_for_keyboard", {}),
+        ("type_ahead", {"time": time, "find_prefix": find_prefix}),
+    ):
+        bind(name, namespace)
+    owner.names = lambda: list(live.shown)
+    pressed = method(
+        "src/sheet_manager/uno_keys.py",
+        "ListKeyHandler",
+        "keyPressed",
+        {
+            "route_key": route_key,
+            "KeyRoute": KeyRoute,
+            "TAB": TAB,
+            "SHIFT": SHIFT,
+            "SPACE": SPACE,
+            "button_route": button_route,
+        },
+    )
+    code, char = {"Return": (RETURN, "\r"), "Menu": (CONTEXTMENU, ""), "type-ahead": (A, "a")}[key]
+    handler = SimpleNamespace(_list=owner, _consumed={})
+    assert pressed(handler, SimpleNamespace(KeyCode=code, KeyChar=char, Modifiers=0)) is True
+    assert len(queued) == 1
+    work = queued.pop()
+
+    owner._disposed = True
+    if closed == "document":
+        checked.side_effect = RuntimeError("The sheet structure monitor has been disposed")
+    callback = source_class(
+        "src/sheet_manager/uno_calc.py",
+        "_Callback",
+        {
+            "unohelper": SimpleNamespace(Base=type("Base", (), {})),
+            "XCallback": type("XCallback", (), {}),
+            "report": _report,
+        },
+    )
+    where = {"Return": "activating a sheet", "Menu": "the sheet tab menu"}.get(key, key)
+    callback(work, where).notify(None)
+    checked.assert_not_called()
+    assert owner.tree.calls == owner.peer.calls == []
+    owner._open_menu.assert_not_called()
+    live.invoke.assert_not_called()
+    owner.controller.setActiveSheet.assert_not_called()
+    assert live.active == "Alfa" and not queued
+
+
 def test_a_double_clicks_posted_activation_refuses_after_a_refresh_at_a_newer_generation() -> None:
     """The posted work checks the generation its release verified, not the list's newer proof.
 
