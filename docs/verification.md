@@ -180,7 +180,7 @@ The measured native naming rules and deliberate-break results are in
 | Cursor/range anchor survives rebuilds; refused held clicks preserve surviving picks | Retained-anchor and coalesced-intent unit tests; `cursor_across_refresh`, `native_cursor_positions`, `selected_press_cursor` | Checks and Linux UI. A refused hold need not retain an unpicked cursor position; no cursor is promised without surviving picks. |
 | Selection notice expires after ten seconds without changing focus, picks or grouped warning | `test_selection_notice.py`, real-input `selection_notice` | Checks and Linux UI. Text fit was inspected at one GTK width; no automated font/width/DPI assertion, Windows notice check or screen-reader announcement check. |
 | Dividers track native bounds and avoid scrollbars | `test_row_paint.py`, `row_paint_scroll`, `row_paint_long_names` | Checks and Linux UI; focused GTK 120-DPI evidence in #86. Synthetic short/long names and pinned themes; only the last lower divider may be omitted. Horizontal endpoint gestures are inspected in screenshots, not an asserted final position. Windows painting is unverified. |
-| <Unreleased since="0.0.9" /> Accessible list name identifies the viewed sheet; external accessibility picks survive a rebuilding refresh | `test_accessibility.py:check_viewed_sheet`, `check_assistive_selection_before_rebuild`; pure assistive-selection tests; `viewed_sheet_name` | Integration, Checks, Linux UI and Windows desktop name check. Reads public UNO metadata/events; no screen reader or cross-process selection bridge runs. Name can lag with the arrow (#22). |
+| <Unreleased since="0.0.9" /> Accessible list name identifies the viewed sheet; external accessibility picks survive a rebuilding refresh | `test_accessibility.py:check_viewed_sheet`, `check_assistive_selection_before_rebuild`; pure assistive-selection tests; `viewed_sheet_name` | Integration, Checks, Linux UI and Windows desktop name check. Reads public UNO metadata/events. The rebuild check observes Move to Top enabling when the list adopts a pick below the first row, both with stable rows and after a rebuild. No screen reader or cross-process selection bridge runs. Name can lag with the arrow (#22). |
 | <Unreleased since="0.0.9" /> Accessible hierarchy reaches the list and lists controls in visual order; margin drags leave the sidebar docked | `test_accessibility.py:check_hierarchy`, `run.py:drag_from_margins`, `margin_drag_keeps_sidebar_docked` | Integration, Linux UI and Windows desktop drag check. Disabled unnamed backdrop is last. gtk3 does not undock even without handling the press, so gen/win are needed to expose that regression. A one-off gtk3 AT-SPI probe found controls and focus/cursor/name events; no AT-SPI or IAccessible2 bridge probe runs in CI (#133). |
 | Help hands the guide URI to the desktop; <Unreleased since="0.0.10" /> the header's `?` opens bundled quick help | `help_menu` with real SystemShellExecute and a private URI recorder; `test_help.py` installed topic, locale fallback and unknown-HID control; `header_help` real click and internal viewer | Integration verifies native help compilation/lookup; Linux gtk3/gen UI checks the actual header and unchanged document state. The fixed Linux lab measures the click from its calibrated panel origin. Browser rendering, arbitrary header themes and Windows/Aqua header input are not established. XML-help support is optional in LibreOffice builds; the online menu action remains available (#81). |
 | Partial initialization and failed popup creation leave no list-owned registrations or stale menu state | `test_adapter_failures.py` with forwarding adapters and owned-key failure tests | Integration. Shared structure monitor intentionally lives until document disposal. Key-handler removal is not directly observed by panel-disposal tests. |
@@ -257,8 +257,17 @@ the dialog's clicks off their controls (#232). It also checks that the points st
 dialog's own window, inside the measured Openbox and Windows frames that the dialog's accessible
 area includes, where the dialog reports nothing; from the Windows frame, each calibration took
 about a minute (#253).
-Sessions fail on nonzero exits, forced
-shutdowns, fatal messages, crash dumps, stalled main-thread callbacks or held terminate requests.
+Before termination, every session waits until the office has run the UNO releases the test
+process sent before the wait, because an office that exits while it runs them can crash (#242).
+The integration suite `test_client_releases.py` drops 2,000 dialog models in a live office. When
+the wait returns, the office must have signalled every one's release as it ran it, and a retained
+model must still be unsignalled. Releases sent during the wait are outside it, such as from a
+document that a failed check left open. The unit tests of the same name check that each step of
+the wait ends within its limit, including a blocked garbage collection, and that a bridge that
+disconnects after the marker is queued fails the wait. `test_office_process.py` checks that the
+wait, the terminate request and the exit share one deadline. Sessions fail on nonzero exits,
+forced shutdowns, fatal messages, crash dumps, stalled main-thread callbacks, held terminate
+requests or releases left running.
 `test_install_timing.py` checks that each package installation's elapsed time is recorded and
 that one exceeding its limit still fails, with that time and unopkg's output kept (#235).
 Windows crash dumps matter even when the office exits with status zero. Only startup is retried;
@@ -270,5 +279,6 @@ Fixture procedures and artifact diagnosis are in
 [Native LibreOffice testing](./development/native-testing.md#failures-and-shutdown).
 Lifecycle failure evidence is in
 [#40](https://github.com/viell-dev/slop-calc-sheet-manager/issues/40),
-[#48](https://github.com/viell-dev/slop-calc-sheet-manager/issues/48), and
-[#50](https://github.com/viell-dev/slop-calc-sheet-manager/issues/50).
+[#48](https://github.com/viell-dev/slop-calc-sheet-manager/issues/48),
+[#50](https://github.com/viell-dev/slop-calc-sheet-manager/issues/50), and
+[#242](https://github.com/viell-dev/slop-calc-sheet-manager/issues/242).

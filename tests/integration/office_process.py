@@ -5,6 +5,8 @@ import re
 import shutil
 import subprocess
 import threading
+import time
+from collections.abc import Callable
 from contextlib import suppress
 from pathlib import Path
 from typing import Any
@@ -128,26 +130,44 @@ def end_office(
     log_path: Path,
     *,
     stalled: list[str],
+    settle: Callable[[float], str | None],
     backtrace_path: Path | None = None,
     grace: float = 30,
 ) -> dict[str, object]:
     """End this session's office and record how it ended.
 
-    Normally the office is asked to terminate over UNO and given `grace` seconds to return from
-    that request and then to exit, after which it is stopped. A request that does not return,
-    such as one held by a dialog (#40), leaves the office running, so it is stopped too: the
-    session fails with a forced shutdown instead of hanging until the job's time limit.
+    Graceful shutdown has `grace` seconds in all, counted from one monotonic deadline: each step
+    gets only the time the steps before it left. First `settle` waits until the office has run
+    the UNO releases this process sent: an office that exits while it still runs them can crash
+    (#242, `client_releases`). It returns None, or why it stopped waiting; then the office is
+    stopped instead of asked, and the session fails with that reason in its results. Every
+    session passes it, so it is required. Next the office is asked to terminate over UNO, and
+    finally it has the rest of the time to exit, after which it is stopped. A request that does
+    not return, such as one held by a dialog (#40), leaves the office running, so it is stopped
+    too: the session fails with a forced shutdown instead of hanging until the job's time limit.
+    The release wait's duration and the whole shutdown's are recorded.
 
     After a stalled main-thread callback (`teardown`), the request could wait for the stuck
-    thread without bound (#50), so it is not sent and the office is stopped at once; the session
-    then fails, with the stall and the forced shutdown in its results.
+    thread without bound (#50), so neither it nor `settle` is sent and the office is stopped at
+    once; the session then fails, with the stall and the forced shutdown in its results.
     """
-    returned = not stalled and request_termination(desktop, grace)
+    started = time.monotonic()
+    deadline = started + grace
+
+    def remaining() -> float:
+        return max(0.0, deadline - time.monotonic())
+
+    unsettled = None if stalled else settle(remaining())
+    waited = round(time.monotonic() - started, 3)
+    returned = not stalled and unsettled is None and request_termination(desktop, remaining())
     ended = finish_process(
-        process, log_path, timeout=grace if returned else 0, backtrace_path=backtrace_path
+        process, log_path, timeout=remaining() if returned else 0, backtrace_path=backtrace_path
     )
     ended["office_stalled_callbacks"] = list(stalled)
+    ended["office_unsettled_releases"] = unsettled
+    ended["office_release_wait_seconds"] = waited
     ended["office_terminate_returned"] = returned
+    ended["office_shutdown_seconds"] = round(time.monotonic() - started, 3)
     return ended
 
 
@@ -157,3 +177,4 @@ def assert_clean_shutdown(result: dict[str, object]) -> None:
     assert not result["office_fatal_markers"], result
     assert not result.get("office_crash_dumps"), result
     assert not result.get("office_stalled_callbacks"), result
+    assert not result.get("office_unsettled_releases"), result
