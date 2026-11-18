@@ -6,9 +6,7 @@ the move. The method is read from `tests/ui/lab.py`, which imports UNO, and run 
 tree whose reports a fake main thread delivers in order, late when it is kept busy.
 """
 
-import queue
 import re
-import threading
 import time
 from collections.abc import Callable, Iterator
 from types import SimpleNamespace
@@ -16,41 +14,13 @@ from typing import Any
 
 import pytest
 
+from tests.unit.motion_reports import Office, Tracker
 from tests.unit.source_methods import function, method
 
 LAB = "tests/ui/lab.py"
 ORIGIN = (1186, 136)  # The tree's true screen position, as in #209's gen session.
 SIZE = (273, 784)
 FIRST = (30, 12)  # Where the first move lands in the tree: its accessible location + (30, 12).
-
-
-class Tracker:
-    def __init__(self) -> None:
-        self.last: tuple[int, int] | None = None
-
-    def mouseMoved(self, event: Any) -> None:
-        self.last = (event.X, event.Y)
-
-
-class Office:
-    """A main thread that delivers the tree's reports in order, each after its busy time."""
-
-    def __init__(self) -> None:
-        self.listeners: list[Tracker] = []
-        self.reports: queue.Queue[tuple[float, tuple[int, int]] | None] = queue.Queue()
-        self.thread = threading.Thread(target=self._run, daemon=True)
-        self.thread.start()
-
-    def _run(self) -> None:
-        while (item := self.reports.get()) is not None:
-            busy, (x, y) = item
-            time.sleep(busy)
-            for listener in list(self.listeners):
-                listener.mouseMoved(SimpleNamespace(X=x, Y=y))
-
-    def stop(self) -> None:
-        self.reports.put(None)
-        self.thread.join(5)
 
 
 class Tree:
