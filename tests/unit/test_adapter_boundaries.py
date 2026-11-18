@@ -844,6 +844,27 @@ def test_a_voided_press_gives_its_same_name_replacement_no_cursor_preference() -
     assert held.picks() == ["Bravo", "Charlie"]
 
 
+def test_a_sheet_renamed_to_the_pressed_name_gets_no_cursor_preference() -> None:
+    """While Bravo is held, others rename it to Bravo 2 and then Charlie to Bravo, one refresh
+    each, so the proof holds and the press is not voided. Ctrl+A picks the renamed Charlie under
+    the pressed name, and a rename of Hotel drops the cursor. The press's handle now reports
+    Bravo 2, so the pick named Bravo is another sheet: the first pick takes the cursor (#71).
+    """
+    held = HeldBravo(("Alfa", "Bravo", "Charlie", "Hotel"), ("Alfa", "Bravo"))
+    held.rename("Bravo", "Bravo 2")
+    held.refresh()
+    held.rename("Charlie", "Bravo")
+    held.refresh()
+    held.key(A, MOD1)
+    held.key(END, MOD1)
+    held.rename("Hotel", "Hotel 2")
+    held.refresh()
+    assert not held.owner._press.voided
+    assert held.cursor() == "Alfa"
+    held.release(1)
+    assert held.cursor() == "Alfa"
+
+
 def test_a_refresh_that_proves_nothing_writes_the_lists_selection_even_when_none_dropped() -> None:
     """Bravo, held, is replaced under its name, and the refresh drops every pick. Hotel is
     replaced too before the release, which the tree answers by selecting the pressed row. The

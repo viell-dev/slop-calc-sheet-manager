@@ -140,11 +140,11 @@ class Office:
     The list answers input as the real one does, and each cursor event it or the tree makes
     reaches the probe with the time it was emitted. LibreOffice emits events only while its
     main thread is free, which it is at every step the check takes outside a callback from
-    `view.on_main_thread`, before and after each clock reading. It handles the button-up when
-    it injected, or once the callback that injected it returns. `stray` names the free moment,
-    counted from the start, at which LibreOffice emits one unrelated cursor event on the
-    pressed row. `release_moves` is whether the tree's native release moves its cursor there;
-    `keys` whether the keyboard reaches the list.
+    `view.on_main_thread`, before and after each clock reading. It handles a button-up injected
+    outside such a callback at once, and one injected inside it once the callback returns.
+    `stray` names the free moment, counted from the start, at which LibreOffice emits one
+    unrelated cursor event on the pressed row. `release_moves` is whether the tree's native
+    release moves its cursor there; `keys` whether the keyboard reaches the list.
     """
 
     def __init__(
