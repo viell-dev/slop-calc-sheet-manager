@@ -1,7 +1,8 @@
 """Exhaustive orders and block layouts, with independent optimality/target oracles."""
 
 from itertools import permutations
-from time import perf_counter
+from random import Random
+from time import perf_counter, process_time
 
 import pytest
 
@@ -25,6 +26,26 @@ def lcs_length(left: tuple[str, ...], right: tuple[str, ...]) -> int:
     return row[-1]
 
 
+def list_moves(
+    before: tuple[str, ...], target: tuple[str, ...], keep: set[str]
+) -> list[tuple[str, int]]:
+    """The planner's earlier simulation with lists, in O(KN): move each sheet not kept, right to
+    left, in front of its successor in the target. The Fenwick count tree must match it (#214)."""
+    work = list(before)
+    moves: list[tuple[str, int]] = []
+    anchor: str | None = None
+    for name in reversed(target):
+        if name not in keep:
+            source = work.index(name)
+            following = len(work) if anchor is None else work.index(anchor)
+            final_index = following - (source < following)
+            if source != final_index:
+                moves.append((name, final_index))
+                work.insert(final_index, work.pop(source))
+        anchor = name
+    return moves
+
+
 def assert_plan(sheets: tuple[Sheet, ...], target: tuple[str, ...]) -> None:
     plan = plan_order(sheets, target)
     before = tuple(sheet.name for sheet in sheets)
@@ -38,6 +59,9 @@ def assert_plan(sheets: tuple[Sheet, ...], target: tuple[str, ...]) -> None:
         assert tuple(work) != before
     assert tuple(work) == target
     assert len(plan.moves) == len(before) - lcs_length(before, target)
+    moved = {move.name for move in plan.moves}
+    keep = {name for name in before if name not in moved}
+    assert [(move.name, move.index) for move in plan.moves] == list_moves(before, target, keep)
 
 
 def test_every_permutation_through_seven_sheets_is_optimal() -> None:
@@ -144,17 +168,38 @@ def test_large_selection_uses_one_call() -> None:
     assert [(move.name, move.index) for move in plan.moves] == [("999", 0)]
 
 
+def test_random_scenario_layouts_and_moves_through_eighty_sheets() -> None:
+    # Beyond the exhaustive sizes, where the count tree has several levels. Fixed, so that a
+    # failure reproduces.
+    random = Random(214)
+    for _ in range(200):
+        size = random.randint(8, 80)
+        scenarios = random.random() * 0.6
+        sheets = tuple(Sheet(str(i), i > 0 and random.random() < scenarios) for i in range(size))
+        groups = list(blocks(sheets))
+        random.shuffle(groups)
+        assert_plan(sheets, tuple(name for group in groups for name in group))
+        bases = [group[0] for group in groups]
+        selected = random.sample(bases, random.randint(1, len(bases)))
+        for action in ("up", "down", "top", "bottom"):
+            assert_plan(sheets, target_order(sheets, selected, action))
+        assert_plan(sheets, target_order(sheets, selected, "drop", random.randint(0, size)))
+
+
 def test_ten_thousand_sheet_planning_budget() -> None:
     sheets = tuple(Sheet(str(i)) for i in range(10_000))
     names = tuple(sheet.name for sheet in sheets)
-    # Both few-call and many-call plans must stay responsive. The old quadratic
-    # block scan took tens of seconds even for the one-call case.
+    # Both few-call and many-call plans must stay responsive: this catches a planner that grows
+    # quadratically, such as the old block scan, which took tens of seconds even for one call.
+    # Simulating the reverse order's moves with lists took 3 to 7 seconds on a loaded laptop
+    # (#214); the count tree takes under one. Process CPU time leaves out the time other
+    # processes take, but in a virtual machine it still counts time the host takes away.
     for target, calls in ((names[1:] + names[:1], 1), (tuple(reversed(names)), 9999)):
-        started = perf_counter()
+        cpu, wall = process_time(), perf_counter()
         plan = plan_order(sheets, target)
-        elapsed = perf_counter() - started
+        cpu, wall = process_time() - cpu, perf_counter() - wall
         assert len(plan.moves) == calls
-        assert elapsed < 5.0, f"10,000 sheets took {elapsed:.3f}s for {calls} moves"
+        assert cpu < 5.0, f"{calls} moves for 10,000 sheets: {cpu:.3f}s CPU, {wall:.3f}s elapsed"
 
 
 def test_invalid_inputs_and_noops() -> None:
