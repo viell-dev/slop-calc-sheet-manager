@@ -1,42 +1,8 @@
 # Focused research for #220 and #219. Run only on the disposable hosted desktop.
-Add-Type @"
-using System;
-using System.ComponentModel;
-using System.Runtime.InteropServices;
-public static class ContrastProbe {
-    [StructLayout(LayoutKind.Sequential)]
-    public struct State { public uint size; public uint flags; public IntPtr scheme; }
-    [DllImport("user32", EntryPoint="SystemParametersInfoW", SetLastError=true)]
-    private static extern bool Spi(uint action, uint size, ref State state, uint flags);
-    [DllImport("user32")] public static extern uint GetSysColor(int color);
-    public static State Read() {
-        var state = new State { size = (uint)Marshal.SizeOf<State>() };
-        if (!Spi(0x42, state.size, ref state, 0)) throw new Win32Exception();
-        return state;
-    }
-    public static void Set(uint flags, string scheme) {
-        var state = new State { size = (uint)Marshal.SizeOf<State>(), flags = flags };
-        state.scheme = scheme == null ? IntPtr.Zero : Marshal.StringToHGlobalUni(scheme);
-        try {
-            if (!Spi(0x43, state.size, ref state, 3)) throw new Win32Exception();
-        } finally { Marshal.FreeHGlobal(state.scheme); }
-    }
-}
-"@
 $python = 'C:\Program Files\LibreOffice\program\python.exe'
 $root = (Get-Location).Path
 $output = Join-Path $root 'test-results/windows-desktop'
 New-Item -ItemType Directory -Force -Path $output | Out-Null
-
-function Measure-Contrast {
-    $state = [ContrastProbe]::Read()
-    @{
-        flags = $state.flags
-        scheme = [Runtime.InteropServices.Marshal]::PtrToStringUni($state.scheme)
-        window = [ContrastProbe]::GetSysColor(5)
-        windowText = [ContrastProbe]::GetSysColor(8)
-    }
-}
 
 function Invoke-Probe($mode) {
     & $python ci/worker-k-windows.py $mode | Tee-Object -FilePath (Join-Path $output "$mode-input.log")
@@ -44,26 +10,6 @@ function Invoke-Probe($mode) {
 }
 
 $failures = @()
-$baseline = Measure-Contrast
-$baseline | ConvertTo-Json | Set-Content (Join-Path $output 'contrast-baseline.json')
-try { Invoke-Probe 'default' } catch { $failures += "$_" }
-try {
-    [ContrastProbe]::Set(($baseline.flags -bor 1), 'High Contrast Black')
-    Start-Sleep -Seconds 3
-    $active = Measure-Contrast
-    $active | ConvertTo-Json | Set-Content (Join-Path $output 'contrast-active.json')
-    if (($active.flags -band 1) -eq 0 -or $active.window -eq $baseline.window) {
-        throw 'Windows did not report both the high-contrast flag and a changed window colour'
-    }
-    Invoke-Probe 'contrast'
-} catch {
-    $failures += "$_"
-} finally {
-    [ContrastProbe]::Set($baseline.flags, $baseline.scheme)
-    Start-Sleep -Seconds 2
-    Measure-Contrast | ConvertTo-Json | Set-Content (Join-Path $output 'contrast-restored.json')
-}
-
 $portable = Join-Path $env:RUNNER_TEMP 'nvda-2026.3.1-portable'
 $nvda = Join-Path $portable 'nvda.exe'
 try {

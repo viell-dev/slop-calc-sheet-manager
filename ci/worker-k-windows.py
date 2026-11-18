@@ -29,7 +29,7 @@ REFERENCE = NAMES[3]
 record = {"mode": MODE}
 
 def save():
-    (OUT / "result.json").write_text(json.dumps(record, indent=2, ensure_ascii=False) + "\n")
+    (OUT / "result.json").write_text(json.dumps(record, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 def marker(text):
     print(f"{time.time():.3f} {text}", flush=True)
@@ -88,10 +88,12 @@ try:
         try:
             marker("Focus viewed row")
             book.click(0)
-            marker("Pick North and South separately from the Calc group by Ctrl click")
-            book.click(1)
+            marker("Pick North and South by Down then Shift+Down")
+            lab.input.tap("Down", pause=0.6)
             marker("North row picked")
-            book.click(2, modifiers=("Control_L",))
+            lab.input.tap("Down", ("Shift_L",), pause=0.6)
+            marker("Report NVDA focus on the selected sidebar row via Insert+Tab")
+            lab.input.tap("Tab", ("Insert",), pause=0.5)
             wait_for(lambda: book.selection() == NAMES[1:3], "two independent picks")
             marker("North and South picked")
             record["before"] = workbook()
@@ -145,6 +147,14 @@ try:
 
             if MODE == "nvda":
                 marker("NVDA report current focus via Insert+Tab")
+                lab.input.tap("Tab", ("Insert",), pause=0.5)
+                marker("Focus Sheets preview with Alt+S")
+                lab.input.tap("s", ("Alt_L",), pause=0.6)
+                record["preview_focus"] = focus_state(dialog)
+                marker("Read the next proposal and then return to the refused proposal")
+                lab.input.tap("Down", pause=1)
+                lab.input.tap("Up", pause=1)
+                marker("Report NVDA focus on the refused proposal via Insert+Tab")
                 lab.input.tap("Tab", ("Insert",), pause=0.5)
 
             marker("Esc to workbook")
