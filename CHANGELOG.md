@@ -5,6 +5,9 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- A double click in the list now activates its sheet after the mouse listener returns, as Enter
+  already did: LibreOffice runs that listener without the global lock that reading Calc's
+  selected tabs needs ([#269](https://github.com/viell-dev/slop-calc-sheet-manager/issues/269)).
 - On Linux, a test session's forced stop now also stops a LibreOffice `soffice.bin` that outlives
   its launcher: one whose `oosplash` launcher was killed, or that `oosplash` had started but not
   yet taken over when it was told to stop, as at its first-start restart. Both were measured with

@@ -102,6 +102,8 @@ class MainThread:
 
     Listener callbacks can arrive on other threads (the UNO bridge, a drag thread on Windows)
     and some run while LibreOffice is in the middle of a change, so they only post work here.
+    Toolkit mouse listeners run on the main thread, but VCL releases the solar mutex around
+    them; posted work runs there with it held (#269).
     """
 
     def __init__(self, context):
@@ -151,8 +153,11 @@ def read_rows(controller, observed) -> list[SheetRow]:
 def selected_tabs_method(context):
     """The reflected selected-tabs getter, reusable for controllers in this context.
 
-    Invoke it on the UI thread: the native getter reads this view's mark data and can finish
-    lazy view initialization. The target controller is supplied separately to each invoke.
+    Invoke it on the UI thread, in work posted through `MainThread`: the native getter reads
+    this view's mark data and can finish lazy view initialization, without taking the solar
+    mutex itself (`ScTabViewObj::getSelectedSheets` in 26.2.1.2 to 26.8.2.2), and toolkit
+    mouse listeners run without it (#269). The target controller is supplied separately to
+    each invoke.
     """
     reflection = context.ServiceManager.createInstanceWithContext(
         "com.sun.star.reflection.CoreReflection", context
