@@ -14,8 +14,22 @@ import pytest
 from tests.ui.winput import INPUT, KEYBDINPUT, KEYS, MOUSEINPUT, normalised, png_bytes
 
 ROOT = Path(__file__).resolve().parents[2]
-# Every module whose checks the Windows suite runs, and the suite itself.
-SHARED_CHECKS = ("run_ui.py", "rename_dialog.py", "menu_lifetime.py", "run_windows_ui.py")
+# Every module of checks or fixtures that the Windows suite shares, and the suite itself. The
+# Linux-only check modules are included too, as when all of them were in `run_ui.py`.
+SHARED_CHECKS = (
+    "workbook.py",
+    "check_loop.py",
+    "selection_checks.py",
+    "move_checks.py",
+    "drag_checks.py",
+    "paint_checks.py",
+    "focus_checks.py",
+    "menu_checks.py",
+    "stale_state_checks.py",
+    "rename_dialog.py",
+    "menu_lifetime.py",
+    "run_windows_ui.py",
+)
 
 
 def pressed_keys() -> set[str]:

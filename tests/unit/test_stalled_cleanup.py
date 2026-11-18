@@ -240,8 +240,9 @@ def ui_run_checks(calls: list[str], stall_at: str | None, fail_at: str | None = 
         stalled_callbacks=stalled_callbacks,
         note_progress=note_progress,
     )
-    load(path, "after_failure", namespace)
-    load(path, "run_named", namespace)
+    loop = ROOT / "tests" / "ui" / "check_loop.py"
+    load(loop, "after_failure", namespace)
+    load(loop, "run_named", namespace)
     return load(path, "run_checks", namespace), checks
 
 
