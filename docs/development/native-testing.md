@@ -289,7 +289,7 @@ The soak passes `--suites none` to skip feature suites and their performance wor
 180-second per-session limit; ordinary integration runs keep all feature suites enabled. A
 session that the soak finds still running at that limit fails with status 124; one that exits
 after it while the soak's own process is not scheduled reports its own status
-([#244](https://github.com/viell-dev/slop-calc-sheet-manager/issues/244)). Its runner has the
+([#275](https://github.com/viell-dev/slop-calc-sheet-manager/issues/275)). Its runner has the
 same moment as its deadline, passed as an absolute time on the container's monotonic clock
 (`SHEET_MANAGER_DEADLINE_MONOTONIC`), so the runner's own start-up cannot move it later. When the
 limit falls during startup or the checks, the runner's stall watch records the stall, tries to
