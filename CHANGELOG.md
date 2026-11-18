@@ -5,6 +5,11 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Make more moves of a sheet whose name LibreOffice confuses with another sheet's, such as `fi`
+  beside `ﬁ`. When the usual way of making a move needs the confused name, the list tries one
+  other, equally short way, for example moving the sheet beside it, and refuses the move only if
+  that way needs a confused name too
+  ([#125](https://github.com/viell-dev/slop-calc-sheet-manager/issues/125)).
 - Retain painted Linux integration evidence before release-sweep input tests and require the
   painted phase to succeed before input starts
   ([#192](https://github.com/viell-dev/slop-calc-sheet-manager/issues/192)).
