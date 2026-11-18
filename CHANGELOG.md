@@ -5,6 +5,10 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Calibrate the rename dialog's real-input clicks from two reports that follow the pointer's two
+  moves, rather than the first report after a fixed 0.15 seconds, which a busy office could send
+  late enough to be read for the next point tried
+  ([#232](https://github.com/viell-dev/slop-calc-sheet-manager/issues/232)).
 - Organise contributor testing guidance by task and platform, with dedicated Development pages
   for native LibreOffice testing and hosted workflows
   ([#198](https://github.com/viell-dev/slop-calc-sheet-manager/issues/198)).
