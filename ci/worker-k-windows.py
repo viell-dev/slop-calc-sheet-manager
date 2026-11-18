@@ -12,6 +12,7 @@ from winput import WinInput
 from rename_dialog import find_dialog, identities, identify, open_dialog, wait_closed
 from run import office_session, wait_for
 from workbook import Workbook
+from worker_m_controls import button, rename_candidates, sidebar_after, sidebar_before, stock_dialog
 
 MODE = sys.argv[1]
 OUT = (root / "test-results" / "windows-desktop" / MODE).resolve()
@@ -86,6 +87,7 @@ try:
                 "modified": book.document.isModified(),
             }
         try:
+            sidebar, sidebar_events = sidebar_before(book, record)
             marker("Focus viewed row")
             book.click(0)
             marker("Pick North and South by Down then Shift+Down")
@@ -96,6 +98,7 @@ try:
             lab.input.tap("Tab", ("Insert",), pause=0.5)
             wait_for(lambda: book.selection() == NAMES[1:3], "two independent picks")
             marker("North and South picked")
+            sidebar_after(book, record, sidebar, sidebar_events)
             record["before"] = workbook()
             assert record["before"]["tabs"] == [NAMES[0]]
             assert record["before"]["viewed"] == NAMES[0]
@@ -138,7 +141,10 @@ try:
             record["duplicate"] = dialog.state()
             record["duplicate_focus"] = focus_state(dialog)
             assert not record["duplicate"]["rename_enabled"]
+            record["disabled_rename"] = button(dialog.buttons["Rename"])
             lab.screenshot("rename-duplicate")
+            if MODE == "nvda":
+                rename_candidates(book, dialog, record, marker)
             marker("Duplicate refusal settled, Tab once and then Shift+Tab")
             lab.input.tap("Tab", pause=0.5)
             record["focus_after_tab"] = focus_state(dialog)
@@ -164,6 +170,7 @@ try:
             record["after_escape"] = workbook()
             assert record["after_escape"] == record["before"]
             lab.screenshot("workbook-after-escape")
+            stock_dialog(book, record, marker, MODE == "nvda")
             record["passed"] = True
         except BaseException:
             lab.screenshot("failure")
