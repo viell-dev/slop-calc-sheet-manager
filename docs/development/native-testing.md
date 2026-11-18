@@ -203,11 +203,13 @@ A session that reports no progress for 15 minutes from its launch, because a UNO
 returned, fails and is never retried. Suites, checks, and the benchmarks' workbooks and repetitions
 count as progress; each session records its `longest_progress_interval_seconds`. The runner first
 records the stall, as a stalled callback and in a `stall-*.json` receipt, so no close through the
-shared close helpers, settings restore, release wait or terminate request starts afterwards. The
-test's other calls, and any already under way, continue until the office stops: among them a
-close that the shared helper had already posted to the main thread on Windows
-([#261](https://github.com/viell-dev/slop-calc-sheet-manager/issues/261)), and an Escape tap of
-the update dialog's cleanup, which checks for a stall before each tap. For up to 60 seconds the
+shared close helpers, settings restore, release wait or terminate request starts afterwards. On
+Windows that includes a close the shared helper posted to the main thread before the stall: it
+checks again when the main thread reaches it, and the helper then fails as after any stall
+([#261](https://github.com/viell-dev/slop-calc-sheet-manager/issues/261)). The test's other
+calls, and any already under way, continue until the office stops: among them a close the main
+thread had already started, and an Escape tap of the update dialog's cleanup, which checks for a
+stall before each tap. For up to 60 seconds the
 runner then tries to save the client's Python stacks and the office's native stacks as `stall-*`
 files; a step or result that arrives later is not recorded. It starts stopping the launcher it
 started (`stop_process`, which on Windows stops the launcher's whole process tree) when those
