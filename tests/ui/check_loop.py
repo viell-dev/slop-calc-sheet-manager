@@ -12,7 +12,7 @@ import json
 import time
 import traceback
 
-from teardown import stalled_callbacks
+from teardown import note_progress, stalled_callbacks
 from workbook import reset
 
 
@@ -35,6 +35,7 @@ def run_named(lab, book, output, checks, only=()):
 
     for name, check in checks:
         started = time.monotonic()
+        note_progress()  # The session's stall watch counts checks as progress (#45).
         try:
             reset(book)
             results[name] = {"pass": True, "evidence": check()}

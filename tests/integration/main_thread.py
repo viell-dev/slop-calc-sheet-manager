@@ -12,7 +12,9 @@ Other platforms close directly: the lock is not released there, and on gtk3 a ma
 could run inside the nested main loop of a clipboard read (#30).
 
 A close that times out leaves the main thread's state unknown; it is recorded in `teardown`, and
-the session then fails without further closes (#50).
+the session then fails without further closes (#50). After any stalled callback, including the
+stall watch's (#45), `close_document` starts no new close. On Windows, a close it posted to the
+main thread before the stall was recorded still runs when the main thread reaches it.
 
 Close every Calc document in the tests and the workbook generator through `close_document`, and
 use `close_after` in place of a `finally` clause that closes one. A suite closes its leftovers
@@ -24,7 +26,7 @@ import threading
 
 import unohelper
 from com.sun.star.awt import XCallback
-from teardown import close_leftovers, record_stalled_callback
+from teardown import close_leftovers, record_stalled_callback, refuse_after_stall
 
 CLOSE_TIMEOUT = 60
 
@@ -58,8 +60,10 @@ def close_document(context, document) -> None:
     """Close a Calc document as the user interface would: on the main thread on Windows.
 
     Raises TimeoutError if the close has not finished within CLOSE_TIMEOUT seconds; a close that
-    has not started by then never starts. Any other failure raises AssertionError.
+    has not started by then never starts. After a stalled callback it raises TimeoutError at
+    once, without closing. Any other failure raises AssertionError.
     """
+    refuse_after_stall("closing a document")
     if os.name != "nt":
         document.close(True)
         return

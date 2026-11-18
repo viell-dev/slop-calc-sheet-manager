@@ -119,6 +119,10 @@ def main() -> None:
     if os.name == "posix":
         command.extend(["--user", f"{uid}:{gid}"])
     command.extend(["--env", "HOME=/tmp/sheet-manager-home"])
+    # Lowered stall limits and deadlines reach the runners, to try the stall watch (#45).
+    for name in ("SHEET_MANAGER_STALL_SECONDS", "SHEET_MANAGER_DEADLINE_SECONDS"):
+        if name in os.environ:
+            command.extend(["--env", f"{name}={os.environ[name]}"])
     for source, destination, readonly in (
         (ROOT, "/work", True),
         (package, "/packages/extension.oxt", True),

@@ -16,7 +16,7 @@ import uno
 from com.sun.star.awt import Rectangle
 from com.sun.star.beans import PropertyValue
 from main_thread import close_after, close_document
-from teardown import Configured
+from teardown import Configured, note_progress
 
 from sheet_manager.reorder import Action, plan_move, plan_order
 from sheet_manager.uno_reorder import apply_order, preflight, snapshot
@@ -430,6 +430,7 @@ def performance(context, desktop):
     results = []
     for count in (200, 1000):
         print(f"Generating populated {count}-sheet synthetic workbook", flush=True)
+        note_progress()  # Workbooks and repetitions are progress for the stall watch (#45).
         document = populated_workbook(desktop, count)
         try:
             original = order(document)
@@ -442,6 +443,7 @@ def performance(context, desktop):
                 timings, undos = [], []
                 call_count = 0
                 for _ in range(3):
+                    note_progress()
                     started = time.perf_counter()
                     observed = snapshot(document)
                     plan = plan_move(observed.sheets, selected, "bottom")

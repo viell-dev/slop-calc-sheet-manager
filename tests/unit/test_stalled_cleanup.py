@@ -18,6 +18,7 @@ from tests.integration import teardown
 from tests.integration.teardown import (
     Configured,
     close_leftovers,
+    note_progress,
     record_stalled_callback,
     run_checks,
     stalled_callbacks,
@@ -237,6 +238,7 @@ def ui_run_checks(calls: list[str], stall_at: str | None, fail_at: str | None = 
         json=json,
         traceback=traceback,
         stalled_callbacks=stalled_callbacks,
+        note_progress=note_progress,
     )
     loop = ROOT / "tests" / "ui" / "check_loop.py"
     load(loop, "after_failure", namespace)

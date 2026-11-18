@@ -231,6 +231,8 @@ def main():
     arguments = parser.parse_args()
     output = (arguments.output / "ui-win").resolve()
     output.mkdir(parents=True, exist_ok=True)
+    for stale in output.glob("stall-*"):  # An earlier run's stall evidence (#45).
+        stale.unlink()
     result: dict[str, object] = {"vcl": "win", "os": platform.platform()}
     failed = False
     try:

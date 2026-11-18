@@ -268,6 +268,33 @@ disconnects after the marker is queued fails the wait. `test_office_process.py` 
 wait, the terminate request and the exit share one deadline. Sessions fail on nonzero exits,
 forced shutdowns, fatal messages, crash dumps, stalled main-thread callbacks, held terminate
 requests or releases left running.
+A session without progress for 15 minutes from its launch fails without a retry: the stall is
+recorded before its client and office stacks are tried. The stop of the launcher the runner
+started, with its whole process tree on Windows, starts when the capture ends, 60 seconds after
+detection at the latest, even when the client, a debugger and a receipt write are all blocked;
+`stop_process`'s own limits then bound the stop, about 60 seconds more. A capture step or result
+after those 60 seconds is not recorded (#45). The receipt records only what the watch did and
+saw: a SIGINT sent to the gdb wrapper is not saved stacks, a listing with no `soffice.bin` does
+not show that none ran, and the launcher's exit status is not the office's. Native stacks need the
+gdb wrapper on Linux or CDB on Windows. The stall is recorded in the session's stalled callbacks,
+so the session's shutdown, which starts after the watch has closed, neither waits for releases
+nor asks the office to terminate. `test_stall_session.py` runs the runner's own session against a
+stand-in office and checks the timing, the exit status and `results.json`, including a stall
+during the gdb wrapper's restart, document closes refused after a stall, a stalled session whose
+office is still running at shutdown, which must send neither and stop it without spending the
+graceful shutdown's 30 seconds, and a healthy session whose release wait outlasts the stall
+limit, which must not be taken for a stall. `test_office_process.py` checks the receipt's single
+writer, held receipt writes, late results, failed process listings, collector deadlines, a
+launcher whose ID may have been reused or whose identity was never taken, with an empty listing
+too, and what the receipt says of an interrupt and the wrapper's exit. A close already posted to
+the main thread on Windows before the stall still runs (#261).
+The stacks of a stall that begins within about 18 minutes of a job's or the macOS helper's time
+limit may be lost there (#244). Soak sessions share one deadline with their runner and record the
+stall when the soak's own limit falls during startup or their checks; installation is not
+watched, so a limit that passes there is found at the launch that follows. `test_soak.py` runs
+the real runner with a slow start-up across that limit. The soak's summary draws no conclusion of
+its own about stalls: it reports each session's status and results and points to the session's
+directory, which the soak empties first, so that nothing in it comes from an earlier soak.
 `test_install_timing.py` checks that each package installation's elapsed time is recorded and
 that one exceeding its limit still fails, with that time and unopkg's output kept (#235).
 Windows crash dumps matter even when the office exits with status zero. Only startup is retried;

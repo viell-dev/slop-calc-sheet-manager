@@ -33,6 +33,15 @@ gtk3 saves a screenshot.
 #   (#242). No round trip waits for them, so never replace the marker with a call or a sleep.
 # - Failed input polls retain only existing fixture reads/posts, without extra UNO calls (#160).
 # - Save completed suites as they finish: an external timeout can bypass Python finally (#162).
+# - A session with no progress for `office_process.STALL_SECONDS`, from its launch, fails;
+#   its watch tries to save the client and office stacks, then stops the launcher it started
+#   (#45). A stall is never retried. Report progress at suite and check boundaries; never use
+#   the limit as a test timeout. Hand the gdb wrapper's replacement office to the watch with
+#   `StallWatch.follow`, and stop it before any UNO call when the watch refuses it after a
+#   stall. A watch closes only before its deadline, so the session records
+#   `checks_ended_before_deadline` then. Record what the session observed, not what it implies.
+#   Close the watch before `end_office`: its stall is a stalled callback, so shutdown then sends
+#   neither the release wait nor the terminate request to an office whose calls stopped.
 # - Install only through `add_package`, which records each install's elapsed time and keeps a
 #   timeout a failure (#235). Do not raise `INSTALL_SECONDS` without measured normal installs.
 
@@ -63,14 +72,23 @@ from com.sun.star.lang import XEventListener
 from input_trace import configure as configure_input_trace
 from main_thread import close_after, close_document
 from office_process import (
+    StallWatch,
     assert_clean_shutdown,
     end_office,
     finish_process,
     normal_startup_restart,
     retain_crash_dumps,
+    stop_process,
 )
 from sheet_list_view import move_buttons, tree_of
-from teardown import stalled_callbacks, start_session
+from teardown import (
+    longest_progress_interval,
+    note_progress,
+    refuse_after_stall,
+    stall_if_idle,
+    stalled_callbacks,
+    start_session,
+)
 
 FACTORY = "dev.viell.sheetmanager.PanelFactory"
 DECK = "SheetManagerDeck"
@@ -102,9 +120,25 @@ def suite_order(path: Path) -> tuple[int, str]:
     return last, path.stem
 
 
+def stall_record(watch: StallWatch, stall: dict[str, object]) -> dict[str, object]:
+    """A session result's record of its stall.
+
+    It holds the watch's evidence and, apart from it, whether the runner stopped waiting before
+    the capture finished: that is a fact about the runner's wait, not about the capture.
+    """
+    record: dict[str, object] = {"office_progress_stall": stall}
+    if watch.wait_timed_out:
+        record["stall_wait_timed_out"] = True
+    return record
+
+
 def close_writer(writer):
-    """Close a Writer document after its start-up toolbar update has had time to finish."""
+    """Close a Writer document after its start-up toolbar update has had time to finish.
+
+    As `close_document` does, it refuses to start once a callback or the session has stalled.
+    """
     time.sleep(WRITER_SETTLE_SECONDS)
+    refuse_after_stall("closing a Writer document")
     writer.close(True)
 
 
@@ -244,6 +278,17 @@ def office_session(
             text=True,
             cwd=directory,
         )
+        # Watch from the launch: a UNO call that never returns, startup's included, would
+        # otherwise hold the run until an enclosing limit, without evidence (#45). The watch
+        # records the stall, tries to save the stacks, then stops the launcher.
+        start_session()
+        watch = StallWatch(
+            process,
+            output,
+            f"stall-{headless}-{attempt}",
+            expire=stall_if_idle,
+            debugger_parent=backtrace,
+        ).start()
         try:
             # The stub calls this UNO "Any"; the actual value is a dynamic XComponentContext.
             local = cast(Any, uno.getComponentContext())
@@ -284,6 +329,14 @@ def office_session(
                                     text=True,
                                     cwd=directory,
                                 )
+                                if not watch.follow(process):
+                                    # The session stalled meanwhile: nothing watches this one,
+                                    # so it is stopped before any UNO call reaches it (#45).
+                                    stop_process(process)
+                                    raise TimeoutError(
+                                        "The stall watch had recorded a stall when the gdb "
+                                        "wrapper's replacement office started"
+                                    ) from None
                                 continue
                         raise RuntimeError("Private soffice exited during startup") from None
                     time.sleep(0.1)
@@ -294,7 +347,11 @@ def office_session(
                 "com.sun.star.frame.Desktop", context
             )
             desktop.getComponents().hasElements()  # Detect the post-connect startup crash.
+            if watch.stalled:
+                raise TimeoutError("The stall watch recorded a stall during startup")
         except Exception:
+            # A stall is never retried: it ends the session as a failure.
+            stall = watch.close()
             generated_trace = directory / "gdbtrace.log"
             startup = finish_process(
                 process,
@@ -310,6 +367,10 @@ def office_session(
             )
             startup["office_crash_dumps"] = dumps
             startup_dumps.extend(dumps)
+            startup["longest_progress_interval_seconds"] = round(longest_progress_interval(), 1)
+            if stall is not None:
+                startup.update(stall_record(watch, stall))
+                startup["office_stalled_callbacks"] = stalled_callbacks()
             if profile_directory is not None:
                 # A reused profile outlives the attempt; its kept dumps must not count again.
                 for dump in (profile_path / "crash").glob("*.dmp"):
@@ -319,15 +380,23 @@ def office_session(
                 json.dumps(startup, indent=2) + "\n", encoding="utf-8"
             )
             temporary.cleanup()
-            if attempt == startup_attempts - 1:
+            if stall is not None or attempt == startup_attempts - 1:
                 result.update(startup)
                 result["failure_stage"] = "startup"
                 raise
             continue
-        start_session()
         try:
             yield context, desktop, directory
         finally:
+            # After a stall, or at or after the deadline, this waits, bounded, for the capture and
+            # the office's stop.
+            stall = watch.close()
+            if stall is not None:
+                result.update(stall_record(watch, stall))
+            elif watch.deadline is not None:
+                # The watch closes only before the deadline: the checks ended in time (#45).
+                result["checks_ended_before_deadline"] = True
+            result["longest_progress_interval_seconds"] = round(longest_progress_interval(), 1)
             try:
                 generated_trace = directory / "gdbtrace.log"
                 # Ends the office before the debugger's final output is copied, once it has run
@@ -825,6 +894,7 @@ def main():
         "startup-restart-*.log",
         "crash-*.dmp",
         "crash-*-dump.ini",
+        "stall-*",
         "reorder-performance*.json",
         "rename-performance*.json",
     ):
@@ -896,6 +966,7 @@ def main():
                                     else {}
                                 )
                                 started = time.monotonic()
+                                note_progress()
                                 print(f"integration phase: {suite_path.stem} started", flush=True)
                                 suite_result = suite.exercise(
                                     context, desktop, directory, output, **options

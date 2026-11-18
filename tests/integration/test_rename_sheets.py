@@ -23,6 +23,7 @@ from unittest.mock import patch
 from com.sun.star.beans import PropertyValue
 from main_thread import close_after
 from sheet_list_view import on_main_thread
+from teardown import note_progress
 from test_reorder import BrokenUndo, FaultyDocument, populated_workbook, undo_capacity
 
 from sheet_manager.rename import Plan, Step, plan_renames
@@ -674,6 +675,7 @@ def performance(context, desktop, output):
     receipt = output / "rename-performance-progress-headless.json"
     for count, repeats in ((200, 3), (1000, 1)):
         print(f"rename benchmark: building {count} populated sheets", flush=True)
+        note_progress()  # Workbooks and repetitions are progress for the stall watch (#45).
         document = populated_workbook(desktop, count)
         try:
             original = names(document)
@@ -684,6 +686,7 @@ def performance(context, desktop, output):
                 print(f"rename benchmark: {count} sheets, {case} started", flush=True)
                 applied, undone, calls = [], [], 0
                 for _ in range(repeats):
+                    note_progress()
                     started = time.perf_counter()
                     plan, result = rename(context, document, renames)
                     applied.append((time.perf_counter() - started) * 1000)

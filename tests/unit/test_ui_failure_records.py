@@ -14,7 +14,12 @@ from typing import Any
 
 import pytest
 
-from tests.integration.teardown import record_stalled_callback, stalled_callbacks, start_session
+from tests.integration.teardown import (
+    note_progress,
+    record_stalled_callback,
+    stalled_callbacks,
+    start_session,
+)
 from tests.unit.source_methods import function
 
 RUNNER = "tests/ui/check_loop.py"
@@ -70,6 +75,7 @@ def runner(resets: list[str]) -> Callable[..., dict[str, Any]]:
         "json": json,
         "traceback": traceback,
         "stalled_callbacks": stalled_callbacks,
+        "note_progress": note_progress,
     }
     function(RUNNER, "after_failure", namespace)
     return function(RUNNER, "run_named", namespace)
