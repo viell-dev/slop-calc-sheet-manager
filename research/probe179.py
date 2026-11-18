@@ -18,6 +18,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import traceback
 import zipfile
@@ -62,25 +63,31 @@ def cdb_script(work: pathlib.Path) -> str:
         f"@rcx, poi(@rcx+0x{OFF['mpEditEngine']:x}), poi(@rcx+0x{OFF['pLastState']:x}), "
         f"poi(@rcx+0x{OFF['pActiveViewSh']:x})"
     )
+    engine = f"poi(@rcx+0x{OFF['mpEditEngine']:x})"
     view_hdl = f"poi(@rcx+0x{OFF['mpInputHandler']:x})"
     sc = [
-        bp("sclo", SC["VIEW-CTOR"], r'.echotime; .printf \"VIEW-CTOR view=%p\\n\", @rcx; gc'),
-        bp("sclo", SC["VIEW-DTOR"], r'.echotime; .printf \"VIEW-DTOR view=%p\\n\", @rcx; gc'),
-        bp("sclo", SC["ACTIVATE"], r'.echotime; .printf \"ACTIVATE view=%p mdi=%x hdl=%p\\n\", @rcx, @dl, ' + view_hdl + '; gc'),
-        bp("sclo", SC["DEACTIVATE"], r'.echotime; .printf \"DEACTIVATE view=%p mdi=%x hdl=%p\\n\", @rcx, @dl, ' + view_hdl + '; kc 14; gc'),
-        bp("sclo", SC["NOTIFY"], r'.echotime; .printf \"NOTIFY ' + hdl + r' state=%p force=%x src=%p\\n\", ' + hdl_args + r', @rdx, @r8b, @r9; .if (@rdx == 0) { kc 14 }; gc'),
-        bp("sclo", SC["FORGET"], r'.echotime; .printf \"FORGET ' + hdl + r'\\n\", ' + hdl_args + r'; kc 14; gc'),
-        bp("sclo", SC["ENGINE"], r'.echotime; .printf \"ENGINE-CREATE ' + hdl + r'\\n\", ' + hdl_args + r'; gc'),
-        bp("sclo", SC["HDL-CTOR"], r'.echotime; .printf \"HDL-CTOR hdl=%p\\n\", @rcx; gc'),
-        bp("sclo", SC["DELAYTIMER"], r'.echotime; .printf \"DELAYTIMER ' + hdl + r'\\n\", ' + hdl_args + r'; kc 14; gc'),
-        bp("sclo", SC["SCMOD-CFG"], r'.echotime; .printf \"SCMOD-CONFIGURATION-CHANGED broadcaster=%p hints=%x\\n\", @rdx, @r8d; kc 14; gc'),
+        bp("sclo", SC["VIEW-CTOR"], r'.echotime; .printf \"VIEW-CTOR view=%p\", @rcx; .echo; gc'),
+        bp("sclo", SC["VIEW-DTOR"], r'.echotime; .printf \"VIEW-DTOR view=%p\", @rcx; .echo; gc'),
+        bp("sclo", SC["ACTIVATE"], r'.echotime; .printf \"ACTIVATE view=%p mdi=%x hdl=%p\", @rcx, @dl, ' + view_hdl + '; .echo; gc'),
+        bp("sclo", SC["DEACTIVATE"], r'.echotime; .printf \"DEACTIVATE view=%p mdi=%x hdl=%p\", @rcx, @dl, ' + view_hdl + '; .echo; kc 14; gc'),
+        # Stack for a call without a state or on a handler that has no edit engine yet: the
+        # latter is the call that can arm DelayTimer before the engine exists.
+        bp("sclo", SC["NOTIFY"], r'.echotime; .printf \"NOTIFY ' + hdl + r' state=%p force=%x src=%p\", ' + hdl_args + r', @rdx, @r8b, @r9; .echo; .if ((@rdx == 0) | (' + engine + r' == 0)) { kc 14 }; gc'),
+        bp("sclo", SC["FORGET"], r'.echotime; .printf \"FORGET ' + hdl + r'\", ' + hdl_args + r'; .echo; kc 14; gc'),
+        bp("sclo", SC["ENGINE"], r'.echotime; .printf \"ENGINE-CREATE ' + hdl + r'\", ' + hdl_args + r'; .echo; gc'),
+        bp("sclo", SC["HDL-CTOR"], r'.echotime; .printf \"HDL-CTOR hdl=%p\", @rcx; .echo; gc'),
+        bp("sclo", SC["DELAYTIMER"], r'.echotime; .printf \"DELAYTIMER ' + hdl + r'\", ' + hdl_args + r'; .echo; kc 14; gc'),
+        bp("sclo", SC["SCMOD-CFG"], r'.echotime; .printf \"SCMOD-CONFIGURATION-CHANGED broadcaster=%p hints=%x\", @rdx, @r8d; .echo; kc 14; gc'),
     ]
     merged = [] if not MERGED else [
-        bp("mergedlo", MERGED["CC-SETTINGS-STUB"], r'.echotime; .printf \"COLORCONFIG-DATACHANGED-EVENT\\n\"; kc 10; gc'),
-        bp("mergedlo", MERGED["CC-NOTIFY"], r'.echotime; .printf \"COLORCONFIG-NOTIFY\\n\"; kc 10; gc'),
+        bp("mergedlo", MERGED["CC-SETTINGS-STUB"], r'.echotime; .printf \"COLORCONFIG-DATACHANGED-EVENT\"; .echo; kc 10; gc'),
+        bp("mergedlo", MERGED["CC-NOTIFY"], r'.echotime; .printf \"COLORCONFIG-NOTIFY\"; .echo; kc 10; gc'),
     ]
-    dump = str(work / "cdb-av-full.dmp")
-    dump2 = str(work / "cdb-av2-full.dmp")
+    # Forward slashes: CDB reads backslashes in quoted command strings as escapes. Run
+    # 44212422194 lost its sclo.dll command file that way (D:\a\_temp) and CDB then held the
+    # office stopped until the job's time limit.
+    dump = (work / "cdb-av-full.dmp").as_posix()
+    dump2 = (work / "cdb-av2-full.dmp").as_posix()
     lines = [
         "sxi eh", "sxi ct", "sxi et", "sxi ld", "sxi ud", "sxi out",
         f'sxe -c ".echotime; .echo FIRST-CHANCE-AV; r; kn 40; .dump /ma {dump}; gn" '
@@ -95,7 +102,7 @@ def cdb_script(work: pathlib.Path) -> str:
     (work / "sclo-load.txt").write_text(
         (work / "sclo-breakpoints.txt").read_text(encoding="utf-8") + "gc\n", encoding="utf-8"
     )
-    lines.append(f'sxe -c "$$< {work / "sclo-load.txt"}" ld:sclo.dll')
+    lines.append(f'sxe -c "$$< {(work / "sclo-load.txt").as_posix()}" ld:sclo.dll')
     lines += [".echo READY", ".echotime", "g"]
     return "\n".join(lines) + "\n"
 
@@ -132,13 +139,16 @@ def attach(profile: pathlib.Path, directory: pathlib.Path, record: dict) -> subp
     record["cdb_work"] = str(work)
     script = cdb_script(work)
     if loaded:
-        script = script.replace(".echo READY", f"$< {work / 'sclo-breakpoints.txt'}\n.echo READY", 1)
+        script = script.replace(
+            ".echo READY", f"$< {(work / 'sclo-breakpoints.txt').as_posix()}\n.echo READY", 1)
     (directory / "cdb-script.txt").write_text(script, encoding="utf-8")
     log = directory / "cdb.log"
     process = subprocess.Popen(
         [CDB, "-p", str(pid), "-G", "-y", "", "-cf", str(directory / "cdb-script.txt"),
          "-logo", str(log)],
-        stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        # No input: at an unexpected break CDB reads end of input and exits instead of holding
+        # the office stopped.
+        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
     deadline = time.monotonic() + 120
     while time.monotonic() < deadline:
@@ -187,6 +197,31 @@ def panel(context, desktop, url, expected, phases):
     phases.append(("closed", time.time()))
 
 
+CASE_LIMIT = 600  # Seconds; a healthy case takes a few minutes on the hosted runner.
+
+
+def start_watchdog(profile: pathlib.Path, record: dict, debugger: list) -> threading.Timer:
+    """Stop a stuck case's own processes so the next case runs; the record says it happened."""
+
+    def fire():
+        record["watchdog_fired_at"] = time.time()
+        for process in debugger:
+            process.kill()
+        marker = profile.as_uri().replace("'", "''")
+        command = (
+            "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like "
+            f"'*{marker}*' }} | ForEach-Object {{ Stop-Process -Id $_.ProcessId -Force; $_.Name }}"
+        )
+        record["watchdog_stopped"] = subprocess.run(
+            ["pwsh", "-NoProfile", "-Command", command], capture_output=True, text=True, timeout=60
+        ).stdout.split()
+
+    timer = threading.Timer(CASE_LIMIT, fire)
+    timer.daemon = True
+    timer.start()
+    return timer
+
+
 def run_case(out: pathlib.Path, order: str, use_cdb: bool, assets: pathlib.Path) -> dict:
     record: dict = {"order": order, "cdb": use_cdb, "phases": [], "load_at_start": machine_load()}
     phases = record["phases"]
@@ -194,9 +229,12 @@ def run_case(out: pathlib.Path, order: str, use_cdb: bool, assets: pathlib.Path)
     fixture = out / f"fixture-{out.name}.fods"
     shutil.copyfile(assets / "manual.fods", fixture)
     cdb = None
+    debugger: list = []
+    watchdog = None
     try:
         with tempfile.TemporaryDirectory(prefix="sheet-manager-public-upgrade-") as directory:
             profile = pathlib.Path(directory) / "profile"
+            watchdog = start_watchdog(profile, record, debugger)
             for name in ("before", "after"):
                 (out / name).mkdir()
                 record[name] = {}
@@ -229,6 +267,7 @@ def run_case(out: pathlib.Path, order: str, use_cdb: bool, assets: pathlib.Path)
                 context, desktop, temporary = session
                 if use_cdb:
                     cdb = attach(profile, out, record)
+                    debugger.append(cdb)
                 package = installed(context)
                 assert package.getVersion() == "0.0.10" and package.checkDependencies(None)
                 location_service = context.getValueByName(
@@ -252,6 +291,8 @@ def run_case(out: pathlib.Path, order: str, use_cdb: bool, assets: pathlib.Path)
     except BaseException:
         record["failure"] = traceback.format_exc()
     finally:
+        if watchdog is not None:
+            watchdog.cancel()
         if cdb is not None:
             try:
                 cdb.wait(timeout=60)

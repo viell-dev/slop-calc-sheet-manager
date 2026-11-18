@@ -1,16 +1,21 @@
 name: Windows desktop
 
 # RESEARCH BRANCH ONLY, never merged (#179, #45). The manual dispatch entry point runs native
-# Windows probes instead of the desktop suite: the #179 public 0.0.9 -> 0.0.10 upgrade with Help
-# queried before the first Calc document (and controls) under a non-invasive CDB trace, then the
-# unchanged Windows integration suite. Raw dumps are analysed here and never uploaded.
+# Windows probes instead of the desktop suite. #179: first, Calc's DelayTimer mechanism without
+# Sheet Manager (mechanism179.py); then the public 0.0.9 -> 0.0.10 upgrade with Help queried before
+# the first Calc document (probe179.py) while busy loops contend for the CPU, as on the laptop where
+# it crashed. Both run under a non-invasive CDB trace. Raw dumps are analysed here and never uploaded.
 on:
   workflow_dispatch:
     inputs:
       checks:
-        description: "#179 probe plan: comma-separated order[:cdb] cases"
+        description: "#179 plans: mechanism cases | upgrade cases, each comma-separated order[:cdb]"
         required: false
         default: ""
+      contention:
+        description: Busy loops started during the upgrade cases
+        required: false
+        default: "4"
 
 permissions:
   contents: read
@@ -21,7 +26,7 @@ concurrency:
 
 jobs:
   desktop:
-    name: Windows native probes (research, #179 and #45)
+    name: Windows native probes (research, #179)
     runs-on: windows-2025
     timeout-minutes: 120
     defaults:
@@ -67,27 +72,54 @@ jobs:
           $symbols = "srv*$env:RUNNER_TEMP\sym*https://dev-downloads.libreoffice.org/symstore/symbols;srv*$env:RUNNER_TEMP\sym*https://msdl.microsoft.com/download/symbols"
           & $env:LOPY research/resolve_rvas.py test-results/research/rvas $symbols
           if ($LASTEXITCODE -ne 0) { throw 'Symbol resolution failed' }
-      - name: "#179 upgrade and Help-before-first-Calc probe"
+      - name: "#179 DelayTimer mechanism without Sheet Manager"
         env:
           PROBE_RVAS: test-results/research/rvas/rvas.json
           PROBE_CDB_WORK: ${{ runner.temp }}\cdbwork
           PLAN: ${{ inputs.checks }}
         run: |
-          $plan = if ($env:PLAN) { $env:PLAN } else {
-            'help-first:cdb,calc-first:cdb,help-first:cdb,help-first,help-first:cdb,calc-first:cdb,help-first:cdb,help-first,help-first:cdb,help-first,help-first:cdb,help-first'
+          $plan = "$env:PLAN".Split('|')[0].Trim()
+          if (-not $plan) {
+            $plan = 'hidden-scheme:cdb,hidden-scheme,hidden-scheme,visible-scheme:cdb,visible-scheme,hidden-idle:cdb,hidden-idle'
           }
+          New-Item -ItemType Directory -Force $env:PROBE_CDB_WORK | Out-Null
+          & $env:LOPY research/mechanism179.py --fixture research-assets/manual.fods `
+            --output test-results/research/mechanism179 --plan $plan
+          if ($LASTEXITCODE -ne 0) { throw 'The mechanism probe itself failed' }
+      - name: Start CPU contention
+        if: always() && steps.package.outcome == 'success'
+        env:
+          CONTENTION: ${{ inputs.contention }}
+        run: |
+          $count = if ($env:CONTENTION) { [int]$env:CONTENTION } else { 4 }
+          $ids = foreach ($i in 1..$count) {
+            (Start-Process pwsh -ArgumentList '-NoProfile', '-Command', 'while ($true) {}' -PassThru -WindowStyle Hidden).Id
+          }
+          $ids -join ',' | Set-Content -LiteralPath "$env:RUNNER_TEMP/contention.txt"
+          "Started $count busy loops: $($ids -join ', ')"
+      - name: "#179 upgrade and Help-before-first-Calc probe"
+        if: always() && steps.package.outcome == 'success'
+        env:
+          PROBE_RVAS: test-results/research/rvas/rvas.json
+          PROBE_CDB_WORK: ${{ runner.temp }}\cdbwork
+          PLAN: ${{ inputs.checks }}
+        run: |
+          $parts = "$env:PLAN".Split('|')
+          $plan = if ($parts.Count -gt 1) { $parts[1].Trim() } else { '' }
+          if (-not $plan) { $plan = 'help-first:cdb,help-first,help-first:cdb,help-first,calc-first:cdb' }
           New-Item -ItemType Directory -Force $env:PROBE_CDB_WORK | Out-Null
           & $env:LOPY research/probe179.py --assets research-assets `
             --output test-results/research/probe179 --plan $plan
           if ($LASTEXITCODE -ne 0) { throw 'The probe itself failed' }
-      - name: "#45 Windows integration suite (unchanged)"
+      - name: Stop CPU contention
         if: always()
-        continue-on-error: true
         run: |
-          $package = (Get-ChildItem -LiteralPath dist -Filter '*.oxt').FullName
-          & $env:LOPY tests/integration/run.py --program 'C:\Program Files\LibreOffice\program' `
-            --oxt $package --output test-results/research/integration
-          if ($LASTEXITCODE -ne 0) { throw 'Integration failed' }
+          $file = "$env:RUNNER_TEMP/contention.txt"
+          if (Test-Path -LiteralPath $file) {
+            foreach ($id in (Get-Content -LiteralPath $file).Split(',')) {
+              Stop-Process -Id ([int]$id) -Force -ErrorAction SilentlyContinue
+            }
+          }
       - name: Analyse and remove raw dumps
         if: always() && steps.package.outcome == 'success'
         run: |
