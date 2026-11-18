@@ -436,36 +436,94 @@ def test_stale_accessible_rows_preserve_cursor_without_hiding_other_errors(
     assert owner._selection.cursor.token is handle
 
 
-@pytest.mark.parametrize(
-    "names,expected",
-    [(("Bravo",), "Bravo"), (("Delta",), "Delta"), (("Alfa", "Bravo"), "Bravo"), ((), None)],
-)
-def test_refused_release_restores_a_surviving_pick_instead_of_native_release_cursor(
-    names: tuple[str, ...], expected: str | None
-) -> None:
-    selection = Selection(lambda ref: True)
-    selection.picked = [Ref(name, object()) for name in names]
-    selection.cursor = Ref("Charlie", object())  # Native deferred release changed the cursor.
-    before = tuple(selection.picked)
+ROWS = ["Alfa", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Bravo", "Hotel"]
+
+
+def refused_press_owner(names: tuple[str, ...], cursor: str | None, stale: str | None = None):
+    """A list holding a press on Bravo, which a refresh moved away from the pressed row."""
+    handles = {name: object() for name in ROWS}
+    selection = Selection(lambda ref: ref.name != stale)
+    selection.picked = [Ref(name, handles[name]) for name in names]
+    selection.cursor = Ref(cursor, handles[cursor]) if cursor is not None else None
     applied: list[Ref | None] = []
     owner = SimpleNamespace(
+        _disposed=False,
+        _pointer_depth=0,
+        _restoring_cursor=False,
+        _selection_write_pending=False,
+        _context_target=None,
+        _menu_context=False,
         _press=SimpleNamespace(row=1, name="Bravo", generation=0, voided=False),
         _monitor=SimpleNamespace(check=lambda: 0),
         _pressed_sheet_in_place=Mock(return_value=False),
         _selection=selection,
+        _handles=handles,
+        rows=[SimpleNamespace(name=name) for name in ROWS],
+        names=lambda: list(ROWS),
         _apply_selection=lambda: applied.append(selection.cursor),
     )
+    return owner, applied
+
+
+def release_refused(owner: Any) -> None:
     released = method(
         "src/sheet_manager/uno_list.py", "SheetList", "mouse_released", {"LEFT": 1, "RIGHT": 2}
     )
     released(owner, SimpleNamespace(Buttons=1))
-    cursor = cast(Ref | None, owner._selection.cursor)
-    assert tuple(selection.picked) == before
+
+
+@pytest.mark.parametrize(
+    "names,cursor,stale,expected",
+    [
+        (("Bravo",), "Bravo", None, "Bravo"),  # The press's own cursor.
+        (("Bravo",), "Hotel", None, "Hotel"),  # Moved outside the picks during the hold (#71).
+        (("Bravo", "Delta"), "Delta", None, "Delta"),  # Moved to another pick.
+        (("Delta",), "Delta", None, "Delta"),  # A newer typed pick.
+        ((), "Hotel", None, "Hotel"),  # No pick survives, the cursor does.
+        (("Alfa", "Bravo"), "Hotel", "Hotel", "Bravo"),  # Replaced: the pressed pick takes it,
+        (("Alfa", "Delta"), "Hotel", "Hotel", "Alfa"),  # or else the first pick,
+        ((), "Hotel", "Hotel", None),  # or nothing.
+        (("Alfa", "Bravo"), None, None, "Bravo"),
+        (("Delta",), None, None, "Delta"),
+        ((), None, None, None),
+    ],
+)
+def test_refused_release_keeps_the_lists_cursor_while_it_is_its_sheet(
+    names: tuple[str, ...], cursor: str | None, stale: str | None, expected: str | None
+) -> None:
+    owner, applied = refused_press_owner(names, cursor, stale)
+    before = [ref for ref in owner._selection.picked if ref.name != stale]
+    kept = owner._selection.cursor
+    release_refused(owner)
+    result = cast(Ref | None, owner._selection.cursor)
+    assert owner._selection.picked == before
     assert owner._press is None
-    assert (cursor.name if cursor is not None else None) == expected
-    assert applied == [cursor]
-    if cursor is not None:
-        assert any(cursor is ref for ref in before)
+    assert (result.name if result is not None else None) == expected
+    assert applied == [result]
+    if result is not None:
+        # Always a ref the list made at the user's input, never one from the release.
+        assert any(result is ref for ref in [*before, kept])
+
+
+def test_a_late_native_release_cannot_become_the_refused_gestures_cursor() -> None:
+    """The native release moves the tree's cursor to the row under the pointer first (#71)."""
+    owner, applied = refused_press_owner(("Bravo",), "Hotel")
+    changed = method(
+        "src/sheet_manager/uno_list.py",
+        "SheetList",
+        "cursor_changed",
+        {"Any": Any, "Ref": Ref, "DisposedException": RuntimeError},
+    )
+    # Charlie now shows in the pressed row; the press is still held when the tree says so.
+    changed(
+        owner,
+        SimpleNamespace(
+            getAccessibleContext=lambda: SimpleNamespace(getAccessibleIndexInParent=lambda: 1)
+        ),
+    )
+    assert owner._selection.cursor.name == "Hotel"
+    release_refused(owner)
+    assert [ref.name if ref is not None else None for ref in applied] == ["Hotel"]
 
 
 @pytest.mark.parametrize(

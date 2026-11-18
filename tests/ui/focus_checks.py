@@ -2,14 +2,41 @@
 
 Letters, Space, Delete and the other keys typed in the list never edit a cell or modify the
 document. Calc's shortcuts still work from the list, and their dialogs keep the focus
-while they are open (#23). A refresh keeps the keyboard cursor where it was (#29), and a second
-document's list works independently of the first.
+while they are open (#23). A refresh keeps the keyboard cursor where it was (#29), and so does a
+refused held press (#71). A second document's list works independently of the first.
 """
 
 import time
 
 import sheet_list_view as view
+import uno
+import unohelper
+from com.sun.star.accessibility import XAccessibleEventListener
 from workbook import NAMES, Workbook, native_dialog, reset, wait_until
+
+CURSOR_CHANGED = uno.getConstantByName(
+    "com.sun.star.accessibility.AccessibleEventId.ACTIVE_DESCENDANT_CHANGED"
+)
+
+
+class CursorProbe(unohelper.Base, XAccessibleEventListener):
+    """Each row the tree's keyboard cursor moves to, by index, as an accessibility bridge hears it.
+
+    Native focus changes and the list's own writes alike; the hidden root has no index.
+    """
+
+    def __init__(self):
+        self.rows = []
+
+    def notifyEvent(self, event):
+        if event.EventId == CURSOR_CHANGED:
+            try:
+                self.rows.append(event.NewValue.getAccessibleContext().getAccessibleIndexInParent())
+            except Exception:  # A row of a replaced model.
+                self.rows.append(None)
+
+    def disposing(self, source):
+        pass
 
 
 def check_keys_stay_in_list(book):
@@ -291,25 +318,82 @@ def check_native_cursor_positions(book):
 
 
 def check_selected_press_cursor(book):
-    """A refused already-selected press restores its picks and a picked keyboard cursor."""
+    """A refused already-selected press restores its picks and the list's own keyboard cursor.
+
+    Bravo is picked, pressed again and held while a refresh moves it away, and the button is
+    released over the row it left. The tree's native release first moves its cursor to the row
+    now under the pointer, before the list's mouse listener runs; the probe must hear that, or
+    the case proves nothing. The list then puts back its own cursor: Bravo's, a newer typed
+    pick's, or wherever the keyboard took it during the hold, also outside the picks and with the
+    X server's own timed repeat (#71). Ctrl+Space then toggles exactly the row the cursor is on.
+    """
+    sheets = book.document.getSheets()
+    accessible = book.tree.getProperty("XAccessible").getAccessibleContext()
+    probe = CursorProbe()
+    view.on_main_thread(book.lab.context, lambda: accessible.addAccessibleEventListener(probe))
     evidence = {}
-    for newer in (False, True):
-        reset(book)
-        book.click(1)
-        book.hold(1)
-        try:
-            book.document.getSheets().moveByName(NAMES[1], 6)
-            wait_until(lambda: view.names(book.tree) == book.order(), "the moved list")
-            if newer:
-                book.lab.input.tap("d", pause=0.5)
-                wait_until(lambda: book.selection() == [NAMES[3]], "the newer typed pick")
-        finally:
-            book.pointer.release()
-        wanted = [NAMES[3] if newer else NAMES[1]]
-        wait_until(lambda w=wanted: book.selection() == w, "picks after the refused release")
-        book.lab.input.tap("space", ("Control_L",), pause=0.4)
-        evidence[str(newer)] = {"picks_restored": wanted, "after_toggle": book.selection()}
-        assert book.selection() == [], evidence
+    try:
+        for case in ("pressed", "typed", "unpicked", "other_pick", "repeat"):
+            reset(book)
+            book.click(1)
+            if case == "other_pick":
+                book.click(3, modifiers=("Control_L",))
+            wanted = book.selection()
+            book.hold(1)
+            try:
+                sheets.moveByName(NAMES[1], 6)
+                wait_until(lambda: view.names(book.tree) == book.order(), "the moved list")
+                order = book.order()
+                wanted = [name for name in order if name in wanted]
+                held = len(probe.rows)
+                if case == "typed":
+                    book.lab.input.tap("d", pause=0.5)
+                    wanted = [NAMES[3]]
+                    wait_until(lambda w=wanted: book.selection() == w, "the newer typed pick")
+                elif case == "unpicked":
+                    book.lab.input.tap("Down", ("Control_L",), pause=0.5)
+                elif case == "other_pick":
+                    for _ in range(4):
+                        book.lab.input.tap("Up", ("Control_L",), pause=0.2)
+                    time.sleep(0.3)
+                elif case == "repeat":
+                    book.lab.input.repeat("Down", ("Control_L",))
+                during = probe.rows[held:]
+            finally:
+                book.pointer.release()
+            bravo = order.index(NAMES[1])
+            cursor = {
+                "pressed": NAMES[1],
+                "typed": NAMES[3],
+                "unpicked": order[bravo + 1],
+                "other_pick": NAMES[3],
+                "repeat": order[during[-1]] if during and during[-1] is not None else None,
+            }[case]
+            wait_until(lambda w=wanted: book.selection() == w, "picks after the refused release")
+            row = order.index(cursor) if cursor in order else None
+            released = held + len(during)
+            wait_until(
+                lambda r=row, n=released: probe.rows[n:] and probe.rows[-1] == r,
+                "the list's cursor after the refused release",
+            )
+            after = probe.rows[released:]
+            book.lab.input.tap("space", ("Control_L",), pause=0.4)
+            toggled = [name for name in order if name in set(wanted) ^ {cursor}]
+            evidence[case] = {
+                "picks_restored": wanted,
+                "cursor_rows_during_hold": [order[r] if r is not None else r for r in during],
+                "cursor_rows_after_release": [order[r] if r is not None else r for r in after],
+                "after_toggle": book.selection(),
+            }
+            # The native release reached the row under the pointer before the list's listener.
+            assert 1 in after, evidence
+            if case == "repeat":
+                assert row is not None and row > bravo + 2, evidence  # The server repeated Down.
+            assert book.selection() == toggled, evidence
+    finally:
+        view.on_main_thread(
+            book.lab.context, lambda: accessible.removeAccessibleEventListener(probe)
+        )
     return evidence
 
 

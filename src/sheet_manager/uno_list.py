@@ -47,11 +47,15 @@ the press moved the sheet or showed another under its name, the release has no e
 the list writes its own refs back, whatever the tree selected on release, so a newer pick made
 meanwhile, by following Calc or by keyboard, stays.
 While a press is held, a refresh does not take the tree's selection as the user's; the press and
-release handlers do. A selected row's native release can move the tree's cursor before the
-queued mouse listener runs, so refusing that gesture also restores a surviving picked cursor,
-preferring its original sheet, and keeps newer picks. An unpicked cursor moved during an invalid
-held gesture is deliberately not kept, and the known-issues guide records that limit (#71): the
-supported toolkit and controller interfaces offer no sidebar pre-release hook.
+release handlers do. A selected row's native release moves the tree's cursor to the row under
+the pointer before the queued mouse listener runs (measured with 26.8.2.2, gtk3 and gen), and
+the supported toolkit and controller interfaces offer no sidebar pre-release hook. The list
+never takes that late row: native cursor events are ignored while a press is held, and owned
+keys move the list's own cursor. Refusing the gesture therefore writes back the list's cursor
+while it is still its sheet, also outside the picks, and keeps newer picks (#71). Only when that
+cursor is gone does a surviving pick take it, preferring the pressed sheet. Never let a native
+cursor event during a held press reach the cursor: #70's first observer did, and the late
+release then moved the cursor and the next toggle onto the wrong row.
 
 Activation. A double click or Enter makes the sheet Calc's only selected tab and reads that back,
 because `setActiveSheet` keeps an existing group when the sheet belongs to it. Activation reads
@@ -1756,12 +1760,17 @@ class SheetList:
             # each still the sheet it was picked as, including any newer pick made meanwhile,
             # by following Calc or by keyboard.
             self._selection.revalidate()
-            # The native selected-row release can move its cursor before this callback.
-            # A refused gesture restores a surviving picked cursor, never that late row.
-            picks = self._selection.picked
-            self._selection.cursor = next(
-                (ref for ref in picks if ref.name == press.name), picks[0] if picks else None
-            )
+            # The native selected-row release moved the tree's cursor to the row under the
+            # pointer before this callback; `cursor_changed` ignored it while the press was
+            # held. The list's own cursor, which only its own input moved meanwhile, stays
+            # while it is still its sheet (#71); otherwise a surviving pick takes it,
+            # preferring the pressed sheet, never that late row.
+            cursor = self._selection.cursor
+            if cursor is None or cursor.name not in self.names():
+                picks = self._selection.picked
+                self._selection.cursor = next(
+                    (ref for ref in picks if ref.name == press.name), picks[0] if picks else None
+                )
             self._apply_selection()
             return
         row = press.row
