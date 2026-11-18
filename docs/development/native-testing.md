@@ -169,6 +169,15 @@ instead of hanging or reporting success. The safeguards and investigations are i
 [#50](https://github.com/viell-dev/slop-calc-sheet-manager/issues/50), and
 [#40](https://github.com/viell-dev/slop-calc-sheet-manager/issues/40).
 
+Before asking the office to terminate, the runner waits until the office has run every UNO
+release the test process sent, as `tests/integration/client_releases.py` describes. LibreOffice
+runs releases in order on one bridge thread that no other call waits for, so a check that drops
+many sheet handles just before the session ends can leave them running during shutdown. An
+office that exits meanwhile can crash in a `cppu_threadpool` thread, in
+`cppu::getCaughtException`, with or without the extension
+([#242](https://github.com/viell-dev/slop-calc-sheet-manager/issues/242)). The wait shares the
+30-second limit; releases that do not finish in time stop the office and fail the session.
+
 The painted resize check repeats the initial request if a late maximize changes its geometry;
 `resize-initial-*.json` retains requests and measurements
 ([#9](https://github.com/viell-dev/slop-calc-sheet-manager/issues/9)). Keep the one-second delay

@@ -28,6 +28,9 @@ gtk3 saves a screenshot.
 #   status. The wrapper bypasses the normal launcher's exit-81 bootstrap restart, so the runner
 #   handles that restart once, only before connecting UNO, and keeps the initialization trace.
 #   Never extend this startup handling into retrying test assertions or shutdown failures.
+# - Before asking the office to terminate, wait until it has run the UNO releases this process
+#   sent (`client_releases`): an office that exits while it still runs them crashed at exit
+#   (#242). No round trip waits for them, so never replace the marker with a call or a sleep.
 # - Failed input polls retain only existing fixture reads/posts, without extra UNO calls (#160).
 # - Save completed suites as they finish: an external timeout can bypass Python finally (#162).
 
@@ -45,11 +48,13 @@ import time
 import uuid
 import zipfile
 from contextlib import contextmanager
+from functools import partial
 from pathlib import Path
 from typing import Any, cast
 
 import uno
 import unohelper
+from client_releases import settle_releases
 from com.sun.star.awt import MouseEvent
 from com.sun.star.beans import PropertyValue
 from com.sun.star.lang import XEventListener
@@ -288,8 +293,9 @@ def office_session(
         finally:
             try:
                 generated_trace = directory / "gdbtrace.log"
-                # Ends the office before the debugger's final output is copied. After a stalled
-                # main-thread callback it stops the office instead of asking it (#50).
+                # Ends the office before the debugger's final output is copied, once it has run
+                # this process's releases (#242). After a stalled main-thread callback it stops
+                # the office instead of asking it (#50).
                 result.update(
                     end_office(
                         desktop,
@@ -297,6 +303,7 @@ def office_session(
                         log_path,
                         stalled=stalled_callbacks(),
                         backtrace_path=generated_trace if backtrace else None,
+                        settle=partial(settle_releases, context),
                     )
                 )
                 if trace_path is not None:

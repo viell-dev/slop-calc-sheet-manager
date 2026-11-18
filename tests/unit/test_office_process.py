@@ -160,6 +160,63 @@ def test_a_session_without_stalls_asks_its_office_to_terminate(tmp_path: Path) -
     assert_clean_shutdown(result)
 
 
+def test_queued_releases_settle_before_the_office_is_asked(tmp_path: Path) -> None:
+    # An office that exits while it still runs this process's UNO releases can crash (#242).
+    log_path, desktop = tmp_path / "soffice.log", Desktop()
+    calls: list[tuple[float, int]] = []
+
+    def settle(limit: float) -> None:
+        calls.append((limit, desktop.terminate_requests))
+
+    with log_path.open("w", encoding="utf-8") as log:
+        process = subprocess.Popen([sys.executable, "-c", "pass"], stdout=log, text=True)
+        result = end_office(desktop, process, log_path, stalled=[], grace=7, settle=settle)
+    assert calls == [(7, 0)], "Settle once, within the grace period, before asking"
+    assert desktop.terminate_requests == 1
+    assert result["office_unsettled_releases"] is None
+    assert_clean_shutdown(result)
+
+
+def test_unsettled_releases_stop_the_office_without_asking(tmp_path: Path) -> None:
+    log_path, desktop = tmp_path / "soffice.log", Desktop()
+    reason = "LibreOffice did not run this process's UNO releases within 0.5 s"
+    with log_path.open("w", encoding="utf-8") as log:
+        process = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(60)"], stdout=log, text=True
+        )
+        started = time.monotonic()
+        result = end_office(
+            desktop, process, log_path, stalled=[], grace=0.5, settle=lambda limit: reason
+        )
+    assert desktop.terminate_requests == 0
+    assert process.poll() is not None and time.monotonic() - started < 30
+    assert result["office_unsettled_releases"] == reason
+    assert result["office_forced_shutdown"] is True
+    with pytest.raises(AssertionError):
+        assert_clean_shutdown(result)
+    # The reason alone fails a session, even one whose office happened to exit cleanly.
+    exited = {**result, "office_exit_code": 0, "office_forced_shutdown": False}
+    assert_clean_shutdown({**exited, "office_unsettled_releases": None})
+    with pytest.raises(AssertionError):
+        assert_clean_shutdown(exited)
+
+
+def test_a_stalled_session_does_not_wait_for_releases(tmp_path: Path) -> None:
+    # A release that needs the stuck main thread's lock would never run (#50).
+    log_path, desktop = tmp_path / "soffice.log", Desktop()
+    calls: list[float] = []
+    with log_path.open("w", encoding="utf-8") as log:
+        process = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(60)"], stdout=log, text=True
+        )
+        result = end_office(
+            desktop, process, log_path, stalled=["a close timed out"], settle=calls.append
+        )
+    assert calls == [] and desktop.terminate_requests == 0
+    assert result["office_forced_shutdown"] is True
+    assert result["office_unsettled_releases"] is None
+
+
 @pytest.mark.skipif(os.name != "nt", reason="soffice.exe runs soffice.bin as a child on Windows")
 def test_stopping_the_launcher_stops_its_children_on_windows() -> None:
     code = (

@@ -5,6 +5,11 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- End each LibreOffice test session only after the office has run the UNO releases the test
+  process sent. An office asked to terminate while it still ran them, as after the 1,000-sheet
+  check, could crash at exit in a LibreOffice bridge thread, with or without the extension. This
+  changes the test runner, not the extension
+  ([#242](https://github.com/viell-dev/slop-calc-sheet-manager/issues/242)).
 - Organise contributor testing guidance by task and platform, with dedicated Development pages
   for native LibreOffice testing and hosted workflows
   ([#198](https://github.com/viell-dev/slop-calc-sheet-manager/issues/198)).

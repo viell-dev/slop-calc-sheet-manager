@@ -249,8 +249,12 @@ real-input failure diagnostic and clean-up step in turn and checks that the fail
 is already on disk and keeps its own error (#190). `test_lab_calibration.py` checks that the
 Xvfb lab's pointer calibration waits for the tree's own report of its move, so a busy office
 cannot shift a workbook's calibrated positions and pixel coordinates by two pixels (#209).
-Sessions fail on nonzero exits, forced
-shutdowns, fatal messages, crash dumps, stalled main-thread callbacks or held terminate requests.
+Before termination, every session waits until the office has run the UNO releases the test
+process sent, because an office that exits while it runs them can crash (#242);
+`test_client_releases.py` drops 2,000 release markers in a live office and requires the wait to
+cover all of them. Sessions fail on nonzero exits, forced
+shutdowns, fatal messages, crash dumps, stalled main-thread callbacks, held terminate requests or
+releases left running.
 Windows crash dumps matter even when the office exits with status zero. Only startup is retried;
 its dumps are retained separately. Debugger runs also reject signals, incomplete exits and missing
 traces. The Xvfb helper disables key repeat; `single_tap_after_client_pause` verifies one cursor
@@ -260,5 +264,6 @@ Fixture procedures and artifact diagnosis are in
 [Native LibreOffice testing](./development/native-testing.md#failures-and-shutdown).
 Lifecycle failure evidence is in
 [#40](https://github.com/viell-dev/slop-calc-sheet-manager/issues/40),
-[#48](https://github.com/viell-dev/slop-calc-sheet-manager/issues/48), and
-[#50](https://github.com/viell-dev/slop-calc-sheet-manager/issues/50).
+[#48](https://github.com/viell-dev/slop-calc-sheet-manager/issues/48),
+[#50](https://github.com/viell-dev/slop-calc-sheet-manager/issues/50), and
+[#242](https://github.com/viell-dev/slop-calc-sheet-manager/issues/242).

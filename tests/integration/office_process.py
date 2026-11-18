@@ -5,6 +5,7 @@ import re
 import shutil
 import subprocess
 import threading
+from collections.abc import Callable
 from contextlib import suppress
 from pathlib import Path
 from typing import Any
@@ -130,6 +131,7 @@ def end_office(
     stalled: list[str],
     backtrace_path: Path | None = None,
     grace: float = 30,
+    settle: Callable[[float], str | None] | None = None,
 ) -> dict[str, object]:
     """End this session's office and record how it ended.
 
@@ -138,15 +140,22 @@ def end_office(
     such as one held by a dialog (#40), leaves the office running, so it is stopped too: the
     session fails with a forced shutdown instead of hanging until the job's time limit.
 
+    Before asking, `settle(grace)` waits until the office has run the UNO releases this process
+    sent: an office that exits while it still runs them can crash (#242, `client_releases`). It
+    returns None, or why it stopped waiting; then the office is stopped instead of asked, and
+    the session fails with that reason in its results.
+
     After a stalled main-thread callback (`teardown`), the request could wait for the stuck
-    thread without bound (#50), so it is not sent and the office is stopped at once; the session
-    then fails, with the stall and the forced shutdown in its results.
+    thread without bound (#50), so neither it nor `settle` is sent and the office is stopped at
+    once; the session then fails, with the stall and the forced shutdown in its results.
     """
-    returned = not stalled and request_termination(desktop, grace)
+    unsettled = settle(grace) if settle is not None and not stalled else None
+    returned = not stalled and unsettled is None and request_termination(desktop, grace)
     ended = finish_process(
         process, log_path, timeout=grace if returned else 0, backtrace_path=backtrace_path
     )
     ended["office_stalled_callbacks"] = list(stalled)
+    ended["office_unsettled_releases"] = unsettled
     ended["office_terminate_returned"] = returned
     return ended
 
@@ -157,3 +166,4 @@ def assert_clean_shutdown(result: dict[str, object]) -> None:
     assert not result["office_fatal_markers"], result
     assert not result.get("office_crash_dumps"), result
     assert not result.get("office_stalled_callbacks"), result
+    assert not result.get("office_unsettled_releases"), result
