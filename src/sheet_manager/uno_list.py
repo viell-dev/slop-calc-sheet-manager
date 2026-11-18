@@ -1762,9 +1762,9 @@ class SheetList:
             self._selection.revalidate()
             # The native selected-row release moved the tree's cursor to the row under the
             # pointer before this callback; `cursor_changed` ignored it while the press was
-            # held. The list's own cursor, which only its own input moved meanwhile, stays
-            # while it is still its sheet (#71); otherwise a surviving pick takes it,
-            # preferring the pressed sheet, never that late row.
+            # held. The list's own cursor, which only the list moved meanwhile (by its keys or
+            # by following Calc), stays while it is still its sheet (#71); otherwise a surviving
+            # pick takes it, preferring the pressed sheet, never that late row.
             cursor = self._selection.cursor
             if cursor is None or cursor.name not in self.names():
                 picks = self._selection.picked
