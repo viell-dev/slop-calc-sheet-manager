@@ -36,6 +36,7 @@ PACKAGE_FILES = (
     "i18n.py",
     "keys.py",
     "rename.py",
+    "refresh_schedule.py",
     "reorder.py",
     "selection.py",
     "sheet_list.py",
@@ -55,6 +56,7 @@ PACKAGE_FILES = (
     "uno_rows.py",
     "uno_show.py",
     "uno_structure.py",
+    "uno_tabs.py",
 )
 DESCRIPTION_NS = "{http://openoffice.org/extensions/description/2006}"
 

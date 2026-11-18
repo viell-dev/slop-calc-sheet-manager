@@ -62,7 +62,7 @@ def test_native_ctrl_toggle_waits_for_the_owned_pointer_listener() -> None:
     assert owner._selection.names() == ["Bravo"]
     owner.geometry = lambda: SimpleNamespace(row_at=Mock(return_value=1))
     owner.rows = [SimpleNamespace(name=name) for name in live.order]
-    owner._note_view_input = Mock()
+    owner._tabs = SimpleNamespace(note_input=Mock())
     owner._queue_selection = Mock()
     owner.claim_window = Mock()
     press = method(

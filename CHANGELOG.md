@@ -79,6 +79,9 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   picks without switching sheets, Hide alone dispatches synchronously, and Show is one of
   several changes the list makes itself
   ([#200](https://github.com/viell-dev/slop-calc-sheet-manager/issues/200)).
+- Move the sheet list's tab observation and refresh timing into modules of their own, with
+  documented state contracts; the list behaves as before
+  ([#194](https://github.com/viell-dev/slop-calc-sheet-manager/issues/194)).
 - Bound LibreOffice lab downloads and log their mirror and transfer measurements, so a slow
   mirror fails during setup instead of consuming the native CI testing budget.
 - Cache the pinned LibreOffice test installers by SHA-256 and verify them before use, avoiding

@@ -62,8 +62,7 @@ def test_old_callback_cannot_hide_a_newer_notice() -> None:
 
 def test_disposal_cancels_notice_and_rejects_already_posted_work() -> None:
     item = owner()
-    item._refresh_timer = item._view_timer = None
-    item._view_token = item._view_controls = object()
+    item._refreshes = SimpleNamespace(close=Mock())
     item._cleanup = Mock()
     item.show()
     timer, callback = item._notice_timer, item._main.later.call_args.args[1]
