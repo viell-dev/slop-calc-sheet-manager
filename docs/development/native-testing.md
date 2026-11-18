@@ -183,17 +183,17 @@ instead of hanging or reporting success. The safeguards and investigations are i
 [#40](https://github.com/viell-dev/slop-calc-sheet-manager/issues/40).
 
 A session that reports no progress for 15 minutes from its launch, because a UNO call never
-returned, fails and is never retried. Suites, checks, and the benchmarks' workbooks and
-repetitions count as progress; each session records its `longest_progress_interval_seconds`. The
-runner first records the stall, as a stalled callback and in a `stall-*.json` receipt, so no
-document close, settings restore or terminate request starts afterwards; calls already under way
-continue until the office stops. It then saves the client's Python stacks and the office's native
-stacks as `stall-*` files for up to 60 seconds, and stops the office when they are saved or when
-the 60 seconds end, even if the test client or a debugger is still blocked; the session's
-`office_progress_stall` says what each step did. Under `--backtrace` the gdb wrapper writes the
-native stacks into its trace; on Windows, CDB at its standard path writes them. Without the
-wrapper no debugger attaches on Linux, and macOS has no debugger in this path, so only the
-client's stacks are kept there
+returned, fails and is never retried. Suites, checks, and the benchmarks' workbooks and repetitions
+count as progress; each session records its `longest_progress_interval_seconds`. The runner first
+records the stall, as a stalled callback and in a `stall-*.json` receipt, so no close through the
+shared close helpers, settings restore or terminate request starts afterwards; the test's other
+calls, and any already under way, continue until the office stops. It then saves the client's Python
+stacks and the office's native stacks as `stall-*` files for up to 60 seconds, and stops the office
+when they are saved or when the 60 seconds end, even if the test client or a debugger is still
+blocked; the session's `office_progress_stall` says what each step did. Under `--backtrace` the gdb
+wrapper writes the native stacks into its trace; on Windows, CDB at its standard path writes them.
+Without the wrapper no debugger attaches on Linux, and macOS has no debugger in this path, so only
+the client's stacks are kept there
 ([#45](https://github.com/viell-dev/slop-calc-sheet-manager/issues/45)). Only a `soffice.bin`
 still identified as the session's own is examined.
 `SHEET_MANAGER_STALL_SECONDS` lowers the limit to try this, and `SHEET_MANAGER_DEADLINE_SECONDS`
@@ -230,8 +230,8 @@ its stall watch keeps the client's and the office's stacks and stops the office;
 launch until the checks end, so a limit reached while installing or shutting down, which have
 time limits of their own, keeps no stacks. The summary lists each session's `stall-*.json`
 receipts, and its Limit column says whether a session at the limit kept its stacks or reached
-the limit in shutdown, after its checks. Feature
-suites never run in the absent-extension control. The soak disables startup retries too, so
+the limit in shutdown, after its checks. Feature suites never run in the absent-extension
+control. The soak disables startup retries too, so
 every attempted session contributes to the measurement. The absent-extension control repeats the
 Calc/save/reopen-read-only/Writer lifecycle and frame requests, but cannot exercise the panel or
 its disposal. It is a control, not equivalent extension coverage.

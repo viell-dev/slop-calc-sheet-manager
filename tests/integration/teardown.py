@@ -14,9 +14,10 @@ loops and the benchmarks' workbooks and repetitions report it; a single step nee
 and expiry are one decision under one lock (`stall_if_idle`): progress noted before it prevents
 the stall, and a stall it records is final, so later progress cannot undo it. The stall is
 recorded as a stalled callback before any stacks are taken, so no close or restore starts during
-the capture: every document close checks `refuse_after_stall` first, including the test bodies'
-own closes through `main_thread.close_document`. A close or other call already under way when the
-stall is recorded continues until the runner stops the office.
+the capture: the shared close helpers (`main_thread.close_document`, `run.close_writer`) check
+`refuse_after_stall` first, also for the test bodies' own closes. A close or other call already
+under way when the stall is recorded, or work a test posts to the main thread itself, continues
+until the runner stops the office.
 """
 
 import threading
