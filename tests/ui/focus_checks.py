@@ -331,11 +331,17 @@ def _refused_hold(book, case, probe, press, marks):
 
     Returns the order after the move, the picks the release must restore, and the cursor rows
     `probe` heard from the hold's input on, split at the moment `press` heard the release.
-    Each step waits for the event it follows, never for a count of events taken earlier: a
-    count taken when the moved rows became readable can precede the refresh's own restored
-    cursor, which would then pass for the list's answer to a release not yet heard. `marks`
-    receives when the moved rows were read.
+
+    The list starts at its top. An earlier check can leave it scrolled down by a row; the
+    rebuild then keeps Bravo at the top, under the pointer, and the release lands on the
+    pressed sheet's new row instead of Charlie, so no case observes the late release (measured
+    in the full suite after `native_cursor_positions`, 26.2.1.2 gtk3). Each step waits for the
+    event it follows, never for a count of events taken earlier, so that nothing heard before
+    the release can stand for the list's answer to it. `marks` receives when the moved rows
+    were read.
     """
+    book.tree.makeNodeVisible(book.nodes()[0])
+    wait_until(lambda: book.first_visible() == 0, "the list at its top")
     book.click(1)
     if case == "other_pick":
         book.click(3, modifiers=("Control_L",))
