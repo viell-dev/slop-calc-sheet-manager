@@ -643,6 +643,7 @@ class _ActivationOwner:
         self.controller = document.getCurrentController()
         self.frame = self.controller.getFrame()
         self.peer = None
+        self._disposed = False
         self._activating = False
         self._activation_input = 0
         self._handles: dict[str, Any] = {}

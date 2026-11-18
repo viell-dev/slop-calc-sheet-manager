@@ -808,11 +808,12 @@ class VisibleHandle(Handle):
 def click_list() -> tuple[Any, Any, Any, list[Any]]:
     """A list showing Alfa, Bravo and Charlie with Alfa active and picked, wired for a release.
 
-    The shipped `_Mouse` listener, `mouse_released`, `_pressed_sheet_in_place`, `activate` and
-    `post`, the picks, the tab observer and `uno_calc.selected_tabs` run; Calc's view, the tree
-    and the posting are fakes. Work the list posts waits in the returned queue, so a test can
-    tell what ran inside the mouse listener from what ran when the posted work arrived (#269).
-    Returns the list, the live Calc state, the listener and the queue.
+    The shipped `_Mouse` listener, `mouse_released`, `_pressed_sheet_in_place`,
+    `_activate_pressed`, `activate` and `post`, the picks, the tab observer and
+    `uno_calc.selected_tabs` run; Calc's view, the tree and the posting are fakes. Work the list
+    posts waits in the returned queue, so a test can tell what ran inside the mouse listener
+    from what ran when the posted work arrived (#269). Returns the list, the live Calc state,
+    the listener and the queue.
     """
     owner, _, live = observer()
     queued: list[Any] = []
@@ -859,6 +860,7 @@ def click_list() -> tuple[Any, Any, Any, list[Any]]:
     )
     bind("post", {})
     bind("_pressed_sheet_in_place", {"_Press": Any})
+    bind("_activate_pressed", {"Any": Any})
     bind(
         "activate",
         {
@@ -915,13 +917,64 @@ def test_a_double_click_activates_its_sheet_only_in_posted_work() -> None:
 
 
 def test_a_double_clicks_posted_activation_does_nothing_once_the_list_is_disposed() -> None:
+    """Closing the document disposes the list and detaches its monitor, whose check raises."""
     owner, live, listener, queued = click_list()
     release_on(owner, live, listener, "Bravo", clicks=2)
     owner._disposed = True
+    owner._monitor.check = Mock(side_effect=RuntimeError("detached"))
     queued.pop()()
+    owner._monitor.check.assert_not_called()
     live.invoke.assert_not_called()
     owner.controller.setActiveSheet.assert_not_called()
     assert live.active == "Alfa" and not queued
+
+
+def test_activation_does_nothing_once_the_list_is_disposed() -> None:
+    """Enter's queued activation reaches `activate` itself, which checks disposal first."""
+    owner, live, _, queued = click_list()
+    owner._disposed = True
+    owner._monitor.check = Mock(side_effect=RuntimeError("detached"))
+    owner.activate("Bravo")
+    live.invoke.assert_not_called()
+    owner.controller.setActiveSheet.assert_not_called()
+    assert live.active == "Alfa" and not queued
+
+
+def test_a_double_clicks_posted_activation_refuses_after_a_refresh_at_a_newer_generation() -> None:
+    """The posted work checks the generation its release verified, not the list's newer proof.
+
+    Another thread deletes Bravo and renames as "Bravo" the sheet that Bravo's retained handle
+    turned to (AGENTS.md, "Sheet identity"), so the pressed handle passes the name and
+    visibility checks. The selection flush queued ahead of the activation then refreshes at
+    the new generation, which drops the picks and proves the list there, as `_refresh` does.
+    Activating would go to a sheet the user did not double-click.
+    """
+    owner, live, listener, queued = click_list()
+    release_on(owner, live, listener, "Bravo", clicks=2)
+    owner._monitor.generation = 1
+    owner._selection.clear()
+    owner._proven = 1
+    assert live.handles[1].getName() == "Bravo"
+    queued.pop()()
+    owner.controller.setActiveSheet.assert_not_called()
+    live.invoke.assert_not_called()
+    assert queued == [owner.refresh]
+
+
+def test_a_double_clicks_posted_activation_acts_only_on_the_pressed_handle() -> None:
+    """A row now showing another sheet under the pressed name does not take the activation.
+
+    Between the release and the posted work, the pressed sheet is renamed and the handle the
+    list retains for "Bravo" is a new sheet's; the generation stays where the release saw it.
+    """
+    owner, live, listener, queued = click_list()
+    release_on(owner, live, listener, "Bravo", clicks=2)
+    live.handles[1].name = "Delta"
+    owner._handles["Bravo"] = VisibleHandle("Bravo")
+    queued.pop()()
+    owner.controller.setActiveSheet.assert_not_called()
+    live.invoke.assert_not_called()
+    assert queued == [owner.refresh]
 
 
 @pytest.mark.parametrize("change", ["rename", "hide", "insertion"])

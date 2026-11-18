@@ -284,9 +284,11 @@ Breaking one of these has hung or crashed LibreOffice, or let an action reach th
 - **Listeners** can be called on other threads, without LibreOffice's solar mutex (the toolkit's
   mouse listeners, [#269](https://github.com/viell-dev/slop-calc-sheet-manager/issues/269)), or in
   the middle of a change. They only record state or post work to the main thread
-  (`uno_calc.MainThread`, an `AsyncCallback`, whose work holds that mutex). The structure
-  monitor's state reads (`uno_structure.py`) and the drag gesture's checks before it starts a drag
-  (`uno_list.SheetList`) are the documented exceptions.
+  (`uno_calc.MainThread`, an `AsyncCallback`, whose work holds that mutex). The documented
+  exceptions are the structure monitor's state reads (`uno_structure.py`), the drag gesture's
+  checks before it starts a drag, and the mouse handlers' reads of the tree, the handles and the
+  document and their writes of a refused release's picks, which use calls that lock for
+  themselves so that a gesture is decided and shown at once (`uno_list.SheetList`).
 - **Threads** start only through `uno_calc.start_thread`, never with `threading`: Calc hung when
   `Thread.start` waited for a thread that was waiting for LibreOffice's main lock
   ([#55](https://github.com/viell-dev/slop-calc-sheet-manager/issues/55)).
