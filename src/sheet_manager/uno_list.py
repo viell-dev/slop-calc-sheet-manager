@@ -84,9 +84,12 @@ refreshed rows that paint the arrow and never from the picks. It is set through 
 the plain name and textual states: measured with 26.8.1.1 and 26.8.2.2, UNO offers no per-row
 description, state or relation setter, toolkit has no `AccessibleDescription`, and `HelpText` is
 only a tooltip. Native selection made without an owned handler, such as through
-`XAccessibleSelection`, waits for the queued intake; a refresh that rebuilds the rows first shows
-that selection again (`_show_native`) under the proof, drop count and order the intake checks,
-so the intake still decides. The panel window lists the move buttons, the tree and the shown
+`XAccessibleSelection`, waits for the queued intake. A refresh that keeps the tree leaves it in
+place; one that rebuilds the rows first shows it again (`_show_native`) under the proof, drop
+count and order the intake checks, so the intake still decides. A refresh that loses the identity
+proof clears it with the list's own picks, even when there were none: it was made against the
+sheets that proof covered, and the kept tree would offer it to the next intake under a
+replacement's handle (`_drop_all_picks`). The panel window lists the move buttons, the tree and the shown
 footer labels as its accessible children in creation order, which is their visual order, so
 create them in that order (#133, `uno_panel`).
 
@@ -769,7 +772,6 @@ class SheetList:
             dropped = self._selection.carry(renamed)
         self._proven = generation
         rebuild = not self._nodes or node_text(rows) != node_text(self.rows)
-        repaint = rows != self.rows
         self._observed = observed
         self._handles = dict(
             zip((sheet.name for sheet in observed.sheets), observed.handles, strict=True)
@@ -779,11 +781,13 @@ class SheetList:
         else:
             # Only painted state changed, such as the current sheet or a tab colour: keep the
             # nodes, whose replacement costs the whole tree (#22), and repaint.
-            self.rows = rows
             if dropped or tuple(self._selection.names()) != self._shown:
-                self._apply_selection()
-            elif repaint:
+                self._apply_selection()  # It repaints too.
+            elif rows != self.rows:
                 self.peer.invalidate(0)
+            # Take the rows only once their repaint is requested, so that after a failure the
+            # retry still finds them changed (#186). The paint runs after this refresh.
+            self.rows = rows
         if (
             pending is not None
             and self._generation == drops
@@ -826,7 +830,14 @@ class SheetList:
         return structure_kept(recorded, reported, [sheet.name for sheet in observed.sheets])
 
     def _drop_all_picks(self) -> bool:
-        """Drop every pick, the cursor, the anchor, and a held press: none can be proved now."""
+        """Drop every pick, the cursor, the anchor, a held press, and the tree's selection.
+
+        None can be proved now, and that includes a native selection the list does not own,
+        such as one made through accessibility that awaits the queued intake. It was made
+        against the sheets the lost proof covered; left in a kept tree, the next intake would
+        take it under a replacement's handle. Clearing it here, before the refresh records the
+        new proof, also makes a failed write a loss of proof again for the retry.
+        """
         told = self._user_picks and bool(self._selection.picked)
         had = self._selection.clear()
         self._user_picks = False
@@ -835,6 +846,13 @@ class SheetList:
             self._press = replace(self._press, voided=True)
         if told:
             self.post(self._show_cleared_notice, "telling that the selection was cleared")
+        restoring = self._restoring_cursor
+        self._restoring_cursor = True  # A cursor event now would make a ref from old handles.
+        try:
+            self.tree.clearSelection()  # Keeps the cursor where it is.
+        finally:
+            self._restoring_cursor = restoring
+        self._shown = ()
         return had
 
     def _show_cleared_notice(self) -> None:
@@ -943,13 +961,15 @@ class SheetList:
         self._update_moves()
         if cursor is None:
             self.tree.clearSelection()
-            return
-        self._move_tree_cursor(names.index(cursor.name), scroll=False)
-        if cursor.name not in wanted:
-            self.tree.clearSelection()  # Keeps the cursor where it is.
-        for index in indices:
-            if names[index] != cursor.name:
-                self.tree.addSelection(self._nodes[index])
+        else:
+            self._move_tree_cursor(names.index(cursor.name), scroll=False)
+            if cursor.name not in wanted:
+                self.tree.clearSelection()  # Keeps the cursor where it is.
+            for index in indices:
+                if names[index] != cursor.name:
+                    self.tree.addSelection(self._nodes[index])
+        # Repaint every row: the picks' marks, and in a kept tree the arrow and the swatches,
+        # can have changed on rows whose native selection did not.
         self.peer.invalidate(0)
 
     def _take_tree_selection(self, paint: bool = True, *, defer: bool = False) -> bool:

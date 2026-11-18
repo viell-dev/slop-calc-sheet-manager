@@ -1,4 +1,4 @@
-"""The viewed sheet's accessible name, and native picks awaiting intake across a rebuild (#83)."""
+"""The viewed sheet's accessible name, and native picks awaiting intake across a refresh (#83)."""
 
 from collections.abc import Mapping
 from types import SimpleNamespace
@@ -8,6 +8,7 @@ from unittest.mock import Mock
 import pytest
 
 from sheet_manager.sheet_list import SheetRow, list_name, node_text
+from tests.unit.list_peer import Book, sheet_list
 from tests.unit.source_methods import method
 
 SOURCE = "src/sheet_manager/uno_list.py"
@@ -176,3 +177,39 @@ def test_a_held_press_leaves_the_tree_selection_to_its_handlers() -> None:
     refresh()
     owner._take_tree_selection.assert_not_called()
     owner._show_native.assert_not_called()
+
+
+def test_a_kept_tree_lets_the_intake_take_native_picks_awaiting_it() -> None:
+    book = Book(NAMES)
+    owner = sheet_list(book)
+    nodes = owner._nodes
+    owner.tree.assistive_select("Bravo")
+    book.sheet("Alfa").color = 0x2A6099  # Only painted state changes: the tree is kept.
+    owner._refresh({})
+    assert owner._nodes is nodes
+    assert owner.tree.shown() == ["Bravo"]
+    owner.run_queue()  # The queued intake.
+    bravo = book.handle(book.sheet("Bravo"))
+    assert [(ref.name, ref.token) for ref in owner._current_picks()] == [("Bravo", bravo)]
+
+
+@pytest.mark.parametrize("painted", [True, False], ids=["tab colour", "unchanged rows"])
+def test_a_kept_tree_drops_native_picks_whose_proof_was_lost(painted: bool) -> None:
+    book = Book(NAMES)
+    owner = sheet_list(book)
+    owner._select(["Alfa"], "Alfa")
+    book.replace("Charlie")  # An earlier loss of proof drops every owned pick and the cursor.
+    owner._refresh({})
+    owner.run_queue()
+    assert not owner._selection.picked and owner._selection.cursor is None
+    nodes = owner._nodes
+    owner.tree.assistive_select("Bravo")  # Awaiting intake, as through accessibility.
+    book.replace("Bravo")  # The sheet it was made against goes, and another takes its name.
+    if painted:
+        book.sheet("Alfa").color = 0x2A6099
+    owner._refresh({})
+    assert owner._nodes is nodes  # Names and labels are unchanged, so the tree is kept.
+    assert owner.tree.shown() == []
+    owner.run_queue()  # The queued intake refuses the old proof.
+    assert owner._current_picks() == [], "A replacement took a pick made before it existed"
+    assert owner.tree.shown() == []

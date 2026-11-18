@@ -8,15 +8,22 @@ from unittest.mock import Mock
 
 import pytest
 
-from sheet_manager.sheet_list import SheetRow, node_text
+from sheet_manager.sheet_list import SheetRow, node_text, row_label
+from tests.unit.list_peer import Book, sheet_list
 from tests.unit.source_methods import method
 
 NAMES = ("Alfa", "Bravo", "Charlie")
 SHOWN = [SheetRow("Alfa", active=True), SheetRow("Bravo"), SheetRow("Charlie", color=0x2A6099)]
 
 
-def refresh(fresh: list[SheetRow], *, nodes: bool = True, dropped: bool = False) -> Any:
-    """Run `SheetList._refresh` over unchanged sheets whose rows now read as `fresh`."""
+def refresh(
+    fresh: list[SheetRow],
+    *,
+    shown: list[SheetRow] = SHOWN,
+    nodes: bool = True,
+    dropped: bool = False,
+) -> Any:
+    """Run `SheetList._refresh` over sheets showing `shown` whose rows now read as `fresh`."""
     observed = SimpleNamespace(
         sheets=[SimpleNamespace(name=row.name) for row in fresh],
         handles=[object() for _ in fresh],
@@ -26,8 +33,8 @@ def refresh(fresh: list[SheetRow], *, nodes: bool = True, dropped: bool = False)
         _observed=observed,
         _proven=0,
         _generation=0,
-        _nodes=[object()] * len(SHOWN) if nodes else [],
-        rows=list(SHOWN),
+        _nodes=[object()] * len(shown) if nodes else [],
+        rows=list(shown),
         _shown=("Bravo",),
         _view_generation=0,
         _view_names=frozenset(row.name for row in fresh),
@@ -101,6 +108,15 @@ def test_a_changed_name_or_label_replaces_the_nodes(fresh: list[SheetRow]) -> No
     owner._rebuild.assert_called_once_with(fresh)
 
 
+def test_a_label_kept_under_another_name_replaces_the_nodes() -> None:
+    # A visible sheet literally named "Bravo (hidden)" becomes a hidden sheet named "Bravo": the
+    # label reads the same, but the node's DataValue, which the list reads back, does not.
+    shown = [SHOWN[0], SheetRow("Bravo (hidden)"), SHOWN[2]]
+    fresh = [SHOWN[0], SheetRow("Bravo", visible=False), SHOWN[2]]
+    assert [row_label(row) for row in fresh] == [row_label(row) for row in shown]
+    refresh(fresh, shown=shown)._rebuild.assert_called_once_with(fresh)
+
+
 def test_the_first_refresh_builds_nodes_even_for_equal_rows() -> None:
     refresh(list(SHOWN), nodes=False)._rebuild.assert_called_once_with(SHOWN)
 
@@ -123,3 +139,31 @@ def test_node_text_ignores_only_painted_state() -> None:
     painted = [replace(row, active=not row.active, color=0x123456) for row in SHOWN]
     assert node_text(painted) == node_text(SHOWN)
     assert node_text([replace(SHOWN[0], visible=False)])[0] == ("Alfa", "Alfa (hidden)")
+
+
+def test_a_failed_repaint_stays_pending_for_the_retry() -> None:
+    book = Book(list(NAMES))
+    owner = sheet_list(book)
+    nodes, painted = owner._nodes, owner.peer.invalidations
+    book.sheet("Charlie").color = 0x993322
+    owner.peer.failures = 1
+    with pytest.raises(RuntimeError):
+        owner._refresh({})
+    owner._refresh({})  # The retry after a failed refresh (#186).
+    assert owner._nodes is nodes
+    assert owner.peer.invalidations == painted + 1, "The retry did not repaint"
+    assert owner.rows == book.rows()
+
+
+def test_clearing_the_last_pick_in_a_kept_tree_repaints_every_row() -> None:
+    book = Book(list(NAMES))
+    owner = sheet_list(book)
+    owner._select(["Charlie"], "Charlie")
+    nodes, painted = owner._nodes, owner.peer.invalidations
+    book.replace("Charlie")  # The pick can no longer be proved,
+    book.active = book.sheet("Bravo")  # and the current-sheet arrow moves to another row.
+    owner._refresh({})
+    assert owner._nodes is nodes
+    assert owner.tree.shown() == [] and not owner._selection.picked
+    assert owner.peer.invalidations == painted + 1, "The moved arrow was not repainted"
+    assert owner.rows == book.rows()
