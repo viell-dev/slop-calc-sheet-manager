@@ -276,7 +276,7 @@ detection at the latest, even when the client, a debugger and a receipt write ar
 after those 60 seconds is not recorded (#45). The receipt records only what the watch did and
 saw: a SIGINT sent to the gdb wrapper is not saved stacks, a listing with no `soffice.bin` does
 not show that none ran, and the launcher's exit status is not the office's. Native stacks need the
-gdb wrapper on Linux or CDB on Windows. The stall is recorded as a stalled main-thread callback,
+gdb wrapper on Linux or CDB on Windows. The stall is recorded in the session's stalled callbacks,
 so the session's shutdown, which starts after the watch has closed, neither waits for releases
 nor asks the office to terminate. `test_stall_session.py` runs the runner's own session against a
 stand-in office and checks the timing, the exit status and `results.json`, including a stall

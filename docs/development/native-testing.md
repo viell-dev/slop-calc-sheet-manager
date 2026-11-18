@@ -193,8 +193,9 @@ during shutdown. An office that exits meanwhile can crash in a `cppu_threadpool`
 ([#242](https://github.com/viell-dev/slop-calc-sheet-manager/issues/242)). Releases sent during
 the wait are not covered. A session normally ends with no documents open, but a document that a
 failed check left open can still call the test process's listeners, which can send more. A wait
-that does not finish in time, or whose bridge disconnected, stops the office and fails the
-session with the unfinished step in `office_unsettled_releases`. `office_release_wait_seconds`
+that does not finish in time, or whose bridge disconnected, stops the launcher the runner started
+(its whole process tree on Windows) and fails the session with the unfinished step in
+`office_unsettled_releases`. `office_release_wait_seconds`
 and `office_shutdown_seconds` record how long the wait and the whole shutdown took. After a
 stalled callback, including a stall below, neither the wait nor the terminate request is sent.
 
