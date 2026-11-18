@@ -1,4 +1,4 @@
-"""A refresh replaces the tree's nodes unless only painted state changed (#22)."""
+"""A refresh keeps the tree's nodes only for identical rows or a painted-only change (#22)."""
 
 from collections.abc import Mapping
 from dataclasses import replace
@@ -27,12 +27,14 @@ def refresh(
     proven: bool = True,
     dropped: bool = False,
     picked: tuple[str, ...] = ("Bravo",),
+    apply: Any = None,
 ) -> Any:
     """Run `SheetList._refresh` over sheets showing `shown` whose rows now read as `fresh`.
 
     The tree shows `Bravo` picked; the list's own picks are `picked`. `proven` is whether the
     handles still prove which sheet each row is, and `dropped` whether revalidating the picks,
-    or dropping them all when the proof was lost, dropped any.
+    or dropping them all when the proof was lost, dropped any. `apply` runs as the write of the
+    picks.
     """
     observed = SimpleNamespace(
         sheets=[SimpleNamespace(name=row.name) for row in fresh],
@@ -58,7 +60,7 @@ def refresh(
         _take_tree_selection=Mock(return_value=False),
         selected_names=lambda: ["Bravo"],
         _rebuild=Mock(),
-        _apply_selection=Mock(),
+        _apply_selection=Mock(side_effect=apply),
         _show_native=Mock(),
         _name_viewed=Mock(),
         _update_moves=Mock(),
@@ -67,6 +69,19 @@ def refresh(
         controller=None,
     )
     owner.names = lambda: [row.name for row in owner.rows]
+    reports: list[str] = []
+    owner.reports = reports
+    kept = method(
+        "src/sheet_manager/uno_list.py",
+        "SheetList",
+        "_apply_kept_selection",
+        {"SheetRow": SheetRow, "report": reports.append},
+    )
+
+    def apply_kept_selection(rows: list[SheetRow]) -> None:
+        kept(owner, rows)
+
+    owner._apply_kept_selection = apply_kept_selection
 
     def snapshot(document: Any) -> Any:
         return observed
@@ -129,15 +144,36 @@ def test_an_unchanged_refresh_neither_rebuilds_nor_repaints() -> None:
     owner.peer.invalidate.assert_not_called()
 
 
-@pytest.mark.parametrize("fresh", [SHOWN, SWITCH], ids=["unchanged rows", "switch"])
-def test_a_lost_proof_replaces_the_nodes(fresh: list[SheetRow]) -> None:
-    # A native selection awaiting intake was made against the sheets the proof covered, and
-    # only new nodes are sure to drop it, even when the list owned no pick (`dropped` False).
-    owner = refresh(list(fresh), proven=False)
+@pytest.mark.parametrize("dropped", [False, True], ids=["nothing owned", "picks dropped"])
+def test_a_lost_proof_over_identical_rows_writes_the_picks_to_the_kept_nodes(
+    dropped: bool,
+) -> None:
+    # A native selection awaiting intake was made against the sheets the proof covered:
+    # writing the remaining picks clears it, even when the list owned none (`dropped` False).
+    owner = refresh(
+        list(SHOWN), proven=False, dropped=dropped, picked=() if dropped else ("Bravo",)
+    )
     owner._drop_all_picks.assert_called_once_with()
-    owner._rebuild.assert_called_once_with(fresh)
+    owner._rebuild.assert_not_called()
+    owner._apply_selection.assert_called_once_with()
+
+
+def test_a_lost_proof_with_painted_changes_replaces_the_nodes() -> None:
+    owner = refresh(SWITCH, proven=False)
+    owner._rebuild.assert_called_once_with(SWITCH)
     owner._apply_selection.assert_not_called()
     owner.peer.invalidate.assert_not_called()
+
+
+@pytest.mark.parametrize("proven", [True, False])
+def test_a_failed_write_to_the_kept_nodes_replaces_them(proven: bool) -> None:
+    def fail() -> None:
+        raise RuntimeError("the tree refused the write")
+
+    fresh = list(SHOWN)
+    owner = refresh(fresh, proven=proven, picked=("Bravo", "Charlie"), apply=fail)
+    owner._rebuild.assert_called_once_with(fresh)
+    assert owner.reports == ["writing the selection to the sheet list"]
 
 
 @pytest.mark.parametrize(
@@ -189,14 +225,17 @@ def test_a_failed_repaint_is_retried(failures: int) -> None:
     assert owner.peer.invalidations == painted + 1
 
 
-def test_a_replaced_pick_whose_row_reads_the_same_replaces_the_nodes() -> None:
+@pytest.mark.parametrize("failures", [0, 1], ids=["written", "write failed"])
+def test_a_replaced_pick_whose_row_reads_the_same_is_dropped_from_the_tree(failures: int) -> None:
     book = Book(list(NAMES))
     owner = sheet_list(book)
     owner._select(["Charlie"], "Charlie")
     nodes = owner._nodes
     book.replace("Charlie")  # Its row reads exactly the same, but the pick cannot be proved.
     assert book.rows() == owner.rows
+    owner.tree.failures = failures  # The write of the dropped pick fails.
     owner._refresh({})
-    assert owner._nodes is not nodes
+    # The kept nodes show the dropped pick no more; after a failed write, new nodes show none.
+    assert (owner._nodes is nodes) == (not failures)
     assert owner.tree.shown() == owner._selection.names() == []
     assert owner.rows == book.rows()

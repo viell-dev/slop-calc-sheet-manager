@@ -208,7 +208,7 @@ def lose_proof(book: Book, loss: str) -> None:
 
 @pytest.mark.parametrize("painted", [True, False], ids=["tab colour", "unchanged rows"])
 @pytest.mark.parametrize("loss", ["replacement", "unreadable handle"])
-def test_a_lost_proof_replaces_the_tree_and_its_native_picks(loss: str, painted: bool) -> None:
+def test_a_lost_proof_clears_native_picks_awaiting_intake(loss: str, painted: bool) -> None:
     book = Book(NAMES)
     owner = sheet_list(book)
     owner._select(["Alfa"], "Alfa")
@@ -224,7 +224,9 @@ def test_a_lost_proof_replaces_the_tree_and_its_native_picks(loss: str, painted:
     rows = book.rows()
     owner._refresh({})
     assert owner.rows == rows
-    assert owner._nodes is not nodes, "A refresh that lost the proof kept the tree"
+    # Identical rows keep the nodes and write the picks, none, to them; a tab colour on top of
+    # the lost proof replaces them.
+    assert (owner._nodes is nodes) == (not painted)
     assert owner.tree.shown() == []
     book.handle(book.sheet("Delta")).readable = True
     owner.run_queue()  # The queued intake refuses the old proof.
@@ -232,17 +234,27 @@ def test_a_lost_proof_replaces_the_tree_and_its_native_picks(loss: str, painted:
     assert owner.tree.shown() == []
 
 
+@pytest.mark.parametrize("failures", [1, 2])
 @pytest.mark.parametrize("loss", ["replacement", "unreadable handle", "two renames"])
-def test_a_refresh_failing_after_a_lost_proof_leaves_nothing_to_take(loss: str) -> None:
+def test_a_failed_write_after_a_lost_proof_leaves_nothing_to_take(loss: str, failures: int) -> None:
     book = Book(NAMES)
     owner = sheet_list(book)
+    nodes = owner._nodes
     owner.tree.assistive_select("Bravo")  # Awaiting intake, as through accessibility.
     lose_proof(book, loss)
-    owner.tree.failures = 1  # The write of the picks to the new nodes fails.
-    with pytest.raises(RuntimeError, match="clear"):
+    owner.tree.failures = failures  # Writing the picks fails, then writing them to new nodes.
+    try:
         owner._refresh({})
-    # The new nodes came first, with nothing selected: nothing made against the lost proof is
-    # left for an intake, between the failure and the retry or after it (#186).
+    except RuntimeError as error:
+        assert "clear" in str(error)
+        failed = True
+    else:
+        failed = False
+    # Identical rows keep the nodes, whose failed write replaces them; renamed rows replace them
+    # at once. Either way the new nodes come first, with nothing selected: nothing made against
+    # the lost proof is left for an intake, between a failure and the retry or after it (#186).
+    assert failed == (failures == 2 or loss == "two renames")
+    assert owner._nodes is not nodes
     assert owner.tree.shown() == []
     book.handle(book.sheet("Delta")).readable = True  # A handle unreadable for a moment.
     assert not owner._take_tree_selection(paint=False)  # A move request reads the tree first.

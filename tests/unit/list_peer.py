@@ -11,7 +11,7 @@ what the list relies on from Calc and from the tree control for these calls:
   mode selects only that node and moves the cursor to it, `addSelection` and an assistive
   selection add a node without moving the cursor, and `clearSelection` keeps the cursor;
 - `clearSelection` and `invalidate` can be made to fail, as a peer call can during a refresh
-  (#186).
+  (#186); `reports` records what the list logged.
 
 It models those calls and is not evidence of LibreOffice's behaviour: the native checks are in
 `tests/integration` and `tests/ui`.
@@ -34,6 +34,7 @@ METHODS = (
     "_identities_kept",
     "_drop_all_picks",
     "_rebuild",
+    "_apply_kept_selection",
     "_show_native",
     "_name_viewed",
     "_select",
@@ -230,6 +231,7 @@ def sheet_list(book: Book) -> Any:
     def create(service: str, context: object) -> NodeModel:
         return NodeModel()
 
+    reports: list[str] = []
     namespace: dict[str, Any] = {
         "Any": Any,  # Annotations are evaluated when the methods are defined.
         "Mapping": Mapping,
@@ -243,6 +245,7 @@ def sheet_list(book: Book) -> Any:
         "ordered": ordered,
         "read_rows": read_rows,
         "replace": replace,
+        "report": reports.append,
         "row_label": row_label,
         "snapshot": snapshot,
         "structure_kept": structure_kept,
@@ -301,6 +304,7 @@ def sheet_list(book: Book) -> Any:
 
     owner.post, owner.run_queue, owner.refresh = post, run_queue, refresh
     owner.refreshes_asked = 0
+    owner.reports = reports
     for name in METHODS:
         loaded = method(SOURCE, "SheetList", name, dict(namespace))
         setattr(owner, name, loaded.__get__(owner))
