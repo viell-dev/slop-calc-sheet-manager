@@ -5,6 +5,9 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Make the integration check for assistive selection verify that the list takes the pick, using
+  Move to Top with stable rows and after a rebuilding refresh
+  ([#251](https://github.com/viell-dev/slop-calc-sheet-manager/issues/251)).
 - When Replace All finds matching text but changes no proposed names, Rename Sheets explains
   this in the status and through the button's accessible name
   ([#259](https://github.com/viell-dev/slop-calc-sheet-manager/issues/259)).
