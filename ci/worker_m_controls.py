@@ -209,9 +209,11 @@ def stock_sidebar(book, record, marker):
     on_main_thread(context, setup)
     control, node, listener = controls
     try:
-        marker("Focus stock sidebar tree by click and then Down")
-        x, y, _, _ = describe(node)["screen"]
-        Pointer(book.lab.input, (0, 0)).click(x + 26, y + 11)
+        marker("Programmatically focus the stock sidebar tree, then press Down")
+        on_main_thread(context, control.setFocus)
+        time.sleep(1)
+        focused = constant("AccessibleStateType", "FOCUSED")
+        assert node.getAccessibleStateSet() & focused, describe(node)
         book.lab.input.tap("Down", pause=0.8)
         if book.lab.input.__class__.__name__ == "WinInput":
             marker("Report NVDA focus on stock sidebar tree via Insert+Tab")

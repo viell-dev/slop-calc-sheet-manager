@@ -136,6 +136,8 @@ try:
             lab.screenshot("rename-valid")
             marker("Move focus to New name via Alt+N and type an existing unpicked sheet name")
             lab.input.tap("n", ("Alt_L",))
+            marker("New name focus reached before attempting the duplicate")
+            time.sleep(2)
             set_text(REFERENCE)
             wait_for(lambda: "already named" in dialog.state()["status"], "duplicate refusal")
             record["duplicate"] = dialog.state()
@@ -145,6 +147,7 @@ try:
             lab.screenshot("rename-duplicate")
             if MODE == "nvda":
                 marker("Hold focus on the New name edit while candidate announcement settles")
+                assert record["duplicate_focus"][1].endswith(record["duplicate"]["status"])
             marker("Duplicate refusal settled, Tab once and then Shift+Tab")
             lab.input.tap("Tab", pause=0.5)
             record["focus_after_tab"] = focus_state(dialog)

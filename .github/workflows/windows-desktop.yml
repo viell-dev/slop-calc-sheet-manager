@@ -41,7 +41,7 @@ jobs:
           LO_INSTALLER: ${{ steps.package.outputs.path }}
       - name: Build the extension with LibreOffice's Python
         run: |
-          & 'C:\Program Files\LibreOffice\program\python.exe' ci/worker_m_patch.py
+          git apply ci/worker_m_product.patch
           if (0 -ne 0) { throw 'Probe preparation failed' }
           & 'C:\Program Files\LibreOffice\program\python.exe' tools/build.py
           if ($LASTEXITCODE -ne 0) { throw 'Build failed' }
@@ -49,6 +49,15 @@ jobs:
         env:
           SHEET_MANAGER_REAL_DESKTOP: "1"
         run: ./ci/worker-k-windows.ps1
+      - name: Run installed-package Rename keyboard and mouse regressions
+        if: always() && steps.package.outcome == 'success'
+        env:
+          SHEET_MANAGER_REAL_DESKTOP: "1"
+        run: |
+          $program = 'C:\Program Files\LibreOffice\program'
+          $package = (Get-ChildItem dist/*.oxt).FullName
+          & "$program/python.exe" tests/ui/run_windows_ui.py --program $program --oxt $package --output test-results/windows-desktop/rename-regression --check rename_sheets_keyboard --check rename_sheets_mouse
+          if ($LASTEXITCODE -ne 0) { throw 'Rename regression failed' }
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
