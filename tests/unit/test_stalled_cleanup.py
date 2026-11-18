@@ -238,6 +238,7 @@ def ui_run_checks(calls: list[str], stall_at: str | None, fail_at: str | None = 
         traceback=traceback,
         stalled_callbacks=stalled_callbacks,
     )
+    load(path, "after_failure", namespace)
     load(path, "run_named", namespace)
     return load(path, "run_checks", namespace), checks
 
