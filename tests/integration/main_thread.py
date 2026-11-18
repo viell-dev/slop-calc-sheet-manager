@@ -13,8 +13,10 @@ could run inside the nested main loop of a clipboard read (#30).
 
 A close that times out leaves the main thread's state unknown; it is recorded in `teardown`, and
 the session then fails without further closes (#50). After any stalled callback, including the
-stall watch's (#45), `close_document` starts no new close. On Windows, a close it posted to the
-main thread before the stall was recorded still runs when the main thread reaches it.
+stall watch's (#45), `close_document` starts no new close. On Windows the posted callback checks
+again when the main thread reaches it, so a close posted before the stall was recorded does not
+start after it, and `close_document` raises as if the stall had come first (#261). A close the
+main thread had already started when the stall was recorded still finishes.
 
 Close every Calc document in the tests and the workbook generator through `close_document`, and
 use `close_after` in place of a `finally` clause that closes one. A suite closes its leftovers
@@ -39,6 +41,8 @@ class _Close(unohelper.Base, XCallback):
         self._abandoned = False  # The caller stopped waiting: do not start the close later.
         self.done = threading.Event()
         self.error: Exception | None = None
+        # A stall was recorded after the close was posted, so it was not started (#261).
+        self.refused: TimeoutError | None = None
 
     def abandon(self) -> None:
         with self._lock:
@@ -47,7 +51,13 @@ class _Close(unohelper.Base, XCallback):
     def notify(self, aData):
         try:
             with self._lock:
-                self._started = not self._abandoned
+                if not self._abandoned:
+                    try:
+                        refuse_after_stall("closing a document")
+                    except TimeoutError as refused:
+                        self.refused = refused
+                    else:
+                        self._started = True
             if self._started:
                 self._document.close(True)
         except Exception as error:  # Reported by close_document on the test's own thread.
@@ -60,8 +70,9 @@ def close_document(context, document) -> None:
     """Close a Calc document as the user interface would: on the main thread on Windows.
 
     Raises TimeoutError if the close has not finished within CLOSE_TIMEOUT seconds; a close that
-    has not started by then never starts. After a stalled callback it raises TimeoutError at
-    once, without closing. Any other failure raises AssertionError.
+    has not started by then never starts. After a stalled callback it raises TimeoutError without
+    closing: at once, or on Windows also when the stall was recorded after the close was posted
+    and before the main thread started it. Any other failure raises AssertionError.
     """
     refuse_after_stall("closing a document")
     if os.name != "nt":
@@ -77,6 +88,8 @@ def close_document(context, document) -> None:
         message = f"LibreOffice did not close a document within {CLOSE_TIMEOUT} s"
         record_stalled_callback(message)
         raise TimeoutError(message)
+    if call.refused is not None:
+        raise TimeoutError(str(call.refused))
     if call.error is not None:
         # Re-raising the UNO exception here would hide it behind #41's traceback error.
         raise AssertionError(f"Closing the document failed: {call.error!r}")
