@@ -841,7 +841,7 @@ class SheetList:
                 and (dropped or tuple(self._selection.names()) != self._shown)
             ):
                 self._apply_selection()
-            if changed and waiting:
+            if changed and waiting and pending is not None:
                 # Only a rebuild replaced it.
                 reshowing = True
                 self._show_native(pending)
