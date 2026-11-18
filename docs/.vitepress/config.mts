@@ -98,9 +98,19 @@ export default defineConfigWithTheme<ThemeConfig>({
         text: "Development",
         items: [
           { text: "About this site", link: "/development/" },
-          { text: "Verification map", link: "/verification" },
-          { text: "Optional desktop observations", link: "/manual-tests" },
-          { text: "Reordering interface", link: "/reordering" },
+          {
+            text: "Testing",
+            items: [
+              { text: "Native LibreOffice testing", link: "/development/native-testing" },
+              { text: "Hosted checks", link: "/development/hosted-checks" },
+              { text: "Verification map", link: "/verification" },
+              { text: "Optional desktop observations", link: "/manual-tests" },
+            ],
+          },
+          {
+            text: "Implementation",
+            items: [{ text: "Reordering interface", link: "/reordering" }],
+          },
         ],
       },
     ],

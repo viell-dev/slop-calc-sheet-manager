@@ -23,7 +23,7 @@ gtk3 saves a screenshot.
 # - A crashed office exits with status 0 on Windows (#48), so the runner copies LibreOffice's own
 #   crash dumps from the profile into the results as `crash-*.dmp` and fails a session whose
 #   office left one. A retried startup attempt's dumps are kept but do not fail a clean retry.
-#   CONTRIBUTING.md gives the CDB command that reads a dump with TDF's symbols.
+#   docs/development/native-testing.md#failures-and-shutdown gives the CDB command.
 # - `--backtrace` uses LibreOffice's gdb wrapper; validate its trace as well as the wrapper's
 #   status. The wrapper bypasses the normal launcher's exit-81 bootstrap restart, so the runner
 #   handles that restart once, only before connecting UNO, and keeps the initialization trace.
