@@ -303,7 +303,10 @@ its measured length can still lose a late stall's stacks at the job's limit, as 
 testing guide says. Soak sessions share one deadline with their runner and record the
 stall when the soak's own limit falls during startup or their checks; installation is not
 watched, so a limit that passes there is found at the launch that follows. `test_soak.py` runs
-the real runner with a slow start-up across that limit. The soak's summary draws no conclusion of
+the real runner with a slow start-up across that limit. A session whose end the soak first sees
+after its limit fails as one still running does, and its process group is killed;
+`test_soak.py` stops a real soak from before a session's limit until its runner has exited
+(#275). The soak's summary draws no conclusion of
 its own about stalls: it reports each session's status and results and points to the session's
 directory. Before its first session the soak removes every numbered session directory that an
 earlier soak left, so that the output holds only its own sessions; `test_soak.py` checks this
