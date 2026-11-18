@@ -34,7 +34,9 @@ gtk3 saves a screenshot.
 #   saves its client and office stacks and stops its office (#45); a stall is never retried.
 #   Report progress at suite and check boundaries; never use the limit as a test timeout.
 #   Hand the gdb wrapper's replacement office to the watch with `StallWatch.follow`, and stop
-#   it before any UNO call when the watch refuses it after a stall.
+#   it before any UNO call when the watch refuses it after a stall. A watch closes only before
+#   its deadline, so the session records `checks_ended_before_deadline` then; the soak's summary
+#   relies on it.
 # - Install only through `add_package`, which records each install's elapsed time and keeps a
 #   timeout a failure (#235). Do not raise `INSTALL_SECONDS` without measured normal installs.
 
@@ -109,6 +111,18 @@ def suite_order(path: Path) -> tuple[int, str]:
     """File-name order, with `LAST_SUITES` after every other suite."""
     last = LAST_SUITES.index(path.stem) + 1 if path.stem in LAST_SUITES else 0
     return last, path.stem
+
+
+def stall_record(watch: StallWatch, stall: dict[str, object]) -> dict[str, object]:
+    """A session result's record of its stall.
+
+    It holds the watch's evidence and, apart from it, whether the runner stopped waiting before
+    the capture finished: that is a fact about the runner's wait, not about the capture.
+    """
+    record: dict[str, object] = {"office_progress_stall": stall}
+    if watch.wait_timed_out:
+        record["stall_wait_timed_out"] = True
+    return record
 
 
 def close_writer(writer):
@@ -347,7 +361,7 @@ def office_session(
             startup_dumps.extend(dumps)
             startup["longest_progress_interval_seconds"] = round(longest_progress_interval(), 1)
             if stall is not None:
-                startup["office_progress_stall"] = stall
+                startup.update(stall_record(watch, stall))
                 startup["office_stalled_callbacks"] = stalled_callbacks()
             if profile_directory is not None:
                 # A reused profile outlives the attempt; its kept dumps must not count again.
@@ -366,10 +380,14 @@ def office_session(
         try:
             yield context, desktop, directory
         finally:
-            # After a stall this waits, bounded, for its capture and the office's stop.
+            # After a stall, or at or after the deadline, this waits, bounded, for the capture and
+            # the office's stop.
             stall = watch.close()
             if stall is not None:
-                result["office_progress_stall"] = stall
+                result.update(stall_record(watch, stall))
+            elif watch.deadline is not None:
+                # The watch closes only before the deadline: the checks ended in time (#45).
+                result["checks_ended_before_deadline"] = True
             result["longest_progress_interval_seconds"] = round(longest_progress_interval(), 1)
             try:
                 generated_trace = directory / "gdbtrace.log"

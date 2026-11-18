@@ -7,9 +7,9 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 - Fail a test session that stops making progress for 15 minutes, keeping the test client's and
   LibreOffice's stacks, instead of waiting for the CI job's time limit without evidence. A soak
-  session that reaches its 180-second limit during its checks keeps them too, and the soak's
-  summary marks one that reached it while shutting down; the stacks of a stall late in a CI job
-  may be lost at the job's limit
+  session that reaches its 180-second limit during startup or its checks records the stall too,
+  and the soak's summary says a session reached it after its checks only when the runner recorded
+  that; the stacks of a stall late in a CI job may be lost at the job's limit
   ([#45](https://github.com/viell-dev/slop-calc-sheet-manager/issues/45),
   [#244](https://github.com/viell-dev/slop-calc-sheet-manager/issues/244)).
 - Make name syntax and conflicts in other rows available from New name in Rename Sheets.

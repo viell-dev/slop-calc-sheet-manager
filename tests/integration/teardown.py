@@ -16,8 +16,9 @@ the stall, and a stall it records is final, so later progress cannot undo it. Th
 recorded as a stalled callback before any stacks are taken, so no close or restore starts during
 the capture: the shared close helpers (`main_thread.close_document`, `run.close_writer`) check
 `refuse_after_stall` first, also for the test bodies' own closes. A close or other call already
-under way when the stall is recorded, or work a test posts to the main thread itself, continues
-until the runner stops the office.
+under way when the stall is recorded, including a close `close_document` has already posted to
+the main thread on Windows, and work a test posts to the main thread itself, continue until the
+runner stops the office.
 """
 
 import threading

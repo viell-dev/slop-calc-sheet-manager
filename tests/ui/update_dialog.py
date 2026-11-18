@@ -310,10 +310,13 @@ def exercise(program, package, output, result, backtrace):
                 assert "No errors." in result["installation_text"], result["installation_text"]
                 click(lab, named(nodes, "OK"))
             finally:
-                # No cleanup starts on a stalled office or during the stall watch's capture (#45).
-                if not stalled_callbacks():
-                    for _ in range(4):
+                # No cleanup starts on a stalled office or during the stall watch's capture (#45):
+                # each tap and the close check first. A tap under way when a stall is recorded
+                # finishes.
+                for _ in range(4):
+                    if not stalled_callbacks():
                         lab.input.tap("Escape", pause=0.3)
+                if not stalled_callbacks():
                     close_document(context, document)
         restart = output / "restart"
         restart.mkdir()

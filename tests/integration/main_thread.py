@@ -13,7 +13,8 @@ could run inside the nested main loop of a clipboard read (#30).
 
 A close that times out leaves the main thread's state unknown; it is recorded in `teardown`, and
 the session then fails without further closes (#50). After any stalled callback, including the
-stall watch's (#45), `close_document` starts no close at all.
+stall watch's (#45), `close_document` starts no new close. On Windows, a close it posted to the
+main thread before the stall was recorded still runs when the main thread reaches it.
 
 Close every Calc document in the tests and the workbook generator through `close_document`, and
 use `close_after` in place of a `finally` clause that closes one. A suite closes its leftovers

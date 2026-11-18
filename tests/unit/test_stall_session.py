@@ -7,6 +7,7 @@ stall watch, progress, shutdown checks and `results.json` are the runner's own. 
 asserted, so a watch that is disconnected or fires late fails here, not only in a native run.
 """
 
+import contextlib
 import functools
 import importlib.util
 import json
@@ -15,7 +16,7 @@ import sys
 import threading
 import time
 import types
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Generator, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -102,9 +103,9 @@ class Office:
         return time.monotonic()
 
 
-@pytest.fixture
-def runner(monkeypatch: pytest.MonkeyPatch) -> Iterator[Any]:
-    """The real runner module, importable without LibreOffice."""
+@contextlib.contextmanager
+def loaded_runner(monkeypatch: pytest.MonkeyPatch) -> Generator[Any]:
+    """The real runner module, importable without LibreOffice; the soak's tests use it too."""
     for name in (
         "uno",
         "unohelper",
@@ -133,8 +134,16 @@ def runner(monkeypatch: pytest.MonkeyPatch) -> Iterator[Any]:
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    yield module
-    teardown.start_session()
+    try:
+        yield module
+    finally:
+        teardown.start_session()
+
+
+@pytest.fixture
+def runner(monkeypatch: pytest.MonkeyPatch) -> Iterator[Any]:
+    with loaded_runner(monkeypatch) as module:
+        yield module
 
 
 def session(
@@ -167,7 +176,7 @@ def session(
     monkeypatch.setattr(
         runner,
         "StallWatch",
-        watch or functools.partial(office_process.StallWatch, find=lambda root, seconds: []),
+        watch or functools.partial(office_process.StallWatch, find=lambda root, end: []),
     )
     output = tmp_path / "results"
     monkeypatch.setattr(
@@ -220,6 +229,55 @@ def test_a_session_that_keeps_making_progress_is_never_stopped(
     assert result["office_exit_code"] == 0 and not result["office_forced_shutdown"]
     assert result["longest_progress_interval_seconds"] < LIMIT
     assert not list(output.glob("stall-*"))
+    assert "checks_ended_before_deadline" not in result  # There was no deadline.
+
+
+def test_checks_that_end_before_the_deadline_are_recorded_as_such(
+    runner: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The soak tells a limit reached after the checks from one of unknown phase by this alone.
+    monkeypatch.setattr(office_process, "DEADLINE", time.monotonic() + 60)
+
+    def body(*args: Any) -> dict[str, object]:
+        return {}
+
+    raised, result, _ = session(runner, monkeypatch, tmp_path, Office(), body)
+    assert raised is None and result["run_complete"]
+    assert result["checks_ended_before_deadline"] is True
+
+
+def test_a_wait_that_ends_before_the_capture_is_recorded_apart_from_its_evidence(
+    runner: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The watch's stop hangs, so the session stops waiting for the capture. The evidence says
+    # nothing it does not know; the timed-out wait is the runner's own record.
+    monkeypatch.setattr(office_process, "STOP_SECONDS", 0.2)
+    release = threading.Event()
+
+    def hung_stop(process: subprocess.Popen[str]) -> None:
+        release.wait(30)
+
+    def fails_once_stalled(*args: Any) -> dict[str, object]:
+        teardown.note_progress()
+        deadline = time.monotonic() + 20
+        while not teardown.stalled_callbacks():
+            assert time.monotonic() < deadline, "No stall was recorded"
+            time.sleep(0.02)
+        raise RuntimeError("Binary URP bridge disposed during call")
+
+    watch = functools.partial(
+        office_process.StallWatch, budget=0.2, find=lambda root, end: [], stop=hung_stop
+    )
+    try:
+        raised, result, _ = session(
+            runner, monkeypatch, tmp_path, Office(), fails_once_stalled, watch=watch
+        )
+    finally:
+        release.set()
+    assert isinstance(raised, AssertionError | RuntimeError), raised
+    assert result["stall_wait_timed_out"] is True
+    assert "capture_finished" not in result["office_progress_stall"]
+    assert not result["run_complete"] and result["office_exit_code"] != 0
 
 
 def test_a_session_without_progress_fails_with_its_stacks_in_time(
@@ -243,7 +301,7 @@ def test_a_session_without_progress_fails_with_its_stacks_in_time(
     assert stall["cause"] == "no progress" and stall["limit_seconds"] == LIMIT
     assert LIMIT <= stall["idle_seconds"] < 2 * LIMIT
     assert stall["office_stopped"] and stall["capture_finished"]
-    assert "diagnostic_errors" not in stall
+    assert "diagnostic_errors" not in stall and "stall_wait_timed_out" not in result
     assert "No test progress" in result["office_stalled_callbacks"][0]
     assert result["office_exit_code"] != 0
     assert json.loads((output / stall["receipt"]).read_text(encoding="utf-8"))["office_stopped"]
@@ -271,7 +329,7 @@ def test_a_failed_diagnostic_never_turns_a_stall_into_a_pass(
         return {"synthetic_body_completed": True}
 
     watch = functools.partial(
-        office_process.StallWatch, find=lambda root, seconds: [target], stacks=broken
+        office_process.StallWatch, find=lambda root, end: [target], stacks=broken
     )
     raised, result, _ = session(runner, monkeypatch, tmp_path, office, finishes_late, watch=watch)
     assert isinstance(raised, AssertionError), raised
@@ -339,6 +397,7 @@ def test_an_enclosing_deadline_ends_a_session_that_makes_progress(
     stall = result["office_progress_stall"]
     assert stall["cause"] == "deadline" and stall["idle_seconds"] < 1
     assert "deadline" in result["office_stalled_callbacks"][0]
+    assert "checks_ended_before_deadline" not in result
 
 
 def test_a_rerun_leaves_no_stall_evidence_of_an_earlier_run(
@@ -474,7 +533,7 @@ def test_a_hung_collector_cannot_keep_a_blocked_session_running(
         raise RuntimeError("Binary URP bridge disposed during call")
 
     watch = functools.partial(
-        office_process.StallWatch, budget=budget, find=lambda root, seconds: [target], stacks=hung
+        office_process.StallWatch, budget=budget, find=lambda root, end: [target], stacks=hung
     )
     raised, result, _ = session(
         runner, monkeypatch, tmp_path, office, blocked_uno_call, watch=watch
@@ -538,7 +597,7 @@ def test_no_document_close_starts_during_the_capture(
 
     target = office_process.Process(1, 0, "soffice.bin", 0)
     watch = functools.partial(
-        office_process.StallWatch, find=lambda root, seconds: [target], stacks=stacks
+        office_process.StallWatch, find=lambda root, end: [target], stacks=stacks
     )
     raised, result, _ = session(runner, monkeypatch, tmp_path, Office(), body, watch=watch)
     assert closes == [], "A document close started after the stall was recorded"

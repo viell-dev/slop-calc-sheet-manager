@@ -1,14 +1,17 @@
 """Measure independent painted sessions with and without the extension; never retry a failure."""
 
 # A session that has not finished within SESSION_SECONDS fails with status 124. The runner gets
-# the same limit as its deadline (`SHEET_MANAGER_DEADLINE_SECONDS`), at which its stall watch
-# keeps the client's and the office's stacks and stops the office (#45); CAPTURE_GRACE_SECONDS
-# more lets it do that and exit before its process group is killed. Keep the grace above the
-# watch's CAPTURE_SECONDS and STOP_SECONDS together (`office_process`; a unit test checks it).
-# The watch runs from the office's launch until the session's checks end, so a limit reached
-# while installing or shutting down, which have limits of their own, keeps no stacks; the
-# summary's Limit column says which happened. Kill the group before reaping the runner: until
-# it is reaped, its process ID, which is the group's, cannot pass to a new process.
+# the same moment as its deadline, as an absolute time on the monotonic clock that both share
+# (`SHEET_MANAGER_DEADLINE_MONOTONIC`), so its own start-up cannot move it later. There its stall
+# watch records the stall, keeps what stacks it can and stops the office (#45);
+# CAPTURE_GRACE_SECONDS more lets it do that and exit before its process group is killed. Keep
+# the grace above the watch's CAPTURE_SECONDS and STOP_SECONDS together (`office_process`; a unit
+# test checks it). The watch runs from the office's launch until the session's checks end, so a
+# limit reached while installing or shutting down, which have limits of their own, records no
+# stall. The summary's Limit column claims only what the session's files show: a stall receipt,
+# or the runner's record that its checks ended before the deadline; otherwise the phase is
+# unknown. Kill the group before reaping the runner: until it is reaped, its process ID, which is
+# the group's, cannot pass to a new process.
 
 import argparse
 import contextlib
@@ -18,6 +21,7 @@ import select
 import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any, TextIO
 
@@ -48,14 +52,17 @@ def run_session(
     """Run one runner in its own process group; return its status, or 124 after `limit` seconds.
 
     A runner still running at `limit` fails whatever happens next; it then has `grace` seconds
-    to keep its stall evidence and exit, and its whole group is killed after that.
+    to keep its stall evidence and exit, and its whole group is killed after that. The runner's
+    deadline is this same moment.
     """
-    environment = dict(os.environ, SHEET_MANAGER_DEADLINE_SECONDS=str(limit))
+    deadline = time.monotonic() + limit
+    environment = dict(os.environ, SHEET_MANAGER_DEADLINE_MONOTONIC=repr(deadline))
+    environment.pop("SHEET_MANAGER_DEADLINE_SECONDS", None)
     process = subprocess.Popen(
         command, stdout=log, stderr=subprocess.STDOUT, start_new_session=True, env=environment
     )
     try:
-        return process.wait(timeout=limit)
+        return process.wait(timeout=max(0.0, deadline - time.monotonic()))
     except subprocess.TimeoutExpired:
         if sys.platform != "linux":
             raise
@@ -67,14 +74,19 @@ def run_session(
 
 
 def limit_outcome(status: int, results: list[dict[str, Any]] | None, stalls: list[str]) -> str:
-    """For the summary: whether a session that reached its limit kept its stacks, and why not."""
+    """For the summary: what a session's files show about when it reached its limit.
+
+    A receipt shows that the stall was recorded; which stacks its capture kept is in the receipt.
+    The runner records that its checks ended before the deadline only when its watch closed
+    before it. Without either, when the limit fell is not known.
+    """
     if status != 124:
         return ""
     if stalls:
-        return "stacks kept"
-    if results and all(result.get("assertions_passed") for result in results):
-        return "reached in shutdown, after the checks: no stacks"
-    return "no stacks"
+        return "stall recorded"
+    if results and all(result.get("checks_ended_before_deadline") for result in results):
+        return "after the checks: no stall recorded"
+    return "no stall recorded; phase unknown"
 
 
 def main():

@@ -83,7 +83,8 @@ def test_a_session_past_its_limit_fails_but_keeps_its_stall_evidence(tmp_path: P
         [
             "import os, pathlib, sys, time",
             "out = pathlib.Path(sys.argv[1])",
-            "out.write_text(os.environ['SHEET_MANAGER_DEADLINE_SECONDS'])",
+            "out.write_text(os.environ['SHEET_MANAGER_DEADLINE_MONOTONIC'])",
+            "assert 'SHEET_MANAGER_DEADLINE_SECONDS' not in os.environ",
             "time.sleep(1.5)",
             "out.with_name('stall-False-0.json').write_text('{}')",
             "sys.exit(1)",
@@ -95,9 +96,36 @@ def test_a_session_past_its_limit_fails_but_keeps_its_stall_evidence(tmp_path: P
             [sys.executable, "-c", runner, str(deadline)], log, limit=0.5, grace=10
         )
     assert status == 124  # A session still running at the limit fails, whatever follows.
-    assert deadline.read_text(encoding="utf-8") == "0.5"
+    assert 0.5 <= float(deadline.read_text(encoding="utf-8")) - started < 0.6
     assert (tmp_path / "stall-False-0.json").exists()  # Its capture finished in the grace.
     assert time.monotonic() - started < 10
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="The soak runs only inside the Linux test image"
+)
+def test_the_soak_and_its_runner_share_one_deadline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The runner's start-up, before it imports office_process, must not move its deadline past
+    # the soak's own limit (#45).
+    monkeypatch.setenv("PYTHONPATH", str(ROOT))
+    deadline = tmp_path / "deadline.txt"
+    runner = "\n".join(
+        [
+            "import sys, time",
+            "time.sleep(0.5)  # A slow start-up.",
+            "from tests.integration import office_process",
+            "open(sys.argv[1], 'w').write(repr(office_process.DEADLINE))",
+        ]
+    )
+    started = time.monotonic()
+    with (tmp_path / "runner.log").open("w", encoding="utf-8") as log:
+        status = soak.run_session(
+            [sys.executable, "-c", runner, str(deadline)], log, limit=30, grace=10
+        )
+    assert status == 0, (tmp_path / "runner.log").read_text(encoding="utf-8")
+    assert 30 <= float(deadline.read_text(encoding="utf-8")) - started < 30.1
 
 
 @pytest.mark.skipif(
@@ -169,9 +197,9 @@ def test_the_group_is_killed_before_its_leader_is_reaped(
 @pytest.mark.skipif(
     sys.platform != "linux", reason="The soak runs only inside the Linux test image"
 )
-def test_a_limit_reached_in_shutdown_is_told_apart_in_the_summary(tmp_path: Path) -> None:
+def test_a_limit_reached_after_the_checks_is_told_apart_in_the_summary(tmp_path: Path) -> None:
     # The watch ends with the session's checks, so a limit that falls in shutdown keeps no stacks;
-    # the summary says so instead of leaving an unexplained 124.
+    # the summary says so, from the runner's own record, instead of leaving an unexplained 124.
     source = (ROOT / "tests/integration/soak.py").read_text(encoding="utf-8")
     for before, after in (
         ("SESSION_SECONDS = 180", "SESSION_SECONDS = 1"),
@@ -183,7 +211,8 @@ def test_a_limit_reached_in_shutdown_is_told_apart_in_the_summary(tmp_path: Path
     (tmp_path / "run.py").write_text(
         "import json, pathlib, sys, time\n"
         "output = pathlib.Path(sys.argv[sys.argv.index('--output') + 1])\n"
-        "result = {'assertions_passed': True, 'office_exit_code': 0, 'run_complete': True}\n"
+        "result = {'assertions_passed': True, 'office_exit_code': 0, 'run_complete': True,\n"
+        "          'checks_ended_before_deadline': True}\n"
         "(output / 'results.json').write_text(json.dumps([result]))\n"
         "if '--without-extension' not in sys.argv:\n"
         "    time.sleep(1.5)  # A shutdown that outlasts the limit.\n",
@@ -210,24 +239,94 @@ def test_a_limit_reached_in_shutdown_is_told_apart_in_the_summary(tmp_path: Path
     assert process.returncode == 1, process.stdout + process.stderr
     installed, absent = json.loads((output / "soak-results.json").read_text(encoding="utf-8"))
     assert installed["runner_exit"] == 124
-    assert installed["limit"] == "reached in shutdown, after the checks: no stacks"
+    assert installed["limit"] == "after the checks: no stall recorded"
     assert absent["runner_exit"] == 0 and absent["limit"] == ""
     summary = (output / "soak-summary.md").read_text(encoding="utf-8")
-    assert "| reached in shutdown, after the checks: no stacks |" in summary
+    assert "| after the checks: no stall recorded |" in summary
+
+
+# The real runner, in a soak session whose start-up is slow, with the reviewer's two cases: checks
+# that make progress across the soak's limit, and a stall whose capture keeps no stack bytes.
+SESSION = """
+import sys, time
+from pathlib import Path
+
+output, case, outer = Path(sys.argv[1]), sys.argv[2], float(sys.argv[3])
+time.sleep(0.8)  # A slow start-up, before the runner imports office_process.
+import pytest
+from tests.integration import office_process, teardown
+from tests.unit import test_stall_session as stall_session
+
+deadline = office_process.DEADLINE
+with pytest.MonkeyPatch.context() as patch, stall_session.loaded_runner(patch) as runner:
+    patch.setattr(office_process, "DEADLINE", deadline)  # The fixture clears it.
+    patch.setattr(office_process, "STALL_SECONDS", 900.0)
+    if case == "receipt only":
+        def unwritable(*args, **kwargs):
+            raise OSError("synthetic: the client's stacks cannot be written")
+        patch.setattr(office_process.faulthandler, "dump_traceback", unwritable)
+    office = stall_session.Office()
+
+    def body(*args):
+        if case == "receipt only":
+            office.wait_stopped(30)  # Blocked, as in a UNO call, until the office stops.
+        while time.monotonic() < outer + 0.3:  # Otherwise progress until past the soak's limit.
+            teardown.note_progress()
+            time.sleep(0.02)
+        return {}
+
+    stall_session.session(runner, patch, output, office, body)
+"""
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="The soak runs only inside the Linux test image"
+)
+@pytest.mark.parametrize("case", ["progress across the limit", "receipt only"])
+def test_a_limit_in_the_checks_is_recorded_whatever_the_runners_start_up_takes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str
+) -> None:
+    monkeypatch.setenv("PYTHONPATH", f"{ROOT}{os.pathsep}{ROOT / 'src'}")
+    limit = 4.0
+    outer = time.monotonic() + limit  # The soak's limit, as run_session computes it.
+    command = [sys.executable, "-c", SESSION, str(tmp_path), case, repr(outer)]
+    with (tmp_path / "runner.log").open("w", encoding="utf-8") as log:
+        status = soak.run_session(command, log, limit=limit, grace=15)
+    output = tmp_path / "results"
+    log_text = (tmp_path / "runner.log").read_text(encoding="utf-8")
+    assert status == 124, log_text
+    (result,) = json.loads((output / "results.json").read_text(encoding="utf-8"))
+    stalls = sorted(path.name for path in output.glob("stall-*.json"))
+    assert stalls == ["stall-True-0.json"], log_text
+    assert result["office_progress_stall"]["cause"] == "deadline"
+    assert not result["run_complete"] and "checks_ended_before_deadline" not in result
+    assert soak.limit_outcome(status, [result], stalls) == "stall recorded"
+    if case == "receipt only":
+        # The summary claims a recorded stall, and no more: no stack bytes were kept.
+        assert sum(path.stat().st_size for path in output.glob("*stacks.txt")) == 0
+        assert "client_stacks" in result["office_progress_stall"]["diagnostic_errors"]
 
 
 OUTCOMES: list[tuple[int, list[dict[str, Any]] | None, list[str], str]] = [
     (0, [{"assertions_passed": True}], [], ""),
     (1, [{}], ["stall-False-0.json"], ""),
-    (124, [{}], ["stall-False-0.json"], "stacks kept"),
+    # A receipt shows the stall was recorded, even when its capture kept no stack bytes.
     (
         124,
-        [{"assertions_passed": True}],
-        [],
-        "reached in shutdown, after the checks: no stacks",
+        [{"office_progress_stall": {"office_stacks": {}}}],
+        ["stall-True-0.json"],
+        "stall recorded",
     ),
-    (124, [{}], [], "no stacks"),
-    (124, None, [], "no stacks"),
+    (
+        124,
+        [{"assertions_passed": True, "checks_ended_before_deadline": True}],
+        [],
+        "after the checks: no stall recorded",
+    ),
+    # Passed checks show that they ended, not when.
+    (124, [{"assertions_passed": True}], [], "no stall recorded; phase unknown"),
+    (124, [{}], [], "no stall recorded; phase unknown"),
+    (124, None, [], "no stall recorded; phase unknown"),
 ]
 
 
