@@ -5,6 +5,14 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Calibrate the rename dialog's real-input clicks on points of the dialog's own window, located
+  from its buttons, rather than of its accessible area, which includes the window manager's
+  frame. On the Windows desktop the frame's borders kept the dialog from reporting nearly every
+  point, and each calibration took about a minute; it now takes under a second there and on
+  Linux ([#253](https://github.com/viell-dev/slop-calc-sheet-manager/issues/253)).
+- Expose the selected proposal's name conflict on the focused New name field in Rename Sheets,
+  so a screen reader can announce the refusal while the user stays in the edit
+  ([#247](https://github.com/viell-dev/slop-calc-sheet-manager/issues/247)).
 - Record how long each integration-test installation of the package takes, as `install_seconds`
   in the results, and keep the elapsed time and unopkg's output when an installation exceeds its
   90-second limit, which still fails the session. The local testing guide says how to tell such a
