@@ -5,6 +5,9 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Known issues now says the sheet list keeps rebuilding its rows after a sheet switch or tab
+  colour change, and why
+  ([#22](https://github.com/viell-dev/slop-calc-sheet-manager/issues/22)).
 - When Replace All finds matching text but changes no proposed names, Rename Sheets explains
   this in the status and through the button's accessible name
   ([#259](https://github.com/viell-dev/slop-calc-sheet-manager/issues/259)).
