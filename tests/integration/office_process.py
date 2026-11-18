@@ -40,7 +40,10 @@ the plain one and the gdb wrapper. Rules for changing it:
   what a listing returned, whether the launcher had exited after the stop. An interrupt sent to
   the gdb wrapper's inferior is not saved stacks, since gdb may not print; a listing that finds no
   `soffice.bin` under the launcher does not show that none runs; the launcher's exit is not the
-  office's. Only the watch's last snapshot has `watch_finished`; an earlier one is partial.
+  office's. Only the watch's last snapshot has `watch_finished`; an earlier one is partial. The
+  watch acts on what a step returns, never on the text it records: it waits for the gdb wrapper
+  only when `native_stacks` reports that it sent the interrupt (`StackAttempt.interrupted`), so
+  rewording a receipt's text changes no behaviour (#267).
 - Native stacks are read only from a process still identified as this session's office: a
   `soffice.bin` descendant of the session's launcher that started no earlier than its parent
   (Windows keeps a dead parent's ID, which a newer process can reuse) and still has the start
@@ -427,57 +430,80 @@ def run_debugger(command: list[str], path: Path, end: float) -> str:
     return f"{name} exited {status}; its output has thread lines"
 
 
-def native_stacks(target: Process, path: Path, *, debugger_parent: bool, end: float) -> str:
+@dataclass(frozen=True)
+class StackAttempt:
+    """What `native_stacks` did for one office process.
+
+    `method` is the receipt's text for it. `interrupted` says whether SIGINT was sent to the gdb
+    wrapper's inferior, after which the watch waits for the wrapper to exit. The watch acts on
+    `interrupted` and only records `method`, so rewording the text changes no behaviour (#267).
+    """
+
+    method: str
+    interrupted: bool = False
+
+
+def native_stacks(
+    target: Process, path: Path, *, debugger_parent: bool, end: float
+) -> StackAttempt:
     """Try to have every native stack of the office `target` written by `end`; say what was done.
 
     Only a process that is still `target` is touched: its identity is checked while a handle to
     it is held, and the handle is held until the action ends. On Linux, only the gdb wrapper's
     inferior is touched, through its pidfd: it is sent SIGINT, after which gdb normally prints
     every thread's stack into its own trace. That the signal was sent is all this observes; a
-    gdb that is itself blocked prints nothing. The result says what was done, or why nothing was.
+    gdb that is itself blocked prints nothing. The result says what was done, or why nothing was,
+    and whether that signal was sent.
     """
     if sys.platform == "linux":
         if not debugger_parent:
             # `gdb -p` attaches by number, which a new process can have reused by then.
-            return "not read: Linux native stacks need the gdb wrapper (--backtrace)"
+            return StackAttempt("not read: Linux native stacks need the gdb wrapper (--backtrace)")
         try:
             handle = os.pidfd_open(target.pid)
         except ProcessLookupError:
-            return f"skipped: no process {target.pid} when its pidfd was opened"
+            return StackAttempt(f"skipped: no process {target.pid} when its pidfd was opened")
         try:
             current = linux_process(target.pid)
             if current is None or (current.name, current.started) != (target.name, target.started):
-                return f"skipped: process {target.pid} no longer has its listed name and start time"
+                return StackAttempt(
+                    f"skipped: process {target.pid} no longer has its listed name and start time"
+                )
             parent = linux_process(current.parent)
             tracer = tracer_of(target.pid)
             if parent is None or parent.name != "gdb" or tracer != parent.pid:
-                return f"skipped: not the gdb wrapper's inferior (tracer {tracer})"
+                return StackAttempt(f"skipped: not the gdb wrapper's inferior (tracer {tracer})")
             signal.pidfd_send_signal(handle, signal.SIGINT)
-            return (
+            return StackAttempt(
                 f"SIGINT sent through its pidfd to {target.pid}, traced by gdb {parent.pid}; "
-                "whatever gdb printed is in the session's gdbtrace log"
+                "whatever gdb printed is in the session's gdbtrace log",
+                interrupted=True,
             )
         finally:
             os.close(handle)
     if sys.platform == "win32":
         if not CDB.exists():
-            return f"no CDB at {CDB}"
+            return StackAttempt(f"no CDB at {CDB}")
         import _winapi
 
         try:
             # Query and wait access; an open handle keeps the process ID from being reused.
             handle = _winapi.OpenProcess(0x1000 | 0x100000, False, target.pid)
         except OSError as error:
-            return f"skipped: OpenProcess({target.pid}) failed: {error!r}"
+            return StackAttempt(f"skipped: OpenProcess({target.pid}) failed: {error!r}")
         try:
             if creation_time(handle) // 10 != target.started // 10:
-                return f"skipped: process {target.pid} no longer has its listed start time"
-            return run_debugger(
-                [str(CDB), "-pv", "-p", str(target.pid), "-c", "~*kc 60; q"], path, end
+                return StackAttempt(
+                    f"skipped: process {target.pid} no longer has its listed start time"
+                )
+            return StackAttempt(
+                run_debugger(
+                    [str(CDB), "-pv", "-p", str(target.pid), "-c", "~*kc 60; q"], path, end
+                )
             )
         finally:
             _winapi.CloseHandle(handle)
-    return f"native stacks are not read on {sys.platform}"
+    return StackAttempt(f"native stacks are not read on {sys.platform}")
 
 
 def tracer_of(pid: int) -> int | None:
@@ -534,7 +560,7 @@ class StallWatch:
         deadline: float | None = None,
         budget: float | None = None,
         find: Callable[[int, float], list[Process]] = office_processes,
-        stacks: Callable[..., str] = native_stacks,
+        stacks: Callable[..., StackAttempt] = native_stacks,
         stop: Callable[[subprocess.Popen[str]], None] = stop_process,
     ) -> None:
         self.process, self.output, self.prefix = process, output, prefix
@@ -725,14 +751,14 @@ class StallWatch:
         interrupted = False
         for target in targets or []:
             path = self.output / f"{self.prefix}-office-{target.pid}-stacks.txt"
-            how = self._step(
+            attempt: StackAttempt | None = self._step(  # None when the step failed.
                 f"office_{target.pid}",
                 lambda target=target, path=path: self.stacks(
                     target, path, debugger_parent=self.debugger_parent, end=end
                 ),
             )
-            interrupted = interrupted or str(how).startswith("SIGINT")
-            self._record_stacks(target, how, path)
+            interrupted = interrupted or (attempt is not None and attempt.interrupted)
+            self._record_stacks(target, attempt, path)
         if interrupted:  # The gdb wrapper normally prints the stacks, then ends the office.
             status = self._step(
                 "wrapper_exit", lambda: process.wait(timeout=max(0.0, end - time.monotonic()))
@@ -742,8 +768,9 @@ class StallWatch:
         with self._lock:
             self._collected = time.monotonic() < end
 
-    def _record_stacks(self, target: Process, how: object, path: Path) -> None:
-        entry = {"method": how, "file": path.name if path.exists() else None}
+    def _record_stacks(self, target: Process, attempt: StackAttempt | None, path: Path) -> None:
+        method = attempt.method if attempt is not None else None
+        entry = {"method": method, "file": path.name if path.exists() else None}
 
         def add(evidence: dict[str, Any]) -> None:
             evidence["office_stacks"][str(target.pid)] = entry

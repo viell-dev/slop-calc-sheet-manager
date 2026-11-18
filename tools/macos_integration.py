@@ -13,6 +13,9 @@ An unverified or interrupted cleanup retains the private directory. Native contr
 both TERM and KILL. Detach the image whenever an attach may have mounted it.
 Keep the workflow timeout above the commands' combined budgets, including cleanup and upload.
 Every failure, including diagnostic collection, leaves the host result marked unsuccessful.
+The integration runner ends at its own deadline, which the stall watch treats as a stall, before
+the command's limit: a stall late in the run then still keeps the client's stacks (#244). Keep
+the gap between them at least the watch's capture and stop budgets plus the runner's exit.
 """
 
 import argparse
@@ -39,8 +42,13 @@ else:
     from libreoffice_package import ensure_package
 
 ROOT = Path(__file__).resolve().parents[1]
-# Complete native benchmark work exceeded 20 minutes in retained phase receipts (#162).
-INTEGRATION_TIMEOUT = 30 * 60
+# Complete native benchmark work exceeded 20 minutes in retained phase receipts (#162), so the
+# runner has 30 minutes. At that deadline its stall watch records a stall, saves the client's
+# stacks and stops its office (#45), within the 3 more minutes the command has. Without the
+# deadline, a stall in the second half of the run would meet the command's limit before its
+# stacks were saved (#244).
+RUNNER_DEADLINE = 30 * 60
+INTEGRATION_TIMEOUT = RUNNER_DEADLINE + 3 * 60
 TERM_GRACE = 3
 KILL_GRACE = 5
 # A child may outlive its reaped client briefly and then exit on its own.
@@ -329,6 +337,20 @@ def timeout_controls(output: Path, environment: dict[str, str]) -> None:
     )
 
 
+def runner_environment(environment: dict[str, str]) -> dict[str, str]:
+    """Give the integration runner `RUNNER_DEADLINE`, counted from its start (#244).
+
+    The runner's absolute deadline would take precedence, so an inherited one is removed.
+    """
+    runner = {
+        key: value
+        for key, value in environment.items()
+        if key != "SHEET_MANAGER_DEADLINE_MONOTONIC"
+    }
+    runner["SHEET_MANAGER_DEADLINE_SECONDS"] = str(RUNNER_DEADLINE)
+    return runner
+
+
 def install(
     image: Path, pin: dict[str, str], temporary: Path, output: Path, environment: dict[str, str]
 ) -> Path:
@@ -466,7 +488,7 @@ def main() -> None:
                         str(output / "integration"),
                     ],
                     output / "integration.log",
-                    environment,
+                    runner_environment(environment),
                     INTEGRATION_TIMEOUT,
                 )
                 result["assertions_passed"] = True

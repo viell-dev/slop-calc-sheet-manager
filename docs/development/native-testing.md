@@ -228,7 +228,8 @@ callback, and stops its launcher at once if it is still running, instead of givi
 shutdown its 30 seconds.
 `SHEET_MANAGER_STALL_SECONDS` lowers the limit to try this, and `SHEET_MANAGER_DEADLINE_SECONDS`
 ends a run that many seconds after its start the same way; `tools/linux_integration.py` passes
-both into the container. Neither is a test timeout.
+both into the container, and the macOS helper sets the deadline for its integration runner, as
+below. Neither is a test timeout.
 
 The receipt and the session's `office_progress_stall` record what the watch did and saw, not
 what follows from it:
@@ -260,14 +261,19 @@ what follows from it:
   snapshot taken when the runner stopped waiting. `stall_wait_timed_out` marks a wait that ended
   before the watch finished.
 
-An enclosing time limit can still end a stalled run before its stacks are saved and uploaded:
-detection, the capture, the stop and the upload take up to about 18 minutes after the last
-progress, depending on how long the capture and the upload take. The stacks of a stall that
-begins later than that before a job's `timeout-minutes`, or before the macOS helper's 30-minute
-integration command limit, may be lost at that limit. On recent runs this covers the second half
-of every Linux real-input phase and most of the Windows integration job
-([#244](https://github.com/viell-dev/slop-calc-sheet-manager/issues/244)). The soak, below,
-gives each runner the soak's own limit as its deadline.
+Detection, the capture, the stop and the upload take up to about 18 minutes after the last
+progress, so an enclosing time limit that comes sooner ends a stalled run before its stacks are
+saved and uploaded. Each CI job that runs an office therefore has a `timeout-minutes` limit at
+least 18 minutes, and a few more to spare, beyond the end of its slowest measured healthy run;
+`tests/unit/test_ci_policy.py` checks each limit against the durations measured in
+[#244](https://github.com/viell-dev/slop-calc-sheet-manager/issues/244). The macOS helper gives
+its integration runner a 30-minute deadline, 3 minutes before the command's limit, so a stall
+there is recorded at the deadline at the latest, and the soak, below, gives each runner the
+soak's own limit as its deadline. A run that grows past its measured length can still lose a
+late stall's stacks: in routine CI's Linux job and the sweep's Linux gtk3 jobs, a stall that
+begins after minute 42; in the sweep's headless Linux jobs, after minute 17; and in its Windows
+integration job, after minute 22. The healthy runs measured for #244 ended by minutes 38.4, 11.8
+and 16.7.
 
 The painted resize check repeats the initial request if a late maximize changes its geometry;
 `resize-initial-*.json` retains requests and measurements
@@ -285,7 +291,7 @@ The soak passes `--suites none` to skip feature suites and their performance wor
 180-second per-session limit; ordinary integration runs keep all feature suites enabled. A
 session that the soak finds still running at that limit fails with status 124; one that exits
 after it while the soak's own process is not scheduled reports its own status
-([#244](https://github.com/viell-dev/slop-calc-sheet-manager/issues/244)). Its runner has the
+([#275](https://github.com/viell-dev/slop-calc-sheet-manager/issues/275)). Its runner has the
 same moment as its deadline, passed as an absolute time on the container's monotonic clock
 (`SHEET_MANAGER_DEADLINE_MONOTONIC`), so the runner's own start-up cannot move it later. When the
 limit falls during startup or the checks, the runner's stall watch records the stall, tries to
@@ -334,7 +340,7 @@ and the full four-part version in filenames: `stable/` downloads disappear when 
 releases change.
 The lab download allows 30 seconds to connect and four minutes per transfer, with retry starts
 confined to the first minute. This bounds download setup to about five minutes so a slow mirror
-cannot consume the routine job's 45-minute native testing budget. Its effective mirror and
+cannot consume the routine job's 60-minute native testing budget. Its effective mirror and
 transfer measurements are logged; TLS and the pinned SHA-256 remain required.
 These pins do not discover newer releases automatically. Dependabot checks development tools,
 GitHub-owned actions and Docker base images weekly after a seven-day cooldown. Action references

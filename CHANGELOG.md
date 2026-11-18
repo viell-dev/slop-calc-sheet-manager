@@ -16,6 +16,18 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   seen to fail such a call only while a panel closes
   ([#257](https://github.com/viell-dev/slop-calc-sheet-manager/issues/257),
   [#265](https://github.com/viell-dev/slop-calc-sheet-manager/issues/265)).
+- Give each CI job that runs LibreOffice time to keep the stacks of a stall at any point in a
+  run of its measured length: routine CI's Linux job and the release sweep's Linux gtk3 jobs now
+  have 60 minutes instead of 45, the sweep's headless Linux jobs 35 instead of 30, and its
+  Windows integration job 40 instead of 25. The macOS integration runner now ends at a
+  30-minute deadline, recording a stall with the test client's stacks, within the command's
+  33-minute limit. This changes CI and the test helpers, not the extension
+  ([#244](https://github.com/viell-dev/slop-calc-sheet-manager/issues/244)).
+- The stall watch now waits for LibreOffice's gdb wrapper after an interrupt because its stack
+  collector reports that it sent one, rather than by reading the start of its own receipt text,
+  so rewording that text can no longer drop the wait and the wrapper's recorded exit status. This
+  changes the test runner, not the extension
+  ([#267](https://github.com/viell-dev/slop-calc-sheet-manager/issues/267)).
 - On Windows, a test document close that was posted to LibreOffice's main thread before the
   stall watch recorded a stall no longer starts when that thread reaches it, so it cannot change
   the office while its stacks are being taken; the close helper then fails as after any stall.
@@ -45,9 +57,8 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   wait for queued UNO releases or a terminate request, as after a stalled main-thread callback. A
   soak session that reaches its 180-second limit during startup or its checks records the stall
   too. The soak empties each session's directory before the session starts, and its summary
-  points there instead of judging stalls. The stacks of a stall late in a CI job may be lost at
-  the job's limit ([#45](https://github.com/viell-dev/slop-calc-sheet-manager/issues/45),
-  [#244](https://github.com/viell-dev/slop-calc-sheet-manager/issues/244)).
+  points there instead of judging stalls
+  ([#45](https://github.com/viell-dev/slop-calc-sheet-manager/issues/45)).
 - End each LibreOffice test session only after the office has run the UNO releases the test
   process sent before the session's end. An office asked to terminate while it still ran them,
   as after the 1,000-sheet check, could crash at exit in a LibreOffice bridge thread, with or
