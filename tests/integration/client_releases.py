@@ -21,9 +21,10 @@ garbage are sent before the marker's. Releases sent after the marker, such as fr
 callback the office makes during the wait, are not covered; at the end of a session the office
 has no documents open and makes none.
 
-Call it on the thread that drops the session's last references, before asking the office to
+Call it after the session has dropped its last references, before asking the office to
 terminate. It reports a failure as text and never raises: a UNO exception must not leave the
-runner's generator-based session (#41).
+runner's generator-based session (#41). `tests/unit/test_client_releases.py` checks its time
+limit and failure reports against a fake marker.
 """
 
 import gc
@@ -53,14 +54,25 @@ def queue_marker(context, released: threading.Event) -> object:
 
 
 def settle_releases(context, timeout: float) -> str | None:
-    """Wait until the office has run this process's releases; return None, or why not."""
+    """Wait until the office has run this process's releases; return None, or why not.
+
+    Creating the marker is itself a UNO call that a stuck office would not answer, so it runs
+    on its own thread, which is left behind if the office never answers, and the whole wait
+    ends after `timeout` seconds: the runner then stops the office instead of hanging (#40).
+    """
     gc.collect()
     released = threading.Event()
-    try:
-        model = queue_marker(context, released)
-        del model  # The last release this process sends before the office ends.
-    except Exception as error:
-        return f"Could not queue the release marker: {error!r}"
-    if released.wait(timeout):
-        return None
-    return f"LibreOffice did not run this process's UNO releases within {timeout:g} s"
+    failures: list[str] = []
+
+    def queue() -> None:
+        try:
+            model = queue_marker(context, released)
+            del model  # The last release this process sends before the office ends.
+        except Exception as error:
+            failures.append(f"Could not queue the release marker: {error!r}")
+            released.set()
+
+    threading.Thread(target=queue, name="release-marker", daemon=True).start()
+    if not released.wait(timeout):
+        return f"LibreOffice did not run this process's UNO releases within {timeout:g} s"
+    return failures[0] if failures else None
