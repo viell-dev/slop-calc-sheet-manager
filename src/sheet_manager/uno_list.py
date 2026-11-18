@@ -62,7 +62,9 @@ names only the button released, so only the left button's ends the press. A refu
 whose structure check finds a generation the list has not proved writes none of its refs: a
 retained handle may report its name for another sheet. It clears the row the release selected
 and leaves the rest to the queued write, which refreshes first, so that the release's native
-selection cannot reach the next intake even when that refresh fails to write.
+selection cannot reach the next intake even when that refresh fails to write. Do not move that
+clear into a refresh write after every lost proof: it would run after the refresh advanced the
+proof, so its failure would leave the row to the intake and delay Calc's tab baseline.
 
 Activation. A double click or Enter makes the sheet Calc's only selected tab and reads that back,
 because `setActiveSheet` keeps an existing group when the sheet belongs to it. Activation reads
