@@ -5,6 +5,10 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Keep the keyboard cursor where the keys moved it while a click was held, when the list then
+  refuses that click because the sheets changed. It returned to a picked sheet even after
+  Ctrl+arrow keys had moved it elsewhere; the picks were already kept
+  ([#71](https://github.com/viell-dev/slop-calc-sheet-manager/issues/71)).
 - Plan moves that reorder many sheets faster: planning the reversal of 10,000 sheets takes under
   a second instead of three to seven on a loaded laptop, with the same moves. The planning
   budget test now measures CPU time and reports it with the elapsed time

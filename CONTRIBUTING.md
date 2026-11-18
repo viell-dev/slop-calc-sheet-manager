@@ -232,7 +232,9 @@ disabled-button rendering path behind [#166](https://github.com/viell-dev/slop-c
 The input helper disables keyboard repeat on its private Xvfb display. Otherwise, a client
 descheduled between a flushed key press and release can turn an intended tap into several keys.
 A real-input regression pauses for one second with Down pressed and still expects one cursor
-step. These tests exercise explicit key events, not the operating system's timed repeat behavior.
+step. These tests exercise explicit key events, not the operating system's timed repeat behavior;
+the one exception, `XInput.repeat`, turns the server's repeat on for a single held key and has no
+Windows counterpart.
 
 Inside the container, `tests/ui/run_ui.py --check NAME` (repeatable) selects checks.
 `run_ui.py` lists the checks in order; they live in `tests/ui/*_checks.py` by subject, with the
