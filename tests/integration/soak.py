@@ -5,19 +5,38 @@
 # keeps the client's and the office's stacks and stops the office (#45); CAPTURE_GRACE_SECONDS
 # more lets it do that and exit before its process group is killed. Keep the grace above the
 # watch's CAPTURE_SECONDS and STOP_SECONDS together (`office_process`; a unit test checks it).
+# The watch runs from the office's launch until the session's checks end, so a limit reached
+# while installing or shutting down, which have limits of their own, keeps no stacks; the
+# summary's Limit column says which happened. Kill the group before reaping the runner: until
+# it is reaped, its process ID, which is the group's, cannot pass to a new process.
 
 import argparse
 import contextlib
 import json
 import os
+import select
 import signal
 import subprocess
 import sys
 from pathlib import Path
-from typing import TextIO
+from typing import Any, TextIO
 
 SESSION_SECONDS = 180
 CAPTURE_GRACE_SECONDS = 150
+
+
+def wait_unreaped(process: subprocess.Popen[bytes], seconds: float) -> None:
+    """Wait up to `seconds` for `process` to exit, leaving it unreaped."""
+    if sys.platform != "linux":
+        raise RuntimeError("Run the soak inside the Linux test image")
+    try:
+        handle = os.pidfd_open(process.pid)
+    except ProcessLookupError:  # Not possible while it is unreaped; nothing to wait for.
+        return
+    try:
+        select.select([handle], [], [], seconds)  # A pidfd turns readable when its process exits.
+    finally:
+        os.close(handle)
 
 
 def run_session(
@@ -38,17 +57,28 @@ def run_session(
     try:
         return process.wait(timeout=limit)
     except subprocess.TimeoutExpired:
-        with contextlib.suppress(subprocess.TimeoutExpired):
-            process.wait(timeout=grace)
-        if os.name == "posix":
-            with contextlib.suppress(ProcessLookupError):  # The group may already be empty.
-                os.killpg(process.pid, signal.SIGKILL)
+        if sys.platform != "linux":
+            raise
+        wait_unreaped(process, grace)
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(process.pid, signal.SIGKILL)
         process.wait()
         return 124
 
 
+def limit_outcome(status: int, results: list[dict[str, Any]] | None, stalls: list[str]) -> str:
+    """For the summary: whether a session that reached its limit kept its stacks, and why not."""
+    if status != 124:
+        return ""
+    if stalls:
+        return "stacks kept"
+    if results and all(result.get("assertions_passed") for result in results):
+        return "reached in shutdown, after the checks: no stacks"
+    return "no stacks"
+
+
 def main():
-    if os.name != "posix":
+    if sys.platform != "linux":
         raise SystemExit("Run the soak inside the Linux test image")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--program", type=Path, required=True)
@@ -69,8 +99,8 @@ def main():
         "debugger fatal markers also fail a run.",
         "",
         "| Mode | Session | Runner exit | Office/wrapper exit | Fatal markers | Assertions | "
-        "Stall | Results error |",
-        "| --- | ---: | ---: | --- | --- | --- | --- | --- |",
+        "Stall | Limit | Results error |",
+        "| --- | ---: | ---: | --- | --- | --- | --- | --- | --- |",
     ]
     try:
         for mode in ("installed", "absent"):
@@ -106,10 +136,13 @@ def main():
                 except (json.JSONDecodeError, OSError) as error:
                     results = None
                     results_error = f"{type(error).__name__}: {error}"
+                stalls = sorted(path.name for path in directory.glob("stall-*.json"))
+                limit = limit_outcome(status, results, stalls)
                 row = {
                     "mode": mode,
                     "session": number,
                     "runner_exit": status,
+                    "limit": limit,
                     "results": results,
                     "results_error": results_error,
                 }
@@ -124,10 +157,9 @@ def main():
                 assertions = bool(results) and all(
                     result.get("assertions_passed") for result in results
                 )
-                stalls = sorted(path.name for path in directory.glob("stall-*.json"))
                 summary.append(
                     f"| {mode} | {number} | {status} | {office} | {markers} | {assertions} | "
-                    f"{', '.join(stalls)} | {results_error or ''} |"
+                    f"{', '.join(stalls)} | {limit} | {results_error or ''} |"
                 )
     finally:
         output.mkdir(parents=True, exist_ok=True)

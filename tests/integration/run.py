@@ -33,6 +33,8 @@ gtk3 saves a screenshot.
 # - A session with no progress for `office_process.STALL_SECONDS`, from its launch, fails,
 #   saves its client and office stacks and stops its office (#45); a stall is never retried.
 #   Report progress at suite and check boundaries; never use the limit as a test timeout.
+#   Hand the gdb wrapper's replacement office to the watch with `StallWatch.follow`, and stop
+#   it before any UNO call when the watch refuses it after a stall.
 # - Install only through `add_package`, which records each install's elapsed time and keeps a
 #   timeout a failure (#235). Do not raise `INSTALL_SECONDS` without measured normal installs.
 
@@ -67,11 +69,13 @@ from office_process import (
     finish_process,
     normal_startup_restart,
     retain_crash_dumps,
+    stop_process,
 )
 from sheet_list_view import move_buttons, tree_of
 from teardown import (
     longest_progress_interval,
     note_progress,
+    refuse_after_stall,
     stall_if_idle,
     stalled_callbacks,
     start_session,
@@ -108,8 +112,12 @@ def suite_order(path: Path) -> tuple[int, str]:
 
 
 def close_writer(writer):
-    """Close a Writer document after its start-up toolbar update has had time to finish."""
+    """Close a Writer document after its start-up toolbar update has had time to finish.
+
+    As `close_document` does, it refuses to start once a callback or the session has stalled.
+    """
     time.sleep(WRITER_SETTLE_SECONDS)
+    refuse_after_stall("closing a Writer document")
     writer.close(True)
 
 
@@ -300,7 +308,13 @@ def office_session(
                                     text=True,
                                     cwd=directory,
                                 )
-                                watch.follow(process)
+                                if not watch.follow(process):
+                                    # The session stalled meanwhile: nothing watches this one,
+                                    # so it is stopped before any UNO call reaches it (#45).
+                                    stop_process(process)
+                                    raise TimeoutError(
+                                        "The stall watch stopped the office during startup"
+                                    ) from None
                                 continue
                         raise RuntimeError("Private soffice exited during startup") from None
                     time.sleep(0.1)
@@ -331,6 +345,7 @@ def office_session(
             )
             startup["office_crash_dumps"] = dumps
             startup_dumps.extend(dumps)
+            startup["longest_progress_interval_seconds"] = round(longest_progress_interval(), 1)
             if stall is not None:
                 startup["office_progress_stall"] = stall
                 startup["office_stalled_callbacks"] = stalled_callbacks()

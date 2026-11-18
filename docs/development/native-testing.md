@@ -186,24 +186,28 @@ A session that reports no progress for 15 minutes from its launch, because a UNO
 returned, fails and is never retried. Suites, checks, and the benchmarks' workbooks and
 repetitions count as progress; each session records its `longest_progress_interval_seconds`. The
 runner first records the stall, as a stalled callback and in a `stall-*.json` receipt, so no
-close or restore starts during the capture. It then saves the client's Python stacks and the
-office's native stacks as `stall-*` files, within 60 seconds, and stops the office; the session's
+document close, settings restore or terminate request starts afterwards; calls already under way
+continue until the office stops. It then saves the client's Python stacks and the office's native
+stacks as `stall-*` files for up to 60 seconds, and stops the office when they are saved or when
+the 60 seconds end, even if the test client or a debugger is still blocked; the session's
 `office_progress_stall` says what each step did. Under `--backtrace` the gdb wrapper writes the
-native stacks into its trace; on Windows, CDB at its standard path writes them. Linux containers
-refuse `ptrace` otherwise, and macOS has no debugger in this path, so only the client's stacks
-are kept there ([#45](https://github.com/viell-dev/slop-calc-sheet-manager/issues/45)). Only a
-`soffice.bin` still identified as the session's own is examined.
+native stacks into its trace; on Windows, CDB at its standard path writes them. Without the
+wrapper no debugger attaches on Linux, and macOS has no debugger in this path, so only the
+client's stacks are kept there
+([#45](https://github.com/viell-dev/slop-calc-sheet-manager/issues/45)). Only a `soffice.bin`
+still identified as the session's own is examined.
 `SHEET_MANAGER_STALL_SECONDS` lowers the limit to try this, and `SHEET_MANAGER_DEADLINE_SECONDS`
 ends a run that many seconds after its start the same way; `tools/linux_integration.py` passes
 both into the container. Neither is a test timeout.
 
 An enclosing time limit can still end a stalled run before its stacks are saved and uploaded:
-detection, the capture, the stop and the upload take about 18 minutes after the last progress. A
-stall that begins later than that before a job's `timeout-minutes`, or before the macOS helper's
-30-minute integration command limit, ends at that limit without its stacks. On recent runs this
-covers the second half of every Linux real-input phase and most of the Windows integration job
+detection, the capture, the stop and the upload take up to about 18 minutes after the last
+progress, depending on how long the capture and the upload take. The stacks of a stall that
+begins later than that before a job's `timeout-minutes`, or before the macOS helper's 30-minute
+integration command limit, may be lost at that limit. On recent runs this covers the second half
+of every Linux real-input phase and most of the Windows integration job
 ([#244](https://github.com/viell-dev/slop-calc-sheet-manager/issues/244)). The soak, below, keeps
-its sessions' stacks at its own limit.
+the stacks of sessions that reach its own limit during their checks.
 
 The painted resize check repeats the initial request if a late maximize changes its geometry;
 `resize-initial-*.json` retains requests and measurements
@@ -220,9 +224,13 @@ session, including unreadable or missing results, fails the job after all measur
 The soak passes `--suites none` to skip feature suites and their performance workbooks within its
 180-second per-session limit; ordinary integration runs keep all feature suites enabled. A
 session still running at that limit fails with status 124. Its runner has the limit as its
-deadline (`SHEET_MANAGER_DEADLINE_SECONDS`), so its stall watch keeps the client's and the
-office's stacks and stops the office, and the soak waits 150 more seconds before it kills the
-session's process group. The summary lists each session's `stall-*.json` receipts. Feature
+deadline (`SHEET_MANAGER_DEADLINE_SECONDS`), so when the limit falls during startup or the checks,
+its stall watch keeps the client's and the office's stacks and stops the office; the soak waits
+150 more seconds before it kills the session's process group. The watch runs from the office's
+launch until the checks end, so a limit reached while installing or shutting down, which have
+time limits of their own, keeps no stacks. The summary lists each session's `stall-*.json`
+receipts, and its Limit column says whether a session at the limit kept its stacks or reached
+the limit in shutdown, after its checks. Feature
 suites never run in the absent-extension control. The soak disables startup retries too, so
 every attempted session contributes to the measurement. The absent-extension control repeats the
 Calc/save/reopen-read-only/Writer lifecycle and frame requests, but cannot exercise the panel or

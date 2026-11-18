@@ -304,6 +304,7 @@ def test_a_stall_during_startup_ends_the_session_without_a_retry(
     stall = result["office_progress_stall"]
     assert stall["cause"] == "no progress" and stall["office_stopped"]
     assert result["office_stalled_callbacks"]
+    assert result["longest_progress_interval_seconds"] >= LIMIT
     startup = json.loads((output / "startup-True-0.json").read_text(encoding="utf-8"))
     assert startup["office_progress_stall"]["receipt"] == "stall-True-0.json"
 
@@ -390,3 +391,192 @@ def test_the_gdb_wrappers_startup_restart_hands_the_new_office_to_the_watch(
     stall = result["office_progress_stall"]
     assert stall["launcher_pid"] == office.launches[1].pid and stall["office_stopped"]
     assert LIMIT <= times["stopped"] - times["progress"] < 2 * LIMIT
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="The gdb wrapper runs only on Linux")
+def test_a_stall_during_the_restart_launches_no_unwatched_office(
+    runner: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The stall comes while the runner handles the first office's exit 81. The watch captures
+    # and stops that office; the replacement would then run with nothing watching it, so the
+    # watch refuses it and the runner stops it, and startup fails before another UNO call.
+    def bootstrap(directory: Path) -> str:
+        trace = directory / "gdbtrace.log"
+        trace.write_text("[Inferior 1 (process 7) exited with code 0121]", encoding="utf-8")
+        return "raise SystemExit(81)"
+
+    unwatched: list[int] = []
+
+    def connects(office: Office) -> None:
+        if len(office.launches) == 1:
+            office.wait_stopped()
+            raise RuntimeError("Connector: could not connect to pipe")
+        unwatched.append(office.process.pid)  # A UNO call to an office nothing watches.
+
+    office = Office(resolve=connects, first=bootstrap)
+    receipt = tmp_path / "results" / "stall-True-0.json"
+    recognize = runner.normal_startup_restart
+
+    def after_the_capture(trace: str) -> bool:
+        deadline = time.monotonic() + 20
+        while not (receipt.exists() and "office_stopped" in receipt.read_text(encoding="utf-8")):
+            assert time.monotonic() < deadline, "The watch never stopped the first office"
+            time.sleep(0.02)
+        return recognize(trace)
+
+    monkeypatch.setattr(runner, "normal_startup_restart", after_the_capture)
+    stopped: list[int] = []
+
+    def recorded_stop(process: subprocess.Popen[str]) -> None:
+        stopped.append(process.pid)
+        office_process.stop_process(process)
+
+    monkeypatch.setattr(runner, "stop_process", recorded_stop, raising=False)
+
+    def body(*args: Any) -> dict[str, object]:
+        raise AssertionError("A session whose startup stalled ran its body")
+
+    raised, result, _ = session(runner, monkeypatch, tmp_path, office, body, "--backtrace")
+    assert len(office.launches) == 2 and unwatched == []
+    assert stopped == [office.launches[1].pid]  # Stopped by the runner, before any UNO call.
+    assert result["office_exit_code"] not in (0, None) and not result["office_forced_shutdown"]
+    assert isinstance(raised, TimeoutError), raised
+    assert result["failure_stage"] == "startup" and not result["run_complete"]
+    stall = result["office_progress_stall"]
+    assert stall["launcher_pid"] == office.launches[0].pid and stall["office_stopped"]
+
+
+def test_a_hung_collector_cannot_keep_a_blocked_session_running(
+    runner: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The body is blocked in a UNO call, so it never reaches the watch's close(), and a
+    # collector hangs too. The office still stops when the capture's budget ends.
+    budget = 0.5
+    entered, release = threading.Event(), threading.Event()
+    target = office_process.Process(1, 0, "soffice.bin", 0)
+
+    def hung(*args: Any, **kwargs: Any) -> str:
+        entered.set()
+        release.wait(30)
+        return "too late"
+
+    office = Office()
+    times: dict[str, float] = {}
+
+    def blocked_uno_call(context: Any, desktop: Any, directory: Path) -> dict[str, object]:
+        teardown.note_progress()
+        try:
+            assert entered.wait(4 * LIMIT), "No capture started"
+            times["capturing"] = time.monotonic()
+            times["stopped"] = office.wait_stopped(seconds=budget + 3)
+        finally:
+            release.set()
+        raise RuntimeError("Binary URP bridge disposed during call")
+
+    watch = functools.partial(
+        office_process.StallWatch, budget=budget, find=lambda root, seconds: [target], stacks=hung
+    )
+    raised, result, _ = session(
+        runner, monkeypatch, tmp_path, office, blocked_uno_call, watch=watch
+    )
+    assert isinstance(raised, AssertionError | RuntimeError), raised
+    assert times["stopped"] - times["capturing"] < budget + 1
+    stall = result["office_progress_stall"]
+    assert stall["office_stopped"] and stall["collection_finished"] is False
+    assert "did not finish" in stall["diagnostic_errors"]["capture"]
+    assert not result["run_complete"]
+
+
+def test_no_document_close_starts_during_the_capture(
+    runner: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The absent-extension exercise closed its document while the stacks were being taken. Its
+    # real body runs here, with the real shared close helper.
+    spec = importlib.util.spec_from_file_location(
+        "main_thread_under_test", ROOT / "tests" / "integration" / "main_thread.py"
+    )
+    assert spec is not None and spec.loader is not None
+    main_thread = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(main_thread)  # Its UNO base classes come from the runner fixture.
+    monkeypatch.setattr(runner, "close_document", main_thread.close_document)
+    exercise = runner.exercise_without_extension
+    capturing, release = threading.Event(), threading.Event()
+    closes: list[list[str]] = []
+
+    def returns(value: Any) -> Callable[..., Any]:
+        def call(*args: Any) -> Any:
+            return value
+
+        return call
+
+    class Document:
+        def __getattr__(self, name: str) -> Any:
+            return returns(self)  # Controllers, sidebars, frames and windows alike.
+
+        def hasByName(self, name: str) -> bool:
+            return False
+
+        def storeAsURL(self, url: str, arguments: Any) -> None:
+            assert capturing.wait(4 * LIMIT), "No capture started"
+
+        def close(self, deliver: bool) -> None:
+            closes.append(teardown.stalled_callbacks())
+
+    def stacks(*args: Any, **kwargs: Any) -> str:
+        capturing.set()
+        release.wait(10)
+        return "synthetic stacks"
+
+    def body(context: Any, desktop: Any, directory: Path) -> dict[str, object]:
+        teardown.note_progress()
+        factory = types.SimpleNamespace(createInstanceWithContext=returns(None))
+        documents = types.SimpleNamespace(loadComponentFromURL=returns(Document()))
+        try:
+            return exercise(types.SimpleNamespace(ServiceManager=factory), documents, directory)
+        finally:
+            release.set()
+
+    target = office_process.Process(1, 0, "soffice.bin", 0)
+    watch = functools.partial(
+        office_process.StallWatch, find=lambda root, seconds: [target], stacks=stacks
+    )
+    raised, result, _ = session(runner, monkeypatch, tmp_path, Office(), body, watch=watch)
+    assert closes == [], "A document close started after the stall was recorded"
+    assert isinstance(raised, TimeoutError | AssertionError), raised
+    assert not result["run_complete"] and result["office_progress_stall"]["office_stopped"]
+
+
+def test_no_writer_close_starts_after_a_stall(runner: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(runner, "WRITER_SETTLE_SECONDS", 0)
+    closes: list[bool] = []
+    writer = types.SimpleNamespace(close=closes.append)
+    teardown.start_session()
+    runner.close_writer(writer)
+    assert closes == [True]
+    assert teardown.stall_if_idle(0, "a synthetic stall") is not None
+    with pytest.raises(TimeoutError, match="a synthetic stall"):
+        runner.close_writer(writer)
+    assert closes == [True]
+
+
+def test_a_failed_startup_records_its_longest_interval_without_progress(
+    runner: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    def exits(office: Office) -> None:
+        office.wait_stopped()
+        raise RuntimeError("Connector: could not connect to pipe")
+
+    office = Office(resolve=exits, first=lambda directory: "raise SystemExit(3)")
+
+    def body(*args: Any) -> dict[str, object]:
+        raise AssertionError("A session without a connection ran its body")
+
+    raised, result, output = session(
+        runner, monkeypatch, tmp_path, office, body, "--startup-attempts", "1"
+    )
+    assert isinstance(raised, RuntimeError), raised
+    assert result["failure_stage"] == "startup" and "office_progress_stall" not in result
+    assert 0 <= result["longest_progress_interval_seconds"] < LIMIT
+    startup = json.loads((output / "startup-True-0.json").read_text(encoding="utf-8"))
+    interval = result["longest_progress_interval_seconds"]
+    assert startup["longest_progress_interval_seconds"] == interval

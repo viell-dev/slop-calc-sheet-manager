@@ -7,6 +7,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -15,7 +16,9 @@ from tests.integration import office_process, soak
 ROOT = Path(__file__).resolve().parents[2]
 
 
-@pytest.mark.skipif(os.name != "posix", reason="The soak runs only inside the Linux test image")
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="The soak runs only inside the Linux test image"
+)
 @pytest.mark.parametrize("failure", ["truncated", "unreadable", "missing"])
 def test_soak_continues_after_unreadable_results(tmp_path: Path, failure: str) -> None:
     shutil.copyfile(ROOT / "tests/integration/soak.py", tmp_path / "soak.py")
@@ -70,7 +73,9 @@ def test_soak_continues_after_unreadable_results(tmp_path: Path, failure: str) -
     assert "| absent | 2 | 0 |" in summary
 
 
-@pytest.mark.skipif(os.name != "posix", reason="The soak runs only inside the Linux test image")
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="The soak runs only inside the Linux test image"
+)
 def test_a_session_past_its_limit_fails_but_keeps_its_stall_evidence(tmp_path: Path) -> None:
     # The runner's deadline is the soak's limit; it then keeps its stacks and exits (#45).
     deadline = tmp_path / "deadline.txt"
@@ -95,7 +100,9 @@ def test_a_session_past_its_limit_fails_but_keeps_its_stall_evidence(tmp_path: P
     assert time.monotonic() - started < 10
 
 
-@pytest.mark.skipif(os.name != "posix", reason="The soak runs only inside the Linux test image")
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="The soak runs only inside the Linux test image"
+)
 def test_a_session_that_outlasts_its_grace_has_its_group_killed(tmp_path: Path) -> None:
     beats = tmp_path / "beats.txt"
     heartbeat = "\n".join(
@@ -128,3 +135,104 @@ def test_the_soak_grace_covers_the_stall_watchs_capture_and_stop() -> None:
     margin = 5 + 10
     limit = office_process.CAPTURE_SECONDS + office_process.STOP_SECONDS + margin
     assert limit <= soak.CAPTURE_GRACE_SECONDS
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="The soak runs only inside the Linux test image"
+)
+def test_the_group_is_killed_before_its_leader_is_reaped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Once its leader is reaped and its group empty, the group's number can pass to a new
+    # process, whose group the kill would then reach. Here the runner exits during its grace.
+    assert sys.platform == "linux"
+    unreaped: list[bool] = []
+    kill = os.killpg
+
+    def checked(group: int, number: int) -> None:
+        try:
+            exited = os.waitid(os.P_PID, group, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+            unreaped.append(exited is not None)
+        except ChildProcessError:
+            unreaped.append(False)  # Already reaped.
+        kill(group, number)
+
+    monkeypatch.setattr(soak.os, "killpg", checked)
+    with (tmp_path / "runner.log").open("w", encoding="utf-8") as log:
+        status = soak.run_session(
+            [sys.executable, "-c", "import time; time.sleep(1)"], log, limit=0.3, grace=10
+        )
+    assert status == 124
+    assert unreaped == [True]  # It had exited, and was reaped only after the kill.
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="The soak runs only inside the Linux test image"
+)
+def test_a_limit_reached_in_shutdown_is_told_apart_in_the_summary(tmp_path: Path) -> None:
+    # The watch ends with the session's checks, so a limit that falls in shutdown keeps no stacks;
+    # the summary says so instead of leaving an unexplained 124.
+    source = (ROOT / "tests/integration/soak.py").read_text(encoding="utf-8")
+    for before, after in (
+        ("SESSION_SECONDS = 180", "SESSION_SECONDS = 1"),
+        ("CAPTURE_GRACE_SECONDS = 150", "CAPTURE_GRACE_SECONDS = 10"),
+    ):
+        assert source.count(before) == 1
+        source = source.replace(before, after)
+    (tmp_path / "soak.py").write_text(source, encoding="utf-8")
+    (tmp_path / "run.py").write_text(
+        "import json, pathlib, sys, time\n"
+        "output = pathlib.Path(sys.argv[sys.argv.index('--output') + 1])\n"
+        "result = {'assertions_passed': True, 'office_exit_code': 0, 'run_complete': True}\n"
+        "(output / 'results.json').write_text(json.dumps([result]))\n"
+        "if '--without-extension' not in sys.argv:\n"
+        "    time.sleep(1.5)  # A shutdown that outlasts the limit.\n",
+        encoding="utf-8",
+    )
+    output = tmp_path / "results"
+    process = subprocess.run(
+        [
+            sys.executable,
+            str(tmp_path / "soak.py"),
+            "--program",
+            str(tmp_path),
+            "--oxt",
+            str(tmp_path / "synthetic.oxt"),
+            "--output",
+            str(output),
+            "--soak",
+            "1",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert process.returncode == 1, process.stdout + process.stderr
+    installed, absent = json.loads((output / "soak-results.json").read_text(encoding="utf-8"))
+    assert installed["runner_exit"] == 124
+    assert installed["limit"] == "reached in shutdown, after the checks: no stacks"
+    assert absent["runner_exit"] == 0 and absent["limit"] == ""
+    summary = (output / "soak-summary.md").read_text(encoding="utf-8")
+    assert "| reached in shutdown, after the checks: no stacks |" in summary
+
+
+OUTCOMES: list[tuple[int, list[dict[str, Any]] | None, list[str], str]] = [
+    (0, [{"assertions_passed": True}], [], ""),
+    (1, [{}], ["stall-False-0.json"], ""),
+    (124, [{}], ["stall-False-0.json"], "stacks kept"),
+    (
+        124,
+        [{"assertions_passed": True}],
+        [],
+        "reached in shutdown, after the checks: no stacks",
+    ),
+    (124, [{}], [], "no stacks"),
+    (124, None, [], "no stacks"),
+]
+
+
+@pytest.mark.parametrize(("status", "results", "stalls", "outcome"), OUTCOMES)
+def test_the_limit_column_names_each_outcome(
+    status: int, results: list[dict[str, Any]] | None, stalls: list[str], outcome: str
+) -> None:
+    assert soak.limit_outcome(status, results, stalls) == outcome

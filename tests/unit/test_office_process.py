@@ -382,10 +382,9 @@ def test_no_close_or_restore_starts_while_stacks_are_taken(tmp_path: Path, sessi
     assert evidence is not None and evidence["office_stopped"]
 
 
-def test_a_capture_that_hangs_ends_the_wait_within_its_budget(
-    tmp_path: Path, session: None, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr(office_process, "STOP_SECONDS", 0.2)
+def test_a_hung_collector_cannot_delay_the_stop(tmp_path: Path, session: None) -> None:
+    # The client is blocked in UNO, so nothing calls close(), and a collector hangs as well. The
+    # office still stops when the capture's budget ends, and the receipt says why.
     process = sleeper()
     entered, release = threading.Event(), threading.Event()
 
@@ -395,16 +394,148 @@ def test_a_capture_that_hangs_ends_the_wait_within_its_budget(
         return "too late"
 
     target = Process(process.pid, os.getpid(), "soffice.bin", 1)
-    stall = watch(process, tmp_path, budget=0.3, find=offices(target), stacks=hung).start()
+    stall = watch(process, tmp_path, budget=0.5, find=offices(target), stacks=hung).start()
     try:
         assert entered.wait(20)
         started = time.monotonic()
-        evidence = stall.close()
+        wait_until(lambda: process.poll() is not None, seconds=5)
         assert time.monotonic() - started < 2
-        assert evidence is not None and evidence["capture_finished"] is False
-        assert teardown.stalled_callbacks()  # The session still fails and stops its office.
+        receipt = tmp_path / "stall-True-0.json"
+        wait_until(lambda: "capture_finished" in json.loads(receipt.read_text(encoding="utf-8")))
+        evidence = json.loads(receipt.read_text(encoding="utf-8"))
+        assert evidence["office_stopped"] and evidence["collection_finished"] is False
+        assert evidence["diagnostic_errors"]["capture"].startswith(f"office_{process.pid} did not")
+        release.set()  # The collector returns late; what it brings is no longer recorded.
+        time.sleep(0.3)
+        closed = stall.close()
+        assert closed is not None and closed["office_stacks"] == {}
+        assert json.loads(receipt.read_text(encoding="utf-8")) == closed
     finally:
         release.set()
+        stop_process(process)
+
+
+def test_a_collector_past_its_budget_starts_no_further_step(
+    tmp_path: Path, session: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    process = sleeper()
+    entered, release = threading.Event(), threading.Event()
+    searches: list[float] = []
+
+    def hung_dump(file: Any, all_threads: bool) -> None:
+        entered.set()
+        release.wait(30)
+
+    def find(root: int, seconds: float) -> list[Process]:
+        searches.append(seconds)
+        return []
+
+    monkeypatch.setattr(office_process.faulthandler, "dump_traceback", hung_dump)
+    stall = watch(process, tmp_path, budget=0.3, find=find).start()
+    try:
+        assert entered.wait(20)
+        wait_until(lambda: process.poll() is not None, seconds=5)
+        release.set()
+        time.sleep(0.3)
+        assert searches == [], "The process listing ran after the capture's budget"
+        evidence = stall.close()
+        assert evidence is not None and evidence["collection_finished"] is False
+        assert evidence["diagnostic_errors"]["capture"].startswith("client_stacks did not")
+    finally:
+        release.set()
+        stop_process(process)
+
+
+def test_close_bounds_its_wait_when_the_stop_itself_hangs(
+    tmp_path: Path, session: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(office_process, "STOP_SECONDS", 0.2)
+    process = sleeper()
+    release = threading.Event()
+
+    def hung_stop(process: subprocess.Popen[str]) -> None:
+        release.wait(30)
+
+    stall = watch(process, tmp_path, budget=0.2, stop=hung_stop).start()
+    try:
+        wait_until(teardown.stalled_callbacks)
+        started = time.monotonic()
+        evidence = stall.close()
+        assert time.monotonic() - started < 0.2 + 0.2 + 2 + 1
+        assert evidence is not None and evidence["capture_finished"] is False
+        assert teardown.stalled_callbacks()  # The session still fails, and the runner stops it.
+    finally:
+        release.set()
+        stop_process(process)
+
+
+def test_the_receipt_is_never_replaced_by_an_older_snapshot(
+    tmp_path: Path, session: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A close() that stopped waiting wrote a snapshot taken then; descheduled before writing it,
+    # it replaced the watch's final receipt. The receipt must end as the evidence close() returns.
+    monkeypatch.setattr(office_process, "STOP_SECONDS", 0.1)
+    process = sleeper()
+    receipt = tmp_path / "stall-True-0.json"
+    capturing, release = threading.Event(), threading.Event()
+
+    def slow(target: Process, path: Path, **options: Any) -> str:
+        capturing.set()
+        assert release.wait(20)
+        return "collected"
+
+    write, main = Path.write_text, threading.main_thread()
+
+    def descheduled(path: Path, text: str, *args: Any, **kwargs: Any) -> int:
+        if path.name.startswith(receipt.name) and threading.current_thread() is main:
+            release.set()  # Let the watch finish, as if this thread were descheduled meanwhile.
+            wait_until(lambda: "office_stopped" in receipt.read_text(encoding="utf-8"))
+        return write(path, text, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", descheduled)
+    target = Process(process.pid, os.getpid(), "soffice.bin", 1)
+    stall = watch(process, tmp_path, budget=0.1, find=offices(target), stacks=slow).start()
+    try:
+        assert capturing.wait(20)
+        evidence = stall.close()
+        assert evidence is not None and evidence["office_stopped"]
+        assert json.loads(receipt.read_text(encoding="utf-8")) == evidence
+    finally:
+        release.set()
+        stop_process(process)
+
+
+def test_a_failed_windows_listing_is_an_error_not_an_empty_tree() -> None:
+    fails = "import sys; sys.stderr.write('synthetic CIM failure'); sys.exit(1)"
+    failing = [sys.executable, "-c", fails]
+    with pytest.raises(OSError, match="exited 1: synthetic CIM failure"):
+        office_process.windows_processes(10, failing)
+    started = time.monotonic()
+    with pytest.raises(TimeoutError):
+        office_process.windows_processes(0.5, [sys.executable, "-c", "import time; time.sleep(30)"])
+    assert time.monotonic() - started < 10  # The listing was killed at its deadline.
+    listing = [sys.executable, "-c", "print('12|11|120|soffice.bin'); print('not a row')"]
+    assert office_process.windows_processes(10, listing) == [Process(12, 11, "soffice.bin", 120)]
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux reads stacks through the gdb wrapper")
+def test_without_the_gdb_wrapper_no_debugger_attaches_by_process_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # `gdb -p` takes a number, which a new process could have reused by the time it attaches.
+    attached = tmp_path / "attached"
+    gdb = tmp_path / "gdb"
+    gdb.write_text(f"#!/bin/sh\necho \"$@\" > '{attached}'\necho 'Thread 1 (fake)'\n")
+    gdb.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
+    process = sleeper()
+    try:
+        target = office_process.linux_process(process.pid)
+        assert target is not None
+        how = native_stacks(target, tmp_path / "stacks.txt", debugger_parent=False, seconds=5)
+        assert not attached.exists(), "A debugger attached by process ID"
+        assert "gdb wrapper" in how
+    finally:
         stop_process(process)
 
 
@@ -495,7 +626,7 @@ def test_a_real_office_tree_is_found_and_a_changed_identity_is_skipped(tmp_path:
         assert office_processes(found[0].pid, 10) == []
         stale = dataclasses.replace(found[0], started=found[0].started - 1)
         assert "no longer names" in native_stacks(
-            stale, tmp_path / "x.txt", debugger_parent=False, seconds=5
+            stale, tmp_path / "x.txt", debugger_parent=True, seconds=5
         )
         # An office that is not a gdb inferior never gets the wrapper's interrupt.
         how = native_stacks(found[1], tmp_path / "y.txt", debugger_parent=True, seconds=5)

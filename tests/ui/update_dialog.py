@@ -25,6 +25,7 @@ import uno  # noqa: E402
 import unohelper  # noqa: E402
 from com.sun.star.ui.dialogs import XDialogClosedListener  # noqa: E402
 from lab import Lab  # noqa: E402
+from main_thread import close_document  # noqa: E402
 from release_data import (  # noqa: E402
     DESCRIPTION,
     IDENTIFIER,
@@ -35,6 +36,7 @@ from release_data import (  # noqa: E402
     package_metadata,
 )
 from run import assert_deck, office_session, wait_for  # noqa: E402
+from teardown import stalled_callbacks  # noqa: E402
 from xinput import RIGHT, Pointer  # noqa: E402
 
 ENABLED = uno.getConstantByName("com.sun.star.accessibility.AccessibleStateType.ENABLED")
@@ -308,9 +310,11 @@ def exercise(program, package, output, result, backtrace):
                 assert "No errors." in result["installation_text"], result["installation_text"]
                 click(lab, named(nodes, "OK"))
             finally:
-                for _ in range(4):
-                    lab.input.tap("Escape", pause=0.3)
-                document.close(True)
+                # No cleanup starts on a stalled office or during the stall watch's capture (#45).
+                if not stalled_callbacks():
+                    for _ in range(4):
+                        lab.input.tap("Escape", pause=0.3)
+                    close_document(context, document)
         restart = output / "restart"
         restart.mkdir()
         result["restart"] = restarted = {}

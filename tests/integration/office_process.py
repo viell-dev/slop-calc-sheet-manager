@@ -7,20 +7,28 @@ stacks (#45). `StallWatch` therefore fails a session that reports no progress (`
 deadline an enclosing runner gives this process (`SHEET_MANAGER_DEADLINE_SECONDS`, counted from
 its start), and stops its office so that the blocked call fails. Rules for changing it:
 
-- Closing the watch, progress and expiry are one decision, under the watch's lock and
-  `teardown`'s progress lock. When expiry wins, the stall is recorded as a stalled callback and
+- Closing the watch, progress, expiry and accepting the gdb wrapper's replacement office are one
+  decision, under the watch's lock and `teardown`'s progress lock; nothing external, such as a
+  launch, runs under the lock. When expiry wins, the stall is recorded as a stalled callback and
   in the `stall-*.json` receipt before anything else, so no close or settings restore starts
-  during the capture, and `assert_clean_shutdown` fails it whatever the capture does.
-- The capture saves the client's Python stacks, then the office's native stacks, with debugger
-  output streamed into its file, within one budget (`CAPTURE_SECONDS`). A failed step is
-  recorded beside the others, and the office is stopped in a `finally`. The session waits for
-  that, bounded, and records whether it finished.
+  during the capture, and `assert_clean_shutdown` fails it whatever the capture does. A
+  replacement refused after a stall is stopped before any UNO call to it.
+- The watch's own thread decides, stops the office and is the receipt's only writer, so an older
+  snapshot never replaces a newer one. A collector thread saves the client's Python stacks, then
+  the office's native stacks, with debugger output streamed into its file. The watch waits for it
+  until `CAPTURE_SECONDS` after detection, then stops the office whatever the collector or the
+  client is doing, and ignores the collector's later results; each collector subprocess (CDB,
+  the Windows process listing) is killed at that deadline. A failed step, including a failed
+  listing, is recorded beside the others, never read as an empty process tree. The session waits
+  for the watch, bounded, and records whether it finished.
 - Native stacks are read only from a process still identified as this session's office: a
   `soffice.bin` descendant of the session's launcher that started no earlier than its parent
   (Windows keeps a dead parent's ID, which a newer process can reuse) and still has the start
-  time it was listed with, checked while a Linux pidfd or Windows process handle holds it. Under
-  the gdb wrapper only a `soffice.bin` traced by its `gdb` parent is interrupted. An uncertain
-  target is skipped, with the reason recorded.
+  time it was listed with, checked while a Linux pidfd or Windows process handle holds it. On
+  Linux only a `soffice.bin` traced by the gdb wrapper (`--backtrace`) is interrupted, through
+  its pidfd. Without the wrapper no debugger attaches there: `gdb -p` takes a number, which a new
+  process could have reused by the time it attaches, and containers refuse `ptrace` anyway. An
+  uncertain target is skipped, with the reason recorded.
 - The limit is not a test timeout, and never shorten it to speed up a run. The slowest measured
   suite took 649 s (Intel macOS `test_reorder`, #162), so the benchmarks also report progress at
   each workbook and repetition; each session records its `longest_progress_interval_seconds`.
@@ -32,11 +40,11 @@ import faulthandler
 import json
 import os
 import re
-import select
 import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import traceback
@@ -44,7 +52,7 @@ from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import IO, Any
 
 FATAL_MARKERS = ("Unspecified Application Error", "Fatal exception")
 STALL_SECONDS = float(os.environ.get("SHEET_MANAGER_STALL_SECONDS", "900"))
@@ -53,11 +61,20 @@ _DEADLINE = os.environ.get("SHEET_MANAGER_DEADLINE_SECONDS")
 # `time.monotonic()`'s clock; None without a deadline.
 DEADLINE = time.monotonic() + float(_DEADLINE) if _DEADLINE else None
 # One budget, from a stall's detection, for listing the office's processes, reading their native
-# stacks and letting the gdb wrapper print its own. Stopping the office follows, within
-# STOP_SECONDS (`stop_process`: taskkill's 30 s, then waits of 10 s and 10 s).
+# stacks and letting the gdb wrapper print its own. Stopping the office follows at its end at the
+# latest, within STOP_SECONDS (`stop_process`: taskkill's 30 s, then waits of 10 s and 10 s).
 CAPTURE_SECONDS = 60.0
 STOP_SECONDS = 60.0
 CDB = Path(r"C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe")
+# Each Windows process's ID, its parent's ID, its creation time as a FILETIME, and its name.
+WINDOWS_LISTING = [
+    "pwsh",
+    "-NoProfile",
+    "-NonInteractive",
+    "-Command",
+    "Get-CimInstance Win32_Process | Where-Object CreationDate | ForEach-Object { '{0}|{1}|"
+    "{2}|{3}' -f $_.ProcessId, $_.ParentProcessId, $_.CreationDate.ToFileTimeUtc(), $_.Name }",
+]
 
 
 def retain_crash_dumps(crash_directory: Path, output: Path, prefix: str) -> list[str]:
@@ -261,27 +278,34 @@ def linux_process(pid: int) -> Process | None:
 
 
 def listed_processes(seconds: float) -> list[Process]:
-    """Every process this one can see, or none where native stacks are not read."""
+    """Every process this one can see, or none where native stacks are not read.
+
+    A listing that fails raises OSError, so that it is never taken for an empty process tree.
+    """
     if sys.platform == "linux":
         pids = (int(entry.name) for entry in Path("/proc").iterdir() if entry.name.isdigit())
-        return [row for row in map(linux_process, pids) if row is not None]
-    if sys.platform != "win32":
+        rows = [row for row in map(linux_process, pids) if row is not None]
+    elif sys.platform == "win32":
+        rows = windows_processes(seconds)
+    else:
         return []
-    listing = subprocess.run(
-        [
-            "pwsh",
-            "-NoProfile",
-            "-NonInteractive",
-            "-Command",
-            "Get-CimInstance Win32_Process | Where-Object CreationDate | ForEach-Object { '{0}|{1}|"
-            "{2}|{3}' -f $_.ProcessId, $_.ParentProcessId, $_.CreationDate.ToFileTimeUtc(), "
-            "$_.Name }",
-        ],
-        capture_output=True,
-        text=True,
-        timeout=max(1.0, seconds),
-        check=False,
-    ).stdout
+    if not rows:  # This process at least is always there.
+        raise OSError("The process listing found no processes")
+    return rows
+
+
+def windows_processes(seconds: float, command: list[str] | None = None) -> list[Process]:
+    """Every process `command` lists in `WINDOWS_LISTING`'s format; raise OSError if it fails."""
+    with tempfile.TemporaryFile() as out, tempfile.TemporaryFile() as err:
+        status = run_collector(command or WINDOWS_LISTING, out, seconds, stderr=err)
+        out.seek(0)
+        err.seek(0)
+        listing = out.read().decode("utf-8", "replace")
+        problem = err.read().decode("utf-8", "replace").strip() or "no error output"
+    if status is None:
+        raise TimeoutError(f"The process listing did not finish in {seconds:.0f} s: {problem}")
+    if status:
+        raise OSError(f"The process listing exited {status}: {problem}")
     rows: list[Process] = []
     for line in listing.splitlines():
         parts = line.strip().split("|", 3)
@@ -295,38 +319,57 @@ def office_processes(root: int, seconds: float) -> list[Process]:
     return descendants(listed_processes(seconds), root, "soffice.bin")
 
 
+def run_collector(
+    command: list[str],
+    stdout: IO[bytes],
+    seconds: float,
+    *,
+    stderr: IO[bytes] | int = subprocess.STDOUT,
+) -> int | None:
+    """Run a diagnostic command; return its exit status, or None if it was killed at `seconds`.
+
+    Its output goes to files, which keep what it wrote before it was killed. A pipe could stay
+    open in a child of the command and hold this thread after the kill.
+    """
+    process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=stdout, stderr=stderr)
+    try:
+        return process.wait(timeout=max(0.1, seconds))
+    except subprocess.TimeoutExpired:
+        process.kill()
+        with suppress(subprocess.TimeoutExpired):
+            process.wait(timeout=5)
+        return None
+
+
 def run_debugger(command: list[str], path: Path, seconds: float) -> str:
     """Run a debugger with its output streamed into `path`: a timeout keeps what it wrote."""
     name = Path(command[0]).name
-    with path.open("wb") as file:
-        try:
-            completed = subprocess.run(
-                command,
-                stdin=subprocess.DEVNULL,
-                stdout=file,
-                stderr=subprocess.STDOUT,
-                timeout=max(1.0, seconds),
-                check=False,
-            )
-        except subprocess.TimeoutExpired:
-            return f"{name} did not finish in {seconds:.0f} s; its output so far is kept"
-        except OSError as error:
-            return f"{name} failed: {error!r}"
+    try:
+        with path.open("wb") as file:
+            status = run_collector(command, file, seconds)
+    except OSError as error:
+        return f"{name} failed: {error!r}"
+    if status is None:
+        return f"{name} did not finish in {seconds:.0f} s and was stopped; its output is kept"
     text = path.read_text(encoding="utf-8", errors="replace")
-    if not re.search(r"^Thread \d|Id: [0-9a-f]+\.[0-9a-f]+", text, re.M):
-        # Containers' default security profile refuses ptrace without the gdb wrapper.
+    if not re.search(r"Id: [0-9a-f]+\.[0-9a-f]+", text):
+        # CDB prints why instead, such as access being denied.
         first = next((line for line in text.splitlines() if line.strip()), "no output")
         return f"{name} could not read the stacks: {first}"
-    return f"{name} exited {completed.returncode}"
+    return f"{name} exited {status}"
 
 
 def native_stacks(target: Process, path: Path, *, debugger_parent: bool, seconds: float) -> str:
     """Write every thread's native stack of the office `target` to `path`; return how, or why not.
 
     Only a process that is still `target` is touched: its identity is checked while a handle to
-    it is held, and the handle is held until the action ends.
+    it is held, and the handle is held until the action ends. On Linux, only the gdb wrapper's
+    inferior is touched, through its pidfd; the wrapper writes the stacks into its own trace.
     """
     if sys.platform == "linux":
+        if not debugger_parent:
+            # `gdb -p` attaches by number, which a new process can have reused by then.
+            return "not read: Linux native stacks need the gdb wrapper (--backtrace)"
         try:
             handle = os.pidfd_open(target.pid)
         except ProcessLookupError:
@@ -335,26 +378,14 @@ def native_stacks(target: Process, path: Path, *, debugger_parent: bool, seconds
             current = linux_process(target.pid)
             if current is None or (current.name, current.started) != (target.name, target.started):
                 return "skipped: its process ID no longer names the listed office"
-            if debugger_parent:
-                # LibreOffice's gdb wrapper already traces the office: an interrupt makes it print
-                # every thread's stack into its own trace, which the session keeps, and end it.
-                parent = linux_process(current.parent)
-                tracer = tracer_of(target.pid)
-                if parent is None or parent.name != "gdb" or tracer != parent.pid:
-                    return f"skipped: not the gdb wrapper's inferior (tracer {tracer})"
-                signal.pidfd_send_signal(handle, signal.SIGINT)
-                return "SIGINT to the gdb wrapper's inferior; the stacks are in its gdbtrace log"
-            gdb = shutil.which("gdb")
-            if gdb is None:
-                return "no gdb on PATH"
-            how = run_debugger(
-                [gdb, "-nx", "-batch", "-p", str(target.pid), "-ex", "thread apply all bt"],
-                path,
-                seconds,
-            )
-            if select.select([handle], [], [], 0)[0]:  # A pidfd turns readable when it exits.
-                how += "; the office exited during the capture, so the stacks may not be its own"
-            return how
+            # LibreOffice's gdb wrapper already traces the office: an interrupt makes it print
+            # every thread's stack into its own trace, which the session keeps, and end it.
+            parent = linux_process(current.parent)
+            tracer = tracer_of(target.pid)
+            if parent is None or parent.name != "gdb" or tracer != parent.pid:
+                return f"skipped: not the gdb wrapper's inferior (tracer {tracer})"
+            signal.pidfd_send_signal(handle, signal.SIGINT)
+            return "SIGINT to the gdb wrapper's inferior; the stacks are in its gdbtrace log"
         finally:
             os.close(handle)
     if sys.platform == "win32":
@@ -406,9 +437,9 @@ class StallWatch:
 
     `expire(limit, message, overdue)` records `message` as a stall and returns the seconds since
     progress when the session has made none for `limit` seconds or is `overdue` (`DEADLINE`),
-    atomically with progress (`teardown.stall_if_idle`); otherwise it returns None. `close` ends
-    the watch, unless expiry has won, in which case it waits for the capture and returns its
-    evidence.
+    atomically with progress (`teardown.stall_if_idle`); otherwise it returns None. `follow`
+    accepts a replacement office only while nothing has stalled. `close` ends the watch, unless
+    expiry has won, in which case it waits for the capture and returns its evidence.
     """
 
     def __init__(
@@ -435,6 +466,9 @@ class StallWatch:
         self._lock = threading.Lock()
         self._state = "watching"  # Then "closed", or "stalled" when expiry wins.
         self._evidence: dict[str, Any] = {}
+        self._collecting = False  # The collector's results count only while this holds.
+        self._step_name = ""  # The collector's current step, for a capture that overruns.
+        self._changed = threading.Event()  # The evidence changed since the receipt was written.
         self._wake = threading.Event()
         self._captured = threading.Event()
         self._thread = threading.Thread(target=self._watch, name="stall-watch", daemon=True)
@@ -443,10 +477,18 @@ class StallWatch:
         self._thread.start()
         return self
 
-    def follow(self, process: subprocess.Popen[str]) -> None:
-        """Watch `process` from now on, as when the gdb wrapper's startup restart replaces one."""
+    def follow(self, process: subprocess.Popen[str]) -> bool:
+        """Watch `process`, which replaces the watched office, unless the session has stalled.
+
+        Return whether it is now watched, as for the gdb wrapper's startup restart (`run.py`).
+        Accepting it and expiry are one decision under the watch's lock, and nothing external
+        runs under that lock; the caller stops a refused replacement before any UNO call to it.
+        """
         with self._lock:
+            if self._state != "watching":
+                return False
             self.process = process
+            return True
 
     @property
     def stalled(self) -> bool:
@@ -456,8 +498,9 @@ class StallWatch:
     def close(self) -> dict[str, Any] | None:
         """End the watch; after a stall, wait for its capture and return its evidence.
 
-        The wait is bounded by the capture's budget and the office's stop; the evidence says
-        whether they finished.
+        The wait is bounded by the capture's budget and the office's stop, with a little time for
+        the receipt. It never writes the receipt, whose only writer is the watch's thread.
+        `capture_finished` says whether the watch had finished when the wait ended.
         """
         with self._lock:
             if self._state == "watching":
@@ -467,11 +510,11 @@ class StallWatch:
         if not stalled:
             self._thread.join(timeout=10)  # It returns at its next look at the state.
             return None
-        finished = self._captured.wait(self.budget + STOP_SECONDS)
-        self._update(capture_finished=finished)
-        self._save()
+        finished = self._captured.wait(self.budget + STOP_SECONDS + 2)
         with self._lock:
-            return json.loads(json.dumps(self._evidence))
+            evidence = json.loads(json.dumps(self._evidence))
+        evidence["capture_finished"] = finished
+        return evidence
 
     def _watch(self) -> None:
         while True:
@@ -506,80 +549,133 @@ class StallWatch:
                     "launcher_pid": process.pid,
                     "office_stacks": {},
                 }
-            self._capture(process)
+            self._supervise(process)
 
-    def _capture(self, process: subprocess.Popen[str]) -> None:
+    def _supervise(self, process: subprocess.Popen[str]) -> None:
+        """Let the collector work until the budget ends, then stop the office, on this thread.
+
+        Neither the collector nor the client can delay the stop past the budget: a collector that
+        has not finished is left behind, and its later results are not recorded.
+        """
         started = time.monotonic()
         end = started + self.budget
         try:
-            self._save()  # The stall is on disk before any step can fail or an outer limit hits.
-            self._step("client_stacks", self._client_stacks)
-            targets = self._step(
-                "office_processes", lambda: self.find(process.pid, end - time.monotonic())
+            self._publish()  # The stall is on disk before any step can fail or an outer limit hits.
+            with self._lock:
+                self._collecting = True
+            collector = threading.Thread(
+                target=self._collect, args=(process, end), name="stall-capture", daemon=True
             )
-            if targets == []:
-                searched = sys.platform in ("linux", "win32")
-                self._update(
-                    office_search="no soffice.bin among the session's processes"
-                    if searched
-                    else f"native stacks are not read on {sys.platform}"
-                )
-            interrupted = False
-            for target in targets or []:
-                path = self.output / f"{self.prefix}-office-{target.pid}-stacks.txt"
-                remaining = end - time.monotonic()
-                how = (
-                    self._step(
-                        f"office_{target.pid}",
-                        lambda target=target, path=path, remaining=remaining: self.stacks(
-                            target, path, debugger_parent=self.debugger_parent, seconds=remaining
-                        ),
+            collector.start()
+            while True:
+                collector.join(max(0.0, min(0.2, end - time.monotonic())))
+                if self._changed.is_set():
+                    self._publish()
+                if not collector.is_alive() or time.monotonic() >= end:
+                    break
+            with self._lock:
+                self._collecting = False
+                finished = not collector.is_alive()
+                self._evidence["collection_finished"] = finished
+                if not finished:
+                    self._evidence.setdefault("diagnostic_errors", {})["capture"] = (
+                        f"{self._step_name} did not finish within the {self.budget:.0f} s budget"
                     )
-                    if remaining > 0
-                    else "skipped: the capture's budget was spent"
-                )
-                interrupted = interrupted or str(how).startswith("SIGINT")
-                with self._lock:
-                    self._evidence["office_stacks"][str(target.pid)] = {
-                        "method": how,
-                        "file": path.name if path.exists() else None,
-                    }
-                self._save()
-            if interrupted:  # The gdb wrapper prints the stacks, then ends the office.
-                with suppress(subprocess.TimeoutExpired):
-                    process.wait(timeout=max(0.0, end - time.monotonic()))
         finally:
-            self._step("stop", lambda: self.stop(process))
-            self._update(
-                office_stopped=process.poll() is not None,
-                capture_seconds=round(time.monotonic() - started, 1),
-            )
-            self._save()
+            self._step("stop", lambda: self.stop(process), collector=False)
+            with self._lock:
+                self._evidence.update(
+                    office_stopped=process.poll() is not None,
+                    capture_seconds=round(time.monotonic() - started, 1),
+                    capture_finished=True,
+                )
+            self._publish()
             self._captured.set()
+
+    def _collect(self, process: subprocess.Popen[str], end: float) -> None:
+        """Save the client's and the office's stacks before `end`, on the collector's thread."""
+        self._step("client_stacks", self._client_stacks)
+        targets = self._step(
+            "office_processes", lambda: self.find(process.pid, end - time.monotonic())
+        )
+        if targets == []:
+            searched = sys.platform in ("linux", "win32")
+            search = (
+                "no soffice.bin among the session's processes"
+                if searched
+                else f"native stacks are not read on {sys.platform}"
+            )
+            self._record(lambda evidence: evidence.update(office_search=search))
+        interrupted = False
+        for target in targets or []:
+            path = self.output / f"{self.prefix}-office-{target.pid}-stacks.txt"
+            remaining = end - time.monotonic()
+            how = (
+                self._step(
+                    f"office_{target.pid}",
+                    lambda target=target, path=path, remaining=remaining: self.stacks(
+                        target, path, debugger_parent=self.debugger_parent, seconds=remaining
+                    ),
+                )
+                if remaining > 0
+                else "skipped: the capture's budget was spent"
+            )
+            interrupted = interrupted or str(how).startswith("SIGINT")
+            self._record_stacks(target, how, path)
+        if interrupted:  # The gdb wrapper prints the stacks, then ends the office.
+            with suppress(subprocess.TimeoutExpired):
+                process.wait(timeout=max(0.0, end - time.monotonic()))
+
+    def _record_stacks(self, target: Process, how: object, path: Path) -> None:
+        entry = {"method": how, "file": path.name if path.exists() else None}
+
+        def add(evidence: dict[str, Any]) -> None:
+            evidence["office_stacks"][str(target.pid)] = entry
+
+        self._record(add)
 
     def _client_stacks(self) -> str:
         path = self.output / f"{self.prefix}-client-stacks.txt"
         with path.open("w", encoding="utf-8") as file:
             faulthandler.dump_traceback(file, all_threads=True)
-        self._update(client_stacks=path.name)
+        self._record(lambda evidence: evidence.update(client_stacks=path.name))
         return path.name
 
-    def _step(self, name: str, step: Callable[[], Any]) -> Any:
-        """Run one capture step; record its error and let the later steps run."""
+    def _step(self, name: str, step: Callable[[], Any], *, collector: bool = True) -> Any:
+        """Run one capture step; record its error and let the later steps run.
+
+        A collector whose budget has ended starts no further step.
+        """
+        if collector:
+            with self._lock:
+                if not self._collecting:
+                    return None
+                self._step_name = name
         try:
             return step()
         except Exception:
-            with self._lock:
-                self._evidence.setdefault("diagnostic_errors", {})[name] = traceback.format_exc()
-            self._save()
+            error = traceback.format_exc()
+
+            def add(evidence: dict[str, Any]) -> None:
+                evidence.setdefault("diagnostic_errors", {})[name] = error
+
+            self._record(add, collector=collector)
             return None
 
-    def _update(self, **values: object) -> None:
+    def _record(
+        self, update: Callable[[dict[str, Any]], object], *, collector: bool = True
+    ) -> None:
+        """Apply `update` to the evidence; the collector's only while its budget lasts."""
         with self._lock:
-            self._evidence.update(values)
+            if collector and not self._collecting:
+                return
+            update(self._evidence)
+            self._changed.set()
 
-    def _save(self) -> None:
+    def _publish(self) -> None:
+        """Write the receipt. Only the watch's own thread calls this."""
         with self._lock:
+            self._changed.clear()
             text = json.dumps(self._evidence, indent=2) + "\n"
         path = self.output / f"{self.prefix}.json"
         try:

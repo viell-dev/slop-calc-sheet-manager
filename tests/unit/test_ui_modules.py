@@ -35,3 +35,18 @@ def test_shared_ui_modules_import_no_runner(path: Path) -> None:
 
 def test_the_runners_exist() -> None:
     assert {path.stem for path in UI.glob("*.py")} >= RUNNERS
+
+
+def test_the_update_dialog_closes_its_document_only_through_the_shared_helper() -> None:
+    # `main_thread.close_document` refuses to close after a stall (#45); a direct close would not.
+    tree = ast.parse((UI / "update_dialog.py").read_text(encoding="utf-8"))
+    direct = [
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "close"
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "document"
+    ]
+    assert direct == []

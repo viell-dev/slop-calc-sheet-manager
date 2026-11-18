@@ -14,7 +14,9 @@ loops and the benchmarks' workbooks and repetitions report it; a single step nee
 and expiry are one decision under one lock (`stall_if_idle`): progress noted before it prevents
 the stall, and a stall it records is final, so later progress cannot undo it. The stall is
 recorded as a stalled callback before any stacks are taken, so no close or restore starts during
-the capture.
+the capture: every document close checks `refuse_after_stall` first, including the test bodies'
+own closes through `main_thread.close_document`. A close or other call already under way when the
+stall is recorded continues until the runner stops the office.
 """
 
 import threading
@@ -76,6 +78,16 @@ def record_stalled_callback(message: str) -> None:
 
 def stalled_callbacks() -> list[str]:
     return list(_stalled)
+
+
+def refuse_after_stall(action: str) -> None:
+    """Raise TimeoutError instead of starting `action` once a callback or the session has stalled.
+
+    A document close on a stuck office could wait for good, and one during the stall watch's
+    capture would change the state being captured (#45, #50).
+    """
+    if _stalled:
+        raise TimeoutError(f"Not {action}: {_stalled[0]}")
 
 
 def _note(error: BaseException, message: str) -> None:
