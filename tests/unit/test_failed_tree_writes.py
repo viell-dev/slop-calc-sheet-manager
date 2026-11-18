@@ -104,6 +104,18 @@ def test_every_failed_call_of_a_key_write_leaves_no_partial_pick() -> None:
     )
 
 
+def test_every_failed_call_of_a_moved_single_pick_leaves_no_partial_pick() -> None:
+    """Down moves the only pick from Bravo to Charlie; a failed `select` left Bravo selected,
+    and the intake took the pick the key had just replaced."""
+
+    def setup() -> Any:
+        owner = sheet_list(Book(list(NAMES)))
+        click(owner, 1)
+        return owner
+
+    assert sweep(setup, lambda o: key(o, DOWN), ["Charlie"]) == []
+
+
 def three_picks() -> Any:
     owner = sheet_list(Book(list(NAMES)))
     click(owner, 1)
@@ -311,6 +323,85 @@ def test_a_command_while_the_tree_may_show_another_selection_acts_on_none() -> N
     owner.tree.assistive_clear()
     assert move_to_top(owner) is None
     assert owner.book.names()[:2] == ["Alfa", "Bravo"]
+
+
+@pytest.mark.parametrize(
+    "call,after,first",
+    [
+        ("getModel", 0, ["Bravo"]),  # Before any selection call: the tree still shows Bravo.
+        ("SelectionType", 0, ["Bravo"]),
+        ("SelectionType", 1, ["Bravo"]),  # Restoring MULTI, after `select` showed every pick.
+        ("select", 0, ["Bravo"]),  # It can leave Bravo alone or nothing: never another sheet.
+    ],
+)
+def test_a_repeated_write_that_fails_keeps_the_picks_it_already_shows(
+    call: str, after: int, first: list[str] | None
+) -> None:
+    """A write of the one pick the tree already shows, as a right press or a menu queues."""
+    owner = sheet_list(Book(list(NAMES)))
+    click(owner, 1)
+    owner.faults.fail(call, after=after)
+    owner._queue_selection()
+    owner.run_queue()
+    assert owner.faults.failed == [call]
+    assert move_to_top(owner) == first
+    recover(owner)
+    assert move_to_top(owner) == ["Bravo"]
+
+
+def test_a_moved_single_pick_is_shown_once_its_row_is_selected() -> None:
+    """Down moves the only pick to Charlie; restoring multiple selection fails after Charlie's
+    `select`. The tree already shows the picks, so Move to Top moves Charlie at once."""
+    owner = sheet_list(Book(list(NAMES)))
+    click(owner, 1)
+    owner.faults.fail("SelectionType", after=1)
+    key(owner, DOWN)
+    assert owner.faults.failed == ["SelectionType"] and owner.tree.shown() == ["Charlie"]
+    assert move_to_top(owner) == ["Charlie"]
+
+
+def test_a_failed_clear_of_an_empty_tree_keeps_accessible_input() -> None:
+    """With nothing picked, a write can only clear: if it fails, the tree is empty either way,
+    so an assistive pick made afterwards is the user's, as on `main`."""
+    owner = sheet_list(Book(list(NAMES)))
+    owner.faults.fail("clearSelection")
+    owner._queue_selection()
+    owner.run_queue()
+    assert owner.faults.failed == ["clearSelection"]
+    owner.tree.assistive_select("Charlie")
+    assert move_to_top(owner) == ["Charlie"]
+
+
+def test_a_failed_type_ahead_write_does_not_bring_back_the_picks_it_replaced() -> None:
+    """Typing "d" picks Delta alone, but its `select` fails and the tree still shows Bravo.
+    Adding Foxtrot through accessibility then made Move to Top move Bravo and Foxtrot."""
+    owner = sheet_list(Book(list(NAMES)))
+    click(owner, 1)
+    owner.faults.fail("select")
+    with pytest.raises(NativeFailure):
+        owner.type_ahead("d")  # Posted by the key handler; a failure ends that work.
+    assert picks(owner) == ["Delta"] and owner.tree.shown() == ["Bravo"]
+    assert owner.timers, "No retry was scheduled"
+    owner.tree.assistive_select("Foxtrot")
+    assert move_to_top(owner) is None
+    recover(owner)
+    assert move_to_top(owner) == ["Delta"]
+
+
+def test_a_partly_shown_native_selection_is_not_taken() -> None:
+    """A rebuild shows a pending accessibility pick of Charlie and Delta again; adding Delta
+    fails, so the tree shows Charlie alone, and the intake took that smaller set."""
+    owner = sheet_list(Book(list(NAMES)))
+    click(owner, 1)
+    owner.tree.assistive_only("Charlie")
+    owner.tree.assistive_select("Delta")
+    owner.faults.fail("addSelection", after=1)
+    colour_bravo(owner)
+    assert owner.faults.failed == ["addSelection"]
+    owner.run_queue()
+    assert move_to_top(owner) in (None, ["Charlie", "Delta"])
+    recover(owner)
+    assert move_to_top(owner) in (["Bravo"], ["Charlie", "Delta"])
 
 
 def test_a_failed_model_assignment_keeps_a_newer_accessible_pick() -> None:

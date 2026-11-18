@@ -962,19 +962,24 @@ class SheetList:
             self._selection.cursor = cursor
         wanted = {ref.name for ref in self._selection.picked}
         indices = [index for index, name in enumerate(names) if name in wanted]
+        shown = tuple(names[index] for index in indices)
         self._update_moves()
-        self._shown = None
         if cursor is None:
+            if self._shown != ():
+                self._shown = None  # A failed clear can leave rows that are no picks now.
             self.tree.clearSelection()
             self._shown = ()
             return
-        self._move_tree_cursor(names.index(cursor.name), scroll=False)
+        only = shown == (cursor.name,)  # Selecting the cursor's row then shows every pick.
+        self._move_tree_cursor(
+            names.index(cursor.name), scroll=False, shown=shown if only else None
+        )
         if cursor.name not in wanted:
             self.tree.clearSelection()  # Keeps the cursor where it is.
         for index in indices:
             if names[index] != cursor.name:
                 self.tree.addSelection(self._nodes[index])
-        self._shown = tuple(names[index] for index in indices)
+        self._shown = shown
         self.peer.invalidate(0)  # A failed repaint leaves a complete write: the next one paints.
 
     def _take_tree_selection(self, paint: bool = True, *, defer: bool = False) -> bool:
@@ -1072,26 +1077,33 @@ class SheetList:
         self._selection.cursor = ref
         self._selection.anchor = ref
         self._user_picks = True
-        self._shown = None  # As `_apply_selection` writes it: a failure leaves it unknown.
         try:
-            self._move_tree_cursor(index, scroll=False)
+            self._move_tree_cursor(index, scroll, shown=(self.rows[index].name,))
         except BaseException:
-            self._refreshes.failed()
+            if self._shown is None:
+                self._refreshes.failed()  # As `_show_selection` retries a write cut short.
             raise
-        self._shown = (self.rows[index].name,)
-        if scroll:
-            self.tree.makeNodeVisible(self._nodes[index])
 
-    def _move_tree_cursor(self, index: int, scroll: bool = True) -> None:
+    def _move_tree_cursor(
+        self, index: int, scroll: bool = True, shown: tuple[str, ...] | None = None
+    ) -> None:
         """Select only this row in the tree, which moves its keyboard cursor there too.
 
         The tree control has no cursor setter, but in single selection mode selecting a row also
-        moves the cursor, so arrow keys continue from the row selected here.
+        moves the cursor, so arrow keys continue from the row selected here. From `select` on,
+        `_shown` is None until the caller's write is complete (`_apply_selection`); `shown`, given
+        when this row is the only pick, completes it as soon as `select` returns (#257). If the
+        tree already shows exactly `shown`, a failed `select` can leave only that row or none,
+        neither of them another sheet, so `_shown` stays.
         """
         model = self.tree.getModel()
         model.SelectionType = SINGLE
         try:
+            if shown is None or shown != self._shown:
+                self._shown = None
             self.tree.select(self._nodes[index])
+            if shown is not None:
+                self._shown = shown
         finally:
             model.SelectionType = MULTI
         if scroll:

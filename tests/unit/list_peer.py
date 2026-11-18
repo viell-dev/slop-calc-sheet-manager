@@ -141,8 +141,11 @@ class Handle:
 
     def __init__(self, sheet: Sheet):
         self.sheet = sheet
+        self.readable = True
 
     def getName(self) -> str:
+        if not self.readable:
+            raise NativeFailure("the handle could not be read")
         return self.sheet.name
 
     def getIsScenario(self) -> bool:
@@ -472,6 +475,14 @@ def _load(source: str, node: ast.AST, namespace: dict[str, Any]) -> Any:
     return namespace[cast(Any, node).name]
 
 
+class _Owner(SimpleNamespace):
+    @property
+    def _cursor(self) -> str | None:
+        """As `SheetList._cursor`: the keyboard cursor's name."""
+        ref = cast(Any, self)._selection.cursor
+        return ref.name if ref is not None else None
+
+
 def sheet_list(book: Book, source: str = SOURCE) -> Any:
     """A list over `book` with the real methods of `source` bound, after its first refresh."""
     faults = Faults()
@@ -498,7 +509,7 @@ def sheet_list(book: Book, source: str = SOURCE) -> Any:
     def show_error(peer: object, title: str, message: str) -> None:
         errors.append(message)
 
-    def current(ref: Ref) -> bool:
+    def _current(ref: Ref) -> bool:  # As `uno_list._current`.
         try:
             return ref.token is not None and ref.token.getName() == ref.name
         except Exception:
@@ -533,7 +544,7 @@ def sheet_list(book: Book, source: str = SOURCE) -> Any:
         "tr": str,
         "cast": cast,
         "Action": str,
-        "_current": current,
+        "_current": _current,
         "_name_or_none": _load(source, others["_name_or_none"], {"Any": Any}),
         "find_prefix": find_prefix,
         "A": A,
@@ -551,7 +562,7 @@ def sheet_list(book: Book, source: str = SOURCE) -> Any:
     }
     namespace["_Press"] = _load(source, others["_Press"], {"dataclass": dataclass, "Any": Any})
     tree, peer = Tree(faults), Peer(faults)
-    owner = SimpleNamespace(
+    owner = _Owner(
         book=book,
         tree=tree,
         peer=peer,
@@ -575,7 +586,7 @@ def sheet_list(book: Book, source: str = SOURCE) -> Any:
         _nodes=[],
         rows=[],
         _shown=(),
-        _selection=Selection(current),
+        _selection=Selection(_current),
         _user_picks=False,
         _press=None,
         _pointer_depth=0,
@@ -626,6 +637,7 @@ def sheet_list(book: Book, source: str = SOURCE) -> Any:
         return ran
 
     owner.post, owner.run_queue, owner.retry = post, run_queue, retry
+    owner.namespace = namespace  # The methods' globals, for a sequence that binds its own.
     for name in METHODS:
         if name in methods:  # A method another revision lacks stays unbound.
             setattr(owner, name, _load(source, methods[name], dict(namespace)).__get__(owner))
