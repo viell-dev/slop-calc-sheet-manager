@@ -3,10 +3,13 @@
 import json
 import os
 import re
+import select
 import shutil
+import signal
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -197,11 +200,19 @@ def test_the_group_is_killed_before_its_leader_is_reaped(
     assert unreaped == [True]  # It had exited, and was reaped only after the kill.
 
 
-def scaled_soak(tmp_path: Path, runner: str) -> tuple[subprocess.CompletedProcess[str], Path]:
-    """Run the real soak, with a 1-second session limit, over `runner` as its run.py."""
+def scaled_soak(
+    tmp_path: Path,
+    runner: str,
+    limit: int = 1,
+    during: Callable[[subprocess.Popen[str]], None] | None = None,
+) -> tuple[subprocess.CompletedProcess[str], Path]:
+    """Run the real soak, with a `limit`-second session limit, over `runner` as its run.py.
+
+    `during`, when given, is called with the soak's process while it runs.
+    """
     source = (ROOT / "tests/integration/soak.py").read_text(encoding="utf-8")
     for before, after in (
-        ("SESSION_SECONDS = 180", "SESSION_SECONDS = 1"),
+        ("SESSION_SECONDS = 180", f"SESSION_SECONDS = {limit}"),
         ("CAPTURE_GRACE_SECONDS = 150", "CAPTURE_GRACE_SECONDS = 10"),
     ):
         assert source.count(before) == 1
@@ -209,24 +220,29 @@ def scaled_soak(tmp_path: Path, runner: str) -> tuple[subprocess.CompletedProces
     (tmp_path / "soak.py").write_text(source, encoding="utf-8")
     (tmp_path / "run.py").write_text(runner, encoding="utf-8")
     output = tmp_path / "results"
-    process = subprocess.run(
-        [
-            sys.executable,
-            str(tmp_path / "soak.py"),
-            "--program",
-            str(tmp_path),
-            "--oxt",
-            str(tmp_path / "synthetic.oxt"),
-            "--output",
-            str(output),
-            "--soak",
-            "1",
-        ],
-        capture_output=True,
-        text=True,
-        timeout=60,
-    )
-    return process, output
+    command = [
+        sys.executable,
+        str(tmp_path / "soak.py"),
+        "--program",
+        str(tmp_path),
+        "--oxt",
+        str(tmp_path / "synthetic.oxt"),
+        "--output",
+        str(output),
+        "--soak",
+        "1",
+    ]
+    with subprocess.Popen(
+        command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+    ) as process:
+        try:
+            if during is not None:
+                during(process)
+            stdout, stderr = process.communicate(timeout=60)
+        except BaseException:
+            process.kill()  # Leaving the block then reaps it.
+            raise
+    return subprocess.CompletedProcess(command, process.returncode, stdout, stderr), output
 
 
 PAST_THE_LIMIT = """
@@ -275,6 +291,76 @@ def test_the_summary_reports_and_points_but_draws_no_stall_conclusion(
     assertions = bool(result.get("assertions_passed"))
     assert row == f"| installed | 1 | 124 | {office} | [] | {assertions} |  | `installed/001/` |"
     assert "| absent | 1 | 0 | [None] | [] | True |  | `absent/001/` |" in summary
+
+
+# A runner that passes but exits after its limit, leaving an office's stand-in in its group.
+FINISHED_AFTER_THE_LIMIT = """
+import json, os, pathlib, subprocess, sys, time
+output = pathlib.Path(sys.argv[sys.argv.index('--output') + 1])
+(output / 'results.json').write_text(json.dumps([{'assertions_passed': True}]))
+if '--without-extension' not in sys.argv:
+    deadline = float(os.environ['SHEET_MANAGER_DEADLINE_MONOTONIC'])
+    office = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'])
+    (output / 'ready.tmp').write_text(json.dumps([os.getpid(), office.pid, deadline]))
+    (output / 'ready.tmp').replace(output / 'ready')
+    time.sleep(max(0.0, deadline + 0.3 - time.monotonic()))
+"""
+
+
+def process_state(pid: int) -> str:
+    """The state that /proc gives the process `pid`, such as T for stopped."""
+    stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
+    return stat[stat.rindex(")") + 2]
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="The soak runs only inside the Linux test image"
+)
+def test_a_session_first_seen_finished_after_its_limit_fails(tmp_path: Path) -> None:
+    # A soak whose own process was not scheduled across a session's limit, while the runner
+    # finished, recorded the runner's own status, so a session that ended late passed (#275).
+    ready = tmp_path / "results" / "installed" / "001" / "ready"
+    offices: list[int] = []
+
+    def stop_across_the_limit(soak_process: subprocess.Popen[str]) -> None:
+        assert sys.platform == "linux"
+        while not ready.exists():
+            assert soak_process.poll() is None, "The soak ended before its runner was ready"
+            time.sleep(0.01)
+        runner, office, deadline = json.loads(ready.read_text(encoding="utf-8"))
+        offices.append(os.pidfd_open(office))  # It sleeps for 30 s unless it is killed.
+        soak_process.send_signal(signal.SIGSTOP)
+        try:
+            while process_state(soak_process.pid) != "T":
+                time.sleep(0.001)
+            stopped = time.monotonic()
+            # The stopped soak cannot reap its runner, so the runner's ID still names it here.
+            handle = os.pidfd_open(runner)
+            try:
+                assert select.select([handle], [], [], 30)[0], "The runner did not exit"
+            finally:
+                os.close(handle)
+        finally:
+            soak_process.send_signal(signal.SIGCONT)
+        assert stopped < deadline, "The soak was stopped only after the session's limit"
+
+    try:
+        process, output = scaled_soak(
+            tmp_path, FINISHED_AFTER_THE_LIMIT, limit=2, during=stop_across_the_limit
+        )
+        installed, absent = json.loads((output / "soak-results.json").read_text(encoding="utf-8"))
+        assert installed["runner_exit"] == 124, installed  # Not the runner's own 0.
+        assert installed["results"] == [{"assertions_passed": True}]
+        assert absent["runner_exit"] == 0
+        assert process.returncode == 1, process.stdout + process.stderr
+        summary = (output / "soak-summary.md").read_text(encoding="utf-8")
+        assert "| installed | 1 | 124 | [None] | [] | True |  | `installed/001/` |" in summary
+        # As after any timeout, the session's group is killed, with the office's stand-in.
+        (office,) = offices
+        assert select.select([office], [], [], 5)[0], "The office's stand-in still runs"
+    finally:
+        for office in offices:
+            os.close(office)
 
 
 @pytest.mark.skipif(
