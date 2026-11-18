@@ -52,9 +52,11 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 - Repaint the sheet list instead of rebuilding it when you switch sheets or change a tab colour.
   In a 1,000-sheet workbook the rebuild was most of such a refresh's time
   ([#22](https://github.com/viell-dev/slop-calc-sheet-manager/issues/22)).
-- Clear a row selected through assistive technology when its sheet is deleted and another takes
-  its name before the list takes the selection; it could pass to the new sheet when the rows read
-  the same ([#22](https://github.com/viell-dev/slop-calc-sheet-manager/issues/22)).
+- Clear a row selected through assistive technology when the list can no longer prove which
+  sheet it showed, as when its sheet is deleted and another takes its name before the list takes
+  the selection; it could pass to the new sheet when the rows read the same. Until the clear has
+  succeeded, nothing takes or uses that selection
+  ([#22](https://github.com/viell-dev/slop-calc-sheet-manager/issues/22)).
 - Bound LibreOffice lab downloads and log their mirror and transfer measurements, so a slow
   mirror fails during setup instead of consuming the native CI testing budget.
 - Cache the pinned LibreOffice test installers by SHA-256 and verify them before use, avoiding

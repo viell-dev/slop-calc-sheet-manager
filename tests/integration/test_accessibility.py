@@ -14,7 +14,10 @@ metadata checks: no screen reader runs, so what one announces is not verified he
   queues the rebuilding refresh ahead of any intake: the ordering is deterministic.
 - A refresh that only repaints, keeping the tree (#22), lets the intake take such a selection
   too. One made against a sheet that is then replaced under its name is never taken, even when
-  the list owns no pick: the refresh that finds the lost identity proof clears it.
+  the list owns no pick: the refresh that finds the lost identity proof clears it. A rebuild
+  shows a selection still awaiting intake again (`_show_native`), so the tree's selection
+  alone cannot tell whether the list took it. Move to Top, enabled only by the list's own picks
+  away from the first row, shows that.
 - Every control of the panel is a child of the panel window's accessible context, at its own index
   in parent and in visual order, and each ancestor up to the top is listed by its parent (#133).
   A walk down from the top, as a screen reader's object navigation or a bridge's focus tracking
@@ -242,9 +245,14 @@ def check_assistive_selection_before_rebuild(context, desktop):
 def check_assistive_selection_in_a_kept_tree(context, desktop):
     document = workbook(desktop, "Alfa")
     sheets = document.getSheets()
-    _, tree = open_list(context, document)
+    panel, tree = open_list(context, document)
     poll(lambda: names(tree) == FIVE, "every sheet in the list")
     poll(lambda: read(context, tree)["name"] == viewing("Alfa"), "the viewed sheet's name")
+    top = move_buttons(panel)["Top"]
+    # Only a pick of the list's own away from the first row enables Move to Top.
+    poll(lambda: not top.isEnabled(), "Move to Top disabled before any such pick")
+    initial = selection(tree, FIVE)
+    assert initial in ([], ["Alfa"]), initial
     model = root(tree)
 
     def select_then(index, change, color):
@@ -259,7 +267,9 @@ def check_assistive_selection_in_a_kept_tree(context, desktop):
 
     say("control: a kept tree lets the queued intake take an assistive selection")
     on_main_thread(context, lambda: select_then(2, lambda: None, 0x2A6099))  # Charlie.
-    time.sleep(1.0)  # The refresh and several observation ticks, each with its queued intake.
+    # The refresh and observation ticks, each with its queued intake, follow. Only the list's
+    # own pick of Charlie enables Move to Top: the tree shows the selection either way.
+    poll(top.isEnabled, "Move to Top enabled by the list's pick of Charlie")
     assert root(tree) == model, "A tab colour must keep the tree"
     sheets.getByName("Echo").protect("")
     poll(lambda: "Echo (protected)" in labels(tree), "a rebuild after the intake")
@@ -285,11 +295,12 @@ def check_assistive_selection_in_a_kept_tree(context, desktop):
     assert root(tree) == model, "Names and labels are unchanged: the tree must be kept"
     time.sleep(1.0)  # Observation ticks would take a selection still shown.
     assert selection(tree, FIVE) == [], selection(tree, FIVE)
+    assert not top.isEnabled(), "The list owns a pick of the replaced sheet"
     sheets.getByName("Delta").protect("")
     poll(lambda: "Delta (protected)" in labels(tree), "a rebuild that writes the list's picks")
     assert selection(tree, FIVE) == [], selection(tree, FIVE)
     close(context, document)
-    return {"control_taken": True, "replaced_not_taken": True}
+    return {"initial_selection": initial, "control_taken": True, "replaced_not_taken": True}
 
 
 def _child(parent, index):

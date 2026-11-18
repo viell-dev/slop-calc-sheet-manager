@@ -61,9 +61,12 @@ def shower(selected: list[str]) -> Any:
         _nodes=list(NAMES),
         names=lambda: list(NAMES),
         peer=SimpleNamespace(invalidate=Mock()),
+        _repaint_pending=False,
     )
     owner.tree = Tree(owner, selected)
     owner.selected_names = lambda: [name for name in NAMES if name in owner.tree.selected]
+    repaint = method(SOURCE, "SheetList", "_repaint", {})
+    owner._repaint = lambda: repaint(owner)
     show = method(SOURCE, "SheetList", "_show_native", {})
 
     def run(names: tuple[str, ...]) -> None:
@@ -105,6 +108,7 @@ def refresher(change: str) -> Any:
         _nodes=[object()],
         rows=[SheetRow(name) for name in NAMES],
         _shown=("Alfa",),
+        _repaint_pending=False,
         _view_generation=0,
         _view_names=frozenset(NAMES),
         _view_stopped=True,
@@ -190,6 +194,8 @@ def test_a_kept_tree_lets_the_intake_take_native_picks_awaiting_it() -> None:
     assert owner.tree.shown() == ["Bravo"]
     owner.run_queue()  # The queued intake.
     bravo = book.handle(book.sheet("Bravo"))
+    # The intake itself took it: `_current_picks` would also take a selection still shown.
+    assert [(ref.name, ref.token) for ref in owner._selection.picked] == [("Bravo", bravo)]
     assert [(ref.name, ref.token) for ref in owner._current_picks()] == [("Bravo", bravo)]
 
 
@@ -213,3 +219,43 @@ def test_a_kept_tree_drops_native_picks_whose_proof_was_lost(painted: bool) -> N
     owner.run_queue()  # The queued intake refuses the old proof.
     assert owner._current_picks() == [], "A replacement took a pick made before it existed"
     assert owner.tree.shown() == []
+
+
+@pytest.mark.parametrize(
+    ("failures", "act"),
+    [(1, False), (1, True), (2, True)],
+    ids=["retry", "action, retry", "action, failed retry"],
+)
+@pytest.mark.parametrize("loss", ["two renames", "unreadable handle"])
+def test_a_failed_clear_keeps_native_picks_whose_proof_was_lost_from_every_intake(
+    loss: str, failures: int, act: bool
+) -> None:
+    book = Book(NAMES)
+    owner = sheet_list(book)
+    owner.tree.assistive_select("Bravo")  # Awaiting intake, as through accessibility.
+    generation = book.generation
+    # Neither loss of proof moves the structure generation: only the handles show it.
+    unreadable = book.handle(book.sheet("Delta"))
+    if loss == "two renames":
+        book.rename("Alfa", "Xray")  # More than one rename by others proves nothing.
+        book.rename("Charlie", "Yankee")
+    else:
+        unreadable.readable = False
+    owner.tree.failures = failures  # The refresh's native clear fails.
+    for attempt in range(failures):
+        with pytest.raises(RuntimeError, match="clear"):
+            owner._refresh({})  # The refresh, then its retry (#186).
+        assert book.generation == generation
+        unreadable.readable = True  # A handle unreadable for a moment reads again.
+        if act:
+            # A move request reads the tree first (`queue_move`); other actions ask for picks.
+            assert not owner._take_tree_selection(paint=False), f"Attempt {attempt}: taken"
+            assert owner._current_picks() == [], f"Attempt {attempt}: an unproven pick was usable"
+        owner.run_queue()  # The intake each refresh queued.
+        assert not owner._selection.picked, f"Attempt {attempt}: the intake took an unproven pick"
+        assert owner.refreshes_asked == (attempt + 1 if act else 0)  # The refused action asks.
+        assert owner.tree.shown() == ["Bravo"]  # The clear that failed.
+    owner._refresh({})  # The retry clears the tree.
+    owner.run_queue()
+    assert owner.tree.shown() == [], "The retry left the unproven selection for the intake"
+    assert not owner._selection.picked and owner._current_picks() == []

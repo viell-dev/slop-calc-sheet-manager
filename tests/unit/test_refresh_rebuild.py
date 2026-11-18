@@ -36,6 +36,7 @@ def refresh(
         _nodes=[object()] * len(shown) if nodes else [],
         rows=list(shown),
         _shown=("Bravo",),
+        _repaint_pending=False,
         _view_generation=0,
         _view_names=frozenset(row.name for row in fresh),
         _view_stopped=True,
@@ -56,6 +57,8 @@ def refresh(
         controller=None,
     )
     owner.names = lambda: [row.name for row in owner.rows]
+    repaint = method("src/sheet_manager/uno_list.py", "SheetList", "_repaint", {})
+    owner._repaint = lambda: repaint(owner)
 
     def snapshot(document: Any) -> Any:
         return observed
@@ -141,18 +144,30 @@ def test_node_text_ignores_only_painted_state() -> None:
     assert node_text([replace(SHOWN[0], visible=False)])[0] == ("Alfa", "Alfa (hidden)")
 
 
-def test_a_failed_repaint_stays_pending_for_the_retry() -> None:
+@pytest.mark.parametrize("change", ["tab colour", "picks only"])
+def test_a_failed_repaint_stays_pending_for_the_retry(change: str) -> None:
     book = Book(list(NAMES))
     owner = sheet_list(book)
+    if change == "picks only":
+        owner._select(["Charlie"], "Charlie")
     nodes, painted = owner._nodes, owner.peer.invalidations
-    book.sheet("Charlie").color = 0x993322
+    if change == "tab colour":
+        book.sheet("Charlie").color = 0x993322
+    else:
+        # The pick's sheet is replaced by one whose row reads exactly the same, so only the
+        # dropped pick's mark changes: the first attempt leaves no row difference to retry.
+        book.replace("Charlie")
+        assert book.rows() == owner.rows
     owner.peer.failures = 1
-    with pytest.raises(RuntimeError):
+    with pytest.raises(RuntimeError, match="invalidate"):
         owner._refresh({})
     owner._refresh({})  # The retry after a failed refresh (#186).
     assert owner._nodes is nodes
     assert owner.peer.invalidations == painted + 1, "The retry did not repaint"
     assert owner.rows == book.rows()
+    assert owner.tree.shown() == owner._selection.names() == []
+    owner._refresh({})  # Once it has succeeded, nothing is pending.
+    assert owner.peer.invalidations == painted + 1
 
 
 def test_clearing_the_last_pick_in_a_kept_tree_repaints_every_row() -> None:

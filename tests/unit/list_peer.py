@@ -5,11 +5,13 @@ without LibreOffice, together with the real `Selection`. The simulated workbook 
 what the list relies on from Calc and from the tree control for these calls:
 
 - a deleted sheet's handle turns to the previous sheet (the next one at index 0), and every
-  insertion or deletion moves the structure generation (`selection.py`);
+  insertion or deletion moves the structure generation (`selection.py`), while a rename does
+  not, and a handle can fail to read;
 - assigning a data model shows its nodes with nothing selected, `select` in single selection
   mode selects only that node and moves the cursor to it, `addSelection` and an assistive
   selection add a node without moving the cursor, and `clearSelection` keeps the cursor;
-- `invalidate` can be made to fail, as a peer call can during a refresh (#186).
+- `clearSelection` and `invalidate` can be made to fail, as a peer call can during a refresh
+  (#186).
 
 It models those calls and is not evidence of LibreOffice's behaviour: the native checks are in
 `tests/integration` and `tests/ui`.
@@ -36,6 +38,7 @@ METHODS = (
     "_name_viewed",
     "_select",
     "_apply_selection",
+    "_repaint",
     "_take_tree_selection",
     "_current_picks",
     "selected_names",
@@ -54,8 +57,11 @@ class Handle:
 
     def __init__(self, sheet: Sheet):
         self.sheet = sheet
+        self.readable = True
 
     def getName(self) -> str:
+        if not self.readable:
+            raise RuntimeError("the handle could not be read")
         return self.sheet.name
 
 
@@ -75,6 +81,10 @@ class Book:
 
     def sheet(self, name: str) -> Sheet:
         return next(sheet for sheet in self.sheets if sheet.name == name)
+
+    def rename(self, name: str, new: str) -> None:
+        """Rename the sheet: its handles follow it, and the generation stays."""
+        self.sheet(name).name = new
 
     def replace(self, name: str) -> None:
         """Delete the sheet and insert a different one under its name at the same place."""
@@ -147,6 +157,7 @@ class Tree:
         self.selected: list[Node] = []
         self.cursor: Node | None = None
         self.model = ControlModel(self)
+        self.failures = 0  # How many of the next `clearSelection` calls fail.
 
     def getModel(self) -> ControlModel:
         return self.model
@@ -163,6 +174,9 @@ class Tree:
             self.selected.append(node)
 
     def clearSelection(self) -> None:
+        if self.failures:
+            self.failures -= 1
+            raise RuntimeError("the tree refused to clear its selection")
         self.selected = []
 
     def makeNodeVisible(self, node: Node) -> None:
@@ -254,6 +268,7 @@ def sheet_list(book: Book) -> Any:
         _nodes=[],
         rows=[],
         _shown=(),
+        _repaint_pending=False,
         _selection=Selection(function(SOURCE, "_current", {"Ref": Ref})),
         _user_picks=False,
         _press=None,
@@ -282,7 +297,12 @@ def sheet_list(book: Book) -> Any:
         while owner.queue:
             owner.queue.pop(0)()
 
-    owner.post, owner.run_queue = post, run_queue
+    def refresh() -> None:
+        """A refresh the list asks for. Tests run `_refresh` themselves, as its timer would."""
+        owner.refreshes_asked += 1
+
+    owner.post, owner.run_queue, owner.refresh = post, run_queue, refresh
+    owner.refreshes_asked = 0
     for name in METHODS:
         loaded = method(SOURCE, "SheetList", name, dict(namespace))
         setattr(owner, name, loaded.__get__(owner))

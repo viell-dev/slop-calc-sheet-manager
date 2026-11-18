@@ -41,7 +41,8 @@ them, so every action checks its sheets when it runs, never against the cached r
 against the snapshot of the drag's start through `apply_order`, which refuses stale state, and is
 refused when the generation moved during the drag. A failed refresh leaves its changes pending
 and retries with a bounded backoff (`_refresh_failed`, #186); only a successful one marks the
-list current.
+list current. A write of the picks to the tree, or a repaint, that failed stays pending as well
+(`_repaint_pending`): its retry can find no other difference to show.
 
 Pointer input. A left press picks at once and keeps the pressed sheet's handle. A plain press
 on a picked row keeps the other picks, so that they can be dragged together; its release in the
@@ -89,9 +90,12 @@ place; one that rebuilds the rows first shows it again (`_show_native`) under th
 count and order the intake checks, so the intake still decides. A refresh that loses the identity
 proof clears it with the list's own picks, even when there were none: it was made against the
 sheets that proof covered, and the kept tree would offer it to the next intake under a
-replacement's handle (`_drop_all_picks`). The panel window lists the move buttons, the tree and
-the shown footer labels as its accessible children in creation order, which is their visual
-order, so create them in that order (#133, `uno_panel`).
+replacement's handle (`_drop_all_picks`). The loss takes effect at once, even when no generation
+moved, as after renames: until a refresh has cleared the tree and recorded a new proof, no intake
+takes the tree's selection and no action uses a pick, so a failed clear is retried, not adopted.
+The panel window lists the move buttons, the tree and the shown footer labels as its accessible
+children in creation order, which is their visual order, so create them in that order (#133,
+`uno_panel`).
 
 Following Calc's tabs. Calc sends no reliable notification for a tab selection that keeps the
 same active sheet, so each list caches the reflected `getSelectedSheets` method and samples its
@@ -515,7 +519,9 @@ class SheetList:
         self.document = self.controller.getModel()
         # Attached before the first snapshot, so that no structural change goes unnoticed.
         self._monitor = monitor_for(self.document)
-        self._proven = self._monitor.generation  # The generation the picks were proved at.
+        # The generation the picks were proved at; None from a loss of proof until a refresh
+        # has cleared the tree and records a new one (`_drop_all_picks`).
+        self._proven: int | None = self._monitor.generation
         self.toolkit = parent_window.getToolkit()
         self._panel_window = parent_window
         self.rows: list[SheetRow] = []
@@ -527,6 +533,7 @@ class SheetList:
         # Owned pointer and keyboard gestures share a retained range anchor.
         self._selection = Selection(_current)
         self._shown: tuple[str, ...] = ()
+        self._repaint_pending = False  # A write of the picks or a repaint did not complete.
         # A sheet that may have been inserted or deleted since the picks were proved makes
         # every retained handle suspect (selection.py, structure.py), and the list then drops
         # its picks; `_generation` counts the drops, so that a drag or an open menu started
@@ -780,14 +787,15 @@ class SheetList:
             self._rebuild(rows)
         else:
             # Only painted state changed, such as the current sheet or a tab colour: keep the
-            # nodes, whose replacement costs the whole tree (#22), and repaint.
-            if dropped or tuple(self._selection.names()) != self._shown:
-                self._apply_selection()  # It repaints too.
-            elif rows != self.rows:
-                self.peer.invalidate(0)
-            # Take the rows only once their repaint is requested, so that after a failure the
-            # retry still finds them changed (#186). The paint runs after this refresh.
+            # nodes, whose replacement costs the whole tree (#22), and repaint. The paint runs
+            # after this refresh, from these rows. A write or repaint that failed stays
+            # pending, since a retry can find nothing else to show (#186).
+            painted = rows != self.rows
             self.rows = rows
+            if self._repaint_pending or dropped or tuple(self._selection.names()) != self._shown:
+                self._apply_selection()  # It repaints too.
+            elif painted:
+                self._repaint()
         if (
             pending is not None
             and self._generation == drops
@@ -835,9 +843,15 @@ class SheetList:
         None can be proved now, and that includes a native selection the list does not own,
         such as one made through accessibility that awaits the queued intake. It was made
         against the sheets the lost proof covered; left in a kept tree, the next intake would
-        take it under a replacement's handle. Clearing it here, before the refresh records the
-        new proof, also makes a failed write a loss of proof again for the retry.
+        take it under a replacement's handle.
+
+        The loss takes effect first, whichever check found it: a rename or an unreadable
+        handle moves no generation, so `_proven` itself stops matching the monitor. Until a
+        refresh has cleared the tree and records a new proof, no intake takes the tree's
+        selection, no action uses a pick, and a retry finds the proof lost again, so that a
+        failed clear is repeated rather than its selection adopted.
         """
+        self._proven = None
         told = self._user_picks and bool(self._selection.picked)
         had = self._selection.clear()
         self._user_picks = False
@@ -932,7 +946,7 @@ class SheetList:
                     self.tree.addSelection(self._nodes[index])
         finally:
             self._restoring_cursor = restoring
-        self.peer.invalidate(0)
+        self._repaint()
 
     def _name_viewed(self) -> None:
         """Name the tree after the sheet Calc shows, which the painted arrow marks (#83)."""
@@ -949,7 +963,12 @@ class SheetList:
         self._apply_selection()
 
     def _apply_selection(self) -> None:
-        """Write the list's own picks and cursor to the tree; the cursor falls back to a pick."""
+        """Write the list's own picks and cursor to the tree; the cursor falls back to a pick.
+
+        Until the write and its repaint complete, the next refresh writes them again
+        (`_repaint_pending`): `_shown` already records the picks being written.
+        """
+        self._repaint_pending = True
         names = self.names()
         cursor = self._selection.cursor
         if cursor is None or cursor.name not in names:
@@ -970,16 +989,27 @@ class SheetList:
                     self.tree.addSelection(self._nodes[index])
         # Repaint every row: the picks' marks, and in a kept tree the arrow and the swatches,
         # can have changed on rows whose native selection did not.
+        self._repaint()
+
+    def _repaint(self) -> None:
+        """Repaint every row. Until that succeeds, the next refresh repaints again (#186)."""
+        self._repaint_pending = True
         self.peer.invalidate(0)
+        self._repaint_pending = False
 
     def _take_tree_selection(self, paint: bool = True, *, defer: bool = False) -> bool:
-        """Take native picks, deferring observations until queued owned input has run."""
+        """Take native picks, deferring observations until queued owned input has run.
+
+        Nothing is taken while the handles prove nothing: a selection made against them
+        waits for the refresh, which drops it with the picks if the proof was lost.
+        """
         if (
             self._pointer_depth
             or self._selection_write_pending
             or self._press is not None
             or self._context_target is not None
             or self._menu_context
+            or self._proven != self._monitor.generation
         ):
             return False
         names = self.selected_names()
