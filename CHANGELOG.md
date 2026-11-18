@@ -24,6 +24,11 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   picks were already kept. Releasing another mouse button while the left one is held no longer
   ends the held click
   ([#71](https://github.com/viell-dev/slop-calc-sheet-manager/issues/71)).
+- Clear a row selected through assistive technology when the list can no longer prove which
+  sheet it showed and the rows still read the same, as when its sheet is deleted and another
+  takes its name before the list takes the selection; it could pass to the new sheet when the
+  list had already dropped its picks for an earlier change
+  ([#22](https://github.com/viell-dev/slop-calc-sheet-manager/issues/22)).
 - Calibrate the rename dialog's real-input clicks from two reports that follow the pointer's two
   moves, rather than the first report after a fixed 0.15 seconds, which a busy office could send
   late enough to be read for the next point tried

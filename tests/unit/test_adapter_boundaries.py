@@ -862,6 +862,25 @@ def test_a_refresh_that_proves_nothing_writes_the_lists_selection_even_when_none
     assert held.owner._current_picks() == []
 
 
+def test_a_lost_proof_clears_a_native_selection_awaiting_intake() -> None:
+    """The same write outside a hold: a plain click on Bravo, Ctrl+Space to unpick it, and a
+    replacement of Bravo leave nothing picked and no cursor. Assistive technology then selects
+    Charlie, and Charlie is replaced under its name before the intake. The refresh must clear
+    that selection rather than leave it for the next command under the replacement's handle.
+    """
+    held = HeldBravo(("Alfa", "Bravo", "Charlie", "Hotel"), ())
+    held.release(1)
+    held.key(SPACE, MOD1)
+    held.replace("Bravo")
+    held.refresh()
+    assert held.owner._selection.cursor is None and held.native == set()
+    held.native.add("Charlie")
+    held.replace("Charlie")
+    held.refresh()
+    assert held.native == set()
+    assert held.owner._current_picks() == []
+
+
 def test_a_pick_made_after_a_lost_proof_survives_a_refused_release() -> None:
     """The control: after the refresh that dropped the picks, Down picks the replacement Bravo
     at the proved generation, and the refused release keeps that newer pick (#71)."""
