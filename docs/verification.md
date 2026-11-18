@@ -249,6 +249,9 @@ real-input failure diagnostic and clean-up step in turn and checks that the fail
 is already on disk and keeps its own error (#190). `test_lab_calibration.py` checks that the
 Xvfb lab's pointer calibration waits for the tree's own report of its move, so a busy office
 cannot shift a workbook's calibrated positions and pixel coordinates by two pixels (#209).
+`test_rename_dialog_calibration.py` checks that the rename dialog's calibration takes its offset
+only from two reports that follow its two moves, so a late report of another point cannot move
+the dialog's clicks off their controls (#232).
 Sessions fail on nonzero exits, forced
 shutdowns, fatal messages, crash dumps, stalled main-thread callbacks or held terminate requests.
 A session without progress for 15 minutes from its launch fails without a retry: the stall is
