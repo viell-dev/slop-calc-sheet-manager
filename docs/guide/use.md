@@ -68,8 +68,8 @@ so pressing Up or Down again moves the same sheets further.
 **Move buttons.** <Unreleased since="0.0.4" /> The **Top**, **Up**, **Down**, and **Bottom** buttons
 above the list run the same actions.
 
-<Unreleased since="0.0.10" /> Disabled move and Rename buttons keep their labels visible on Linux
-with LibreOffice's theme enabled. They remain unavailable until their action is allowed.
+**Disabled move and Rename buttons.** <Unreleased since="0.0.10" /> Their labels stay visible on
+Linux with LibreOffice's theme enabled. They remain unavailable until their action is allowed.
 
 A move is one **Move Sheets** undo step. The move preserves the active sheet and Calc's tab
 selection. Use Ctrl+Z to undo it. **Undo and Redo of a move.** <Unreleased since="0.0.8" /> Undo and
@@ -145,11 +145,11 @@ The move actions follow the commands. Native popup rendering can hide unavailabl
 their reasons; see the [known issue](./known-issues.md).
 
 **Sheet Manager Help (online)** <Unreleased since="0.0.10" /> opens this guide in your browser.
-<Unreleased since="0.0.10" /> The header's native `?` opens a short bundled English help page in
-LibreOffice's
-internal viewer. It explains picks versus Calc tabs, movement and recovery, and links to the
-full online guide. It works offline on builds with XML-help support; use the online menu action
-if that optional LibreOffice component is unavailable.
+
+The header's native `?` <Unreleased since="0.0.10" /> opens a short bundled English help page in
+LibreOffice's internal viewer. It explains picks versus Calc tabs, movement and recovery, and links
+to the full online guide. It works offline on builds with XML-help support. Use the online menu
+action if that optional LibreOffice component is unavailable.
 
 ## Rename several sheets
 
