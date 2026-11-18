@@ -4,7 +4,8 @@ Checks reach the desktop only through a lab (see `workbook.py`). `run_ui.py` and
 `update_dialog.py` use this one on their private displays; `run_windows_ui.WindowsLab` keeps its
 `calibrate` and replaces input, window placement, screenshots and failure evidence for the
 Windows desktop. Screenshots run the lab's system Python/Pillow, outside LibreOffice's Python
-environment.
+environment. `Tracker` and `settled_report` also calibrate the rename dialog
+(`rename_dialog.Dialog.calibrate`).
 """
 
 import os
@@ -17,7 +18,7 @@ from xinput import XInput
 
 
 class Tracker(unohelper.Base, XMouseMotionListener):
-    """Records where the tree last saw the pointer, in its own coordinates."""
+    """Records where a window last saw the pointer, in its own coordinates."""
 
     def __init__(self):
         self.last = None
@@ -108,9 +109,10 @@ class Lab:
 
 
 def settled_report(tracker, first, target, quiet=0.3, timeout=10):
-    """Where the tree says the pointer is, now that it has stopped at `target` after `first`.
+    """Where a window says the pointer is, now that it has stopped at `target` after `first`.
 
-    The tree's reports arrive in the order of the moves, so its last report, once it has
+    `first` is the window's last report before the move to `target`, or None if it had none.
+    The window's reports arrive in the order of the moves, so its last report, once it has
     reported something other than `first` and then nothing new for `quiet` seconds, is the
     position at `target`. Waiting for a newer report rather than a fixed time keeps a late report
     from being missed; waiting for quiet keeps a further report of the earlier position, such as
@@ -122,7 +124,7 @@ def settled_report(tracker, first, target, quiet=0.3, timeout=10):
     while latest is None or latest == first:
         if time.monotonic() > deadline:
             raise AssertionError(
-                f"The tree did not report the pointer's move to {target}; "
+                f"The window did not report the pointer's move to {target}; "
                 f"its last report was {first}"
             )
         time.sleep(0.02)
@@ -131,7 +133,9 @@ def settled_report(tracker, first, target, quiet=0.3, timeout=10):
     deadline = changed + timeout
     while time.monotonic() - changed < quiet:
         if time.monotonic() > deadline:
-            raise AssertionError(f"The tree kept reporting new positions after a move to {target}")
+            raise AssertionError(
+                f"The window kept reporting new positions after a move to {target}"
+            )
         time.sleep(0.02)
         report = tracker.last
         if report is not None and report != latest:
