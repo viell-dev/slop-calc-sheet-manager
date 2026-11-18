@@ -94,7 +94,10 @@ If Sheet Manager does not work in an environment where it is expected to, please
   commands, moves, and Rename Sheets act on the sheet you picked. Calc moves a sheet only by its
   name, so the list refuses a move that would need the name of the sheet that does not come first,
   and says which two names Calc confuses
-  ([#125](https://github.com/viell-dev/slop-calc-sheet-manager/issues/125)). Rename Sheets still
+  ([#125](https://github.com/viell-dev/slop-calc-sheet-manager/issues/125)). <Unreleased /> The
+  list then tries one other, equally short way to make the move, for example by moving the sheet
+  beside it instead. If Calc also confuses a name that this second way needs, the list refuses the
+  move. Renaming one of the two sheets makes every move possible. Rename Sheets still
   refuses to create such a pair. Calc's Undo of Delete Sheet can also fail to restore either
   sheet of the pair, leaving it deleted
   ([#138](https://github.com/viell-dev/slop-calc-sheet-manager/issues/138)).

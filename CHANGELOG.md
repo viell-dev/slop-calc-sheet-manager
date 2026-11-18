@@ -9,6 +9,17 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   refuses that click because the sheets changed. It returned to a picked sheet even after
   Ctrl+arrow keys had moved it elsewhere; the picks were already kept
   ([#71](https://github.com/viell-dev/slop-calc-sheet-manager/issues/71)).
+- Make more moves of a sheet whose name LibreOffice confuses with another sheet's, such as `fi`
+  beside `ﬁ`. When the usual way of making a move needs the confused name, the list tries one
+  other, equally short way, for example moving the sheet beside it, and refuses the move only if
+  that way needs a confused name too
+  ([#125](https://github.com/viell-dev/slop-calc-sheet-manager/issues/125)).
+- Retain painted Linux integration evidence before release-sweep input tests and require the
+  painted phase to succeed before input starts
+  ([#192](https://github.com/viell-dev/slop-calc-sheet-manager/issues/192)).
+- Check the documentation's availability markers at every marked version, including when
+  a newer test build appears beside an older stable release
+  ([#196](https://github.com/viell-dev/slop-calc-sheet-manager/issues/196)).
 - Plan moves that reorder many sheets faster: planning the reversal of 10,000 sheets takes under
   a second instead of three to seven on a loaded laptop, with the same moves. The planning
   budget test now measures CPU time and reports it with the elapsed time
@@ -61,6 +72,14 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   summary and security policy with published behaviour
   ([#197](https://github.com/viell-dev/slop-calc-sheet-manager/issues/197),
   [#199](https://github.com/viell-dev/slop-calc-sheet-manager/issues/199)).
+- Make two intermittent test failures classify themselves. A failed pick after Reload keeps
+  the click's delivery, the list's selection events and later document modifications. The
+  real-input grid click is no longer repeated, and a failed one records whether it arrived late
+  ([#88](https://github.com/viell-dev/slop-calc-sheet-manager/issues/88),
+  [#42](https://github.com/viell-dev/slop-calc-sheet-manager/issues/42)).
+- Audit former macOS test process groups for a bounded time after each command exits, give
+  timed-out groups a bounded TERM drain before KILL, and detach the disk image when a failed
+  attach left it mounted ([#163](https://github.com/viell-dev/slop-calc-sheet-manager/issues/163)).
 
 ## 0.0.10 - 2026-11-03
 
