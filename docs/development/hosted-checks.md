@@ -27,6 +27,11 @@ and Intel macOS headless packaged integration and lifecycle.
 Its **Full release sweep** aggregate requires every lane. Any test or shutdown failure fails the
 job; artifacts are required, and no error message is an allowed crash.
 
+The sweep's Linux gtk3 jobs upload `linux-gtk3-<lane>-painted` before starting real input.
+Input requires successful painted integration and evidence upload. Both phases retain their
+console output in `test-results/ci/`. If the job is interrupted during input, start with the
+painted artifact and the job log.
+
 Follow [Prepare and dry-run][prepare] for the weekly platform cadence, exact revision, required
 release evidence, and the role of PR planning previews. Use the focused Windows and macOS
 workflows below for investigation.
