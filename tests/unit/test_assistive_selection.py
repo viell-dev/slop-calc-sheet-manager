@@ -121,7 +121,7 @@ def refresher(change: str) -> Any:
     )
     owner.names = lambda: [row.name for row in owner.rows]
 
-    def drop() -> bool:
+    def drop(native: bool = False) -> bool:
         owner._generation += 1
         return True
 

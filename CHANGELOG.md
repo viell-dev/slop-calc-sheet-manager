@@ -5,6 +5,14 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- A sheet list write that LibreOffice fails partway no longer leaves part of it to be taken as
+  the picks. Until the list shows its picks again, commands act on no sheets, and the next refresh
+  writes them. A selection made through assistive technology just before the list lost track of
+  which sheet is which, as when a sheet is replaced under its own name, is cleared with the
+  selection notice rather than taken for the new sheet. LibreOffice's tree has been seen to fail
+  such a call only while a panel closes
+  ([#257](https://github.com/viell-dev/slop-calc-sheet-manager/issues/257),
+  [#265](https://github.com/viell-dev/slop-calc-sheet-manager/issues/265)).
 - Known issues now says the sheet list keeps rebuilding its rows after a sheet switch or tab
   colour change, and why
   ([#22](https://github.com/viell-dev/slop-calc-sheet-manager/issues/22)).

@@ -278,12 +278,14 @@ def test_265_an_assistive_pick_made_before_a_replacement_is_not_taken_after_it()
     owner.run_queue()
     owner.tree.assistive_select("Charlie")
     replacement = owner.book.replace("Charlie")
+    notices = len(owner.notices)
     changed(owner)
     owner.retry(limit=1)
     assert move_to_top(owner) is None
     assert owner.book.sheets[0] is not replacement
     owner.run_queue()
     assert owner.tree.shown() == []
+    assert len(owner.notices) == notices + 1, "Clearing the user's selection is not explained"
 
 
 def test_a_stale_native_selection_is_cleared_after_the_tab_baseline() -> None:

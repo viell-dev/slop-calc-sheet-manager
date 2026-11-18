@@ -36,6 +36,23 @@ its sheets when it runs, never against the cached rows. A drop plans against the
 drag's start through `apply_order`, which refuses stale state, and is refused when the generation
 moved during the drag.
 
+Failed tree writes (#257, #265). Writing the picks takes several native calls, and one can fail
+after others changed the tree, which then shows part of the write. From the first call that
+changes the tree's selection until the tree shows the picks, `_shown` is None, and a failure
+leaves it so. While it is None the queued intake takes no native selection, commands act on no
+picks, a refresh writes the picks again after its tab baseline, and a write outside a refresh is
+retried as a failed refresh is (`RefreshSchedule.failed`). A write that can leave only the picks
+or an empty tree, such as one of a single pick the tree already shows, keeps `_shown`. A refresh
+that loses the identity proof while the tree shows a native selection the intake has not taken
+treats it the same way, with the clearing notice: it was made against rows whose handles no
+longer prove their sheets. Rows, their handles and their proof change together once a new data
+model is shown, so a row of a refused model still maps to the handle it was read with; and a
+rebuild does not need the cached nodes, which LibreOffice rejects after a setter installed its
+model and then failed, for its scroll position. A failed `invalidate` after a complete write is
+not retried: the tree and `_shown` agree, and the next write repaints. No native trigger for
+these failures is known; LibreOffice's tree calls have failed only while the control was being
+disposed.
+
 Pointer input. A left press picks at once and keeps the pressed sheet's handle. A plain press
 on a picked row keeps the other picks, so that they can be dragged together; its release in the
 same row narrows the picks to that sheet, and only the release of a double click's second press
@@ -79,7 +96,8 @@ description, state or relation setter, toolkit has no `AccessibleDescription`, a
 only a tooltip. Native selection made without an owned handler, such as through
 `XAccessibleSelection`, waits for the queued intake; a refresh that rebuilds the rows first shows
 that selection again (`_show_native`) under the proof, drop count and order the intake checks,
-so the intake still decides. The panel window lists the move buttons, the tree and the shown
+so the intake still decides. A refresh that loses the proof clears it instead (#265, above).
+The panel window lists the move buttons, the tree and the shown
 footer labels as its accessible children in creation order, which is their visual order, so
 create them in that order (#133, `uno_panel`).
 
@@ -459,11 +477,15 @@ class SheetList:
     (`selection`), and `_monitor` is the document's shared structure monitor (`uno_structure`).
     The menu, keys, move buttons, status line, palette and row painting have their own modules.
 
-    Identity. `rows`, `_observed`, `_handles` and `_nodes` are the last refresh's rows, snapshot,
-    handles by name and tree nodes; actions check sheets again when they run. `_proven` is the
-    structure generation the handles and picks were proved at; work that sees the monitor's
-    generation elsewhere refreshes before trusting a handle. `_generation` counts the times the
-    list dropped every pick, so that a drag or menu begun before a drop can tell.
+    Identity. `rows` and `_nodes` are the rows the tree shows and their nodes; `_handles` maps
+    those rows' names to the handles they were read with, from the snapshot `_observed`. A
+    rebuild changes them together once its data model is shown (`_prove`): a refused model leaves
+    the old rows with the old handles and, after a lost proof, the old snapshot and proof, so that
+    input on an old row never reaches the sheet that took its name since (#257). Actions check
+    sheets again when they run. `_proven` is the structure generation the handles and picks were
+    proved at; work that sees the monitor's generation elsewhere refreshes before trusting a
+    handle. `_generation` counts the times the list dropped every pick, so that a drag or menu
+    begun before a drop can tell.
 
     Input watermarks. `_input` counts owned input as the handlers see it; posted work captures it
     and yields to newer input. `_follow_input` is the count at which Calc reported a switch to
@@ -474,11 +496,16 @@ class SheetList:
     only the operations named here:
 
     - Native tree-selection intake (`_take_tree_selection`, also when a refresh or a tab sample
-      defers it) waits while `_pointer_depth` (inside a mouse listener), `_press` (a held left
-      press, voided by a drop of all picks), `_selection_write_pending` (a coalesced tree write
-      is queued), `_context_target` (a right-click target) or `_menu_context` (an open or
-      completing menu) holds. Native cursor intake (`cursor_changed`) waits for the same, and
-      also while `_restoring_cursor` (the list is writing the tree).
+      defers it) waits while `_shown` is None (the tree may show another selection than the
+      picks: a write stopped partway, or a native selection outlived the identity proof it was
+      made against), `_pointer_depth` (inside a mouse listener), `_press` (a held left press,
+      voided by a drop of all picks), `_selection_write_pending` (a coalesced tree write is
+      queued), `_context_target` (a right-click target) or `_menu_context` (an open or
+      completing menu) holds. Native cursor intake (`cursor_changed`) waits for the same except
+      `_shown`, and also while `_restoring_cursor` (the list is writing the tree).
+    - While `_shown` is None, `_current_picks` returns no picks after showing them, and
+      `queue_move` refuses: the user saw the other selection. A refresh then writes the picks
+      after its tab baseline, and `_show_selection` retries a write outside a refresh (#257).
     - Tab observation (`observation_paused`) waits while `_busy` (a move or rename runs),
       `_pointer_depth`, `_restoring_cursor`, `_press`, `_drag`, the menu's popup or
       `_menu_context` holds; the observer adds the document's locks and an own replay's view. A
@@ -759,7 +786,7 @@ class SheetList:
             # The same sheets as before: a retry after a failed rebuild starts from these names.
             self._observed = observed
         else:
-            dropped = self._drop_all_picks()
+            dropped = self._drop_all_picks(native=bool(pending))
             if pending is not None or self._press is not None:
                 # The tree's native selection was made against rows whose handles no longer
                 # prove their sheets: no one's pick now, though the rows may read the same (#265).
@@ -818,9 +845,13 @@ class SheetList:
             zip((sheet.name for sheet in observed.sheets), observed.handles, strict=True)
         )
 
-    def _drop_all_picks(self) -> bool:
-        """Drop every pick, the cursor, the anchor, and a held press: none can be proved now."""
-        told = self._user_picks and bool(self._selection.picked)
+    def _drop_all_picks(self, native: bool = False) -> bool:
+        """Drop every pick, the cursor, the anchor, and a held press: none can be proved now.
+
+        `native` is a selection the user made in the tree, such as through accessibility, that
+        the intake had not taken yet: it is cleared too, so the notice tells of it.
+        """
+        told = (self._user_picks and bool(self._selection.picked)) or native
         had = self._selection.clear()
         self._user_picks = False
         self._generation += 1

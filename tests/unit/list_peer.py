@@ -604,9 +604,10 @@ def sheet_list(book: Book, source: str = SOURCE) -> Any:
         _tabs=Tabs(),
         claim_window=lambda: None,
         _update_moves=lambda: None,
-        _show_cleared_notice=lambda: None,
+        notices=[],
     )
     owner._refreshes = RefreshSchedule(later, lambda: owner._timed_refresh(), lambda: clock.now)
+    owner._show_cleared_notice = lambda: owner.notices.append(clock.now)
     owner._type_ahead = TypeAhead()
 
     def post(work: Callable[[], None], where: str) -> None:
