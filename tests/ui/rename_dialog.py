@@ -641,27 +641,50 @@ def check_replace_conflict(book):
         changes = NameChanges()
         button.addAccessibleEventListener(changes)
 
-        def replace(expected):
+        def replace(expected, status):
             keys.tap("n", ("Alt_L",), pause=0.2)
             assert field.getAccessibleStateSet() & FOCUSED
+            event_count = len(changes.names)
             keys.tap("a", ("Alt_L",), pause=0.4)
-            wait_for(lambda: changes.names[-1:] == [expected], "the reason on Replace All")
+            wait_for(lambda: len(changes.names) > event_count, "the reason on Replace All")
+            actual = dialog.status.getText()
+            assert actual == status, actual
+            assert changes.names[-1] == expected
             assert button.getAccessibleName() == expected
             assert button.getAccessibleStateSet() & FOCUSED
 
         try:
-            replace("Replace All Type the text to find first.")
+            reason = "Type the text to find first."
+            replace(f"Replace All {reason}", reason)
             keys.tap("f", ("Alt_L",), pause=0.2)
             type_text(book.lab, "Missing")
-            replace("Replace All No new name contains “Missing”.")
+            keys.tap("p", ("Alt_L",), pause=0.2)
+            type_text(book.lab, "Missing")
+            reason = "No new name contains “Missing”."
+            replace(f"Replace All {reason}", reason)
             keys.tap("f", ("Alt_L",), pause=0.2)
             keys.tap("a", ("Control_L",), pause=0.1)
             type_text(book.lab, "Bravo")
             keys.tap("p", ("Alt_L",), pause=0.2)
+            keys.tap("a", ("Control_L",), pause=0.1)
+            type_text(book.lab, "Bravo")
+            before = dialog.items()
+            reason = "The replacement did not change any proposed names."
+            replace(f"Replace All {reason}", reason)
+            assert dialog.items() == before
+            assert not dialog.state()["rename_enabled"]
+            events_before_retry = list(changes.names)
+            keys.tap("space", pause=0.4)
+            on_main_thread(book.lab.context, lambda: None)
+            assert dialog.status.getText() == reason
+            assert button.getAccessibleName() == f"Replace All {reason}"
+            assert changes.names == events_before_retry
+            keys.tap("p", ("Alt_L",), pause=0.2)
+            keys.tap("a", ("Control_L",), pause=0.1)
             type_text(book.lab, "Echo")
             reason = "Another sheet is already named “Echo”."
             expected = f"Replace All “Bravo”: {reason}"
-            replace(expected)
+            replace(expected, reason)
             wait_for(lambda: dialog.items()[0].endswith(reason), "the replacement conflict")
             assert not dialog.state()["rename_enabled"]
             events_before_retry = list(changes.names)

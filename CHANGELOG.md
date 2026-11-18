@@ -5,6 +5,9 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- When Replace All finds matching text but changes no proposed names, Rename Sheets explains
+  this in the status and through the button's accessible name
+  ([#259](https://github.com/viell-dev/slop-calc-sheet-manager/issues/259)).
 - Fail a test session that stops making progress for 15 minutes, keeping the test client's and
   LibreOffice's stacks, instead of waiting for the CI job's time limit without evidence. A soak
   session that reaches its 180-second limit during startup or its checks records the stall too,
