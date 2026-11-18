@@ -3,12 +3,11 @@
 Calc sends no reliable notification for a tab selection that keeps the same active sheet, so the
 observer caches the reflected `getSelectedSheets` method and samples its retained controller on
 the UI thread every `VIEW_INTERVAL`. Never run that getter in a timer worker or a toolkit
-listener; one path still does, as on `main`: a drag begun on stale rows refreshes inside the
-gesture listener, and `refreshed` then samples (#264). Compare logical name membership,
-establish a fresh baseline after a namespace or proof change, and never consume pending modify
-evidence through the structure monitor's `check()` merely to observe tabs (#66). List input
-acknowledges the preceding native state at the listener boundary (`note_input`), so that queued
-Enter, menu, type-ahead, and move requests cannot have an older sample replace their picks.
+listener. Compare logical name membership, establish a fresh baseline after a namespace or
+proof change, and never consume pending modify evidence through the structure monitor's
+`check()` merely to observe tabs (#66). List input acknowledges the preceding native state at
+the listener boundary (`note_input`), so that queued Enter, menu, type-ahead, and move requests
+cannot have an older sample replace their picks.
 Observation is skipped while the list says it is paused (a held tree press, a drag, the menu, a
 move, or a restoration), during a document lock, and during Calc's view of an own move's replay
 (#91). A token rejects a cancelled timer already posted to the UI queue, so that timer chains
@@ -26,7 +25,8 @@ temporarily unavailable. Actual native panel disposal disposes the list too.
 
 Contract. One observer belongs to one `uno_list.SheetList`, its host, and runs only on
 LibreOffice's main thread; `note_input` is the one method a toolkit listener calls, and it only
-posts, except for the stale-drag refresh above (#264). The observer owns its timer chain, the
+posts. `refreshed` samples, so the host refreshes only in main-thread work, never inside a
+listener; a drag on stale rows posts its refresh (#264). The observer owns its timer chain, the
 cached sidebar wrappers, and the baseline: the last sampled active sheet and tabs, with the
 names, the structure generation, and the host's input count they were sampled at. A sample
 follows Calc only when the state changed from that baseline, under the same names and

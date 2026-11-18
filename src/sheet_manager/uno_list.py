@@ -16,7 +16,8 @@ anchor to the new names through their retained handles (`selection.Selection.car
 refresh counts only others' renames against its one-rename check.
 
 Every listener only records state or posts work to the main thread: LibreOffice calls some
-of them from other threads or in the middle of a change.
+of them from other threads or in the middle of a change. The drag gesture's own checks are the
+one exception here (`SheetList`, #264).
 
 The tree. The list is a borderless `TreeControl`, so that it is a direct child of the panel
 window, with a hidden root. With a hidden root, the tree peer mishandles every data-model change
@@ -449,9 +450,14 @@ class SheetList:
     else runs on LibreOffice's main thread, and posted work re-checks what it relies on. The
     modify listener reaches the refresh schedule on the notifying thread (`document_modified`,
     `RefreshSchedule.changed`), and toolkit listeners reach the tab observer only through
-    `TabObserver.note_input`. One exception remains, as on `main`: a drag begun on stale rows
-    refreshes inside the gesture listener (`start_drag`), and that refresh's
-    `TabObserver.refreshed` samples Calc's tabs before the listener returns (#264).
+    `TabObserver.note_input`. The drag gesture is the exception: VCL calls its listener within
+    its own mouse-move handling, rather than queued as the mouse listeners are, and `start_drag`
+    starts the drag there, with the gesture's event as `startDrag`'s trigger. Before that it
+    checks `_current_picks`, which can write the list's own tree and buttons as the mouse
+    handlers do, the document's read-only and protection flags, and `is_current`, which reads
+    the sheets and the retained handles. None of these reads Calc's view or tabs. A drag on
+    stale rows is refused and posts its refresh, whose tab sample must not run in the listener
+    (#264).
 
     Collaborators, each owning its own state: `_refreshes` decides when to refresh
     (`refresh_schedule`), `_tabs` follows Calc's tabs and the sidebar (`uno_tabs`, for which this
@@ -1830,7 +1836,8 @@ class SheetList:
         if not picked or self.document.isReadonly() or self.document.isProtected():
             return
         if not is_current(self.document, self._observed):
-            self.refresh()
+            # Refused. The refresh samples Calc's tabs, which never runs in a listener (#264).
+            self.post(self.refresh, "refreshing the sheet list")
             return
         transferable = _Transferable(uuid.uuid4().hex)
         self._drag = _Drag(picked, self._observed, transferable, self._monitor.generation)
