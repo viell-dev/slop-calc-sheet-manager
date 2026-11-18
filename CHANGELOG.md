@@ -5,6 +5,9 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Expose the selected proposal's name conflict on the focused New name field in Rename Sheets,
+  so a screen reader can announce the refusal while the user stays in the edit
+  ([#247](https://github.com/viell-dev/slop-calc-sheet-manager/issues/247)).
 - Organise contributor testing guidance by task and platform, with dedicated Development pages
   for native LibreOffice testing and hosted workflows
   ([#198](https://github.com/viell-dev/slop-calc-sheet-manager/issues/198)).
