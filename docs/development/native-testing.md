@@ -184,6 +184,22 @@ reporting success. The safeguards and investigations are in
 [#50](https://github.com/viell-dev/slop-calc-sheet-manager/issues/50), and
 [#40](https://github.com/viell-dev/slop-calc-sheet-manager/issues/40).
 
+When the runner stops its office itself (`stop_process`), as in a forced shutdown, after an
+unfinished release wait or after a stall, it sends the launcher it started SIGTERM, then SIGKILL
+after 10 seconds; on Windows, `taskkill /T` stops the launcher's whole process tree instead. On
+Linux, LibreOffice's `oosplash` launcher passes SIGTERM on to its `soffice.bin` and waits for it,
+and the gdb wrapper's `soffice.bin` died with gdb even when gdb was killed. But a `soffice.bin`
+kept running after an `oosplash` that was killed, and after one that was told to stop just after
+it had started a `soffice.bin` and before it had taken it over, as at its first-start restart
+([#266](https://github.com/viell-dev/slop-calc-sheet-manager/issues/266)). So on Linux the
+runner first pauses the launcher, once the kernel confirms that it is still the runner's own
+unreaped child, and waits until each of its threads has stopped: `oosplash` starts `soffice.bin`
+from a helper thread, and a start under way when the pause arrives finishes before that thread
+stops. It then holds each `soffice.bin` beneath the launcher and each of the launcher's own child
+processes, sends the launcher SIGTERM and lets it continue. Each held process still running when
+the launcher's stop ends is sent SIGTERM, then SIGKILL after 5 seconds. A forced shutdown's
+results, and a stall's receipt, record what the stop saw of each as `office_stop`.
+
 Before asking the office to terminate, the runner waits until the office has run the UNO
 releases the test process sent before the wait, as `tests/integration/client_releases.py`
 describes. LibreOffice runs releases in order on one bridge thread that no other call waits for,
@@ -212,9 +228,9 @@ thread had already started, and an Escape tap of the update dialog's cleanup, wh
 stall before each tap. For up to 60 seconds the
 runner then tries to save the client's Python stacks and the office's native stacks as `stall-*`
 files; a step or result that arrives later is not recorded. It starts stopping the launcher it
-started (`stop_process`, which on Windows stops the launcher's whole process tree) when those
-steps end or when the 60 seconds end, even if the test client, a debugger or a receipt write is
-still blocked, and the stop itself is bounded by its own limits, about 60 seconds more. Under
+started (`stop_process`, above) when those steps end or when the 60 seconds end, even if the
+test client, a debugger or a receipt write is still blocked, and the stop itself is bounded by
+its own limits, about 60 seconds more. Under
 `--backtrace` the runner sends the gdb wrapper's `soffice.bin` SIGINT, after which gdb normally
 prints every thread's stack into its trace; on Windows, CDB at its standard path writes them.
 Without the wrapper no debugger attaches on Linux, and macOS has no debugger in this path, so only
@@ -252,6 +268,14 @@ what follows from it:
   launcher ([#266](https://github.com/viell-dev/slop-calc-sheet-manager/issues/266)).
   `stop_returned_after_seconds` is the time from detection until `stop_process` returned or
   raised.
+- `office_stop`, on Linux, says what the stop saw of each process it held: that it had exited
+  when the launcher's stop ended, or that it was still running then, which signals were
+  delivered to it, and within how long its exit was seen. Processes are checked in turn, so that
+  time is an upper bound. It also says when nothing was held, and why, such as a listing that
+  failed or that had no row for the launcher itself, as distinct from one that found no child
+  under it. It is absent when the launcher had already exited before the stop, as after the gdb
+  wrapper's own exit following the interrupt. If the stop itself raised, `diagnostic_errors`
+  holds its traceback under `stop`, ending with the same lines as `office_stop:` notes.
 - `diagnostic_errors` holds each step that failed, and under `capture` the step the collector was
   at when the 60 seconds ended; `collection_finished` is true only if every step returned before
   then.
