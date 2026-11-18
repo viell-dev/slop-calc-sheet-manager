@@ -310,10 +310,10 @@ class Paints(unohelper.Base, XPaintListener):
     def __init__(self):
         self.count = 0
 
-    def windowPaint(self, event):
+    def windowPaint(self, e):
         self.count += 1
 
-    def disposing(self, source):
+    def disposing(self, Source):
         pass
 
     def quiet(self, seconds=1.0, timeout=30):
