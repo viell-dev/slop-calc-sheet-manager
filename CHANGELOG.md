@@ -10,7 +10,12 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   have 60 minutes instead of 45, the sweep's headless Linux jobs 35 instead of 30, and its
   Windows integration job 40 instead of 25. The macOS integration runner now ends at a
   30-minute deadline, recording a stall with the test client's stacks, within the command's
-  33-minute limit ([#244](https://github.com/viell-dev/slop-calc-sheet-manager/issues/244)).
+  33-minute limit. This changes CI and the test helpers, not the extension
+  ([#244](https://github.com/viell-dev/slop-calc-sheet-manager/issues/244)).
+- The painted soak now removes every session directory an earlier soak left in its output before
+  its first session, so that a shorter soak's artifact no longer carries an earlier, longer
+  soak's sessions. It follows no symbolic link there. This changes the test runner, not the
+  extension ([#268](https://github.com/viell-dev/slop-calc-sheet-manager/issues/268)).
 - A drag begun on sheet list rows that are out of date is still refused, but the list now
   refreshes after LibreOffice's drag-gesture callback returns rather than inside it, so that the
   refresh's reading of Calc's selected tabs no longer runs in that callback

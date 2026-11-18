@@ -301,8 +301,12 @@ stall, not when the limit passed. The watch ends with the checks, so a limit rea
 shutting down records no stall; the session's `checks_ended_before_deadline` shows that its
 checks ended in time. The summary gives each
 session's runner status and what its `results.json` says, and names its directory, which holds
-its results, runner log and any `stall-*.json` receipts; the soak empties that directory before
-the session starts, so nothing there comes from an earlier soak. Feature suites never run in the
+its results, runner log and any `stall-*.json` receipts. Before its first session, the soak
+removes every numbered session directory (`<output>/<mode>/<NNN>`) that an earlier soak left, so
+the output holds only this soak's sessions
+([#268](https://github.com/viell-dev/slop-calc-sheet-manager/issues/268)). It removes nothing
+else there, and unlinks a symbolic link in their place, or a mode directory that is one, without
+following it. Feature suites never run in the
 absent-extension control. The soak disables startup retries too, so every attempted session
 contributes to the measurement. The absent-extension control repeats the
 Calc/save/reopen-read-only/Writer lifecycle and frame requests, but cannot exercise the panel or
