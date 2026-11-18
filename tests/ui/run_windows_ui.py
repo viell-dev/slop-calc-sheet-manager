@@ -6,10 +6,11 @@ runner's job is in the active console session, so a visible LibreOffice receives
 and mouse input there; an agent shell in session 0 cannot run this suite. The input goes to the
 real desktop: never run it on a person's computer.
 
-The checks are `run_ui.py`'s and `rename_dialog.py`'s own, driven through `winput.WinInput`
-instead of XTEST, so each behaviour has one statement on both platforms. Like them, they observe
-only public UNO: the panel's `XPanel.getDialog()` window, its tree control, the document, and its
-undo manager; Windows calls only find the office's popups and dialogs and take screenshots.
+The checks are the shared modules' own (`*_checks.py` and `rename_dialog.py`, with `workbook.py`'s
+fixture and `check_loop.py`'s loop), as `run_ui.py` runs them, driven through `winput.WinInput`
+instead of XTEST, so each behaviour has one statement on both platforms. They observe only public
+UNO: the panel's `XPanel.getDialog()` window, its tree control, the document, and its undo
+manager; Windows calls only find the office's popups and dialogs and take screenshots.
 
 Rules for changing it:
 
@@ -38,12 +39,36 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 sys.path[:0] = [str(HERE), str(ROOT / "tests" / "integration"), str(ROOT / "src")]
 
-import run_ui as ui  # noqa: E402
+from check_loop import run_named  # noqa: E402
+from drag_checks import (  # noqa: E402
+    check_autoscroll,
+    check_drag_two_sheets,
+    check_drop_in_place_and_escape,
+    check_wheel,
+)
+from focus_checks import check_keys_stay_in_list, check_shortcuts  # noqa: E402
+from lab import Lab  # noqa: E402
 from main_thread import close_document  # noqa: E402
+from menu_checks import (  # noqa: E402
+    check_context_delete_targets,
+    check_context_insert_targets_row,
+    check_context_preserves_view_and_picks,
+    check_context_rename_targets_row,
+    check_menu_keyboard,
+    check_menu_right_click,
+)
+from move_checks import check_move_controls  # noqa: E402
 from rename_dialog import check_keyboard as check_rename_keyboard  # noqa: E402
 from rename_dialog import check_mouse as check_rename_mouse  # noqa: E402
 from run import office_session, property_value  # noqa: E402
+from selection_checks import (  # noqa: E402
+    check_click_activates,
+    check_ctrl_shift_selection,
+    check_margin_drag_keeps_sidebar_docked,
+    check_viewed_sheet_name,
+)
 from winput import RIGHT, WinInput  # noqa: E402
+from workbook import NAMES, Workbook, wait_until  # noqa: E402
 
 from sheet_manager.uno_menu import HIDE  # noqa: E402
 
@@ -59,8 +84,8 @@ xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XM
 """
 
 
-class WindowsLab(ui.Lab):
-    """`run_ui.Lab` on the real desktop: SendInput, GDI screenshots, the live work area."""
+class WindowsLab(Lab):
+    """`lab.Lab` on the real desktop: SendInput, GDI screenshots, the live work area."""
 
     def __init__(self, context, desktop, directory, output, real_input):
         self.context = context
@@ -79,7 +104,7 @@ class WindowsLab(ui.Lab):
             sizes.append((size.X, size.Y, size.Width, size.Height))
             return window.IsMaximized and len(sizes) > 3 and len(set(sizes[-4:])) == 1
 
-        ui.wait_until(settled, "the maximised window to settle")
+        wait_until(settled, "the maximised window to settle")
 
     def screenshot(self, name):
         self.input.screenshot(self.output / f"{name}.png")
@@ -100,7 +125,7 @@ def check_hide_undo_after_other_document(lab, book):
     view. Here, as a user does, the first case comes back to the workbook with a real click.
     """
     sheets = book.document.getSheets()
-    picked = [ui.NAMES[2], ui.NAMES[4]]
+    picked = [NAMES[2], NAMES[4]]
     undo = book.document.getUndoManager()
     other_path = lab.directory / "other-read-only.ods"
     evidence = {}
@@ -122,23 +147,23 @@ def check_hide_undo_after_other_document(lab, book):
             time.sleep(0.5)
         book.click(2)  # A real click brings the workbook's window back.
         book.click(4, modifiers=("Control_L",))
-        ui.wait_until(lambda: book.selection() == picked, "two rows picked")
+        wait_until(lambda: book.selection() == picked, "two rows picked")
         before = book.undo_titles()
         entries = book.entries(picked)
         book.pointer.click(*book.point(4), button=RIGHT, pause=0.5)
         book.choose(HIDE, entries)
-        ui.wait_until(lambda: shown() == [False, False], "Hide Sheet to hide the picked sheets")
+        wait_until(lambda: shown() == [False, False], "Hide Sheet to hide the picked sheets")
         added = book.undo_titles()[: len(book.undo_titles()) - len(before)]
         assert len(added) == 1, book.undo_titles()
         steps = {"hidden": shown(), "undo_added": added}
         book.focus_list()
         lab.input.tap("z", ("Control_L",), pause=0.6)
-        ui.wait_until(lambda: shown() == [True, True], "Ctrl+Z to show the sheets again")
+        wait_until(lambda: shown() == [True, True], "Ctrl+Z to show the sheets again")
         steps["after_undo"] = {"shown": shown(), "redo": list(undo.getAllRedoActionTitles())}
         lab.input.tap("y", ("Control_L",), pause=0.6)
-        ui.wait_until(lambda: shown() == [False, False], "Ctrl+Y to hide them again")
+        wait_until(lambda: shown() == [False, False], "Ctrl+Y to hide them again")
         lab.input.tap("z", ("Control_L",), pause=0.6)
-        ui.wait_until(lambda: shown() == [True, True], "Ctrl+Z to show them once more")
+        wait_until(lambda: shown() == [True, True], "Ctrl+Z to show them once more")
         steps["undo_titles_after"] = book.undo_titles()
         steps["list_has_focus"] = bool(book.tree.hasFocus())
         assert steps["undo_titles_after"] == before, steps
@@ -150,43 +175,43 @@ def check_hide_undo_after_other_document(lab, book):
 def checks_for(lab, book):
     """The Windows checks, in order: #114's gaps first, so that a crash loses the least."""
     return [
-        ("click_activates", lambda: ui.check_click_activates(book)),
+        ("click_activates", lambda: check_click_activates(book)),
         (
             "margin_drag_keeps_sidebar_docked",
-            lambda: ui.check_margin_drag_keeps_sidebar_docked(book),
+            lambda: check_margin_drag_keeps_sidebar_docked(book),
         ),
-        ("ctrl_shift_selection", lambda: ui.check_ctrl_shift_selection(book)),
-        ("viewed_sheet_name", lambda: ui.check_viewed_sheet_name(book)),
-        ("keys_stay_in_list", lambda: ui.check_keys_stay_in_list(book)),
-        ("shortcuts_reach_calc", lambda: ui.check_shortcuts(book)),
-        ("move_shortcuts", lambda: ui.check_move_controls(book, True)),
-        ("menu_right_click", lambda: ui.check_menu_right_click(book)),
-        ("menu_keyboard", lambda: ui.check_menu_keyboard(book)),
-        ("context_rename_targets_row", lambda: ui.check_context_rename_targets_row(book)),
-        ("context_insert_targets_row", lambda: ui.check_context_insert_targets_row(book)),
+        ("ctrl_shift_selection", lambda: check_ctrl_shift_selection(book)),
+        ("viewed_sheet_name", lambda: check_viewed_sheet_name(book)),
+        ("keys_stay_in_list", lambda: check_keys_stay_in_list(book)),
+        ("shortcuts_reach_calc", lambda: check_shortcuts(book)),
+        ("move_shortcuts", lambda: check_move_controls(book, True)),
+        ("menu_right_click", lambda: check_menu_right_click(book)),
+        ("menu_keyboard", lambda: check_menu_keyboard(book)),
+        ("context_rename_targets_row", lambda: check_context_rename_targets_row(book)),
+        ("context_insert_targets_row", lambda: check_context_insert_targets_row(book)),
         (
             "hide_undo_after_other_document",
             lambda: check_hide_undo_after_other_document(lab, book),
         ),
         ("rename_sheets_keyboard", lambda: check_rename_keyboard(book)),
-        ("drag_two_sheets_above_midpoint", lambda: ui.check_drag_two_sheets(book, 0.25, 12)),
-        ("drag_two_sheets_below_midpoint", lambda: ui.check_drag_two_sheets(book, 0.75, 13)),
-        ("drop_in_place_and_escape", lambda: ui.check_drop_in_place_and_escape(book)),
+        ("drag_two_sheets_above_midpoint", lambda: check_drag_two_sheets(book, 0.25, 12)),
+        ("drag_two_sheets_below_midpoint", lambda: check_drag_two_sheets(book, 0.75, 13)),
+        ("drop_in_place_and_escape", lambda: check_drop_in_place_and_escape(book)),
         (
             "context_preserves_view_and_picks",
-            lambda: ui.check_context_preserves_view_and_picks(book),
+            lambda: check_context_preserves_view_and_picks(book),
         ),
-        ("context_delete_targets", lambda: ui.check_context_delete_targets(book)),
+        ("context_delete_targets", lambda: check_context_delete_targets(book)),
         ("rename_sheets_mouse", lambda: check_rename_mouse(book)),
-        ("wheel", lambda: ui.check_wheel(book)),
-        ("autoscroll", lambda: ui.check_autoscroll(book)),
+        ("wheel", lambda: check_wheel(book)),
+        ("autoscroll", lambda: check_autoscroll(book)),
     ]
 
 
 def run_checks(lab, output, only=()):
-    book = ui.Workbook(lab, "synthetic", ui.NAMES)
+    book = Workbook(lab, "synthetic", NAMES)
     lab.screenshot("panel")
-    results = ui.run_named(lab, book, output, checks_for(lab, book), only)
+    results = run_named(lab, book, output, checks_for(lab, book), only)
     book.close()
     return results
 

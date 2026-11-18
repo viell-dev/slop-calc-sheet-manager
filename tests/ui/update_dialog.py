@@ -24,6 +24,7 @@ sys.path[:0] = [str(HERE), str(HERE.parent / "integration"), str(HERE.parents[1]
 import uno  # noqa: E402
 import unohelper  # noqa: E402
 from com.sun.star.ui.dialogs import XDialogClosedListener  # noqa: E402
+from lab import Lab  # noqa: E402
 from release_data import (  # noqa: E402
     DESCRIPTION,
     IDENTIFIER,
@@ -34,7 +35,6 @@ from release_data import (  # noqa: E402
     package_metadata,
 )
 from run import assert_deck, office_session, wait_for  # noqa: E402
-from run_ui import Lab  # noqa: E402
 from xinput import RIGHT, Pointer  # noqa: E402
 
 ENABLED = uno.getConstantByName("com.sun.star.accessibility.AccessibleStateType.ENABLED")

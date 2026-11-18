@@ -3,8 +3,8 @@
 The packaged panel is driven through public UNO and robot clicks, as in `test_move_buttons`;
 Undo and Redo are `.uno:Undo` and `.uno:Redo` dispatched to the frame, as Ctrl+Z and Ctrl+Y
 run them, or `XUndoManager` calls from this process, which LibreOffice runs on a bridge thread.
-The real-input drag and Ctrl+Z of the owner's report is `tests/ui/run_ui.py`'s
-`undo_own_move` check. Every case that must not keep the picks is one in which a pick could
+The real-input drag and Ctrl+Z of the owner's report is the `undo_own_move` check in
+`tests/ui/move_checks.py`. Every case that must not keep the picks is one in which a pick could
 otherwise reach another sheet, or one the markers cannot prove: they clear conservatively and
 show the panel's notice, as before. Each undo capacity gets new workbooks: lowering it for an
 open document can make Calc abort on Undo (#37).
