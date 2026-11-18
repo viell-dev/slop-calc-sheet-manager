@@ -224,9 +224,9 @@ what follows from it:
   finished when the 60 seconds ended; `collection_finished` is true only if every step returned
   before then.
 - The receipt is rewritten as the evidence grows, and only the watch's last snapshot has
-  `watch_finished`. A receipt without it is partial, as when the runner exited first, and a write
-  that failed is in the session's `receipt_error`. The session's `office_progress_stall` is the
-  snapshot taken when the runner stopped waiting; `stall_wait_timed_out` marks a wait that ended
+  `watch_finished`. A receipt without it is partial, as when the runner exited first; a write that
+  failed is recorded as `receipt_error` in the session's `office_progress_stall`, which is the
+  snapshot taken when the runner stopped waiting. `stall_wait_timed_out` marks a wait that ended
   before the watch finished.
 
 An enclosing time limit can still end a stalled run before its stacks are saved and uploaded:
@@ -236,7 +236,7 @@ begins later than that before a job's `timeout-minutes`, or before the macOS hel
 integration command limit, may be lost at that limit. On recent runs this covers the second half
 of every Linux real-input phase and most of the Windows integration job
 ([#244](https://github.com/viell-dev/slop-calc-sheet-manager/issues/244)). The soak, below,
-gives each runner its own limit as the deadline.
+gives each runner the soak's own limit as its deadline.
 
 The painted resize check repeats the initial request if a late maximize changes its geometry;
 `resize-initial-*.json` retains requests and measurements
