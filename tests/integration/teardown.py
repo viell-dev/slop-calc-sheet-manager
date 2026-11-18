@@ -15,10 +15,11 @@ Progress and expiry are one decision under one lock (`stall_if_idle`): progress 
 prevents the stall, and a stall it records is final, so later progress cannot undo it. The stall
 is recorded as a stalled callback before any stacks are tried, so no close or restore starts
 during the capture: the shared close helpers (`main_thread.close_document`,
-`run.close_writer`) check `refuse_after_stall` first, also for the test bodies' own closes. A
-close or other call already under way when the stall is recorded, including a close
-`close_document` has already posted to the main thread on Windows, and work a test posts to the
-main thread itself, continue until the runner stops the office's launcher.
+`run.close_writer`) check `refuse_after_stall` first, also for the test bodies' own closes. On
+Windows, a close that `close_document` posted to the main thread checks again when that thread
+reaches it, so it does not start once the stall is recorded (#261). A close or other call
+already under way when the stall is recorded, and work a test posts to the main thread itself,
+continue until the runner stops the office's launcher.
 """
 
 import threading

@@ -12,6 +12,11 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   its processes are listed, and the stall receipt and a forced shutdown's results record what the
   stop saw of each. This changes the test runner, not the extension
   ([#266](https://github.com/viell-dev/slop-calc-sheet-manager/issues/266)).
+- On Windows, a test document close that was posted to LibreOffice's main thread before the
+  stall watch recorded a stall no longer starts when that thread reaches it, so it cannot change
+  the office while its stacks are being taken; the close helper then fails as after any stall.
+  This changes the test runner, not the extension
+  ([#261](https://github.com/viell-dev/slop-calc-sheet-manager/issues/261)).
 - The painted soak now removes every session directory an earlier soak left in its output before
   its first session, so that a shorter soak's artifact no longer carries an earlier, longer
   soak's sessions. It follows no symbolic link there. This changes the test runner, not the

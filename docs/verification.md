@@ -292,8 +292,9 @@ launchers, it checks that an office that outlives its stopped launcher, one that
 SIGTERM, and a fork the launcher had not yet taken over are stopped after it; that the launcher
 starts nothing between the listing and its SIGTERM; that a failed listing still stops it; and
 that the receipt and a forced shutdown record what the stop saw. A real `soffice.bin` outliving
-`oosplash` was measured in the Linux lab, not in CI (#266). A close already posted to the main
-thread on Windows before the stall still runs (#261).
+`oosplash` was measured in the Linux lab, not in CI (#266). `test_main_thread.py` checks that a
+close posted to the Windows main thread before the stall does not start once the stall is
+recorded, and fails its caller, while a close already started finishes (#261).
 The stacks of a stall that begins within about 18 minutes of a job's or the macOS helper's time
 limit may be lost there (#244). Soak sessions share one deadline with their runner and record the
 stall when the soak's own limit falls during startup or their checks; installation is not
