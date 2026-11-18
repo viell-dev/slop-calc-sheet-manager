@@ -10,6 +10,9 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   other, equally short way, for example moving the sheet beside it, and refuses the move only if
   that way needs a confused name too
   ([#125](https://github.com/viell-dev/slop-calc-sheet-manager/issues/125)).
+- Retain painted Linux integration evidence before release-sweep input tests and require the
+  painted phase to succeed before input starts
+  ([#192](https://github.com/viell-dev/slop-calc-sheet-manager/issues/192)).
 - Check the documentation's availability markers at every marked version, including when
   a newer test build appears beside an older stable release
   ([#196](https://github.com/viell-dev/slop-calc-sheet-manager/issues/196)).
