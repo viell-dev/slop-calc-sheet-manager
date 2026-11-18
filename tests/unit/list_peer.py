@@ -9,12 +9,16 @@ relies on from Calc and the tree control:
   and an insertion or a deletion moves the structure generation (`selection.py`), while a rename
   or a move does not;
 - assigning a data model shows its nodes with nothing selected; `select` in single selection
-  mode selects only that node and moves the cursor there; `addSelection` and an assistive
-  selection add a node without moving the cursor; `clearSelection` keeps the cursor;
-  `getNodeRect` refuses a node outside the installed model, as LibreOffice documents;
-- every native call can be made to fail (`Faults`), before it has any effect. The data model
-  assignment can also fail after installing its model. No native trigger is known for these
-  failures (#257); they test the list's own state, not LibreOffice's behaviour.
+  mode deselects every row and then selects that node, moving the cursor there, so a node
+  outside the installed model raises with nothing selected (`TreeControlPeer::select` in
+  26.8.2.2); `addSelection` and an assistive selection add a node without moving the cursor;
+  `clearSelection` keeps the cursor; `getNodeRect` refuses a node outside the installed model,
+  as LibreOffice documents;
+- every native call can be made to fail (`Faults`), before it has any effect. `select` can also
+  fail once it has deselected the rows ("select cleared") or selected its row ("select done"),
+  `clearSelection` and `addSelection` after their effect ("... done"), and the data model
+  assignment after installing its model. No native trigger is known for these failures (#257);
+  they test the list's own state, not LibreOffice's behaviour.
 
 Posted work runs on `run_queue`, and a failure there ends only that work and is recorded, as
 LibreOffice's callback reports it. The refresh schedule's timers run on `retry`, which advances
@@ -63,13 +67,16 @@ METHODS = (
     "_identities_kept",
     "_prove",
     "_drop_all_picks",
+    "_drop_picks",
     "_rebuild",
     "_show_native",
     "_name_viewed",
     "_select",
     "_apply_selection",
     "_show_selection",
+    "_write_outside_refresh",
     "_take_tree_selection",
+    "_settle_shown",
     "_current_picks",
     "geometry",
     "_first_visible_name",
@@ -88,6 +95,7 @@ METHODS = (
     "mouse_pressed",
     "mouse_released",
     "_pressed_sheet_in_place",
+    "follow_tabs",
 )
 
 
@@ -345,18 +353,23 @@ class Tree:
     def select(self, node: Any) -> None:
         self.faults.check("select")
         assert self.model.SelectionType == "SINGLE", "Only the cursor write selects one row"
+        self.selected = []  # Every row is deselected before the node is looked up.
+        self.faults.check("select cleared")
         own = self._own(node, "select")
         self.selected, self.cursor = [own], own
+        self.faults.check("select done")
 
     def addSelection(self, node: Any) -> None:
         self.faults.check("addSelection")
         own = self._own(node, "addSelection")
         if not any(own is item for item in self.selected):
             self.selected.append(own)
+        self.faults.check("addSelection done")
 
     def clearSelection(self) -> None:
         self.faults.check("clearSelection")
         self.selected = []
+        self.faults.check("clearSelection done")
 
     def makeNodeVisible(self, node: Any) -> None:
         self.faults.check("makeNodeVisible")
@@ -518,6 +531,7 @@ def sheet_list(book: Book, source: str = SOURCE) -> Any:
     methods, others = _parsed(source)
     namespace: dict[str, Any] = {
         "Any": Any,  # Annotations are evaluated when the methods are defined.
+        "Callable": Callable,
         "Mapping": Mapping,
         "SheetRow": SheetRow,
         "RowGeometry": RowGeometry,

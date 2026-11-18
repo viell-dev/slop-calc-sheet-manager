@@ -370,6 +370,7 @@ def test_failed_rebuild_releases_the_cursor_restoration_guard() -> None:
         ),
         tree=SimpleNamespace(getModel=lambda: SimpleNamespace()),
         names=names,
+        _selection=SimpleNamespace(picked=[]),
     )
 
     def fail_restore() -> None:
