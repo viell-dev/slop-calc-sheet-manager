@@ -720,6 +720,7 @@ def drag_list() -> tuple[Any, Any, Any, list[Any]]:
         },
     )
     bind("_drop_all_picks", {"replace": replace})
+    bind("_tell_dropped", {})
     bind("_current_picks", {"Ref": Ref})
     bind(
         "start_drag",

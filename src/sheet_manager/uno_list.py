@@ -54,13 +54,14 @@ clear of a tree that shows nothing, keeps `_shown`. A refresh that loses the ide
 while the tree shows a native selection the intake has not taken treats it the same way, with
 the clearing notice: it was made against rows whose handles no longer prove their sheets. So
 does a refresh whose new model replaced such a selection and that fails before showing it again
-in full: the picks it superseded are dropped. Rows, their handles and their proof change together
-once a new data model is shown, so a row of a refused model still maps to the handle it was read
-with; and a rebuild does not need the cached nodes, which LibreOffice rejects after a setter
-installed its model and then failed, for its scroll position. A failed `invalidate` after a
-complete write is not retried: the tree and `_shown` agree, and the next write repaints. No
-native trigger for these failures is known; LibreOffice's tree calls have failed only while the
-control was being disposed.
+in full: the picks it superseded are dropped, and a queued write clears the rows the tree still
+shows, as settling does. Rows, their handles and their proof change together once a new data
+model is shown, so a row of a refused model still maps to the handle it was read with; and a
+rebuild does not need the cached nodes, which LibreOffice rejects after a setter installed its
+model and then failed, for its scroll position. A failed `invalidate` after a complete write is
+not retried: the tree and `_shown` agree, and the next write repaints. No native trigger for
+these failures is known; LibreOffice's tree calls have failed only while the control was being
+disposed.
 
 Pointer input. A left press picks at once and keeps the pressed sheet's handle. A plain press
 on a picked row keeps the other picks, so that they can be dragged together; its release in the
@@ -107,10 +108,9 @@ only a tooltip. Native selection made without an owned handler, such as through
 that selection again (`_show_native`) under the proof, drop count and order the intake checks,
 so the intake still decides, and one that keeps the rows does not write the picks over it. A
 refresh that loses the proof clears it instead (#265, above), and one that fails before showing it
-again drops the picks it replaced (#257, above).
-The panel window lists the move buttons, the tree and the shown
-footer labels as its accessible children in creation order, which is their visual order, so
-create them in that order (#133, `uno_panel`).
+again drops the picks it replaced (#257, above). The panel window lists the move buttons, the tree
+and the shown footer labels as its accessible children in creation order, which is their visual
+order, so create them in that order (#133, `uno_panel`).
 
 Following Calc's tabs and sidebar visibility (`uno_tabs`). The tab observer samples Calc's tab
 selection, which has no reliable change notification, and the list follows a change only when no
@@ -841,8 +841,9 @@ class SheetList:
                 and (dropped or tuple(self._selection.names()) != self._shown)
             ):
                 self._apply_selection()
+            # Only a rebuild replaced it. `waiting` already implies `pending is not None`; that
+            # clause only narrows the type.
             if changed and waiting and pending is not None:
-                # Only a rebuild replaced it.
                 reshowing = True
                 self._show_native(pending)
         except BaseException:
@@ -853,8 +854,11 @@ class SheetList:
                 and (not reshowing or self._shown is None)  # and not shown again in full.
             ):
                 # The user's latest selection superseded the picks, which must not return (#257).
+                # Rows the tree may still show are cleared by a queued write, as settling does
+                # (`_settle_shown`): a toggle on one would otherwise pick a dropped pick again.
                 self._drop_picks(native=bool(pending))
                 self._shown = None
+                self._queue_selection()
             raise
 
     def _identities_kept(
@@ -896,14 +900,12 @@ class SheetList:
         `native` is a selection the user made in the tree, such as through accessibility, that
         the intake had not taken yet: it is cleared too, so the notice tells of it.
         """
-        told = (self._user_picks and bool(self._selection.picked)) or native
+        self._tell_dropped(native)
         had = self._selection.clear()
         self._user_picks = False
         self._generation += 1
         if self._press is not None:
             self._press = replace(self._press, voided=True)
-        if told:
-            self.post(self._show_cleared_notice, "telling that the selection was cleared")
         return had
 
     def _drop_picks(self, native: bool) -> None:
@@ -913,12 +915,19 @@ class SheetList:
         starts there. `native` is a selection the tree shows that the next write clears; the
         notice tells of it, as of dropped picks the user made.
         """
-        told = (self._user_picks and bool(self._selection.picked)) or native
+        self._tell_dropped(native)
         self._selection.picked = []
         self._selection.anchor = self._selection.cursor
         self._user_picks = False
         self._generation += 1
-        if told:
+
+    def _tell_dropped(self, native: bool) -> None:
+        """Show the selection notice for the picks about to be dropped, if the user sees them go.
+
+        That is when the user made them, rather than the list following Calc's tabs, or when
+        `native` is a selection the user made in the tree that goes with them.
+        """
+        if (self._user_picks and self._selection.picked) or native:
             self.post(self._show_cleared_notice, "telling that the selection was cleared")
 
     def _show_cleared_notice(self) -> None:

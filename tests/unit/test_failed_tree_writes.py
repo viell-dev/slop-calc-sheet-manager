@@ -438,7 +438,7 @@ def test_a_partly_shown_native_selection_is_not_taken() -> None:
     colour_bravo(owner)
     assert owner.faults.failed == ["addSelection"]
     owner.run_queue()
-    assert owner.tree.shown() == ["Charlie"]
+    assert owner.tree.shown() == [], "The partial Charlie is cleared with the dropped picks"
     assert move_to_top(owner) is None
     recover(owner)
     assert move_to_top(owner) is None
@@ -572,7 +572,8 @@ def test_an_assistive_pick_shown_again_in_full_before_a_failure_is_not_replaced(
     owner.tree.assistive_only("Echo")
     owner.faults.fail("addSelection done")
     colour_golf(owner)
-    assert owner.faults.failed == ["addSelection done"] and owner.tree.shown() == ["Echo"]
+    assert owner.faults.failed == ["addSelection done"]
+    assert owner.tree.shown() == [], "Echo is cleared with the dropped picks"
     assert move_to_top(owner) is None
     recover(owner)
     assert move_to_top(owner) is None
@@ -910,3 +911,95 @@ def test_an_assistive_pick_after_picks_dropped_over_an_empty_tree_is_taken() -> 
     assert picks(owner) == [] and owner._shown == ()
     owner.tree.assistive_only("Delta")
     assert move_to_top(owner) == ["Delta"]
+
+
+def bravo_superseded_by_a_failed_reshow() -> Any:
+    """Bravo picked by a click, then Foxtrot alone selected through accessibility, waiting for
+    the intake. A colour change rebuilds the rows, writes Bravo, and starts showing Foxtrot
+    again; that `clearSelection` fails, so the tree is left showing Bravo, the pick Foxtrot
+    superseded. The failed refresh drops it, with the notice, and keeps the cursor there."""
+    owner = sheet_list(Book(list(NAMES)))
+    click(owner, 1)
+    owner.tree.assistive_only("Foxtrot")
+    notices = len(owner.notices)
+    owner.faults.fail("clearSelection")
+    owner.book.sheet("Alfa").color = 0x336699
+    changed(owner)
+    owner.retry(limit=1)
+    assert owner.faults.failed == ["clearSelection"]
+    assert picks(owner) == [] and cursor(owner) == "Bravo"
+    assert len(owner.notices) == notices + 1
+    return owner
+
+
+def ctrl_click_bravo(owner: Any) -> None:
+    """A native Ctrl+click on Bravo: the tree toggles the row before the listener runs."""
+    node = owner.tree.node("Bravo")
+    if node in owner.tree.selected:
+        owner.tree.selected = [item for item in owner.tree.selected if item is not node]
+    else:
+        owner.tree.selected = [*owner.tree.selected, node]
+    owner.tree.cursor = node
+    press(owner, 1, modifiers=MOD1)
+    owner.run_queue()
+    release(owner, 1)
+    owner.run_queue()
+
+
+def ctrl_space(owner: Any) -> None:
+    key(owner, SPACE, MOD1)
+
+
+@pytest.mark.parametrize(
+    "toggle",
+    [pytest.param(ctrl_click_bravo, id="Ctrl+click"), pytest.param(ctrl_space, id="Ctrl+Space")],
+)
+def test_rows_left_selected_by_a_failed_refresh_are_cleared_before_a_toggle(
+    toggle: Callable[[Any], None],
+) -> None:
+    """Review round two, finding 1: the failed refresh dropped Bravo, but the tree kept showing
+    it until the next intake. A Ctrl+click on Bravo, or Ctrl+Space with the cursor there, meant
+    to deselect it, picked it instead, and Move to Top moved it, where `main` refuses. The
+    failed refresh now queues the write that clears the tree, as settling does, so the toggle
+    inverts what the tree showed: here it selects Bravo on a tree that showed nothing."""
+    owner = bravo_superseded_by_a_failed_reshow()
+    shown = owner.tree.shown()
+    toggle(owner)
+    toggled = picks(owner)
+    assert owner.tree.shown() == toggled
+    assert ("Bravo" in toggled) != ("Bravo" in shown), f"The toggle kept {shown} as it was"
+    assert move_to_top(owner) == (toggled or None)
+    assert shown == [], "Bravo, the pick Foxtrot superseded, stayed selected"
+
+
+def test_a_refused_model_leaves_a_waiting_assistive_selection_to_the_intake() -> None:
+    """Review round two, finding 3: Alfa picked, then Echo selected through accessibility,
+    waiting for the intake, and a colour change's new data model is refused. The old model
+    still shows Echo, so the failed refresh drops nothing and clears nothing, and the intake
+    takes Echo, as on `main`. Only a refresh whose new model is shown has replaced it."""
+    owner = sheet_list(Book(list(NAMES)))
+    click(owner, 0)
+    owner.tree.assistive_only("Echo")
+    notices = len(owner.notices)
+    owner.faults.fail("DataModel")
+    colour_golf(owner)
+    assert owner.faults.failed == ["DataModel"] and owner.tree.shown() == ["Echo"]
+    assert move_to_top(owner) == ["Echo"]
+    assert len(owner.notices) == notices
+
+
+def test_a_failed_rebuild_after_a_lost_proof_tells_the_clearing_once() -> None:
+    """Charlie, selected through accessibility and waiting for the intake, is replaced while
+    Golf's colour changes: the lost proof clears that selection with the notice, and the
+    rebuild then fails after showing its new model. Its failure path drops nothing more, so
+    the notice is not shown a second time."""
+    owner = sheet_list(Book(list(NAMES)))
+    owner.tree.assistive_only("Charlie")
+    owner.book.replace("Charlie")
+    notices = len(owner.notices)
+    owner.faults.fail("makeNodeVisible")
+    colour_golf(owner)
+    assert owner.faults.failed == ["makeNodeVisible"]
+    assert len(owner.notices) == notices + 1
+    recover(owner)
+    assert owner.tree.shown() == [] and move_to_top(owner) is None

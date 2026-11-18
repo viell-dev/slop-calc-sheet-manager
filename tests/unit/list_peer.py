@@ -68,6 +68,7 @@ METHODS = (
     "_prove",
     "_drop_all_picks",
     "_drop_picks",
+    "_tell_dropped",
     "_rebuild",
     "_show_native",
     "_name_viewed",
