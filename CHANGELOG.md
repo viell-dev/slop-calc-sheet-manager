@@ -8,6 +8,9 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 - Organise contributor testing guidance by task and platform, with dedicated Development pages
   for native LibreOffice testing and hosted workflows
   ([#198](https://github.com/viell-dev/slop-calc-sheet-manager/issues/198)).
+- Check the documentation's availability markers at every marked version, including when
+  a newer test build appears beside an older stable release
+  ([#196](https://github.com/viell-dev/slop-calc-sheet-manager/issues/196)).
 - Plan moves that reorder many sheets faster: planning the reversal of 10,000 sheets takes under
   a second instead of three to seven on a loaded laptop, with the same moves. The planning
   budget test now measures CPU time and reports it with the elapsed time

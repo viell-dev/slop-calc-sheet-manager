@@ -69,9 +69,10 @@ Follow the [documentation setup and checks](https://github.com/viell-dev/slop-ca
 for Node selection, development, builds and synthetic-history verification. VitePress 2 is still a
 prerelease; `package.json` pins the exact version and CI builds every pull request with it.
 
-The required Documentation job uses synthetic histories to check preparation with old releases,
-publication, and an older stable release alongside a newer test build. The helper builds in the
-operating system's temporary directory and leaves publication state alone.
+The required Documentation job uses synthetic histories to check the guide before and after
+publication of the source version, including an older stable release alongside a newer test
+build. A small fixture site renders the actual marker component at every numeric version found
+in the guide and at the source version. The check uses disposable fixtures and output.
 
 If Windows security policy blocks VitePress's native module, build in a container. Run this
 from the repository root in PowerShell 7 and find the site in `test-results/docs/`.
@@ -84,9 +85,15 @@ docker run --rm --env "SHEET_MANAGER_DOCS_COMMIT=$(git rev-parse HEAD)" `
   bash -c 'cp -r /src /build && cd /build && rm -rf node_modules && npm ci && npm run docs:build && cp -r docs/.vitepress/dist/. /out/'
 ```
 
-Update the user guide in the same pull request as a user-visible change. Place its
-[availability marker](#which-version-it-describes) inline in the paragraph that describes the
-behaviour. Development procedures describe the current repository.
+Update the user guide in the same pull request as a user-visible change. Put the
+[availability marker](#which-version-it-describes) after introductory text on the same line
+(for example, `Move buttons: <Unreleased /> ...`). Markdown can render a line that starts with
+the marker as a separate HTML block. Development procedures describe the current repository.
+
+New marker versions automatically enter the component check. To check a marker beside a
+particular instruction, add a distinctive excerpt to `FIRST_PUBLISHED` in
+`tools/check_release_page.py` when assigning the capability's first published version. Update
+that excerpt when rewriting the instruction.
 
 List every guide page in the sidebar in `docs/.vitepress/config.mts`. The consistency tests in
 `tests/unit/test_consistency.py` check the sidebar and facts shared across the README, guide,

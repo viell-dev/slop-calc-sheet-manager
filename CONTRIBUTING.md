@@ -60,8 +60,8 @@ python tools/check_release_page.py
 ```
 
 Use `npm run docs:dev` for live editing. The build checks links between pages. The Python helper
-builds empty and synthetic release histories to verify the channels, version order, rendered
-OXT/checksum links, and markers for unpublished behaviour.
+builds synthetic release histories to verify channels, version order, rendered OXT/checksum
+links, and guide availability markers.
 
 If Windows blocks VitePress's native module, use the
 [documentation container build](docs/development/index.md#building-the-guide).
