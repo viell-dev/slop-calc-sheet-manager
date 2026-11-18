@@ -449,7 +449,9 @@ class SheetList:
     else runs on LibreOffice's main thread, and posted work re-checks what it relies on. The
     modify listener reaches the refresh schedule on the notifying thread (`document_modified`,
     `RefreshSchedule.changed`), and toolkit listeners reach the tab observer only through
-    `TabObserver.note_input`.
+    `TabObserver.note_input`. One exception remains, as on `main`: a drag begun on stale rows
+    refreshes inside the gesture listener (`start_drag`), and that refresh's
+    `TabObserver.refreshed` samples Calc's tabs before the listener returns (#264).
 
     Collaborators, each owning its own state: `_refreshes` decides when to refresh
     (`refresh_schedule`), `_tabs` follows Calc's tabs and the sidebar (`uno_tabs`, for which this
@@ -480,9 +482,11 @@ class SheetList:
     - Tab observation (`observation_paused`) waits while `_busy` (a move or rename runs),
       `_pointer_depth`, `_restoring_cursor`, `_press`, `_drag`, the menu's popup or
       `_menu_context` holds; the observer adds the document's locks and an own replay's view. A
-      pending tree write alone does not pause it: the owned input behind that write raised
-      `_input` and posted an acknowledgement, which keep a sample from following Calc state
-      older than that input.
+      pending tree write alone does not pause it. Stamped input (input that raised `_input` and
+      posted an acknowledgement through `TabObserver.note_input`) keeps a sample from following
+      Calc state older than that input; a write queued without it, such as one after a mouse
+      release with no retained press, has no such protection, so a changed tab selection can be
+      followed while that write is pending.
     - `_activating` (the list's own `setActiveSheet`) makes Calc's report of that switch the
       list's own, so it is not followed. `_busy` also defers timed refreshes and refuses moves
       and drags.
