@@ -269,7 +269,7 @@ a stand-in office and checks the timing, the exit status and `results.json`, inc
 during the gdb wrapper's restart and document closes refused after a stall;
 `test_office_process.py` checks the receipt's single writer, held receipt writes, late results,
 failed process listings, collector deadlines and a launcher whose ID may have been reused. A close
-already posted to the main thread on Windows before the stall still runs. The stacks of a stall
+already posted to the main thread on Windows before the stall still runs (#261). The stacks of a stall
 that begins within about 18 minutes of a job's or the macOS helper's time limit may be lost there
 (#244). Soak sessions share one deadline with their runner and record the stall when the soak's
 own limit falls during startup or their checks; `test_soak.py` runs the real runner with a slow

@@ -188,8 +188,9 @@ count as progress; each session records its `longest_progress_interval_seconds`.
 records the stall, as a stalled callback and in a `stall-*.json` receipt, so no close through the
 shared close helpers, settings restore or terminate request starts afterwards. The test's other
 calls, and any already under way, continue until the office stops: among them a close that the
-shared helper had already posted to the main thread on Windows, and an Escape tap of the update
-dialog's cleanup, which checks for a stall before each tap. The runner then saves the client's
+shared helper had already posted to the main thread on Windows
+([#261](https://github.com/viell-dev/slop-calc-sheet-manager/issues/261)), and an Escape tap of
+the update dialog's cleanup, which checks for a stall before each tap. The runner then saves the client's
 Python stacks and the office's native stacks as `stall-*` files for up to 60 seconds; a step or
 result that arrives later is not recorded. It starts stopping the office when they are saved or
 when the 60 seconds end, even if the test client, a debugger or a receipt write is still blocked,
