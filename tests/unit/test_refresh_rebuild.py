@@ -1,15 +1,16 @@
 """A refresh keeps the tree's nodes only for identical rows or a painted-only change (#22)."""
 
-from collections.abc import Mapping
-from dataclasses import replace
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, replace
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import Mock
 
 import pytest
 
+from sheet_manager.selection import Ref
 from sheet_manager.sheet_list import SheetRow, node_text, row_label
-from tests.unit.list_peer import Book, sheet_list
+from tests.unit.list_peer import Book, Handle, sheet_list
 from tests.unit.source_methods import method
 
 NAMES = ("Alfa", "Bravo", "Charlie")
@@ -19,7 +20,7 @@ SWITCH = [replace(SHOWN[0], active=False), replace(SHOWN[1], active=True), SHOWN
 COLOURS = [replace(SHOWN[0], color=0x993322), SHOWN[1], replace(SHOWN[2], color=None)]
 
 
-def refresh(
+def prepare(
     fresh: list[SheetRow],
     *,
     shown: list[SheetRow] = SHOWN,
@@ -28,8 +29,8 @@ def refresh(
     dropped: bool = False,
     picked: tuple[str, ...] = ("Bravo",),
     apply: Any = None,
-) -> Any:
-    """Run `SheetList._refresh` over sheets showing `shown` whose rows now read as `fresh`.
+) -> tuple[Any, Callable[[], None]]:
+    """A list over sheets showing `shown` whose rows now read as `fresh`, and its `_refresh`.
 
     The tree shows `Bravo` picked; the list's own picks are `picked`. `proven` is whether the
     handles still prove which sheet each row is, and `dropped` whether revalidating the picks,
@@ -46,6 +47,7 @@ def refresh(
         _proven=0,
         _generation=0,
         _nodes=[object()] * len(shown) if nodes else [],
+        _replacement_pending=False,
         rows=list(shown),
         _shown=("Bravo",),
         _view_generation=0,
@@ -89,12 +91,19 @@ def refresh(
     def read_rows(controller: Any, picture: Any) -> list[SheetRow]:
         return fresh
 
-    method(
+    run = method(
         "src/sheet_manager/uno_list.py",
         "SheetList",
         "_refresh",
         {"snapshot": snapshot, "read_rows": read_rows, "Mapping": Mapping, "node_text": node_text},
-    )(owner, {})
+    )
+    return owner, lambda: run(owner, {})
+
+
+def refresh(fresh: list[SheetRow], **arguments: Any) -> Any:
+    """Run `SheetList._refresh` as `prepare` sets it up; the list afterwards."""
+    owner, run = prepare(fresh, **arguments)
+    run()
     return owner
 
 
@@ -165,19 +174,29 @@ def test_a_lost_proof_with_painted_changes_replaces_the_nodes() -> None:
     owner.peer.invalidate.assert_not_called()
 
 
-@pytest.mark.parametrize("proven", [True, False])
-def test_a_failed_write_to_the_kept_nodes_replaces_them(proven: bool) -> None:
-    def fail() -> None:
-        raise RuntimeError("the tree refused the write")
+def refuse_the_write() -> None:
+    raise RuntimeError("the tree refused the write")
 
+
+def test_a_failed_write_to_the_kept_nodes_after_a_lost_proof_replaces_them() -> None:
     fresh = list(SHOWN)
-    owner = refresh(fresh, proven=proven, picked=("Bravo", "Charlie"), apply=fail)
+    owner = refresh(fresh, proven=False, apply=refuse_the_write)
     owner._rebuild.assert_called_once_with(fresh)
     assert owner.reports == ["writing the selection to the sheet list"]
 
 
+def test_a_failed_write_to_the_kept_nodes_with_the_proof_intact_is_left_to_the_retry() -> None:
+    owner, run = prepare(list(SHOWN), picked=("Bravo", "Charlie"), apply=refuse_the_write)
+    with pytest.raises(RuntimeError, match="refused the write"):
+        run()  # `refresh` schedules the retry (#186).
+    owner._rebuild.assert_not_called()
+    assert owner.reports == []
+
+
 @pytest.mark.parametrize(
-    ("dropped", "picked"), [(True, ()), (False, ("Bravo", "Charlie"))], ids=["dropped", "newer"]
+    ("dropped", "picked"),
+    [(True, ()), (True, ("Bravo",)), (False, ("Bravo", "Charlie"))],
+    ids=["dropped", "cursor dropped", "newer"],
 )
 def test_changed_picks_with_painted_changes_replace_the_nodes(
     dropped: bool, picked: tuple[str, ...]
@@ -188,7 +207,9 @@ def test_changed_picks_with_painted_changes_replace_the_nodes(
 
 
 @pytest.mark.parametrize(
-    ("dropped", "picked"), [(True, ()), (False, ("Bravo", "Charlie"))], ids=["dropped", "newer"]
+    ("dropped", "picked"),
+    [(True, ()), (True, ("Bravo",)), (False, ("Bravo", "Charlie"))],
+    ids=["dropped", "cursor dropped", "newer"],
 )
 def test_changed_picks_over_identical_rows_are_written_to_the_kept_nodes(
     dropped: bool, picked: tuple[str, ...]
@@ -239,3 +260,83 @@ def test_a_replaced_pick_whose_row_reads_the_same_is_dropped_from_the_tree(failu
     assert (owner._nodes is nodes) == (not failures)
     assert owner.tree.shown() == owner._selection.names() == []
     assert owner.rows == book.rows()
+
+
+def test_picks_reordered_by_others_keep_the_nodes_for_painted_changes() -> None:
+    book = Book([*NAMES, "Delta"])
+    owner = sheet_list(book)
+    owner._select(["Bravo", "Charlie"], "Delta")
+    book.move("Charlie", 1)  # Others move Charlie ahead of Bravo; both stay picked.
+    owner._refresh({})
+    # The tree shows the picks in the rows' order; the list keeps the order they were made in.
+    assert owner._shown == ("Charlie", "Bravo")
+    assert owner._selection.names() == ["Bravo", "Charlie"]
+    for colour in (0x993322, 0x2A6099, None):
+        nodes, painted = owner._nodes, owner.peer.invalidations
+        book.sheet("Alfa").color = colour
+        owner._refresh({})
+        assert owner._nodes is nodes, "The same picks in another order replaced the nodes"
+        assert owner.peer.invalidations == painted + 1
+        assert owner.rows == book.rows()
+    assert owner.tree.shown() == ["Charlie", "Bravo"]
+
+
+def test_a_completed_write_whose_repaint_failed_leaves_only_the_picks_to_take() -> None:
+    book = Book([*NAMES, "Delta"])
+    owner = sheet_list(book)
+    owner._select(["Bravo", "Charlie"], "Delta")  # The keyboard cursor is on an unpicked row.
+    bravo, charlie = owner._selection.picked
+    # Charlie's retained handle cannot be read for a moment, while the snapshot's own handles
+    # prove every sheet: its pick drops with the proof intact, over rows that read the same.
+    stale = Handle(book.sheet("Charlie"))
+    stale.readable = False
+    owner._selection.picked = [bravo, Ref("Charlie", stale, charlie.position)]
+    invalidate = owner.peer.invalidate
+
+    def refuse_then_fail_a_clear(flags: int) -> None:
+        # The write has selected Bravo alone when the repaint fails, and the next clear fails.
+        owner.peer.invalidate = invalidate
+        owner.tree.failures = 1
+        raise RuntimeError("the peer refused to invalidate")
+
+    owner.peer.invalidate = refuse_then_fail_a_clear
+    with pytest.raises(RuntimeError):
+        owner._refresh({})
+    assert owner._proven == book.generation and owner._generation == 0
+    owner.tree.failures = 0  # The tree is healthy again for the retry (#186).
+    owner._refresh({})
+    owner.run_queue()
+    assert [ref.name for ref in owner._current_picks()] == ["Bravo"], "An unpicked row was taken"
+    assert owner.tree.shown() == ["Bravo"]
+
+
+@dataclass
+class HeldPress:
+    """A press on a row whose release is still to come."""
+
+    voided: bool = False
+
+
+@pytest.mark.parametrize("held", [True, False], ids=["held press", "no press"])
+@pytest.mark.parametrize("shown", [False, True], ids=["old nodes shown", "new nodes shown"])
+def test_a_failed_replacement_stays_owed_until_one_installs(shown: bool, held: bool) -> None:
+    book = Book([*NAMES, "Delta"])
+    owner = sheet_list(book)
+    if held:
+        owner._press = HeldPress()
+    owner.tree.assistive_select("Bravo")  # Awaiting intake, as through accessibility.
+    book.replace("Bravo")  # The proof is lost, and a tab colour makes the rows differ: the
+    book.sheet("Alfa").color = 0x993322  # nodes are replaced, which fails once.
+    owner.tree.model.failures, owner.tree.model.shown_before_failing = 1, shown
+    with pytest.raises(RuntimeError, match="data model"):
+        owner._refresh({})
+    # The retry (#186) finds only painted state changed since the failed refresh's proof, yet
+    # the nodes it would keep belong to the old model, or to none.
+    owner._refresh({})
+    owner.run_queue()
+    assert owner.tree.data is not None
+    assert owner.tree.data.root.children == owner._nodes, "The retry kept the old nodes"
+    assert owner.rows == book.rows()
+    assert owner.tree.shown() == []
+    owner._press = None  # A drag or the release ends the press, then reads the picks.
+    assert owner._current_picks() == [], "A selection made against the old model was taken"

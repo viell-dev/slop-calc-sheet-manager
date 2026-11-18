@@ -103,6 +103,7 @@ def refresher(change: str) -> Any:
         _proven=0,
         _generation=0,
         _nodes=[object()],
+        _replacement_pending=False,
         rows=[SheetRow(name) for name in NAMES],
         _shown=("Alfa",),
         _view_generation=0,

@@ -5,13 +5,14 @@ without LibreOffice, together with the real `Selection`. The simulated workbook 
 what the list relies on from Calc and from the tree control for these calls:
 
 - a deleted sheet's handle turns to the previous sheet (the next one at index 0), and every
-  insertion or deletion moves the structure generation (`selection.py`), while a rename does
-  not, and a handle can fail to read;
+  insertion or deletion moves the structure generation (`selection.py`), while a rename or a
+  recorded move does not, and a handle can fail to read;
 - assigning a data model shows its nodes with nothing selected, `select` in single selection
   mode selects only that node and moves the cursor to it, `addSelection` and an assistive
   selection add a node without moving the cursor, and `clearSelection` keeps the cursor;
-- `clearSelection` and `invalidate` can be made to fail, as a peer call can during a refresh
-  (#186); `reports` records what the list logged.
+- `clearSelection`, `invalidate` and the data model assignment can be made to fail, as a peer
+  call can during a refresh (#186), and the assignment can fail before or after showing its
+  nodes; `reports` records what the list logged.
 
 It models those calls and is not evidence of LibreOffice's behaviour: the native checks are in
 `tests/integration` and `tests/ui`.
@@ -86,6 +87,12 @@ class Book:
         """Rename the sheet: its handles follow it, and the generation stays."""
         self.sheet(name).name = new
 
+    def move(self, name: str, index: int) -> None:
+        """Move the sheet to `index`, as others can: its handles follow, the generation stays."""
+        sheet = self.sheet(name)
+        self.sheets.remove(sheet)
+        self.sheets.insert(index, sheet)
+
     def replace(self, name: str) -> None:
         """Delete the sheet and insert a different one under its name at the same place."""
         index = self.sheets.index(self.sheet(name))
@@ -140,6 +147,8 @@ class ControlModel:
     def __init__(self, tree: "Tree"):
         self._tree = tree
         self.SelectionType = "MULTI"
+        self.failures = 0  # How many of the next `DataModel` assignments fail,
+        self.shown_before_failing = False  # and whether each shows the new nodes before it does.
 
     @property
     def DataModel(self) -> "NodeModel | None":
@@ -147,8 +156,14 @@ class ControlModel:
 
     @DataModel.setter
     def DataModel(self, data: "NodeModel") -> None:
-        self._tree.data = data
-        self._tree.selected, self._tree.cursor = [], None
+        failing = self.failures > 0
+        if failing:
+            self.failures -= 1
+        if not failing or self.shown_before_failing:
+            self._tree.data = data
+            self._tree.selected, self._tree.cursor = [], None
+        if failing:
+            raise RuntimeError("the tree refused its new data model")
 
 
 class Tree:
@@ -268,6 +283,7 @@ def sheet_list(book: Book) -> Any:
         _observed=None,
         _handles={},
         _nodes=[],
+        _replacement_pending=False,
         rows=[],
         _shown=(),
         _selection=Selection(function(SOURCE, "_current", {"Ref": Ref})),

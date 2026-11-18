@@ -178,6 +178,7 @@ def test_refresh_seeds_the_new_proof_before_a_subsequent_tab_change(kept: bool) 
     observed = SimpleNamespace(sheets=(), handles=())
     rows = [object()]
     owner._observed, owner.rows, owner._nodes = observed, rows, [object()]
+    owner._replacement_pending = False
     owner._monitor.generation = 1
     owner._monitor.check = lambda: 1
     owner._identities_kept = Mock(return_value=kept)

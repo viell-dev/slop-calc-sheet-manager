@@ -26,11 +26,14 @@ it, while a `DataValue` change alone does not (measured with 26.2.1.2 and 26.8.2
 refresh builds a new data model and restores the selection, scroll position, and keyboard
 cursor, with two exceptions. Rows that read exactly the same keep the nodes, and changed picks
 are written to them, as are the remaining picks after any loss of the identity proof; if that
-write fails, the nodes are replaced instead. Rows that differ only in painted state, the
-current-sheet arrow or a tab colour, keep the nodes and repaint, but only while the identity
-proof holds and the picks are unchanged: replacing 1,000 nodes was most of such a refresh's
-cost. Their rows are taken after the repaint is requested, so that a failed request leaves the
-difference to the retry. Every other change replaces the nodes. `uno_rows` paints the rows.
+write fails after a lost proof, the nodes are replaced instead. Rows that differ only in painted
+state, the current-sheet arrow or a tab colour, keep the nodes and repaint, but only while the
+identity proof holds and the same sheets stay picked: replacing 1,000 nodes was most of such a
+refresh's cost. Their rows are taken after the repaint is requested, so that a failed request
+leaves the difference to the retry. Every other change replaces the nodes, and a replacement
+that fails stays owed until one installs its model: until then the tree may show the old model,
+whose selection was made against the proof the failed refresh replaced, so a refresh neither
+keeps those nodes nor takes that selection for the queued intake. `uno_rows` paints the rows.
 
 Colours (#141). `uno_theme` reads Calc's resolved document background and applies a readable
 palette to the tree's native labels and row decorations. The existing visible-view sampler
@@ -90,7 +93,8 @@ description, state or relation setter, toolkit has no `AccessibleDescription`, a
 only a tooltip. Native selection made without an owned handler, such as through
 `XAccessibleSelection`, waits for the queued intake. A refresh that keeps the tree leaves it in
 place; one that rebuilds the rows first shows it again (`_show_native`) under the proof, drop
-count and order the intake checks, so the intake still decides. A refresh that loses the identity
+count and order the intake checks, so the intake still decides, except in a retry of a failed
+replacement, which drops it with the old model. A refresh that loses the identity
 proof writes the list's picks even when none dropped, or replaces the nodes, and either clears
 that selection: it was made against the sheets that proof covered, and a kept tree would offer
 it to the next intake under a replacement's handle (#22).
@@ -527,6 +531,9 @@ class SheetList:
         self._observed: Snapshot | None = None
         self._handles: dict[str, Any] = {}
         self._nodes: list[object] = []
+        # Whether a replacement of the nodes has begun and not installed its model (`_rebuild`):
+        # until one does, the tree can still show the model it was replacing.
+        self._replacement_pending = False
         # The list's own picks and keyboard cursor, as sheet identities (selection.py).
         # `_shown` is the selection last written to the tree or adopted from accessibility.
         # Owned pointer and keyboard gestures share a retained range anchor.
@@ -759,9 +766,13 @@ class SheetList:
         """
         # Let queued owned input run first. A native selection still waiting for that intake,
         # such as one made through accessibility, is shown again after a rebuild (`_show_native`).
+        # Not after a failed replacement: the tree's selection was made against the old model,
+        # whose proof the failed refresh had already replaced with its own (#22).
         pending = (
             tuple(self.selected_names())
-            if self._press is None and self._take_tree_selection(defer=True)
+            if self._press is None
+            and not self._replacement_pending
+            and self._take_tree_selection(defer=True)
             else None
         )
         order, drops, proof = tuple(self.names()), self._generation, self._proven
@@ -776,14 +787,20 @@ class SheetList:
         self._handles = dict(
             zip((sheet.name for sheet in observed.sheets), observed.handles, strict=True)
         )
-        picks = dropped or tuple(self._selection.names()) != self._shown
-        if self._nodes and rows == self.rows:
-            if picks or not proven:
-                # After a lost proof, also when no pick dropped: a native selection the list
-                # does not own, such as one awaiting the queued intake, was made against the
-                # sheets that proof covered, and writing the picks clears it (#22).
+        # The same sheets, in any order: `_shown` follows the rows, while the picks keep the
+        # order they were made in when others move the sheets.
+        picks = dropped or set(self._selection.names()) != set(self._shown)
+        # A failed replacement stays owed until one installs, whatever the rows read now.
+        kept = bool(self._nodes) and not self._replacement_pending
+        if kept and rows == self.rows:
+            if not proven:
+                # Also when no pick dropped: a native selection the list does not own, such as
+                # one awaiting the queued intake, was made against the sheets that proof
+                # covered, and writing the picks clears it (#22).
                 self._apply_kept_selection(rows)
-        elif self._nodes and proven and not picks and node_text(rows) == node_text(self.rows):
+            elif picks:
+                self._apply_selection()
+        elif kept and proven and not picks and node_text(rows) == node_text(self.rows):
             # Only painted state changed, the current sheet or a tab colour, which no node
             # holds: keep the nodes, whose replacement costs the whole tree (#22). The paint
             # runs after this refresh and reads the rows, which are taken only once it has been
@@ -876,8 +893,10 @@ class SheetList:
         changing one node's text re-parents all rows under a newly shown root. So the list
         never changes nodes in place; it builds a new model and restores the selection, the
         scroll position, and keyboard cursor. The range anchor belongs to the selection model
-        and survives while its sheet identity remains valid.
+        and survives while its sheet identity remains valid. Until the new model is installed,
+        the replacement stays pending, so that a retry after a failure replaces the nodes too.
         """
+        self._replacement_pending = True
         top = self._first_visible_name()
         model = self.context.ServiceManager.createInstanceWithContext(
             "com.sun.star.awt.tree.MutableTreeDataModel", self.context
@@ -896,6 +915,7 @@ class SheetList:
             # Replacing the model focuses intermediate rows before the old cursor comes back.
             self.tree.getModel().DataModel = model
             self._nodes, self.rows = nodes, rows
+            self._replacement_pending = False
             self._shown = ()
             names = self.names()
             if top in names and nodes:
@@ -907,10 +927,14 @@ class SheetList:
             self._restoring_cursor = restoring
 
     def _apply_kept_selection(self, rows: list[SheetRow]) -> None:
-        """Write the picks to the kept nodes; if that fails, replace the nodes instead.
+        """After a lost proof, write the picks to the kept nodes; if that fails, replace them.
 
-        A write cut short can leave part of it in the tree, or a selection made against a lost
-        proof, and the queued intake would take either as the user's. New nodes show neither.
+        A write cut short can leave a selection made against the lost proof, and the queued
+        intake would take it as the user's; new nodes show none. The loss dropped every pick and
+        the cursor, so the new nodes' own write only clears them. With the proof intact, a
+        refresh writes in place and leaves a failure to its retry (#186): replacing the nodes
+        would first select an unpicked cursor's row, which a second failure would leave for the
+        intake (#257).
         """
         try:
             self._apply_selection()
