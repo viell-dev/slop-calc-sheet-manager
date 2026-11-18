@@ -272,7 +272,8 @@ forced shutdowns, fatal messages, crash dumps, stalled main-thread callbacks, he
 requests or releases left running.
 A session without progress for 15 minutes from its launch fails without a retry: the stall is
 recorded before its client and office stacks are tried. The stop of the launcher the runner
-started, with its whole process tree on Windows, starts when the capture ends, 60 seconds after
+started, with its whole process tree on Windows and on Linux each process held beneath it that
+outlives it (#266), starts when the capture ends, 60 seconds after
 detection at the latest, even when the client, a debugger and a receipt write are all blocked;
 `stop_process`'s own limits then bound the stop, about 60 seconds more. A capture step or result
 after those 60 seconds is not recorded (#45). The receipt records only what the watch did and
@@ -290,9 +291,18 @@ writer, held receipt writes, late results, failed process listings, collector de
 launcher whose ID may have been reused or whose identity was never taken, with an empty listing
 too, and what the receipt says of an interrupt and the wrapper's exit. The watch waits for the
 gdb wrapper because the stack collector reports that it sent the interrupt, not because of the
-receipt's wording; a test rewords it both ways (#267). `test_main_thread.py` checks that a close
-posted to the Windows main thread before the stall does not start once the stall is recorded, and
-fails its caller, while a close already started finishes (#261).
+receipt's wording; a test rewords it both ways (#267). On Linux, with stand-in launchers, it
+checks that an office that outlives its stopped launcher, one that ignores SIGTERM, and a fork
+the launcher had not yet taken over are stopped after it; that the launcher starts nothing
+between the listing and its SIGTERM, including a fork under way on another of its threads when it
+is paused; that a failed listing or a failed stop still resumes and stops it, and a failed stop
+keeps what it saw; that a listed process whose start time changed is not held or signalled, nor
+anything in a listing taken while the launcher was reaped; that a launcher ID that no longer
+names the runner's child is never paused; that pidfds numbered past 1024 work; and that the
+receipt and a forced shutdown record what the stop saw. A real `soffice.bin` outliving `oosplash`
+was measured in the Linux lab, not in CI (#266). `test_main_thread.py` checks that a close posted
+to the Windows main thread before the stall does not start once the stall is recorded, and fails
+its caller, while a close already started finishes (#261).
 Each CI job that runs an office leaves about 18 minutes after its slowest measured healthy run
 for a stall's capture and upload, and the macOS integration runner ends at a deadline 3 minutes
 before its command's limit, so a stall anywhere in a run of measured length keeps its stacks.
