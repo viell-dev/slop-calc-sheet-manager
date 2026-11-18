@@ -257,6 +257,8 @@ area includes, where the dialog reports nothing; from the Windows frame, each ca
 about a minute (#253).
 Sessions fail on nonzero exits, forced
 shutdowns, fatal messages, crash dumps, stalled main-thread callbacks or held terminate requests.
+`test_install_timing.py` checks that each package installation's elapsed time is recorded and
+that one exceeding its limit still fails, with that time and unopkg's output kept (#235).
 Windows crash dumps matter even when the office exits with status zero. Only startup is retried;
 its dumps are retained separately. Debugger runs also reject signals, incomplete exits and missing
 traces. The Xvfb helper disables key repeat; `single_tap_after_client_pause` verifies one cursor
