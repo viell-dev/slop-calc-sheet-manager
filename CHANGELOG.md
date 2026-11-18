@@ -8,6 +8,13 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 - Retain painted Linux integration evidence before release-sweep input tests and require the
   painted phase to succeed before input starts
   ([#192](https://github.com/viell-dev/slop-calc-sheet-manager/issues/192)).
+- Check the documentation's availability markers at every marked version, including when
+  a newer test build appears beside an older stable release
+  ([#196](https://github.com/viell-dev/slop-calc-sheet-manager/issues/196)).
+- Plan moves that reorder many sheets faster: planning the reversal of 10,000 sheets takes under
+  a second instead of three to seven on a loaded laptop, with the same moves. The planning
+  budget test now measures CPU time and reports it with the elapsed time
+  ([#214](https://github.com/viell-dev/slop-calc-sheet-manager/issues/214)).
 - Add contributor references for LibreOffice packaging, sidebar design and interface checks
   ([#201](https://github.com/viell-dev/slop-calc-sheet-manager/issues/201)).
 - Keep verified package SHA-256 digests in deployed release history, so a replaced OXT and
@@ -44,6 +51,13 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 - Keep a failed real-input check's record when its screenshot, desktop evidence or input
   clean-up also fails: the record is written first, and each later step's error is kept beside
   it ([#190](https://github.com/viell-dev/slop-calc-sheet-manager/issues/190)).
+- Split the real-input test runner into a shared workbook fixture, the Xvfb lab, the check loop
+  and check modules by subject, so that the Windows and update-dialog runners no longer import
+  the Linux runner; the checks, their order and their evidence are unchanged
+  ([#195](https://github.com/viell-dev/slop-calc-sheet-manager/issues/195)).
+- Wait for the sheet list's own report of the lab's pointer calibration move instead of a fixed
+  0.2 seconds. A late report had shifted a workbook's calibrated origin by two pixels and failed
+  the painted-row check ([#209](https://github.com/viell-dev/slop-calc-sheet-manager/issues/209)).
 
 - Put installation and a worked example first in the README, and align the guide's Hide
   summary and security policy with published behaviour

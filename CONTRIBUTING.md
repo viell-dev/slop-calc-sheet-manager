@@ -235,6 +235,8 @@ A real-input regression pauses for one second with Down pressed and still expect
 step. These tests exercise explicit key events, not the operating system's timed repeat behavior.
 
 Inside the container, `tests/ui/run_ui.py --check NAME` (repeatable) selects checks.
+`run_ui.py` lists the checks in order; they live in `tests/ui/*_checks.py` by subject, with the
+shared workbook fixture and its rules in `workbook.py`.
 Results and screenshots are in `test-results/<lane>/ui-gtk3/` and `ui-gen/`.
 Windows synthetic input bypasses key handlers and cannot start a native drag; use the
 [visible Windows desktop](#visible-windows-desktop) workflow for those paths. Human usability
@@ -336,9 +338,10 @@ Windows session 0. The workflow installs the MSI pinned in `ci/libreoffice.json`
 Tip of the Day and the first-start dialog turned off, and the synthetic 80-sheet workbook
 maximised to the desktop with the Sheet Manager deck shown. `tests/ui/winput.py` sends keys and
 pointer input through Windows' `SendInput` with the same interface as the X11 helper, so the suite
-runs the checks of `run_ui.py` and `rename_dialog.py` themselves rather than copies, and reads the
-results back through public UNO as on Linux. Window and screen geometry are read from the live
-desktop; nothing assumes the runner's present 1024×768 screen at 96 DPI.
+runs the shared checks of `tests/ui/*_checks.py` and `rename_dialog.py` themselves rather than
+copies, with `workbook.py`'s fixture and `check_loop.py`'s loop, and reads the results back
+through public UNO as on Linux. Window and screen geometry are read from the live desktop;
+nothing assumes the runner's present 1024×768 screen at 96 DPI.
 
 The [verification map](docs/verification.md#the-visible-windows-desktop) identifies the shared
 checks this workflow runs and the paths it does not cover. Its artifacts establish functional
@@ -464,12 +467,12 @@ npm run docs:dev
 ```
 
 `npm run docs:build` builds it as CI does; a broken link between pages fails the build.
-`python tools/check_release_page.py` also builds empty and synthetic release histories, checking
-channel separation, version order, rendered OXT/checksum links, and markers beside instructions
-that are not published yet. It covers preparation with old history, publication, and an older
-stable release alongside a newer test build, in the required docs job.
-Its disposable build output uses the operating system's temporary directory; it never publishes
-a build.
+`python tools/check_release_page.py` also builds synthetic histories in the required docs job.
+It checks channel separation, version order, OXT/checksum links, and guide instructions before
+and after publication of the source version, including an older stable release beside a newer
+test build. A small fixture site renders the actual marker component across every numeric
+version found in the guide and the source version in one build. The check uses disposable
+fixtures and output.
 Some Windows security policies block the native module that VitePress's bundler loads. Then build in a
 container, from the repository root in PowerShell 7, and find the site in `test-results/docs/`:
 
@@ -483,11 +486,17 @@ docker run --rm --env "SHEET_MANAGER_DOCS_COMMIT=$(git rev-parse HEAD)" `
 
 Write for users of the extension. A user-visible change updates the guide in the same pull
 request. Mark new behaviour where it appears with an inline `<Unreleased />` inside its paragraph
-(for example, `Move buttons: <Unreleased /> ...`). When preparing its release, set
+(for example, `Move buttons: <Unreleased /> ...`). Put the marker after introductory text on the
+same line, since Markdown can render a line that starts with the tag as a separate HTML block.
+When preparing its release, set
 `<Unreleased since="VERSION" />` to the first numeric version containing it; keep that marker
 in the source. The site shows **Unreleased** until published history reaches that version in the
 latest stable release, or the newest test build before any stable release. A source version,
 tag, or draft does not establish availability. An abandoned preparation keeps its markers.
+New marker versions automatically enter the component check. When a new marked capability
+needs its placement beside a particular instruction checked, add a distinctive excerpt to
+`FIRST_PUBLISHED` in `tools/check_release_page.py` when assigning its first published version.
+Update that excerpt if you rewrite the checked instruction.
 Documentation-only corrections use the same build and synthetic-history checks and deploy from
 `main` without changing a software version or tag; verify the deployed notice's source commit.
 Every page is listed in the sidebar in `docs/.vitepress/config.mts`, and
