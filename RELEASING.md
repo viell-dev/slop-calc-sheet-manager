@@ -186,8 +186,9 @@ its platform inventory is not a requirement to make one person test every host.
    hides them automatically when that version reaches the guide's baseline (latest stable, or
    newest test build before the first stable release). Preparation, a reserved tag, and a draft do
    not hide them, including when publication fails or is abandoned.
-2. Run `python tools/check.py` and the relevant LibreOffice integration checks described in
-   [CONTRIBUTING.md](CONTRIBUTING.md). Apply the [human-testing gate](#human-release-testing),
+2. Run `python tools/check.py` and the relevant
+   [native LibreOffice checks](docs/development/native-testing.md). Apply the
+   [human-testing gate](#human-release-testing),
    link its assigned request and relevant open-defect dispositions in the preparation PR, and
    keep stable publication blocked until required human coverage and fixes are complete.
    Complete the release review that
