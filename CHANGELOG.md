@@ -5,6 +5,11 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Record how long each integration-test installation of the package takes, as `install_seconds`
+  in the results, and keep the elapsed time and unopkg's output when an installation exceeds its
+  90-second limit, which still fails the session. The local testing guide says how to tell such a
+  timeout on a busy computer from a normal installation
+  ([#235](https://github.com/viell-dev/slop-calc-sheet-manager/issues/235)).
 - Keep the keyboard cursor where the keys moved it while a click was held, when the list then
   refuses that click because the sheets changed. It returned to a picked sheet even after
   Ctrl+arrow keys had moved it elsewhere; the picks were already kept
