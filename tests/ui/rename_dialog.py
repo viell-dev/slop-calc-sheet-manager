@@ -37,6 +37,48 @@ def _reported(tracker, before, seconds):
     return True
 
 
+def scan_points(origin, size):
+    """The points calibration tries, row by row 3 pixels apart: each row's left, middle, right."""
+    width, height = size
+    return [
+        (origin[0] + x, origin[1] + y)
+        for y in range(2, height, 3)
+        for x in (4, width // 2, width - 5)
+    ]
+
+
+def scan(real_input, tracker, points):
+    """Try `points` until one and a second move from it are reported as the same window's.
+
+    Returns the window's screen offset and how it was found: the points tried, the point that
+    counted with its two reports, and the points set aside.
+    """
+    rejected = []
+    reported = []  # DIAGNOSTIC (#253): every point heard within 0.15 s.
+    for tried, (x, y) in enumerate(points, 1):
+        tracker.last = None
+        real_input.move(x, y)
+        if not _reported(tracker, None, 0.15):
+            continue
+        reported.append(tried)
+        first = settled_report(tracker, None, (x, y))
+        real_input.move(x + 2, y + 2)
+        second = None
+        if _reported(tracker, first, CONFIRM_SECONDS):
+            second = settled_report(tracker, first, (x + 2, y + 2))
+        if second == (first[0] + 2, first[1] + 2):
+            # The pair agrees, so either report gives the offset.
+            found = {"tried": tried, "point": [x, y], "reports": [first, second]}
+            return (x - first[0], y - first[1]), {**found, "rejected": rejected, "heard": reported}
+        rejected.append({"point": (x, y), "reports": [first, second]})
+        if len(rejected) == REJECTED_POINTS:
+            break
+    raise AssertionError(
+        "The dialog never confirmed a point on its background; the points whose "
+        f"reports did not follow a 2-pixel second move: {rejected}"
+    )
+
+
 def _types(window):
     return {kind.typeName for kind in window.getTypes()}
 
@@ -90,6 +132,7 @@ class Dialog:
         texts = sorted((c for c in children if "com.sun.star.awt.XFixedText" in _types(c)), key=top)
         self.status = texts[-1]
         self.pointer = None
+        self.calibration = None  # How `calibrate` found the offset, for the checks' evidence.
 
     @staticmethod
     def accessible_name(window):
@@ -157,40 +200,77 @@ class Dialog:
         """
         if self.pointer is not None:
             return self.pointer
+        started = time.monotonic()
+        root = self.window.getProperty("XAccessible").getAccessibleContext()
+        location, extent = root.getLocationOnScreen(), root.getSize()
+        place = self.window.getPosSize()
+        problem = None
+        try:  # DIAGNOSTIC (#253): keep the evidence if the buttons disagree.
+            origin, size = self.own_area()
+        except Exception as error:
+            problem = repr(error)
+            origin, size = (location.X, location.Y), (extent.Width, extent.Height)
+        self.calibration = {
+            "accessible": [location.X, location.Y, extent.Width, extent.Height],
+            "window": [place.X, place.Y, place.Width, place.Height],
+            "own_area": [*origin, *size],
+            "own_area_problem": problem,
+        }
+        # DIAGNOSTIC (#253), removed before merge: the buttons' own positions, the frame Windows
+        # reports, and the scan from the accessible area for comparison.
+        self.calibration["buttons"] = {
+            name: {
+                "place": [b.getPosSize().X, b.getPosSize().Y],
+                "screen": [
+                    b.getProperty("XAccessible").getAccessibleContext().getLocationOnScreen().X,
+                    b.getProperty("XAccessible").getAccessibleContext().getLocationOnScreen().Y,
+                ],
+            }
+            for name, b in self.buttons.items()
+        }
+        if hasattr(self.book.lab.input, "foreground"):
+            self.calibration["foreground"] = self.book.lab.input.foreground()
+            self.calibration["cursor"] = self.book.lab.input.cursor()
+        print("calibration geometry", self.calibration, flush=True)
         tracker = Tracker()
         self.window.addMouseMotionListener(tracker)
         try:
-            root = self.window.getProperty("XAccessible").getAccessibleContext()
-            origin, size = root.getLocationOnScreen(), root.getSize()
-            points = [
-                (x, y)
-                for y in range(origin.Y + 2, origin.Y + size.Height, 3)
-                for x in (origin.X + 4, origin.X + size.Width // 2, origin.X + size.Width - 5)
-            ]
-            rejected = []
-            for x, y in points:
-                tracker.last = None
-                self.book.lab.input.move(x, y)
-                if not _reported(tracker, None, 0.15):
-                    continue
-                first = settled_report(tracker, None, (x, y))
-                self.book.lab.input.move(x + 2, y + 2)
-                second = None
-                if _reported(tracker, first, CONFIRM_SECONDS):
-                    second = settled_report(tracker, first, (x + 2, y + 2))
-                if second == (first[0] + 2, first[1] + 2):
-                    # The pair agrees, so either report gives the offset.
-                    self.pointer = Pointer(self.book.lab.input, (x - first[0], y - first[1]))
-                    return self.pointer
-                rejected.append({"point": (x, y), "reports": [first, second]})
-                if len(rejected) == REJECTED_POINTS:
-                    break
-            raise AssertionError(
-                "The dialog never confirmed a point on its background; the points whose "
-                f"reports did not follow a 2-pixel second move: {rejected}"
-            )
+            try:
+                offset, found = scan(self.book.lab.input, tracker, scan_points(origin, size))
+                self.calibration.update(found, offset=offset)
+            except AssertionError as error:
+                offset = None
+                self.calibration["own_scan_error"] = str(error)
+            self.calibration["seconds"] = round(time.monotonic() - started, 2)
+            outside = location.X - 30 if location.X >= 30 else location.X + extent.Width + 30
+            self.book.lab.input.move(outside, location.Y + extent.Height // 2)
+            time.sleep(1)
+            again = time.monotonic()
+            accessible = (location.X, location.Y), (extent.Width, extent.Height)
+            old_offset, old = scan(self.book.lab.input, tracker, scan_points(*accessible))
+            old.update(offset=old_offset, seconds=round(time.monotonic() - again, 2))
+            self.calibration["accessible_scan"] = old
         finally:
             self.window.removeMouseMotionListener(tracker)
+        print("calibration", self.calibration, flush=True)
+        assert offset in (None, old_offset), self.calibration
+        self.pointer = Pointer(self.book.lab.input, old_offset)
+        return self.pointer
+
+    def own_area(self):
+        """Where the dialog's own coordinates begin on screen, and the size of its own window.
+
+        Each button's accessible location is on screen and its place is in the dialog's own
+        coordinates, so their difference is where those coordinates begin; the buttons agree.
+        """
+        origins = set()
+        for button in self.buttons.values():
+            place = button.getPosSize()
+            screen = button.getProperty("XAccessible").getAccessibleContext().getLocationOnScreen()
+            origins.add((screen.X - place.X, screen.Y - place.Y))
+        assert len(origins) == 1, f"The dialog's buttons place its origin at {sorted(origins)}"
+        size = self.window.getOutputSize()
+        return origins.pop(), (size.Width, size.Height)
 
     def click(self, window):
         place = window.getPosSize()
@@ -301,6 +381,7 @@ def check_keyboard(book):
             "rename-disabled-label",
             dialog.calibrate().offset if sys.platform.startswith("linux") else None,
         )
+        evidence["calibration"] = dialog.calibration
         assert (book.active(), book.calc_tabs(), book.selection()) == (*view, picks)
         assert book.order() == names and not book.undo_titles()
         type_text(book.lab, "a")  # The Find field has the focus first.
@@ -397,6 +478,7 @@ def check_mouse(book):
         wait_for(lambda: not dialog.state()["rename_enabled"], "Reset All to undo the edits")
         assert dialog.items() == [f"{name}   (unchanged)" for name in picks], dialog.items()
         dialog.click(dialog.buttons["Cancel"])
+        evidence["calibration"] = [dialog.calibration]
         wait_closed(book)
         assert book.order() == names and not book.undo_titles(), "Cancel changed the document"
         assert (book.active(), book.calc_tabs(), book.selection()) == (*view, picks)
@@ -409,6 +491,7 @@ def check_mouse(book):
         dialog.click(dialog.buttons["Replace All"])
         wait_for(lambda: dialog.items() == expected, "the proposals again")
         dialog.click(dialog.buttons["Rename"])
+        evidence["calibration"].append(dialog.calibration)
         wait_closed(book)
         wait_for(lambda: book.order()[4:6] == ["Ech0", "F0xtr0t"], "the renamed sheets")
         assert book.undo_titles() == ["Rename Sheets"]
