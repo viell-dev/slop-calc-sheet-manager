@@ -19,7 +19,7 @@ import pytest
 from sheet_manager.refresh_schedule import RefreshSchedule
 from sheet_manager.reorder import Sheet
 from sheet_manager.selection import Ref, Selection, structure_kept
-from sheet_manager.sheet_list import SheetRow
+from sheet_manager.sheet_list import RowGeometry, SheetRow
 from sheet_manager.structure import VIEW_RESTORE_LIMIT, StructureEvents
 from tests.unit.source_methods import function, method, source_class
 
@@ -797,3 +797,218 @@ def test_a_drag_on_current_rows_starts_at_once_without_posting_or_sampling_tabs(
     )
     assert not queued
     live.invoke.assert_not_called()
+
+
+ROW = 20
+
+
+def _report(where: str) -> None:
+    raise AssertionError(f"{where} failed")  # Shows the error that `_guarded` would log.
+
+
+class VisibleHandle(Handle):
+    """A retained handle that also reports its sheet's visibility, which activation reads."""
+
+    def __init__(self, name: str) -> None:
+        super().__init__(name)
+        self.IsVisible = True
+
+
+def click_list() -> tuple[Any, Any, Any, list[Any]]:
+    """A list showing Alfa, Bravo and Charlie with Alfa active and picked, wired for a release.
+
+    The shipped `_Mouse` listener, `mouse_released`, `_pressed_sheet_in_place`,
+    `_activate_pressed`, `activate` and `post`, the picks, the tab observer and
+    `uno_calc.selected_tabs` run; Calc's view, the tree and the posting are fakes. Work the list
+    posts waits in the returned queue, so a test can tell what ran inside the mouse listener
+    from what ran when the posted work arrived (#269). Returns the list, the live Calc state,
+    the listener and the queue.
+    """
+    owner, _, live = observer()
+    queued: list[Any] = []
+    live.handles = [VisibleHandle(name) for name in live.names]
+
+    def set_active(handle: Any) -> None:
+        live.active = handle.getName()
+        live.indices = (list(live.names).index(live.active),)
+
+    def post(work: Any, where: str) -> None:
+        queued.append(work)
+
+    def getter(context: object) -> Any:
+        return SimpleNamespace(invoke=live.invoke)
+
+    def prop(name: str, value: object) -> tuple[str, object]:
+        return name, value
+
+    def bind(name: str, namespace: dict[str, Any]) -> None:
+        loaded = method(SOURCE, "SheetList", name, namespace)
+
+        def bound(*arguments: object) -> Any:
+            return loaded(owner, *arguments)
+
+        setattr(owner, name, bound)
+
+    owner.controller.setActiveSheet = Mock(side_effect=set_active)
+    owner.rows = [SheetRow(name, active=name == live.active) for name in live.names]
+    owner._handles = dict(zip(live.names, live.handles, strict=True))
+    owner._monitor.check = lambda: owner._monitor.generation
+    owner._main = SimpleNamespace(post=post)
+    owner._selection = Selection(function(SOURCE, "_current", {"Ref": Ref}))
+    owner._selection.take(["Alfa"], owner._handles, owner.names())
+    owner.geometry = lambda: RowGeometry(0, ROW, len(owner.rows))
+    owner._queue_selection, owner.refresh = Mock(), Mock()
+    owner.restore_view = Mock(return_value=True)
+    owner._activating, owner._activation_input = False, 0
+    owner.context, owner.frame, owner.peer = object(), object(), object()
+    owner.dispatch, owner.show_error = Mock(), Mock()
+    selected = function(
+        "src/sheet_manager/uno_calc.py",
+        "selected_tabs",
+        {"selected_tabs_method": getter},
+    )
+    bind("post", {})
+    bind("_pressed_sheet_in_place", {"_Press": Any})
+    bind("_activate_pressed", {"Any": Any})
+    bind(
+        "activate",
+        {
+            "Any": Any,
+            "selected_tabs": selected,
+            "dispatch": owner.dispatch,
+            "prop": prop,
+            "show_error": owner.show_error,
+            "tr": str,
+        },
+    )
+    bind("mouse_released", {"LEFT": 1, "RIGHT": 2, "SHIFT": 1, "MOD1": 2})
+    mouse = source_class(
+        SOURCE,
+        "_Mouse",
+        {
+            "unohelper": SimpleNamespace(Base=type("Base", (), {})),
+            "XMouseListener": type("XMouseListener", (), {}),
+            "_guarded": function(SOURCE, "_guarded", {"report": _report}),
+        },
+    )
+    return owner, live, mouse(owner), queued
+
+
+def release_on(owner: Any, live: Any, listener: Any, name: str, clicks: int) -> None:
+    """Hold a left press on the row of `name`, then release it there through the listener."""
+    row = list(live.names).index(name)
+    press = source_class(SOURCE, "_Press", {"dataclass": dataclass, "Any": Any})
+    owner._press = press(row, 0, name, owner._handles[name], 0, clicks=clicks)
+    listener.mouseReleased(SimpleNamespace(Buttons=1, X=10, Y=row * ROW + ROW // 2))
+    assert owner._pointer_depth == 0
+
+
+def test_a_double_click_activates_its_sheet_only_in_posted_work() -> None:
+    """#269: VCL runs mouse listeners without the solar mutex, which the tab getter never takes.
+
+    The release itself narrows the picks; the activation, which reads Calc's tabs before and
+    after `setActiveSheet`, waits for the posted work, which holds the mutex.
+    """
+    owner, live, listener, queued = click_list()
+    release_on(owner, live, listener, "Bravo", clicks=2)
+    live.invoke.assert_not_called()
+    owner.controller.setActiveSheet.assert_not_called()
+    assert owner._selection.names() == ["Bravo"]
+    owner._queue_selection.assert_called()
+    assert len(queued) == 1
+    queued.pop()()
+    owner.controller.setActiveSheet.assert_called_once_with(owner._handles["Bravo"])
+    live.invoke.assert_called()
+    assert (live.active, owner._activation_input, owner._activating) == ("Bravo", 1, False)
+    owner.dispatch.assert_not_called()  # Bravo became Calc's only selected tab.
+    owner.show_error.assert_not_called()
+    assert not queued
+
+
+def test_a_double_clicks_posted_activation_does_nothing_once_the_list_is_disposed() -> None:
+    """Closing the document disposes the list and detaches its monitor, whose check raises."""
+    owner, live, listener, queued = click_list()
+    release_on(owner, live, listener, "Bravo", clicks=2)
+    owner._disposed = True
+    owner._monitor.check = Mock(side_effect=RuntimeError("detached"))
+    queued.pop()()
+    owner._monitor.check.assert_not_called()
+    live.invoke.assert_not_called()
+    owner.controller.setActiveSheet.assert_not_called()
+    assert live.active == "Alfa" and not queued
+
+
+def test_activation_does_nothing_once_the_list_is_disposed() -> None:
+    """Enter's queued activation reaches `activate` itself, which checks disposal first."""
+    owner, live, _, queued = click_list()
+    owner._disposed = True
+    owner._monitor.check = Mock(side_effect=RuntimeError("detached"))
+    owner.activate("Bravo")
+    live.invoke.assert_not_called()
+    owner.controller.setActiveSheet.assert_not_called()
+    assert live.active == "Alfa" and not queued
+
+
+def test_a_double_clicks_posted_activation_refuses_after_a_refresh_at_a_newer_generation() -> None:
+    """The posted work checks the generation its release verified, not the list's newer proof.
+
+    Another thread deletes Bravo and renames as "Bravo" the sheet that Bravo's retained handle
+    turned to (AGENTS.md, "Sheet identity"), so the pressed handle passes the name and
+    visibility checks. The selection flush queued ahead of the activation then refreshes at
+    the new generation, which drops the picks and proves the list there, as `_refresh` does.
+    Activating would go to a sheet the user did not double-click.
+    """
+    owner, live, listener, queued = click_list()
+    release_on(owner, live, listener, "Bravo", clicks=2)
+    owner._monitor.generation = 1
+    owner._selection.clear()
+    owner._proven = 1
+    assert live.handles[1].getName() == "Bravo"
+    queued.pop()()
+    owner.controller.setActiveSheet.assert_not_called()
+    live.invoke.assert_not_called()
+    assert queued == [owner.refresh]
+
+
+def test_a_double_clicks_posted_activation_acts_only_on_the_pressed_handle() -> None:
+    """A row now showing another sheet under the pressed name does not take the activation.
+
+    Between the release and the posted work, the pressed sheet is renamed and the handle the
+    list retains for "Bravo" is a new sheet's; the generation stays where the release saw it.
+    """
+    owner, live, listener, queued = click_list()
+    release_on(owner, live, listener, "Bravo", clicks=2)
+    live.handles[1].name = "Delta"
+    owner._handles["Bravo"] = VisibleHandle("Bravo")
+    queued.pop()()
+    owner.controller.setActiveSheet.assert_not_called()
+    live.invoke.assert_not_called()
+    assert queued == [owner.refresh]
+
+
+@pytest.mark.parametrize("change", ["rename", "hide", "insertion"])
+def test_a_double_clicks_posted_activation_checks_the_pressed_sheet_when_it_runs(
+    change: str,
+) -> None:
+    """A change between the release and the posted work refreshes instead of activating."""
+    owner, live, listener, queued = click_list()
+    release_on(owner, live, listener, "Bravo", clicks=2)
+    if change == "rename":
+        live.handles[1].name = "Delta"
+    elif change == "hide":
+        live.handles[1].IsVisible = False
+    else:
+        owner._monitor.generation = 1
+    queued.pop()()
+    owner.controller.setActiveSheet.assert_not_called()
+    live.invoke.assert_not_called()
+    assert queued == [owner.refresh]
+
+
+def test_a_single_clicks_release_picks_its_sheet_and_posts_no_activation() -> None:
+    owner, live, listener, queued = click_list()
+    release_on(owner, live, listener, "Charlie", clicks=1)
+    assert owner._selection.names() == ["Charlie"]
+    assert not queued
+    live.invoke.assert_not_called()
+    owner.controller.setActiveSheet.assert_not_called()

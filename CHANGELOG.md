@@ -5,6 +5,9 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- A double click in the list now activates its sheet after the mouse listener returns, as Enter
+  already did: LibreOffice runs that listener without the global lock that reading Calc's
+  selected tabs needs ([#269](https://github.com/viell-dev/slop-calc-sheet-manager/issues/269)).
 - A sheet list write that LibreOffice fails partway no longer leaves part of it to be taken as
   the picks. Afterwards the list keeps its picks only if it shows exactly them. Otherwise it
   cannot tell part of its write from a selection made since, such as through assistive

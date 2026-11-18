@@ -16,8 +16,11 @@ anchor to the new names through their retained handles (`selection.Selection.car
 refresh counts only others' renames against its one-rename check.
 
 Every listener only records state or posts work to the main thread: LibreOffice calls some
-of them from other threads or in the middle of a change. The drag gesture's own checks are the
-one exception here (`SheetList`, #264).
+of them from other threads, without its solar mutex (#269), or in the middle of a change. The
+exceptions here are the drag gesture's own checks (#264) and the mouse handlers, which read the
+tree, the sheet handles and the document, and write a refused release's picks back, through
+calls that lock for themselves, so that a gesture is decided and shown at once (`SheetList`,
+#269).
 
 The tree. The list is a borderless `TreeControl`, so that it is a direct child of the panel
 window, with a hidden root. With a hidden root, the tree peer mishandles every data-model change
@@ -476,18 +479,33 @@ class _Document(unohelper.Base, XModifyListener, XActivationEventListener):
 class SheetList:
     """The coordinator of one panel's sheet list: its controls, picks, input and actions.
 
-    Threads. Listener callbacks only record state or post work through `MainThread`; everything
-    else runs on LibreOffice's main thread, and posted work re-checks what it relies on. The
-    modify listener reaches the refresh schedule on the notifying thread (`document_modified`,
-    `RefreshSchedule.changed`), and toolkit listeners reach the tab observer only through
-    `TabObserver.note_input`. The drag gesture is the exception: VCL calls its listener within
-    its own mouse-move handling, rather than queued as the mouse listeners are, and `start_drag`
-    starts the drag there, with the gesture's event as `startDrag`'s trigger. Before that it
-    checks `_current_picks`, which can write the list's own tree and buttons as the mouse
-    handlers do, the document's read-only and protection flags, and `is_current`, which reads
-    the sheets and the retained handles. None of these reads Calc's view or tabs. A drag on
-    stale rows is refused and posts its refresh, whose tab sample must not run in the listener
-    (#264).
+    Threads. Listener callbacks only record state or post work through `MainThread`, with the
+    two exceptions below; everything else runs on LibreOffice's main thread, and posted work
+    re-checks what it relies on. The modify listener reaches the refresh schedule on the
+    notifying thread (`document_modified`, `RefreshSchedule.changed`), and toolkit listeners
+    reach the tab observer only through `TabObserver.note_input`.
+
+    VCL runs the mouse listeners on the main thread, from one user event it posts after its own
+    input handling, but releases the solar mutex around them (`VCLXWindow`'s callback queue;
+    measured with gtk3 and gen in 26.2.1.2 and 26.8.2.2). The mouse handlers still read the
+    tree's geometry, the retained handles and the document, so that a release decides at once
+    whether its gesture stands, and a refused release writes the picks back to the tree and
+    buttons before later work reads them. Each of these calls locks for itself (checked in the
+    26.8.2.2 sources). The tree's and buttons' toolkit methods, the handles' `getName`, the
+    structure monitor's `check()` (the getters `uno_structure` names) and, on a refused
+    release, the permission getters in `uno_reorder.move_availability` take the mutex; the
+    undo-steps setting that `move_availability` also reads is configuration, which has its own
+    lock. Calc's tab getter takes no lock, so a double click posts its activation, as Enter
+    does, with the generation its release verified (`_activate_pressed`, #269). Each call locks
+    only itself: another thread can change the document between them (#284).
+
+    The drag gesture is the other exception: VCL calls its listener within its own mouse-move
+    handling, rather than queued as the mouse listeners are, and `start_drag` starts the drag
+    there, with the gesture's event as `startDrag`'s trigger. Before that it checks
+    `_current_picks`, which can write the list's own tree and buttons as the mouse handlers do,
+    the document's read-only and protection flags, and `is_current`, which reads the sheets and
+    the retained handles. None of these reads Calc's view or tabs. A drag on stale rows is
+    refused and posts its refresh, whose tab sample must not run in the listener (#264).
 
     Collaborators, each owning its own state: `_refreshes` decides when to refresh
     (`refresh_schedule`), `_tabs` follows Calc's tabs and the sidebar (`uno_tabs`, for which this
@@ -1366,7 +1384,12 @@ class SheetList:
         the sheets as they are. Calc keeps an existing group when the sheet is already part of
         it, which would make a cell edit change every grouped sheet, so the single selection
         is established and read back.
+
+        It reads Calc's tabs, so it runs only in posted work, which Enter and a double click
+        queue, and does nothing once the list is disposed (#269).
         """
+        if self._disposed:
+            return
         if self._monitor.check() != self._proven:  # The handle may prove nothing now.
             self.post(self.refresh, "refreshing the sheet list")
             return
@@ -1868,7 +1891,26 @@ class SheetList:
         self._selection.choose(press.name, self._handles, self.names())
         self._queue_selection()
         if press.clicks == 2:
-            self.activate(press.name, press.handle)
+            # Activation reads Calc's tabs, which needs the lock this listener runs without (#269).
+            name, handle, generation = press.name, press.handle, press.generation
+            self.post(
+                lambda: self._activate_pressed(name, handle, generation), "activating a sheet"
+            )
+
+    def _activate_pressed(self, name: str, handle: Any, generation: int) -> None:
+        """Activate a double click's pressed sheet, posted by its release at `generation`.
+
+        The release proved the pressed handle at that generation. `activate` alone compares the
+        list's current proof, which work queued ahead of this one, such as the release's own
+        selection flush, advances when it refreshes; meanwhile a deleted sheet's handle can have
+        turned to another sheet that then took its name (#269).
+        """
+        if self._disposed:
+            return  # The document's monitor may be detached too, and its check raises.
+        if self._monitor.check() != generation:
+            self.post(self.refresh, "refreshing the sheet list")
+            return
+        self.activate(name, handle)
 
     def _pressed_sheet_in_place(self, press: _Press) -> bool:
         """Whether the pressed row still shows the pressed sheet, under the same name."""
