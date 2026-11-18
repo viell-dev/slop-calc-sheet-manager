@@ -53,8 +53,17 @@ suite and is required by the manual release sweep. The runner requests `svp`; Aq
 OS input, GUI installation/update, upgrades from published macOS builds, Apple Silicon and
 system-wide/delayed crash reports remain unverified. Installer unit checks cover integrity,
 private paths, diagnostic ownership and failure propagation for version mismatch, new crash
-reports or diagnostic collection failure. Those checks are separate from the native evidence
-linked in #145. A standalone focused Mac run cannot replace the complete exact-revision sweep.
+reports or diagnostic collection failure. Command lifecycle controls distinguish a child that
+drains after TERM from a TERM-resistant group requiring KILL. After ordinary exits, the former
+group is observed for a bounded time without signals; a member still live after it, or an
+unverifiable group, fails the lane and retains the private app and an audit receipt. A
+descendant that starts its own session or process group escapes this audit, which shows only
+that the command's own group emptied. Unit checks with a simulated group cover the drain,
+escalation, failed snapshots, interrupted waits and the bounded audit; native evidence for the
+audit through installation and packaged integration is linked from
+[#163](https://github.com/viell-dev/slop-calc-sheet-manager/issues/163). The installer unit
+checks are separate from the native evidence linked in #145. A standalone focused Mac run cannot
+replace the complete exact-revision sweep.
 A focused [human usability pass](./manual-tests.md) remains a separate release requirement.
 Failed integration input polls also retain a bounded trace of the fixtures' existing selection
 reads, row coordinates and posted pointer actions, without extra UNO reads, waits or retries
