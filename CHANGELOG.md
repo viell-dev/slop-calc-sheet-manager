@@ -5,6 +5,11 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Calibrate the rename dialog's real-input clicks on points of the dialog's own window, located
+  from its buttons, rather than of its accessible area, which includes the window manager's
+  frame. On the Windows desktop the frame's borders kept the dialog from reporting nearly every
+  point, and each calibration took about a minute; it now takes under a second there and on
+  Linux ([#253](https://github.com/viell-dev/slop-calc-sheet-manager/issues/253)).
 - Calibrate the rename dialog's real-input clicks from two reports that follow the pointer's two
   moves, rather than the first report after a fixed 0.15 seconds, which a busy office could send
   late enough to be read for the next point tried

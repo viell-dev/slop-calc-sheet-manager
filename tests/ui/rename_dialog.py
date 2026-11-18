@@ -4,7 +4,9 @@ The dialog is found as the visible dialog window over the document, and observed
 UNO only: its child windows' text, items, and enabled state, and their accessible names. Pointer
 positions come from those windows and their accessible list items, after calibrating the input
 against a motion listener on the dialog's own background, with the lab's `Tracker` and
-`settled_report` that calibrate the sheet list.
+`settled_report` that calibrate the sheet list. The calibration's points cover the dialog's own
+window, located from its buttons, because its accessible area includes the window manager's
+frame (#253).
 """
 
 import sys
@@ -38,7 +40,7 @@ def _reported(tracker, before, seconds):
 
 
 def scan_points(origin, size):
-    """The points calibration tries, row by row 3 pixels apart: each row's left, middle, right."""
+    """The points calibration tries: rows 3 pixels apart, each row's left, middle and right."""
     width, height = size
     return [
         (origin[0] + x, origin[1] + y)
@@ -48,19 +50,18 @@ def scan_points(origin, size):
 
 
 def scan(real_input, tracker, points):
-    """Try `points` until one and a second move from it are reported as the same window's.
+    """Try `points` until one is confirmed; return the offset and how it was found (#232).
 
-    Returns the window's screen offset and how it was found: the points tried, the point that
-    counted with its two reports, and the points set aside.
+    The record lists how many points were tried, which of them the window reported within
+    0.15 seconds, the point that counted with its two reports, and the points set aside.
     """
-    rejected = []
-    reported = []  # DIAGNOSTIC (#253): every point heard within 0.15 s.
+    rejected, heard = [], []
     for tried, (x, y) in enumerate(points, 1):
         tracker.last = None
         real_input.move(x, y)
         if not _reported(tracker, None, 0.15):
             continue
-        reported.append(tried)
+        heard.append(tried)
         first = settled_report(tracker, None, (x, y))
         real_input.move(x + 2, y + 2)
         second = None
@@ -68,8 +69,8 @@ def scan(real_input, tracker, points):
             second = settled_report(tracker, first, (x + 2, y + 2))
         if second == (first[0] + 2, first[1] + 2):
             # The pair agrees, so either report gives the offset.
-            found = {"tried": tried, "point": [x, y], "reports": [first, second]}
-            return (x - first[0], y - first[1]), {**found, "rejected": rejected, "heard": reported}
+            found = {"tried": tried, "heard": heard, "point": (x, y), "reports": [first, second]}
+            return (x - first[0], y - first[1]), {**found, "rejected": rejected}
         rejected.append({"point": (x, y), "reports": [first, second]})
         if len(rejected) == REJECTED_POINTS:
             break
@@ -132,7 +133,8 @@ class Dialog:
         texts = sorted((c for c in children if "com.sun.star.awt.XFixedText" in _types(c)), key=top)
         self.status = texts[-1]
         self.pointer = None
-        self.calibration = None  # How `calibrate` found the offset, for the checks' evidence.
+        # How `calibrate` found the offset, for the checks' evidence.
+        self.calibration: dict[str, Any] | None = None
 
     @staticmethod
     def accessible_name(window):
@@ -197,71 +199,47 @@ class Dialog:
         once the reports have stopped. The two reports must differ by that move. Otherwise one
         of them belongs to another point, or the second move went over a control, and the next
         point is tried; only a pair of moves can produce reports that differ by exactly (2, 2).
+
+        The points cover the dialog's own window, from `own_area`, not its accessible area,
+        which includes the window manager's frame, where the dialog hears nothing (#253). Nor
+        is a move onto the background from elsewhere reported: VCL passes it to mouse
+        listeners as the pointer entering the window, never to motion listeners. So the first
+        point, reached from off the dialog, normally goes unheard, and the second, reached
+        from the first, counts. Scanning from the frame meant crossing the title bar first:
+        20 points (3.5 s) under the Linux lab's Openbox. On the Windows desktop, the left and
+        right columns fell in the frame's 8-pixel borders, so every middle point was reached
+        from off the dialog, and 368 points (57 s) were tried. `self.calibration` records the
+        geometry and the scan, for the checks' evidence.
         """
         if self.pointer is not None:
             return self.pointer
         started = time.monotonic()
         root = self.window.getProperty("XAccessible").getAccessibleContext()
         location, extent = root.getLocationOnScreen(), root.getSize()
-        place = self.window.getPosSize()
-        problem = None
-        try:  # DIAGNOSTIC (#253): keep the evidence if the buttons disagree.
-            origin, size = self.own_area()
-        except Exception as error:
-            problem = repr(error)
-            origin, size = (location.X, location.Y), (extent.Width, extent.Height)
-        self.calibration = {
+        origin, size = self.own_area()
+        geometry = {
             "accessible": [location.X, location.Y, extent.Width, extent.Height],
-            "window": [place.X, place.Y, place.Width, place.Height],
             "own_area": [*origin, *size],
-            "own_area_problem": problem,
         }
-        # DIAGNOSTIC (#253), removed before merge: the buttons' own positions, the frame Windows
-        # reports, and the scan from the accessible area for comparison.
-        self.calibration["buttons"] = {
-            name: {
-                "place": [b.getPosSize().X, b.getPosSize().Y],
-                "screen": [
-                    b.getProperty("XAccessible").getAccessibleContext().getLocationOnScreen().X,
-                    b.getProperty("XAccessible").getAccessibleContext().getLocationOnScreen().Y,
-                ],
-            }
-            for name, b in self.buttons.items()
-        }
-        if hasattr(self.book.lab.input, "foreground"):
-            self.calibration["foreground"] = self.book.lab.input.foreground()
-            self.calibration["cursor"] = self.book.lab.input.cursor()
-        print("calibration geometry", self.calibration, flush=True)
         tracker = Tracker()
         self.window.addMouseMotionListener(tracker)
         try:
-            try:
-                offset, found = scan(self.book.lab.input, tracker, scan_points(origin, size))
-                self.calibration.update(found, offset=offset)
-            except AssertionError as error:
-                offset = None
-                self.calibration["own_scan_error"] = str(error)
-            self.calibration["seconds"] = round(time.monotonic() - started, 2)
-            outside = location.X - 30 if location.X >= 30 else location.X + extent.Width + 30
-            self.book.lab.input.move(outside, location.Y + extent.Height // 2)
-            time.sleep(1)
-            again = time.monotonic()
-            accessible = (location.X, location.Y), (extent.Width, extent.Height)
-            old_offset, old = scan(self.book.lab.input, tracker, scan_points(*accessible))
-            old.update(offset=old_offset, seconds=round(time.monotonic() - again, 2))
-            self.calibration["accessible_scan"] = old
+            offset, found = scan(self.book.lab.input, tracker, scan_points(origin, size))
+        except AssertionError as error:
+            raise AssertionError(f"{error}; {geometry}") from None
         finally:
             self.window.removeMouseMotionListener(tracker)
-        print("calibration", self.calibration, flush=True)
-        assert offset in (None, old_offset), self.calibration
-        self.pointer = Pointer(self.book.lab.input, old_offset)
+        seconds = round(time.monotonic() - started, 2)
+        self.calibration = {**geometry, **found, "offset": offset, "seconds": seconds}
+        self.pointer = Pointer(self.book.lab.input, offset)
         return self.pointer
 
     def own_area(self):
         """Where the dialog's own coordinates begin on screen, and the size of its own window.
 
-        Each button's accessible location is on screen and its place is in the dialog's own
-        coordinates, so their difference is where those coordinates begin; the buttons agree.
+        A button's accessible location is on screen, and its place is in the dialog's own
+        coordinates, so their difference is where those coordinates begin. All four buttons
+        must agree; the dialog's output size is its own window's.
         """
         origins = set()
         for button in self.buttons.values():
