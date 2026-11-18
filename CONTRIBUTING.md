@@ -287,12 +287,6 @@ The release sweep's Windows jobs and the Windows desktop workflow verify a pinne
 silently installing it; this installation script is for disposable CI runners, not a contributor's
 existing installation.
 
-The macOS harness audits the former group after each ordinary command exit. If it finds a live
-process or cannot establish that the group stopped, it retains the private application and
-reports the result in a `*.group.json` receipt where possible. A command timeout still fails.
-Timeout receipts record a bounded TERM drain and any escalation to KILL before the leader is
-reaped.
-
 ### Routine CI and release sweeps
 
 Every PR and push to `main` runs the two Python check versions, Documentation, and **Linux current**:
@@ -387,6 +381,16 @@ a contributor's existing installation. The existing integration runner supplies 
 synthetic fixtures, lifecycle checks and shutdown assertions. The artifact includes interpreter,
 version, installer and integration logs, plus new user diagnostic reports identifying that
 private app. System-wide or delayed crash reports are not established by this collection.
+
+Each native command runs in its own process group. After an ordinary exit, including a nonzero
+one, the helper watches the former group for up to three seconds without sending signals. A
+member still alive after that, or a failed or interrupted observation, fails the command, retains
+the private application and leaves a `*.group.json` receipt where possible; a member that exits
+within the bound is recorded in the same receipt without failing. A descendant that starts its
+own session or process group is outside this audit. A command timeout still fails: its
+`*.timeout.json` receipt records a three-second TERM drain and any escalation to KILL, and the
+leader is reaped only after its group has stopped. A failed attach that left the image mounted
+is still detached.
 
 Dispatch focused checks with `gh workflow run macos.yml --ref <branch>`, respecting the platform
 cadence above. Coverage is Intel macOS 15 headless packaged integration and lifecycle, with the

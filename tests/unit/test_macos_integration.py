@@ -2,21 +2,94 @@
 
 import hashlib
 import json
+import math
 import os
 import signal
 import subprocess
 import sys
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 from unittest.mock import Mock
 
 import pytest
 
 from tools import macos_integration as cli
 
+GROUP = 47123
+
 
 @pytest.fixture(autouse=True)
 def native_cli_arguments(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sys, "argv", ["macos_integration.py"])
+
+
+class Interrupted(BaseException):
+    """An interruption that, unlike KeyboardInterrupt, cannot also stop the pytest session."""
+
+
+@dataclass
+class Member:
+    """A simulated group member: it exits at `exits_at`, or a delay after a signal it honours."""
+
+    honours: dict[int, float] = field(default_factory=dict[int, float])
+    exits_at: float = math.inf
+
+
+class FakeGroup:
+    """Simulate one private group's members, signals and clock; no real process is involved."""
+
+    def __init__(self, monkeypatch: pytest.MonkeyPatch, *members: Member) -> None:
+        self.now = 0.0
+        self.members = list(members)
+        self.signals: list[int] = []
+        self.signal_times: list[float] = []
+        self.snapshots = 0
+        self.failures: dict[int, BaseException] = {}
+        self.reaped: list[bool] = []
+        monkeypatch.setattr(cli.sys, "platform", "darwin")
+        monkeypatch.setattr(cli.os, "killpg", self.killpg, raising=False)
+        monkeypatch.setattr(cli, "group_members", self.snapshot)
+        monkeypatch.setattr(cli.time, "monotonic", lambda: self.now)
+        monkeypatch.setattr(cli.time, "sleep", self.sleep)
+
+    def killpg(self, group: int, sig: int) -> None:
+        assert group == GROUP, "A signal reached another process group"
+        self.signals.append(sig)
+        self.signal_times.append(self.now)
+        for member in self.members:
+            if sig in member.honours:
+                member.exits_at = min(member.exits_at, self.now + member.honours[sig])
+
+    def snapshot(self, group: int) -> list[dict[str, Any]]:
+        assert group == GROUP
+        index = self.snapshots
+        self.snapshots += 1
+        if index in self.failures:
+            raise self.failures[index]
+        return [
+            {
+                "pid": GROUP + offset,
+                "pgid": GROUP,
+                "state": "Z" if self.now >= member.exits_at else "S",
+                "uid": 501,
+                "command": "python",
+            }
+            for offset, member in enumerate(self.members)
+        ]
+
+    def sleep(self, seconds: float) -> None:
+        self.now += seconds
+
+    def stopped(self) -> bool:
+        return all(self.now >= member.exits_at for member in self.members)
+
+    def reap(self, timeout: float | None = None) -> None:
+        self.reaped.append(self.stopped())
+
+    def leader(self) -> Mock:
+        """An unreaped leader that records whether its group had stopped when it was reaped."""
+        return Mock(pid=GROUP, wait=Mock(side_effect=self.reap))
 
 
 def test_checksum_failure_prevents_mounting_or_running_a_payload(
@@ -59,6 +132,31 @@ def test_verified_image_is_mounted_read_only_and_always_detached_on_copy_failure
     assert "-readonly" in calls[0] and "-nobrowse" in calls[0]
     assert calls[-1] == ["hdiutil", "detach", str(tmp_path / "mount")]
     assert not any("/Applications" in part for command in calls for part in command)
+
+
+@pytest.mark.parametrize("mounted", [False, True])
+def test_failed_attach_is_detached_when_it_left_the_image_mounted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mounted: bool
+) -> None:
+    image = tmp_path / "office.dmg"
+    image.write_bytes(b"known fixture")
+    digest = hashlib.sha256(image.read_bytes()).hexdigest()
+    calls: list[list[str]] = []
+
+    def run(command: list[str], log: Path, environment: dict[str, str], timeout: int = 120) -> None:
+        calls.append(command)
+        if command[:2] == ["hdiutil", "attach"]:
+            raise cli.GroupCleanupError("the attach command's group audit failed")
+
+    def is_mount(path: Path) -> bool:
+        return mounted and path == tmp_path / "mount"
+
+    monkeypatch.setattr(cli, "run", run)
+    monkeypatch.setattr(cli.Path, "is_mount", is_mount)
+    with pytest.raises(cli.GroupCleanupError, match="group audit failed"):
+        cli.install(image, {"sha256": digest}, tmp_path, tmp_path, {})
+    assert (["hdiutil", "detach", str(tmp_path / "mount")] in calls) is mounted
+    assert not any(command[0] == "ditto" for command in calls)
 
 
 def test_executable_must_resolve_inside_the_private_application(
@@ -393,42 +491,152 @@ def test_drain_deadline_fails_without_reaping_a_live_group(
 
 
 @pytest.mark.parametrize("returncode", [0, 17])
-@pytest.mark.parametrize("audit_result", ["clear", "live", "unavailable"])
+@pytest.mark.parametrize(
+    "audit_result", ["clear", "late", "live", "unavailable", "lost", "interrupted"]
+)
 def test_post_reap_audit_never_signals_and_retains_uncertain_application(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, returncode: int, audit_result: str
 ) -> None:
-    monkeypatch.setattr(cli.sys, "platform", "darwin")
-    process = Mock(pid=47123)
+    # The leader is reaped before the audit, so only its former group's other members remain.
+    remaining: list[Member] = (
+        []
+        if audit_result == "clear"
+        else [Member(exits_at=0.4 if audit_result == "late" else math.inf)]
+    )
+    group = FakeGroup(monkeypatch, *remaining)
+    # Snapshot 0 is the audit's first; a failure at 1 interrupts its bounded observation.
+    failures: dict[str, dict[int, BaseException]] = {
+        "unavailable": {0: OSError("process snapshot failed")},
+        "lost": {1: OSError("process snapshot failed")},
+        "interrupted": {1: Interrupted()},
+    }
+    group.failures = failures.get(audit_result, {})
+    process = Mock(pid=GROUP)
     process.wait.return_value = returncode
     monkeypatch.setattr(cli.subprocess, "Popen", Mock(return_value=process))
-    kill = Mock()
-    monkeypatch.setattr(cli.os, "killpg", kill, raising=False)
 
-    def inspect(group: int) -> list[dict[str, str]]:
+    def reaped_first(group_id: int) -> list[dict[str, Any]]:
         process.wait.assert_called_once_with(timeout=120)
-        assert group == process.pid
-        if audit_result == "unavailable":
-            raise OSError("process snapshot failed")
-        return [{"state": "S" if audit_result == "live" else "Z"}]
+        return group.snapshot(group_id)
 
-    monkeypatch.setattr(cli, "group_members", inspect)
+    monkeypatch.setattr(cli, "group_members", reaped_first)
     log = tmp_path / "client.log"
-    if audit_result != "clear":
+    if audit_result in ("clear", "late"):
+        if returncode:
+            with pytest.raises(subprocess.CalledProcessError) as error:
+                cli.run(["client"], log, {})
+            assert error.value.returncode == returncode
+        else:
+            cli.run(["client"], log, {})
+        if audit_result == "clear":
+            assert not log.with_suffix(".group.json").exists()
+        else:
+            receipt = json.loads(log.with_suffix(".group.json").read_text("utf-8"))
+            assert receipt["proved_stopped"] is True
+            assert cli.live_members(receipt["members"])
+            assert not cli.live_members(receipt["after_grace"])
+            assert 0.4 <= group.now < cli.EXIT_GRACE, "The audit waited past the member's exit"
+    else:
         with (
-            pytest.raises(cli.GroupCleanupError, match="could not be proved stopped"),
+            pytest.raises(
+                cli.GroupCleanupError,
+                match=f"could not be proved stopped after the client exited with status "
+                f"{returncode}: ",
+            ),
             cli.private_directory(str(tmp_path)) as private,
         ):
             cli.run(["client"], log, {})
         assert private.exists()
         receipt = json.loads(log.with_suffix(".group.json").read_text("utf-8"))
-        assert receipt["group"] == 47123
+        assert receipt["group"] == GROUP
         assert receipt["client_returncode"] == returncode
-        assert ("members" in receipt) is (audit_result == "live")
-    elif returncode:
-        with pytest.raises(subprocess.CalledProcessError) as error:
-            cli.run(["client"], log, {})
-        assert error.value.returncode == returncode
+        assert receipt["proved_stopped"] is False
+        assert ("members" in receipt) is (audit_result != "unavailable")
+        if audit_result == "live":
+            assert cli.live_members(receipt["after_grace"])
+            assert cli.EXIT_GRACE <= group.now < cli.EXIT_GRACE + 0.1, "The audit is unbounded"
+        else:
+            assert type(group.failures[min(group.failures)]).__name__ in receipt["audit_error"]
+    assert group.signals == [], "A reaped client's former group must never be signalled"
+
+
+def test_cooperative_group_drains_after_term_without_kill(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    if sys.platform == "win32":
+        pytest.skip("The installer executes only on macOS/POSIX")
+    # Like the native control, the child's TERM handler needs a second before it exits.
+    honours: dict[int, float] = {signal.SIGTERM: 1.0, signal.SIGKILL: 0.0}
+    group = FakeGroup(monkeypatch, Member(dict(honours)), Member(dict(honours)))
+    receipt: dict[str, Any] = {}
+    cli.stop_group(group.leader(), receipt)
+    assert group.signals == [signal.SIGTERM], "TERM was not given its bounded grace"
+    assert receipt["kill_escalated"] is False
+    assert not cli.live_members(receipt["after_term"])
+    assert receipt["cleanup_succeeded"] is True
+    assert group.reaped == [True]
+
+
+def test_term_resistant_group_is_killed_before_the_leader_is_reaped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    if sys.platform == "win32":
+        pytest.skip("The installer executes only on macOS/POSIX")
+    honours: dict[int, float] = {signal.SIGKILL: 0.0}
+    group = FakeGroup(monkeypatch, Member(dict(honours)), Member(dict(honours)))
+    receipt: dict[str, Any] = {}
+    cli.stop_group(group.leader(), receipt)
+    assert group.signals == [signal.SIGTERM, signal.SIGKILL]
+    assert group.signal_times[1] >= cli.TERM_GRACE, "KILL preceded the TERM grace"
+    assert receipt["kill_escalated"] is True
+    assert cli.live_members(receipt["after_term"])
+    assert not cli.live_members(receipt["after_signals"])
+    assert group.reaped == [True], "The leader was reaped before its group stopped"
+
+
+@pytest.mark.parametrize("failing", [(1,), (1, 2)])
+def test_failed_term_snapshot_is_not_proof_that_the_group_stopped(
+    monkeypatch: pytest.MonkeyPatch, failing: tuple[int, ...]
+) -> None:
+    if sys.platform == "win32":
+        pytest.skip("The installer executes only on macOS/POSIX")
+    # Snapshot 0 precedes TERM, 1 is the first after TERM and 2 the first after KILL. The member
+    # does stop on TERM: only the missing proof forces the escalation.
+    group = FakeGroup(monkeypatch, Member({signal.SIGTERM: 0.0, signal.SIGKILL: 0.0}))
+    group.failures = {index: OSError("process snapshot failed") for index in failing}
+    receipt: dict[str, Any] = {}
+    if 2 in failing:
+        with pytest.raises(OSError, match="snapshot failed"):
+            cli.stop_group(group.leader(), receipt)
+        assert group.reaped == [], "The leader was reaped without proof that its group stopped"
+        assert "cleanup_succeeded" not in receipt
     else:
-        cli.run(["client"], log, {})
-        assert not log.with_suffix(".group.json").exists()
+        cli.stop_group(group.leader(), receipt)
+        assert group.reaped == [True]
+    assert "OSError" in receipt["term_grace_error"]
+    assert receipt["kill_escalated"] is True
+    assert group.signals == [signal.SIGTERM, signal.SIGKILL]
+
+
+def test_interrupted_wait_retains_the_application_and_the_unreaped_leader(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(cli.sys, "platform", "darwin")
+    interruption = Interrupted()
+    process = Mock(pid=GROUP)
+    process.wait.side_effect = interruption
+    monkeypatch.setattr(cli.subprocess, "Popen", Mock(return_value=process))
+    kill = Mock()
+    monkeypatch.setattr(cli.os, "killpg", kill, raising=False)
+    audit = Mock()
+    monkeypatch.setattr(cli, "audit_exited_group", audit)
+    with (
+        pytest.raises(cli.GroupCleanupError, match="wait was interrupted") as raised,
+        cli.private_directory(str(tmp_path)) as private,
+    ):
+        cli.run(["client"], tmp_path / "client.log", {})
+    assert raised.value.__cause__ is interruption
+    assert private.exists()
+    assert process.wait.call_count == 1
     kill.assert_not_called()
+    audit.assert_not_called()
