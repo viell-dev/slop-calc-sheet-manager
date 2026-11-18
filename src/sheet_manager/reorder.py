@@ -129,14 +129,24 @@ def plan_order(sheets: Sequence[Sheet], target: Sequence[str]) -> Plan:
 
 @lru_cache(maxsize=1)
 def _plan_order(sheets: tuple[Sheet, ...], destination: tuple[str, ...]) -> Plan:
-    # A maximum-weight increasing subsequence keeps complete scenario blocks still.
-    # Any common subsequence extends to the whole of each block it intersects.
-    # A Fenwick prefix-maximum tree finds that subsequence in O(B log B), and a Fenwick count
+    # A Fenwick prefix-maximum tree finds the sheets that stay in O(B log B), and a Fenwick count
     # tree gives each move's index in O(log N), so planning costs O(N log N) (#214).
-    groups = blocks(sheets)
     before = tuple(sheet.name for sheet in sheets)
+    keep = _kept(sheets, destination, latest=False)
+    return Plan(tuple(sheets), destination, _moves(before, destination, keep))
+
+
+def _kept(sheets: tuple[Sheet, ...], destination: tuple[str, ...], latest: bool) -> set[str]:
+    """The sheets of a maximum-weight increasing subsequence of blocks, which stay still.
+
+    It keeps complete scenario blocks: any common subsequence extends to the whole of each block
+    it intersects. Among equally heavy predecessors each block takes the earliest in the target,
+    or with `latest` the latest, and so does the choice of the last block.
+    """
+    groups = blocks(sheets)
     ordered = ordered_blocks(sheets, destination)
     positions = {group[0]: i for i, group in enumerate(groups)}
+    sign = 1 if latest else -1  # Tags i + 1 prefer later blocks on equal weights; -i - 1 earlier.
     tree = [(0, 0)] * (len(groups) + 1)
     previous: list[int] = []
     best_overall = (0, 0)
@@ -147,20 +157,19 @@ def _plan_order(sheets: tuple[Sheet, ...], destination: tuple[str, ...]) -> Plan
         while prefix:
             best = max(best, tree[prefix])
             prefix -= prefix & -prefix
-        # Negative indices preserve the earliest predecessor on equal weights.
-        previous.append(-best[1] - 1)
-        candidate = (best[0] + len(group), -i - 1)
+        previous.append(sign * best[1] - 1)
+        candidate = (best[0] + len(group), sign * (i + 1))
         best_overall = max(best_overall, candidate)
         cursor = position + 1
         while cursor < len(tree):
             tree[cursor] = max(tree[cursor], candidate)
             cursor += cursor & -cursor
     keep: set[str] = set()
-    cursor = -best_overall[1] - 1
+    cursor = sign * best_overall[1] - 1
     while cursor >= 0:
         keep.update(ordered[cursor])
         cursor = previous[cursor]
-    return Plan(tuple(sheets), destination, _moves(before, destination, keep))
+    return keep
 
 
 def _moves(
@@ -238,3 +247,34 @@ def lookup_conflict(plan: Plan, finds: Mapping[str, str]) -> tuple[str, str] | N
         order.remove(move.name)
         order.insert(move.index, move.name)
     return None
+
+
+def addressable_plan(plan: Plan, finds: Mapping[str, str]) -> Plan | None:
+    """`plan`, or an equally short plan to its target whose every call Calc's lookup addresses.
+
+    `plan` must come from `plan_order`, and `finds` is as for `lookup_conflict`. When one of the
+    plan's calls would reach another sheet, the planner's mirror image is the other candidate:
+    it keeps the latest of the equally heavy subsequences instead of the earliest, and moves the
+    other sheets left to right, each directly behind its predecessor in the target. A move that
+    the plan makes with a name Calc gives the other sheet of a pair can then be made by moving
+    other sheets around that sheet, or by moving it once it comes first (#125). None when the
+    mirror image has a conflict too.
+    """
+    if lookup_conflict(plan, finds) is None:
+        return plan
+    other = mirror_plan(plan)
+    if len(other.moves) == len(plan.moves) and lookup_conflict(other, finds) is None:
+        return other
+    return None
+
+
+def mirror_plan(plan: Plan) -> Plan:
+    """The planner's mirror image for `plan`'s orders, which is as short (`addressable_plan`)."""
+    count = len(plan.before)
+    keep = _kept(plan.before, plan.target, latest=True)
+    names = tuple(sheet.name for sheet in plan.before)
+    # Left to right behind each predecessor is right to left in front of each successor in the
+    # reversed orders.
+    mirrored = _moves(names[::-1], plan.target[::-1], keep)
+    moves = tuple(Move(move.name, count - 1 - move.index) for move in mirrored)
+    return Plan(plan.before, plan.target, moves)
