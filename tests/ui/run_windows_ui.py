@@ -60,6 +60,9 @@ from menu_checks import (  # noqa: E402
 from move_checks import check_move_controls  # noqa: E402
 from rename_dialog import check_keyboard as check_rename_keyboard  # noqa: E402
 from rename_dialog import check_mouse as check_rename_mouse  # noqa: E402
+from rename_dialog import check_other_row as check_rename_other_row  # noqa: E402
+from rename_dialog import check_replace_conflict as check_rename_replace_conflict  # noqa: E402
+from rename_dialog import check_stale as check_rename_stale  # noqa: E402
 from run import office_session, property_value  # noqa: E402
 from selection_checks import (  # noqa: E402
     check_click_activates,
@@ -203,6 +206,9 @@ def checks_for(lab, book):
         ),
         ("context_delete_targets", lambda: check_context_delete_targets(book)),
         ("rename_sheets_mouse", lambda: check_rename_mouse(book)),
+        ("rename_sheets_other_row", lambda: check_rename_other_row(book)),
+        ("rename_sheets_replace_conflict", lambda: check_rename_replace_conflict(book)),
+        ("rename_sheets_stale", lambda: check_rename_stale(book)),
         ("wheel", lambda: check_wheel(book)),
         ("autoscroll", lambda: check_autoscroll(book)),
     ]

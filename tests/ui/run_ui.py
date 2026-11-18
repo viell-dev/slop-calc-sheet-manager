@@ -73,6 +73,8 @@ from paint_checks import (  # noqa: E402
 )
 from rename_dialog import check_keyboard as check_rename_keyboard  # noqa: E402
 from rename_dialog import check_mouse as check_rename_mouse  # noqa: E402
+from rename_dialog import check_other_row as check_rename_other_row  # noqa: E402
+from rename_dialog import check_replace_conflict as check_rename_replace_conflict  # noqa: E402
 from rename_dialog import check_stale as check_rename_stale  # noqa: E402
 from run import office_session  # noqa: E402
 from selection_checks import (  # noqa: E402
@@ -139,6 +141,8 @@ def run_checks(lab, output, only=()):
         ("context_delete_targets", lambda: check_context_delete_targets(book)),
         ("rename_sheets_keyboard", lambda: check_rename_keyboard(book)),
         ("rename_sheets_mouse", lambda: check_rename_mouse(book)),
+        ("rename_sheets_other_row", lambda: check_rename_other_row(book)),
+        ("rename_sheets_replace_conflict", lambda: check_rename_replace_conflict(book)),
         ("rename_sheets_stale", lambda: check_rename_stale(book)),
         ("menu_queue_disposal", lambda: check_menu_queue_disposal(book)),
         ("help_menu", lambda: check_help_menu(book)),
