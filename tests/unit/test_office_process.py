@@ -971,6 +971,25 @@ def launch(behaviour: str, office: str = "exits") -> tuple[subprocess.Popen[str]
     return process, int(process.stdout.readline())
 
 
+def exited_state(pid: int) -> bool:
+    """Whether `/proc` shows `pid` as exited: a zombie (`Z`), or dead while it is released (`X`)."""
+    return office_process.linux_state(pid) in ("Z", "X")
+
+
+def still_running(pid: int, running: Callable[[int], bool]) -> bool:
+    """Whether `running(pid)` still holds a second later.
+
+    A process the stop saw exit can still be listed for a moment while its new parent reaps it,
+    so a single look can mistake it for one left running. A process left running stays so.
+    """
+    end = time.monotonic() + 1.0
+    while running(pid):
+        if time.monotonic() >= end:
+            return True
+        time.sleep(0.02)
+    return False
+
+
 def kill_if(pid: int, still: Callable[[int], bool]) -> None:
     """Send `pid` SIGKILL through a pidfd if `still(pid)` holds while the pidfd holds it."""
     assert sys.platform == "linux"
@@ -1091,9 +1110,9 @@ def test_the_launcher_starts_nothing_between_the_listing_and_its_sigterm(delayed
 
     def running(pid: int) -> bool:  # An orphan nobody reaps stays a zombie in a container.
         row = office_process.linux_process(pid)
-        return row is not None and row.name == "sleep" and office_process.linux_state(pid) != "Z"
+        return row is not None and row.name == "sleep" and not exited_state(pid)
 
-    left = [pid for pid in started if running(pid)]
+    left = [pid for pid in started if still_running(pid, running)]
     for pid in left:
         kill_if(pid, running)
     assert left == [], f"Forks left running: {left}; stop saw {seen}"
@@ -1388,12 +1407,12 @@ def test_a_fork_under_way_on_another_thread_is_held(monkeypatch: pytest.MonkeyPa
     def forked(pid: int) -> bool:  # Before its exec, a fork still has the launcher's arguments.
         with suppress(OSError):
             arguments = Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0")
-            return token.encode() in arguments and office_process.linux_state(pid) != "Z"
+            return token.encode() in arguments and not exited_state(pid)
         return False
 
     process.stdout.close()
     pids = [int(entry.name) for entry in Path("/proc").iterdir() if entry.name.isdigit()]
-    left = [pid for pid in pids if forked(pid)]
+    left = [pid for pid in pids if still_running(pid, forked)]
     for pid in left:
         kill_if(pid, forked)
     assert left == [], f"Forks left running: {left}; the stop saw {seen}"
