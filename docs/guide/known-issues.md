@@ -74,9 +74,9 @@ If Sheet Manager does not work in an environment where it is expected to, please
   configurations, and other backends remain unverified
   ([#254](https://github.com/viell-dev/slop-calc-sheet-manager/issues/254)).
 - **Large lists.** The list rebuilds after changes. During rapid sheet switches the active-sheet
-  marker, and <Unreleased since="0.0.9" /> the list's accessible name, can lag; timing measurements
-  and the remaining work are in
-  [#22](https://github.com/viell-dev/slop-calc-sheet-manager/issues/22).
+  marker, and <Unreleased since="0.0.9" /> the list's accessible name, can lag. LibreOffice's tree
+  control cannot update a single row in place, so the rebuild stays; the measurements and that
+  decision are in [#22](https://github.com/viell-dev/slop-calc-sheet-manager/issues/22).
 - **Final row divider.** At the end of a long list, the last row's lower divider can be absent.
   The painter leaves an ambiguous boundary pixel clear to keep decorations off scrollbars
   ([#86](https://github.com/viell-dev/slop-calc-sheet-manager/issues/86)).
