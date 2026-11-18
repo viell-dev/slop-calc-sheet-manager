@@ -45,7 +45,7 @@ from rename_dialog import check_keyboard as check_rename_keyboard  # noqa: E402
 from rename_dialog import check_mouse as check_rename_mouse  # noqa: E402
 from rename_dialog import check_stale as check_rename_stale  # noqa: E402
 from run import office_session, wait_for  # noqa: E402
-from teardown import Configured, stalled_callbacks  # noqa: E402
+from teardown import Configured, note_progress, stalled_callbacks  # noqa: E402
 from test_document_theme import (  # noqa: E402
     FAINT_BLUE_SOURCE,
     STYLE_COLORS,
@@ -2696,6 +2696,7 @@ def run_named(lab, book, output, checks, only=()):
 
     for name, check in checks:
         started = time.monotonic()
+        note_progress()
         try:
             reset(book)
             results[name] = {"pass": True, "evidence": check()}

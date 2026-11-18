@@ -9,7 +9,9 @@ from pathlib import Path
 import pytest
 
 from tests.integration.office_process import (
+    StallWatch,
     assert_clean_shutdown,
+    descendants,
     end_office,
     finish_process,
     normal_startup_restart,
@@ -211,3 +213,82 @@ def test_a_terminate_request_held_by_a_dialog_stops_the_office(tmp_path: Path) -
     assert result["office_forced_shutdown"] is True
     with pytest.raises(AssertionError):
         assert_clean_shutdown(result)
+
+
+def sleeper() -> subprocess.Popen[str]:
+    return subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"], text=True)
+
+
+def test_a_session_without_progress_keeps_its_stacks_and_stops_its_office(
+    tmp_path: Path,
+) -> None:
+    # A UNO call that never returns would hold the client until the job's limit (#45).
+    process = sleeper()
+    stalls: list[str] = []
+    stacks: list[tuple[int, bool]] = []
+
+    def native(pid: int, path: Path, *, debugger_parent: bool) -> str:
+        stacks.append((pid, debugger_parent))
+        path.write_text("Thread 1 (main)", encoding="utf-8")
+        return "fake debugger"
+
+    watch = StallWatch(
+        process,
+        tmp_path,
+        "stall-True-0",
+        idle=lambda: 1.0,
+        stalled=stalls.append,
+        limit=0.2,
+        find=lambda office: [office.pid],
+        stacks=native,
+    ).start()
+    deadline = time.monotonic() + 20
+    while process.poll() is None and time.monotonic() < deadline:
+        time.sleep(0.05)
+    watch.close()
+    assert process.poll() is not None
+    assert stacks == [(process.pid, False)]
+    assert len(stalls) == 1 and "No test progress" in stalls[0]
+    assert watch.evidence is not None
+    office = f"stall-True-0-office-{process.pid}-stacks.txt"
+    assert watch.evidence["office_stacks"] == {
+        str(process.pid): {"method": "fake debugger", "file": office}
+    }
+    client = (tmp_path / "stall-True-0-client-stacks.txt").read_text(encoding="utf-8")
+    assert "most recent call first" in client
+
+
+def test_progress_keeps_the_watch_from_stopping_the_office(tmp_path: Path) -> None:
+    process = sleeper()
+    stalls: list[str] = []
+    watch = StallWatch(
+        process,
+        tmp_path,
+        "stall-True-0",
+        idle=lambda: 0.0,
+        stalled=stalls.append,
+        limit=0.2,
+        find=lambda office: [office.pid],
+        stacks=lambda *args, **kwargs: "unused",
+    ).start()
+    time.sleep(1)
+    watch.close()
+    try:
+        assert process.poll() is None
+        assert stalls == [] and watch.evidence is None
+        assert not list(tmp_path.iterdir())
+    finally:
+        stop_process(process)
+
+
+def test_only_the_sessions_own_offices_are_found() -> None:
+    rows = [
+        (10, 1, "python"),
+        (11, 10, "soffice.exe"),
+        (12, 11, "soffice.bin"),
+        (13, 12, "/opt/lo/program/soffice.bin"),
+        (20, 1, "soffice.bin"),  # Another session's office.
+        (21, 20, "soffice.bin"),
+    ]
+    assert descendants(rows, 10, "soffice.bin") == [12, 13]
+    assert descendants(rows, 99, "soffice.bin") == []

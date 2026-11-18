@@ -272,8 +272,15 @@ $symbols = "srv*$cache*https://dev-downloads.libreoffice.org/symstore/symbols;sr
 
 A document close that takes more than 60 seconds fails the session. After a stalled callback,
 try no further closes or configuration restores: stop only the runner's own office. A terminate
-request held for 30 seconds also fails and forces shutdown. The runner must produce failed results
-instead of hanging or reporting success. The safeguards and investigations are in
+request held for 30 seconds also fails and forces shutdown. A session that reports no progress
+for 15 minutes, because a UNO call never returned, saves the client's Python stacks and the
+office's native stacks as `stall-*` files, records the stall and stops the office. Under
+`--backtrace` the gdb wrapper writes the native stacks into its trace; on Windows, CDB at its
+standard path writes them. Linux containers refuse `ptrace` otherwise, so only the client's stacks
+are kept there ([#45](https://github.com/viell-dev/slop-calc-sheet-manager/issues/45)).
+`SHEET_MANAGER_STALL_SECONDS` lowers the limit to try this; it is not a test timeout. The runner
+must produce failed results instead of hanging or reporting success. The safeguards and
+investigations are in
 [#47](https://github.com/viell-dev/slop-calc-sheet-manager/issues/47),
 [#50](https://github.com/viell-dev/slop-calc-sheet-manager/issues/50), and
 [#40](https://github.com/viell-dev/slop-calc-sheet-manager/issues/40).

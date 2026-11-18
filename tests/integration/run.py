@@ -30,6 +30,9 @@ gtk3 saves a screenshot.
 #   Never extend this startup handling into retrying test assertions or shutdown failures.
 # - Failed input polls retain only existing fixture reads/posts, without extra UNO calls (#160).
 # - Save completed suites as they finish: an external timeout can bypass Python finally (#162).
+# - A session with no progress for `office_process.STALL_SECONDS` saves its client and office
+#   stacks and stops its office (#45). Report progress at suite and check boundaries; never use
+#   the limit as a test timeout.
 
 import argparse
 import importlib.util
@@ -56,6 +59,7 @@ from com.sun.star.lang import XEventListener
 from input_trace import configure as configure_input_trace
 from main_thread import close_after, close_document
 from office_process import (
+    StallWatch,
     assert_clean_shutdown,
     end_office,
     finish_process,
@@ -63,7 +67,13 @@ from office_process import (
     retain_crash_dumps,
 )
 from sheet_list_view import move_buttons, tree_of
-from teardown import stalled_callbacks, start_session
+from teardown import (
+    note_progress,
+    record_stalled_callback,
+    seconds_since_progress,
+    stalled_callbacks,
+    start_session,
+)
 
 FACTORY = "dev.viell.sheetmanager.PanelFactory"
 DECK = "SheetManagerDeck"
@@ -283,9 +293,22 @@ def office_session(
                 raise
             continue
         start_session()
+        # A UNO call that never returns would otherwise hold the session until the job's
+        # limit, without evidence (#45); the watch saves stacks and stops the office first.
+        watch = StallWatch(
+            process,
+            output,
+            f"stall-{headless}-{attempt}",
+            idle=seconds_since_progress,
+            stalled=record_stalled_callback,
+            debugger_parent=backtrace,
+        ).start()
         try:
             yield context, desktop, directory
         finally:
+            watch.close()
+            if watch.evidence is not None:
+                result["office_progress_stall"] = watch.evidence
             try:
                 generated_trace = directory / "gdbtrace.log"
                 # Ends the office before the debugger's final output is copied. After a stalled
@@ -852,6 +875,7 @@ def main():
                                     else {}
                                 )
                                 started = time.monotonic()
+                                note_progress()
                                 print(f"integration phase: {suite_path.stem} started", flush=True)
                                 suite_result = suite.exercise(
                                     context, desktop, directory, output, **options

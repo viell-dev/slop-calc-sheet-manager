@@ -230,6 +230,8 @@ ensure that failed checks cannot pass through cleanup. `test_ui_failure_records.
 real-input failure diagnostic and clean-up step in turn and checks that the failed check's record
 is already on disk and keeps its own error (#190). Sessions fail on nonzero exits, forced
 shutdowns, fatal messages, crash dumps, stalled main-thread callbacks or held terminate requests.
+A session without progress for 15 minutes keeps its client and office stacks and fails before the
+job's limit (#45); native stacks need the gdb wrapper on Linux or CDB on Windows.
 Windows crash dumps matter even when the office exits with status zero. Only startup is retried;
 its dumps are retained separately. Debugger runs also reject signals, incomplete exits and missing
 traces. The Xvfb helper disables key repeat; `single_tap_after_client_pause` verifies one cursor

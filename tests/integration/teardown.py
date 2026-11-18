@@ -7,19 +7,35 @@ settings restore is tried (#51), the UI runner stops too (#52), the session fail
 stops its own office process tree instead of asking it to terminate, which would wait for the
 stuck thread too (#40). An earlier failure stays the one raised, with the timeout as a note, so
 that neither hides the other.
+
+Steps report progress through `note_progress`: the runner's `StallWatch` stops a session that
+reports none for its limit, after saving stacks (#45). Suites, checks and the runners' loops
+report it; a single step need not.
 """
 
+import time
 from collections.abc import Callable, Iterable
 from contextlib import suppress
 from types import TracebackType
 from typing import Any
 
 _stalled: list[str] = []
+_progress = [time.monotonic()]
 
 
 def start_session() -> None:
     """Forget stalled callbacks of an earlier office session in this process."""
     _stalled.clear()
+    note_progress()
+
+
+def note_progress() -> None:
+    """Note that the session has moved on to another suite, check or step."""
+    _progress[0] = time.monotonic()
+
+
+def seconds_since_progress() -> float:
+    return time.monotonic() - _progress[0]
 
 
 def record_stalled_callback(message: str) -> None:
@@ -133,6 +149,7 @@ def run_checks(
             if _stalled:
                 break  # No check runs against a stuck office; the clean-up below raises.
             print(f"{label}:", name, flush=True)
+            note_progress()
             results[name] = check() or True
     except BaseException as failure:
         close_leftovers(documents, close, failure)
