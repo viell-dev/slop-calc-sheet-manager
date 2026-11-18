@@ -4,7 +4,7 @@ This map describes the maintained implementation on `main`: its promises, curren
 known evidence limits. It is not a release-readiness receipt. The guide's notice identifies the
 published baseline; behaviour absent from it remains marked **Unreleased**. Update this map when
 a promise or its checks change. Commands and fixture safeguards belong in
-[CONTRIBUTING.md](https://github.com/viell-dev/slop-calc-sheet-manager/blob/main/CONTRIBUTING.md#tests).
+[Native LibreOffice testing](./development/native-testing.md).
 Record run results, deliberate-break experiments and review findings in the owning issue or PR.
 
 ## Where checks run
@@ -48,9 +48,10 @@ job-level timeout or cancellation during the painted phase itself is not exercis
 
 **Windows desktop** uses real `SendInput` on a visible
 Windows Server 2025 desktop, the pinned `win` build and en-US layout. Its current evidence covers
-one 1024×768 desktop at 96 DPI. The full release sweep requires the complete suite; a separate
-manual workflow supports focused investigation. Commands and cadence are in
-[CONTRIBUTING.md](https://github.com/viell-dev/slop-calc-sheet-manager/blob/main/CONTRIBUTING.md#routine-ci-and-release-sweeps).
+one 1024×768 desktop at 96 DPI. Windows 11 and input methods are outside this lane. The full
+release sweep requires the complete suite. See
+[Hosted checks](./development/hosted-checks.md#visible-windows-desktop) for focused dispatch
+and cadence.
 
 No automated lane runs a screen reader. Native Wayland input, distribution packages,
 Flatpak, Snap, Arm and other themes or scaling are not established by these checks.
@@ -82,8 +83,8 @@ The theme fixture finishes edits and cleanup while its workbook is hidden, befor
 the panel. Resetting modified state after the list has loaded invalidates its structure proof;
 a click before the pending refresh is correctly cleared. Native journals established that
 setup race in #160. Preparing the fixture before the monitor exists preserves the identity
-safeguard. The optional paired input probe in CONTRIBUTING retains all eight outcomes using
-the normal package, with and without native delivery observers.
+safeguard. The [optional paired input probe](./development/hosted-checks.md#macos-packaged-integration)
+retains all eight outcomes using the normal package, with and without native delivery observers.
 Completed suites and rename benchmark cases are saved incrementally so an external timeout
 retains partial evidence; `run_complete` distinguishes the final result from partial checkpoints.
 The macOS helper records its owned process group on timeout and runs
@@ -119,7 +120,7 @@ documented in [RELEASING.md](https://github.com/viell-dev/slop-calc-sheet-manage
 | This window's native tabs and grouped-editing status follow without rebuilding rows or replacing independent picks | `test_sync_sheet_list.py:check_tabs`; observation unit tests; real-input synchronization checks | Integration, Checks and Linux UI. Tabs are sampled about every 0.25 seconds between interactions, not received as timestamped events. |
 | Observation pauses while hidden and stays bound to the correct view through window changes and reload | `test_sync_sheet_list.py:check_hidden`, `check_views`, `check_reload`; `reload_accepts_real_input`; visibility/timer unit tests | Integration, Checks and Linux UI; minimize requires a painted session. Visibility is checked about once a second. Input during native initialization may still clear conservatively (#88). A failed Reload pick retains the posted click, delivered press/release, native selection changes and later modify notifications from callbacks, and names any selection notice, so the failure classifies itself. Disposal's rejection of an already queued sample or acknowledgement is checked with fakes; whether a native release dispatches queued events is not measured. |
 | Rows show each sheet's own order, viewed state, visibility, protection, scenarios and colour | Unit/integration `test_sheet_list.py`; `test_reorder_identity.py:check_confusable_names` | Checks and integration. Property changes rebuild the native model; rapid switches can lag (#22). |
-| Names Calc confuses still use the picked sheet's handle; unsafe name-based moves are refused | `check_confusable_names` with `ﬁ`/`fi` and `I`/`ı`; `test_reorder.py:lookup_conflict` against an independent replay model | Integration and Checks. Exercises rows, Show, Hide, moves, per-call guards and batch rename. Grouped-tab Undo forces view reactivation and checks its activation sequence by identifying cells; menu Delete refuses either side of a confusable pair without changing the view, data or undo history (#138), then deletes exactly the second sheet as one undo step after the other is renamed, with complete restoration on Undo. Only two measured pairs and English locales; scenario combinations remain unverified. Calc's formula lookup remains defective (#113), and some moves are refused (#125). |
+| Names Calc confuses still use the picked sheet's handle; a move that needs a confused name uses the planner's equally short mirror image when Calc can address all its calls, and is refused otherwise | `check_confusable_names` with `ﬁ`/`fi` and `I`/`ı`; `test_reorder.py:lookup_conflict` and `addressable_plan` against an independent replay model and the planner on reversed orders | Integration and Checks. Exercises rows, Show, Hide, moves (one made by the mirror image, with its Undo and view restoration), refusals, per-call guards and batch rename. Grouped-tab Undo forces view reactivation and checks its activation sequence by identifying cells; menu Delete refuses either side of a confusable pair without changing the view, data or undo history (#138), then deletes exactly the second sheet as one undo step after the other is renamed, with complete restoration on Undo. Only two measured pairs and English locales; scenario combinations remain unverified. Calc's formula lookup remains defective (#113), and some moves are refused (#125). |
 
 The structural monitor's guarantees, notification rules and unavoidable limits are specified in
 [reordering.md](./reordering.md) and the `structure.py` docstring. Identity investigations and
@@ -160,7 +161,9 @@ The measured native naming rules and deliberate-break results are in
 | Renames are one undo step, references follow, text does not, and the view stays | `check_swaps_and_cycles`, `check_capacities`, `check_other_window`, `check_main_thread` | Integration. Formulas, ranges, charts, literal/INDIRECT text, swaps and cycles; capacities 0, 1 and 2, including a 31-call cycle at 1. Configure undo before creating workbooks (#37). |
 | Partial/native refusal rolls back and verifies; stale or protected targets refuse | `check_failures`, `check_native_refusal_after_search`, `check_stale_targets`, `check_menu_entry` | Integration. Includes failures around each real call, ineffective undo and a native refusal after Find & Replace (#112). |
 | Own picks follow verified renames without passing to other sheets | Randomized selection tests and carry/refusal controls; `rename_sheets_keyboard`, `rename_sheets_mouse` | Checks, Linux UI and Windows desktop. Another window's list clears after a batch; covered by the model, not a second real list. |
-| Dialog works by keyboard/mouse, Enter/Cancel apply nothing, changed targets refuse | `rename_sheets_keyboard`, `rename_sheets_mouse`, `rename_sheets_stale` | Linux UI; keyboard and mouse checks also Windows desktop. Stale-dialog input is not run on Windows. Wayland and screen-reader announcements remain unverified; status is a plain label. |
+| Dialog works by keyboard and mouse, Enter in Find and Cancel apply nothing, and changed targets refuse | `rename_sheets_keyboard`, `rename_sheets_mouse`, `rename_sheets_stale` | Linux gtk3/gen UI and Windows desktop. Stale-target input uses a scripted external rename, then real keys to invoke the dialog's refusal. |
+| <Unreleased /> Refusals are exposed on the edit or action button and each affected preview row | `test_rename.py` covers field-reason precedence. `rename_sheets_keyboard`, `rename_sheets_other_row`, `rename_sheets_replace_conflict`, `rename_sheets_stale` | Linux gtk3/gen UI and Windows desktop. Real keys drive direct syntax and conflict-to-syntax edits and a conflict on a different row. Alt+A and Alt+R start from the edit and move focus to the action button. Checks cover empty Find, no match, an identical replacement with a match and its retry, a replacement conflict and its retry, and stale Rename and its retry. For zero-change replacements they compare the status and button reason. They assert UNO name events, focus, validation state, and restoration of the ordinary edit and button names. LibreOffice's [accessible text component](https://github.com/LibreOffice/core/blob/libreoffice-26.8.2.2/vcl/source/accessibility/vclxaccessibletextcomponent.cxx#L74-L90) can deliver two callbacks for one edit name change. |
+| <Unreleased /> Rename refusals can be heard while operating the dialog | One-off speech probes with Orca 48.1 on Debian 13.7 gtk3/X11 and NVDA 2026.3.1 on Windows Server 2025 (`win`), both with TDF LibreOffice 26.8.2.2. See [#254](https://github.com/viell-dev/slop-calc-sheet-manager/issues/254). | Both readers spoke the changed reasons during the edit and on the focused action buttons. NVDA's Insert+Tab could repeat the button's refusal. GTK3 retained a synthetic pasted embedded NUL and Orca spoke the reason. Windows received only the preceding text. `test_rename.py` checks NUL validation directly. The captures and focus receipts are functional evidence. Human usability, Braille, Wayland and other screen-reader configurations remain unverified. |
 
 ## Interaction and accessibility
 
@@ -224,7 +227,7 @@ not limits:
   [#22](https://github.com/viell-dev/slop-calc-sheet-manager/issues/22).
 
 All inputs are synthetic. Workbooks stay in memory unless the contributor explicitly runs the
-inspection generator described in CONTRIBUTING.md.
+[inspection workbook generator](./development/native-testing.md#inspection-workbooks).
 
 ## The visible Windows desktop
 
@@ -248,15 +251,23 @@ real-input failure diagnostic and clean-up step in turn and checks that the fail
 is already on disk and keeps its own error (#190). `test_lab_calibration.py` checks that the
 Xvfb lab's pointer calibration waits for the tree's own report of its move, so a busy office
 cannot shift a workbook's calibrated positions and pixel coordinates by two pixels (#209).
+`test_rename_dialog_calibration.py` checks that the rename dialog's calibration takes its offset
+only from two reports that follow its two moves, so a late report of another point cannot move
+the dialog's clicks off their controls (#232). It also checks that the points start on the
+dialog's own window, inside the measured Openbox and Windows frames that the dialog's accessible
+area includes, where the dialog reports nothing; from the Windows frame, each calibration took
+about a minute (#253).
 Sessions fail on nonzero exits, forced
 shutdowns, fatal messages, crash dumps, stalled main-thread callbacks or held terminate requests.
+`test_install_timing.py` checks that each package installation's elapsed time is recorded and
+that one exceeding its limit still fails, with that time and unopkg's output kept (#235).
 Windows crash dumps matter even when the office exits with status zero. Only startup is retried;
 its dumps are retained separately. Debugger runs also reject signals, incomplete exits and missing
 traces. The Xvfb helper disables key repeat; `single_tap_after_client_pause` verifies one cursor
 step after a one-second held key. Operating-system timed repeat is outside that check.
 
 Fixture procedures and artifact diagnosis are in
-[CONTRIBUTING.md](https://github.com/viell-dev/slop-calc-sheet-manager/blob/main/CONTRIBUTING.md#failures-and-shutdown).
+[Native LibreOffice testing](./development/native-testing.md#failures-and-shutdown).
 Lifecycle failure evidence is in
 [#40](https://github.com/viell-dev/slop-calc-sheet-manager/issues/40),
 [#48](https://github.com/viell-dev/slop-calc-sheet-manager/issues/48), and

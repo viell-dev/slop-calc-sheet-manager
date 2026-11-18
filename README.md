@@ -79,8 +79,9 @@ The gtk3 checks run under X11 in a virtual display. The visible Windows checks r
 hosted Windows Server 2025 runners, on one 1024×768 desktop at 96 DPI with the en-US keyboard
 layout, the `win` interface and no screen reader. They are required in the release sweep, with
 focused manual checks available for investigation. The Intel macOS checks cover headless packaged
-integration and removal, without Aqua rendering or real OS input. Apple Silicon and screen-reader
-behaviour remain unverified. If Sheet Manager does not work somewhere it
+integration and removal, without Aqua rendering or real OS input. Apple Silicon remains
+unverified. The [known issues guide](https://viell-dev.github.io/slop-calc-sheet-manager/guide/known-issues)
+describes separate screen-reader probes and their limits. If Sheet Manager does not work somewhere it
 is expected to, please
 [report it](CONTRIBUTING.md#report-a-defect).
 

@@ -126,8 +126,9 @@ def test_the_move_itself_still_requires_the_active_window(active: bool) -> None:
     permission = Availability(True, undo_steps=100)
     conflicts: list[object] = []
 
-    def lookup_conflict(document: object, checked: object) -> None:
+    def addressable(document: object, checked: object) -> object:
         conflicts.append(checked)
+        return checked
 
     def current(document: object, observed: object) -> bool:
         return True
@@ -143,7 +144,7 @@ def test_the_move_itself_still_requires_the_active_window(active: bool) -> None:
 
     preflight = function(
         REORDER,
-        "preflight",
+        "_preflight",
         {
             "Any": Any,
             "Snapshot": object,
@@ -154,12 +155,12 @@ def test_the_move_itself_still_requires_the_active_window(active: bool) -> None:
             "plan_order": plan_order,
             "plan_availability": plan_availability,
             "move_availability": move_availability,
-            "_lookup_conflict": lookup_conflict,
+            "_addressable": addressable,
         },
     )
     observed = SimpleNamespace(sheets=("Alfa",))
     result = preflight(object(), permitted_document(active), observed, plan)
-    assert result == (permission if active else Availability(False, ACTIVATION))
+    assert result == ((permission if active else Availability(False, ACTIVATION)), plan)
     assert conflicts == ([plan] if active else [])
 
 

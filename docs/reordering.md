@@ -109,11 +109,18 @@ The adapter refuses read-only documents, protected document structure, recorded 
 or locked undo, zero configured undo steps, an inactive document frame, stale state, and no-op
 plans. The list's enablement checks the same permissions except the frame: input in the list
 activates its window first, because LibreOffice can leave the focused window's frame inactive
-([#211](https://github.com/viell-dev/slop-calc-sheet-manager/issues/211)). It also refuses a plan in which a moved sheet's name would find another sheet when its call
-runs: Calc accepts names that its own lookup cannot tell apart, such as `ﬁ` beside `fi`, finds
-whichever comes first for both, and `moveByName` is the only move the API offers
-([#113](https://github.com/viell-dev/slop-calc-sheet-manager/issues/113)). Each call checks the
-name again just before it moves. Individual sheet content protection does not prevent reordering.
+([#211](https://github.com/viell-dev/slop-calc-sheet-manager/issues/211)). Calc accepts names
+that its own lookup cannot tell apart, such as `ﬁ` beside `fi`, finds whichever comes first for
+both, and `moveByName` is the only move the API offers
+([#113](https://github.com/viell-dev/slop-calc-sheet-manager/issues/113)). When a moved sheet's
+name in the plan would find another sheet when its call runs, `apply_order` applies the planner's
+mirror image instead, if Calc can address all of its calls: the same target in as many calls,
+keeping the latest of the equally heavy kept subsequences and moving the other sheets left to
+right, each directly behind its predecessor (`reorder.addressable_plan`,
+[#125](https://github.com/viell-dev/slop-calc-sheet-manager/issues/125)). Otherwise the adapter
+refuses the plan and names both sheets. Callers still pass the planner's plan; `Result.moves`
+counts the calls of the plan applied. Each call checks the name again just before it moves.
+Individual sheet content protection does not prevent reordering.
 It groups moves with the translated `tr("Move Sheets")` title, verifies the final order and
 scenario flags, and preserves the initiating view's active sheet and native tab selection.
 

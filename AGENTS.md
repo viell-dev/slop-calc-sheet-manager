@@ -220,8 +220,9 @@ reconsider. The owner may report a defect themselves, in their own words.
   the implementation and its verification evidence. If the About text or homepage is affected,
   read the live GitHub settings and correct them.
 - **Document ownership.** Keep the README focused on purpose, capabilities, compatibility and entry
-  points. Contributor commands belong in CONTRIBUTING.md, current coverage and limits in
-  docs/verification.md, and release procedures in RELEASING.md. This file holds agent instructions
+  points. CONTRIBUTING.md owns setup, routine commands, and task entry points. The linked
+  Development pages own native test procedures, docs/verification.md owns coverage and limits,
+  and RELEASING.md owns release procedures. This file holds agent instructions
   and non-obvious safeguards. Issues and PRs own decisions, progress and detailed verification
   receipts; do not duplicate their history here or create a replacement ledger.
 - **Which version the guide describes** follows
@@ -260,8 +261,8 @@ before changing the module, and update it in the same pull request when a rule c
 [docs/reordering.md](docs/reordering.md) is the contract between the list and the move operation.
 
 Pure logic and `uno_` adapters live in [`src/sheet_manager/`](src/sheet_manager/).
-[CONTRIBUTING.md](CONTRIBUTING.md#tests) explains the runners and suite conventions;
-[docs/verification.md](docs/verification.md) maps behaviours to their tests, and
+[Native LibreOffice testing](docs/development/native-testing.md) explains the runners and
+suite conventions. [docs/verification.md](docs/verification.md) maps behaviours to their tests, and
 [docs/manual-tests.md](docs/manual-tests.md) supplies human usability tasks. Keep these documents
 current when their procedures or coverage change. [RELEASING.md](RELEASING.md) owns packaging,
 publication and feed procedures.
