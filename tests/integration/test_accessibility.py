@@ -14,10 +14,10 @@ metadata checks: no screen reader runs, so what one announces is not verified he
   queues the rebuilding refresh ahead of any intake: the ordering is deterministic.
 - A refresh that only repaints, keeping the tree (#22), lets the intake take such a selection
   too. One made against a sheet that is then replaced under its name is never taken, even when
-  the list owns no pick: the refresh that finds the lost identity proof clears it. A rebuild
-  shows a selection still awaiting intake again (`_show_native`), so the tree's selection
-  alone cannot tell whether the list took it. Move to Top, enabled only by the list's own picks
-  away from the first row, shows that.
+  the list owns no pick and the rows read the same: the refresh that finds the lost identity
+  proof replaces the tree, which clears it. A rebuild shows a selection still awaiting intake
+  again (`_show_native`), so the tree's selection alone cannot tell whether the list took it.
+  Move to Top, enabled only by the list's own picks away from the first row, shows that.
 - Every control of the panel is a child of the panel window's accessible context, at its own index
   in parent and in visual order, and each ancestor up to the top is listed by its parent (#133).
   A walk down from the top, as a screen reader's object navigation or a bridge's focus tracking
@@ -283,16 +283,18 @@ def check_assistive_selection_in_a_kept_tree(context, desktop):
         sheets.removeByName("Extra")
 
     on_main_thread(context, insert_and_delete)
-    poll(lambda: selection(tree, FIVE) == [], "the refresh that drops every pick")
+    # The rows read the same afterwards, but the lost proof replaces the tree.
+    poll(lambda: root(tree) not in (None, model), "the refresh that drops every pick")
     time.sleep(1.0)
-    assert selection(tree, FIVE) == [] and root(tree) == model, selection(tree, FIVE)
+    assert selection(tree, FIVE) == [], selection(tree, FIVE)
+    model = root(tree)
 
     say("a selection made against a sheet replaced before its intake is never taken")
     on_main_thread(
         context, lambda: select_then(1, lambda: replace_sheet(document, "Bravo"), 0x993322)
     )
-    poll(lambda: selection(tree, FIVE) == [], "the refresh to clear the unproven selection")
-    assert root(tree) == model, "Names and labels are unchanged: the tree must be kept"
+    poll(lambda: root(tree) not in (None, model), "the lost proof to replace the tree")
+    assert selection(tree, FIVE) == [], selection(tree, FIVE)
     time.sleep(1.0)  # Observation ticks would take a selection still shown.
     assert selection(tree, FIVE) == [], selection(tree, FIVE)
     assert not top.isEnabled(), "The list owns a pick of the replaced sheet"

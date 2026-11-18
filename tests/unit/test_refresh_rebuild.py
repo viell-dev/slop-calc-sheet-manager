@@ -1,4 +1,4 @@
-"""A refresh replaces the tree's nodes only when a name or label changes (#22)."""
+"""A refresh replaces the tree's nodes unless only painted state changed (#22)."""
 
 from collections.abc import Mapping
 from dataclasses import replace
@@ -14,6 +14,9 @@ from tests.unit.source_methods import method
 
 NAMES = ("Alfa", "Bravo", "Charlie")
 SHOWN = [SheetRow("Alfa", active=True), SheetRow("Bravo"), SheetRow("Charlie", color=0x2A6099)]
+# Calc switched to Bravo, or a tab colour was set, changed and cleared: only painted state moves.
+SWITCH = [replace(SHOWN[0], active=False), replace(SHOWN[1], active=True), SHOWN[2]]
+COLOURS = [replace(SHOWN[0], color=0x993322), SHOWN[1], replace(SHOWN[2], color=None)]
 
 
 def refresh(
@@ -21,9 +24,16 @@ def refresh(
     *,
     shown: list[SheetRow] = SHOWN,
     nodes: bool = True,
+    proven: bool = True,
     dropped: bool = False,
+    picked: tuple[str, ...] = ("Bravo",),
 ) -> Any:
-    """Run `SheetList._refresh` over sheets showing `shown` whose rows now read as `fresh`."""
+    """Run `SheetList._refresh` over sheets showing `shown` whose rows now read as `fresh`.
+
+    The tree shows `Bravo` picked; the list's own picks are `picked`. `proven` is whether the
+    handles still prove which sheet each row is, and `dropped` whether revalidating the picks,
+    or dropping them all when the proof was lost, dropped any.
+    """
     observed = SimpleNamespace(
         sheets=[SimpleNamespace(name=row.name) for row in fresh],
         handles=[object() for _ in fresh],
@@ -36,15 +46,15 @@ def refresh(
         _nodes=[object()] * len(shown) if nodes else [],
         rows=list(shown),
         _shown=("Bravo",),
-        _repaint_pending=False,
         _view_generation=0,
         _view_names=frozenset(row.name for row in fresh),
         _view_stopped=True,
         _view_state=None,
         _input=0,
         _monitor=SimpleNamespace(check=lambda: 0),
-        _identities_kept=Mock(return_value=True),
-        _selection=SimpleNamespace(carry=Mock(return_value=dropped), names=lambda: ["Bravo"]),
+        _identities_kept=Mock(return_value=proven),
+        _drop_all_picks=Mock(return_value=dropped),
+        _selection=SimpleNamespace(carry=Mock(return_value=dropped), names=lambda: list(picked)),
         _take_tree_selection=Mock(return_value=False),
         selected_names=lambda: ["Bravo"],
         _rebuild=Mock(),
@@ -57,8 +67,6 @@ def refresh(
         controller=None,
     )
     owner.names = lambda: [row.name for row in owner.rows]
-    repaint = method("src/sheet_manager/uno_list.py", "SheetList", "_repaint", {})
-    owner._repaint = lambda: repaint(owner)
 
     def snapshot(document: Any) -> Any:
         return observed
@@ -75,16 +83,7 @@ def refresh(
     return owner
 
 
-@pytest.mark.parametrize(
-    "fresh",
-    [
-        # Calc switched to Bravo: only the painted arrow moves.
-        [replace(SHOWN[0], active=False), replace(SHOWN[1], active=True), SHOWN[2]],
-        # A tab colour is set, changed and cleared.
-        [replace(SHOWN[0], color=0x993322), SHOWN[1], replace(SHOWN[2], color=None)],
-    ],
-    ids=["switch", "colours"],
-)
+@pytest.mark.parametrize("fresh", [SWITCH, COLOURS], ids=["switch", "colours"])
 def test_painted_changes_keep_the_nodes_and_repaint(fresh: list[SheetRow]) -> None:
     owner = refresh(fresh)
     owner._rebuild.assert_not_called()
@@ -130,12 +129,37 @@ def test_an_unchanged_refresh_neither_rebuilds_nor_repaints() -> None:
     owner.peer.invalidate.assert_not_called()
 
 
-def test_dropped_picks_are_written_back_without_rebuilding_painted_changes() -> None:
-    fresh = [replace(SHOWN[0], active=False), replace(SHOWN[1], active=True), SHOWN[2]]
-    owner = refresh(fresh, dropped=True)
+@pytest.mark.parametrize("fresh", [SHOWN, SWITCH], ids=["unchanged rows", "switch"])
+def test_a_lost_proof_replaces_the_nodes(fresh: list[SheetRow]) -> None:
+    # A native selection awaiting intake was made against the sheets the proof covered, and
+    # only new nodes are sure to drop it, even when the list owned no pick (`dropped` False).
+    owner = refresh(list(fresh), proven=False)
+    owner._drop_all_picks.assert_called_once_with()
+    owner._rebuild.assert_called_once_with(fresh)
+    owner._apply_selection.assert_not_called()
+    owner.peer.invalidate.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("dropped", "picked"), [(True, ()), (False, ("Bravo", "Charlie"))], ids=["dropped", "newer"]
+)
+def test_changed_picks_with_painted_changes_replace_the_nodes(
+    dropped: bool, picked: tuple[str, ...]
+) -> None:
+    owner = refresh(SWITCH, dropped=dropped, picked=picked)
+    owner._rebuild.assert_called_once_with(SWITCH)
+    owner.peer.invalidate.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("dropped", "picked"), [(True, ()), (False, ("Bravo", "Charlie"))], ids=["dropped", "newer"]
+)
+def test_changed_picks_over_identical_rows_are_written_to_the_kept_nodes(
+    dropped: bool, picked: tuple[str, ...]
+) -> None:
+    owner = refresh(list(SHOWN), dropped=dropped, picked=picked)
     owner._rebuild.assert_not_called()
     owner._apply_selection.assert_called_once_with()  # It repaints as it writes the picks.
-    owner.peer.invalidate.assert_not_called()
 
 
 def test_node_text_ignores_only_painted_state() -> None:
@@ -144,41 +168,35 @@ def test_node_text_ignores_only_painted_state() -> None:
     assert node_text([replace(SHOWN[0], visible=False)])[0] == ("Alfa", "Alfa (hidden)")
 
 
-@pytest.mark.parametrize("change", ["tab colour", "picks only"])
-def test_a_failed_repaint_stays_pending_for_the_retry(change: str) -> None:
+@pytest.mark.parametrize("failures", [1, 2])
+def test_a_failed_repaint_is_retried(failures: int) -> None:
     book = Book(list(NAMES))
     owner = sheet_list(book)
-    if change == "picks only":
-        owner._select(["Charlie"], "Charlie")
-    nodes, painted = owner._nodes, owner.peer.invalidations
-    if change == "tab colour":
-        book.sheet("Charlie").color = 0x993322
-    else:
-        # The pick's sheet is replaced by one whose row reads exactly the same, so only the
-        # dropped pick's mark changes: the first attempt leaves no row difference to retry.
-        book.replace("Charlie")
-        assert book.rows() == owner.rows
-    owner.peer.failures = 1
-    with pytest.raises(RuntimeError, match="invalidate"):
-        owner._refresh({})
-    owner._refresh({})  # The retry after a failed refresh (#186).
+    owner._select(["Bravo"], "Bravo")
+    nodes, rows, painted = owner._nodes, owner.rows, owner.peer.invalidations
+    book.sheet("Charlie").color = 0x993322
+    owner.peer.failures = failures
+    for _ in range(failures):
+        with pytest.raises(RuntimeError, match="invalidate"):
+            owner._refresh({})  # The refresh, then its retries (#186).
+        assert owner.rows == rows, "The rows were taken although their repaint failed"
+    owner._refresh({})
     assert owner._nodes is nodes
     assert owner.peer.invalidations == painted + 1, "The retry did not repaint"
     assert owner.rows == book.rows()
-    assert owner.tree.shown() == owner._selection.names() == []
-    owner._refresh({})  # Once it has succeeded, nothing is pending.
+    assert owner.tree.shown() == owner._selection.names() == ["Bravo"]
+    owner._refresh({})  # Once it has succeeded, nothing is left to repaint.
     assert owner.peer.invalidations == painted + 1
 
 
-def test_clearing_the_last_pick_in_a_kept_tree_repaints_every_row() -> None:
+def test_a_replaced_pick_whose_row_reads_the_same_replaces_the_nodes() -> None:
     book = Book(list(NAMES))
     owner = sheet_list(book)
     owner._select(["Charlie"], "Charlie")
-    nodes, painted = owner._nodes, owner.peer.invalidations
-    book.replace("Charlie")  # The pick can no longer be proved,
-    book.active = book.sheet("Bravo")  # and the current-sheet arrow moves to another row.
+    nodes = owner._nodes
+    book.replace("Charlie")  # Its row reads exactly the same, but the pick cannot be proved.
+    assert book.rows() == owner.rows
     owner._refresh({})
-    assert owner._nodes is nodes
-    assert owner.tree.shown() == [] and not owner._selection.picked
-    assert owner.peer.invalidations == painted + 1, "The moved arrow was not repainted"
+    assert owner._nodes is not nodes
+    assert owner.tree.shown() == owner._selection.names() == []
     assert owner.rows == book.rows()

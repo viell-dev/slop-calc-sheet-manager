@@ -8,7 +8,6 @@ from unittest.mock import Mock
 
 import pytest
 
-from sheet_manager.sheet_list import SheetRow, node_text
 from sheet_manager.structure import VIEW_RESTORE_LIMIT, StructureEvents
 from tests.unit.source_methods import method
 
@@ -177,7 +176,7 @@ def test_new_namespace_or_proof_establishes_a_baseline_without_picking_replaceme
 def test_refresh_seeds_the_new_proof_before_a_subsequent_tab_change(kept: bool) -> None:
     owner, live = observer()
     observed = SimpleNamespace(sheets=(), handles=())
-    rows = [SheetRow(name) for name in live.names]
+    rows = [object()]
     owner._observed, owner.rows, owner._nodes = observed, rows, [object()]
     owner._monitor.generation = 1
     owner._monitor.check = lambda: 1
@@ -192,27 +191,22 @@ def test_refresh_seeds_the_new_proof_before_a_subsequent_tab_change(kept: bool) 
 
     owner._selection = SimpleNamespace(carry=carry, names=selected_names)
     owner._shown = ()
-    owner._repaint_pending = False
     owner._apply_selection = Mock()
+    owner._rebuild = Mock()  # A lost proof replaces the nodes (#22).
     owner._generation = 0
     owner._name_viewed = Mock()
 
     def snapshot(document: Any) -> Any:
         return observed
 
-    def read_rows(controller: Any, picture: Any) -> list[SheetRow]:
+    def read_rows(controller: Any, picture: Any) -> list[object]:
         return rows
 
     refresh = method(
         SOURCE,
         "SheetList",
         "_refresh",
-        {
-            "snapshot": snapshot,
-            "read_rows": read_rows,
-            "Mapping": Mapping,
-            "node_text": node_text,
-        },
+        {"snapshot": snapshot, "read_rows": read_rows, "Mapping": Mapping},
     )
     refresh(owner, {})
     assert owner._take_tree_selection.call_args_list[0].kwargs == {"defer": True}
