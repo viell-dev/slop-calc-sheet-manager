@@ -5,9 +5,10 @@ which then leaves no evidence. Integration and UI stalls of this kind were seen 
 stacks (#45). `StallWatch` therefore fails a session that reports no progress (`teardown`) for
 `STALL_SECONDS` (15 minutes; `SHEET_MANAGER_STALL_SECONDS` overrides it), or that is still
 running at the deadline an enclosing runner gives this process (`DEADLINE`), and then stops the
-launcher it started through `stop_process`, on Windows with its whole process tree, so that the
-blocked call fails: on Linux it then failed with a disposed bridge under both launchers measured,
-the plain one and the gdb wrapper. Rules for changing it:
+launcher it started through `stop_process`, on Windows with its whole process tree and on Linux
+with each process held beneath it that outlives it, so that the blocked call fails: on Linux it
+then failed with a disposed bridge under both launchers measured, the plain one and the gdb
+wrapper. Rules for changing it:
 
 - Closing the watch, progress, expiry and accepting the gdb wrapper's replacement office are one
   decision, under the watch's lock and `teardown`'s progress lock; nothing external, such as a
@@ -37,7 +38,8 @@ the plain one and the gdb wrapper. Rules for changing it:
   recorded apart from the evidence (`wait_timed_out`).
 - The evidence records what the watch did and saw in this session, never a conclusion drawn from
   it: the files it wrote, an interrupt it sent, a debugger's or the gdb wrapper's exit status,
-  what a listing returned, whether the launcher had exited after the stop. An interrupt sent to
+  what a listing returned, whether the launcher had exited after the stop, and on Linux what the
+  stop saw of each process it held (`office_stop`). An interrupt sent to
   the gdb wrapper's inferior is not saved stacks, since gdb may not print; a listing that finds no
   `soffice.bin` under the launcher does not show that none runs; the launcher's exit is not the
   office's. Only the watch's last snapshot has `watch_finished`; an earlier one is partial.
@@ -54,6 +56,14 @@ the plain one and the gdb wrapper. Rules for changing it:
   attaches there: `gdb -p` takes a number, which a new process could have reused by the time it
   attaches, and containers refuse `ptrace` anyway. An uncertain target is skipped, with the
   reason recorded.
+- On Linux `stop_process` pauses the launcher with SIGSTOP, holds a pidfd for each `soffice.bin`
+  beneath it and for each of its own children, sends it SIGTERM, then SIGCONT, and stops each
+  held process still running when the launcher's stop ends. Natively (26.8.2.2) `oosplash`
+  passed SIGTERM on, and the gdb wrapper's inferior died with gdb even when gdb was killed, but a
+  `soffice.bin` outlived an `oosplash` killed after 10 s, and one forked at the exit-81 restart
+  outlived an `oosplash` stopped before it had recorded that fork (#266). Signal any process but
+  the session's own unreaped launcher only through a pidfd taken while its identity is checked,
+  never by its number alone.
 - The limit is not a test timeout, and never shorten it to speed up a run. The slowest measured
   suite took 649 s (Intel macOS `test_reorder`, #162), so the benchmarks also report progress at
   each workbook and repetition; each session records its `longest_progress_interval_seconds`.
@@ -65,6 +75,7 @@ import faulthandler
 import json
 import os
 import re
+import select
 import shutil
 import signal
 import subprocess
@@ -75,7 +86,7 @@ import time
 import traceback
 from collections.abc import Callable, Mapping
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import IO, Any
 
@@ -102,9 +113,15 @@ def enclosing_deadline(environment: Mapping[str, str]) -> float | None:
 DEADLINE = enclosing_deadline(os.environ)
 # One budget, from a stall's detection, for listing the office's processes, reading their native
 # stacks and letting the gdb wrapper print its own. The stop starts at its end at the latest and
-# takes up to STOP_SECONDS (`stop_process`: taskkill's 30 s, then waits of 10 s and 10 s).
+# takes up to STOP_SECONDS (`stop_process`: taskkill's 30 s, then waits of 10 s and 10 s; on
+# Linux PAUSE_SECONDS, the launcher's 10 s and 10 s, then OFFICE_STOP_SECONDS twice).
 CAPTURE_SECONDS = 60.0
 STOP_SECONDS = 60.0
+# How long `stop_process` waits on Linux to see the launcher paused before it lists the processes.
+PAUSE_SECONDS = 1.0
+# How long a process still running after its launcher's stop has to exit after SIGTERM, and then
+# after SIGKILL. A stalled soffice.bin exited within 2 ms of SIGTERM (26.8.2.2, #266).
+OFFICE_STOP_SECONDS = 5.0
 CDB = Path(r"C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe")
 # Each Windows process's ID, its parent's ID, its creation time as a FILETIME, and its name.
 WINDOWS_LISTING = [
@@ -148,13 +165,28 @@ def normal_startup_restart(trace: str) -> bool:
     )
 
 
-def stop_process(process: subprocess.Popen[str]) -> None:
-    """Stop the office this session started.
+def stop_process(process: subprocess.Popen[str]) -> list[str]:
+    """Stop the office this session started; on Linux, return what was seen of what it held.
 
     On Windows the `soffice.exe` launcher runs `soffice.bin` as a child process, which stopping
     the launcher alone would leave running, so the launcher's whole process tree is stopped there.
+    Elsewhere the launcher is sent SIGTERM, then SIGKILL after 10 s. On Linux `oosplash` passes
+    SIGTERM on to the `soffice.bin` it has recorded and waits for it, and the gdb wrapper's
+    inferior died with gdb even when gdb was killed. A `soffice.bin` outlived an `oosplash` that
+    was killed instead, and one that `oosplash` had forked but not yet recorded when SIGTERM
+    arrived, at the exit-81 restart (#266). So on Linux every process that is or may become the
+    office is held first (`hold_offices`), and each one still running when the launcher's stop
+    ends is stopped (`stop_offices`). The result is empty on other platforms, and when the
+    launcher had already been reaped, since its ID may then name another process's tree.
     """
-    if process.poll() is None:
+    if process.poll() is not None:
+        return []
+    held = Held()
+    try:
+        try:
+            hold_offices(process, held)
+        except Exception as error:  # The launcher is stopped all the same.
+            held.seen.append(f"holding stopped early: {error!r}")
         if os.name == "nt":
             subprocess.run(
                 ["taskkill", "/PID", str(process.pid), "/T", "/F"],
@@ -164,11 +196,165 @@ def stop_process(process: subprocess.Popen[str]) -> None:
             )
         else:
             process.terminate()
+            resume(held)  # Only after SIGTERM, so that it acts on it before forking again.
         try:
             process.wait(timeout=10)
         except subprocess.TimeoutExpired:
             process.kill()
             process.wait(timeout=10)
+    finally:
+        resume(held)
+        seen = stop_offices(held)
+    return seen
+
+
+@dataclass
+class Held:
+    """What `stop_process` holds on Linux while it stops a launcher."""
+
+    launcher: int | None = None  # A pidfd to the launcher, which was sent SIGSTOP through it.
+    processes: dict[int, tuple[int, str]] = field(default_factory=dict)  # ID: pidfd, name.
+    seen: list[str] = field(default_factory=list)
+
+
+def hold_offices(process: subprocess.Popen[str], held: Held) -> None:
+    """On Linux, pause the launcher and hold, in `held`, each process that is or may be its office.
+
+    Held are each `soffice.bin` descended from the launcher and each of the launcher's own
+    children: `oosplash` forks `soffice.bin` before it records it as the child to pass SIGTERM
+    on to, and the fork has the launcher's name until it execs. The launcher is sent SIGSTOP and
+    seen paused before the listing, so it starts nothing between the listing and its SIGTERM;
+    `stop_process` resumes it after that SIGTERM. `poll()` found the launcher unreaped, so its ID
+    names it during the listing; one that another thread reaped meanwhile has a `returncode`
+    afterwards, and the listing is then not used. Each process's listed start time is checked
+    while its pidfd holds it, so a signal sent through the pidfd can only reach that process; its
+    name is not compared, since an exec, such as the fork's into `soffice.bin`, changes it.
+    """
+    if sys.platform != "linux":
+        return
+    try:
+        held.launcher = os.pidfd_open(process.pid)
+        signal.pidfd_send_signal(held.launcher, signal.SIGSTOP)
+    except OSError as error:
+        held.seen.append(f"the launcher {process.pid} was not paused: {error!r}")
+    else:
+        end = time.monotonic() + PAUSE_SECONDS
+        while linux_state(process.pid) not in ("T", "Z", None) and time.monotonic() < end:
+            time.sleep(0.001)
+        if (state := linux_state(process.pid)) != "T":
+            held.seen.append(
+                f"the launcher {process.pid} was not seen paused within {PAUSE_SECONDS:g} s "
+                f"(state {state}), so it may have started a process after the listing"
+            )
+    try:
+        rows = listed_processes(time.monotonic() + OFFICE_STOP_SECONDS)
+    except Exception as error:  # The launcher is stopped all the same.
+        held.seen.append(f"nothing was held: the listing failed: {error!r}")
+        return
+    if process.returncode is not None:
+        held.seen.append(f"nothing was held: the launcher {process.pid} was reaped meanwhile")
+        return
+    found = {row.pid: row for row in descendants(rows, process.pid, "soffice.bin")}
+    launcher = next((row for row in rows if row.pid == process.pid), None)
+    if launcher is not None:
+        found.update(
+            (row.pid, row)
+            for row in rows
+            if row.parent == launcher.pid
+            and row.pid != launcher.pid
+            and row.started >= launcher.started
+        )
+    if not found:
+        held.seen.append(
+            f"the listing had no soffice.bin or other child under the launcher {process.pid}"
+        )
+    for row in sorted(found.values(), key=lambda row: row.pid):
+        try:
+            handle = os.pidfd_open(row.pid)
+        except OSError as error:
+            held.seen.append(f"{row.name} {row.pid} was not held: {error!r}")
+            continue
+        current = linux_process(row.pid)
+        if current is None or current.started != row.started:
+            os.close(handle)
+            held.seen.append(f"{row.name} {row.pid} was not held: its start time had changed")
+            continue
+        held.processes[row.pid] = (handle, row.name)
+
+
+def resume(held: Held) -> None:
+    """Let a launcher that `hold_offices` paused run again, so that it acts on its SIGTERM."""
+    if sys.platform == "linux" and held.launcher is not None:
+        with suppress(ProcessLookupError):
+            signal.pidfd_send_signal(held.launcher, signal.SIGCONT)
+
+
+def stop_offices(held: Held) -> list[str]:
+    """Stop each held process still running after its launcher's stop; close every pidfd.
+
+    Return what was seen of each held process. Its exit is seen as its pidfd becoming readable,
+    so this returns only once each one has exited or its last wait has ended.
+    """
+    seen = list(held.seen)
+    if sys.platform != "linux":
+        return seen
+    exited_after: dict[int, float] = {}
+    try:
+        running: dict[int, str] = {}  # The ID and how to name it.
+        for pid, (handle, listed) in held.processes.items():
+            if pidfd_exited(handle, 0):
+                seen.append(f"{listed} {pid} had exited when its launcher's stop ended")
+                continue
+            current = linux_process(pid)  # It runs, so its ID still names it.
+            name = current.name if current is not None else listed
+            running[pid] = f"{name} {pid}" + (f" (listed as {listed})" if name != listed else "")
+        started = time.monotonic()
+
+        def signal_and_wait(pids: list[int], number: signal.Signals) -> None:
+            for pid in pids:
+                with suppress(ProcessLookupError):  # It exited meanwhile.
+                    signal.pidfd_send_signal(held.processes[pid][0], number)
+            end = time.monotonic() + OFFICE_STOP_SECONDS
+            for pid in pids:
+                if pidfd_exited(held.processes[pid][0], max(0.0, end - time.monotonic())):
+                    exited_after[pid] = time.monotonic() - started
+
+        signal_and_wait(list(running), signal.SIGTERM)
+        killed = [pid for pid in running if pid not in exited_after]
+        signal_and_wait(killed, signal.SIGKILL)
+        for pid, name in running.items():
+            sent = "SIGTERM" + (
+                f", then SIGKILL after {OFFICE_STOP_SECONDS:g} s" if pid in killed else ""
+            )
+            after = exited_after.get(pid)
+            outcome = (
+                f"had exited {after:.1f} s after SIGTERM"
+                if after is not None
+                else f"was still running {2 * OFFICE_STOP_SECONDS:g} s after SIGTERM"
+            )
+            seen.append(
+                f"{name} was running when its launcher's stop ended; it was sent {sent} and "
+                f"{outcome}"
+            )
+    finally:
+        for handle, _ in held.processes.values():
+            os.close(handle)
+        if held.launcher is not None:
+            os.close(held.launcher)
+    return seen
+
+
+def pidfd_exited(handle: int, timeout: float) -> bool:
+    """Whether the process behind the pidfd `handle` exits within `timeout` seconds."""
+    return bool(select.select([handle], [], [], timeout)[0])
+
+
+def linux_state(pid: int) -> str | None:
+    """`pid`'s state as /proc lists it now, such as T for stopped, or None once it has gone."""
+    with suppress(OSError):
+        text = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8", errors="replace")
+        return text.rpartition(")")[2].split()[0]
+    return None
 
 
 def finish_process(
@@ -179,11 +365,12 @@ def finish_process(
     backtrace_path: Path | None = None,
 ) -> dict[str, object]:
     forced = False
+    stopped: list[str] = []
     try:
         process.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
         forced = True
-        stop_process(process)
+        stopped = stop_process(process)
     log = log_path.read_text(encoding="utf-8", errors="replace")
     markers = [marker for marker in FATAL_MARKERS if marker in log]
     if backtrace_path is not None and backtrace_path.exists():
@@ -199,13 +386,16 @@ def finish_process(
             markers.append("Debugger did not record normal office exit")
     elif backtrace_path is not None:
         markers.append("Debugger backtrace missing")
-    return {
+    result: dict[str, object] = {
         "office_exit_code": process.returncode,
         "office_forced_shutdown": forced,
         "office_fatal_markers": markers,
         "office_log": log_path.name,
         "office_backtrace": backtrace_path.name if backtrace_path is not None else None,
     }
+    if stopped:  # On Linux, what the forced stop saw of each process it held (#266).
+        result["office_stop"] = stopped
+    return result
 
 
 def request_termination(desktop: Any, timeout: float) -> bool:
@@ -535,7 +725,7 @@ class StallWatch:
         budget: float | None = None,
         find: Callable[[int, float], list[Process]] = office_processes,
         stacks: Callable[..., str] = native_stacks,
-        stop: Callable[[subprocess.Popen[str]], None] = stop_process,
+        stop: Callable[[subprocess.Popen[str]], object] = stop_process,
     ) -> None:
         self.process, self.output, self.prefix = process, output, prefix
         self.expire, self.debugger_parent = expire, debugger_parent
@@ -677,10 +867,12 @@ class StallWatch:
                         "budget ended"
                     )
         finally:
-            self._step("stop", lambda: self.stop(process), collector=False)
+            stopped = self._step("stop", lambda: self.stop(process), collector=False)
             # The launcher's status, not the office's: a soffice.bin can outlive its launcher.
             status = process.poll()
             with self._lock:
+                if stopped:  # On Linux, what the stop saw of each process it held (#266).
+                    self._evidence["office_stop"] = stopped
                 self._evidence.update(
                     launcher_exit_status=status,
                     stop_returned_after_seconds=round(time.monotonic() - self._detected, 1),

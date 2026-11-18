@@ -3,6 +3,7 @@
 import dataclasses
 import json
 import os
+import re
 import select
 import shutil
 import signal
@@ -11,6 +12,7 @@ import sys
 import threading
 import time
 from collections.abc import Callable, Iterator
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
@@ -928,6 +930,222 @@ def test_an_empty_listing_claims_only_what_it_shows(
         if handle is not None:
             signal.pidfd_send_signal(handle, signal.SIGKILL)
             os.close(handle)
+
+
+# A stand-in launcher: it starts its office, prints the office's process ID, and then either
+# passes SIGTERM on and waits for it, as oosplash does, or dies of it, as an oosplash that is
+# killed or that had not yet recorded its fork leaves its soffice.bin behind (#266).
+LAUNCHER = """
+import signal, subprocess, sys, time
+office = subprocess.Popen([sys.executable, "-c", sys.argv[2]], stdout=subprocess.PIPE, text=True)
+office.stdout.readline()
+def passes_it_on(number, frame):
+    office.terminate()
+    office.wait()
+    sys.exit(255)
+if sys.argv[1] == "passes":
+    signal.signal(signal.SIGTERM, passes_it_on)
+print(office.pid, flush=True)
+time.sleep(60)
+"""
+# Stand-in offices, named soffice.bin through prctl(PR_SET_NAME) once they are ready.
+OFFICE = """
+import ctypes, signal, sys, time
+if sys.argv[1:] == ["ignores"]:
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+ctypes.CDLL(None).prctl(15, b"soffice.bin", 0, 0, 0)
+print("ready", flush=True)
+time.sleep(60)
+"""
+
+
+def launch(behaviour: str, office: str = "exits") -> tuple[subprocess.Popen[str], int]:
+    """A stand-in launcher that `behaviour`s SIGTERM, and its office's process ID."""
+    code = f"import sys; sys.argv[1:] = [{office!r}]\n" + OFFICE
+    process = subprocess.Popen(
+        [sys.executable, "-c", LAUNCHER, behaviour, code], stdout=subprocess.PIPE, text=True
+    )
+    assert process.stdout is not None
+    return process, int(process.stdout.readline())
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux holds the launcher's processes")
+@pytest.mark.parametrize(
+    ("behaviour", "office", "expected"),
+    [
+        ("passes", "exits", "had exited when its launcher's stop ended"),
+        (
+            "dies",
+            "exits",
+            r"was running when its launcher's stop ended; it was sent SIGTERM and had exited "
+            r"\d+\.\d s after SIGTERM",
+        ),
+        (
+            "dies",
+            "ignores",
+            r"was running when its launcher's stop ended; it was sent SIGTERM, then SIGKILL "
+            r"after 0\.5 s and had exited \d+\.\d s after SIGTERM",
+        ),
+    ],
+)
+def test_an_office_that_outlives_its_stopped_launcher_is_stopped(
+    monkeypatch: pytest.MonkeyPatch, behaviour: str, office: str, expected: str
+) -> None:
+    # Natively, a soffice.bin outlived an oosplash that was killed after its 10 s, and one forked
+    # at the exit-81 restart outlived an oosplash stopped before it recorded the fork (#266).
+    assert sys.platform == "linux"
+    monkeypatch.setattr(office_process, "OFFICE_STOP_SECONDS", 0.5)
+    process, office_pid = launch(behaviour, office)
+    handle = os.pidfd_open(office_pid)
+    try:
+        seen = stop_process(process)
+        assert process.returncode is not None
+        assert select.select([handle], [], [], 0)[0], "The office outlived stop_process"
+        assert len(seen) == 1 and re.fullmatch(f"soffice.bin {office_pid} {expected}", seen[0])
+    finally:
+        with suppress(ProcessLookupError):
+            signal.pidfd_send_signal(handle, signal.SIGKILL)
+        os.close(handle)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux holds the launcher's processes")
+def test_a_fork_that_has_not_yet_become_the_office_is_held_too() -> None:
+    # oosplash forks soffice.bin before it records it as the child to pass SIGTERM on to, and a
+    # fork keeps the launcher's name until it execs, so every child of the launcher is held.
+    assert sys.platform == "linux"
+    process, child = launch("dies")
+    # The stand-in office renames itself before it reports ready; list it as it was before.
+    listed = office_process.listed_processes
+
+    def before_the_exec(end: float) -> list[Process]:
+        return [
+            dataclasses.replace(row, name="oosplash") if row.pid == child else row
+            for row in listed(end)
+        ]
+
+    handle = os.pidfd_open(child)
+    try:
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(office_process, "listed_processes", before_the_exec)
+            seen = stop_process(process)
+        assert select.select([handle], [], [], 0)[0], "The fork outlived stop_process"
+        assert len(seen) == 1 and re.fullmatch(
+            rf"soffice.bin {child} \(listed as oosplash\) was running when its launcher's stop "
+            r"ended; it was sent SIGTERM and had exited \d+\.\d s after SIGTERM",
+            seen[0],
+        )
+    finally:
+        with suppress(ProcessLookupError):
+            signal.pidfd_send_signal(handle, signal.SIGKILL)
+        os.close(handle)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux pauses the launcher")
+@pytest.mark.parametrize("delayed", ["after the listing", "before the SIGTERM"])
+def test_the_launcher_starts_nothing_between_the_listing_and_its_sigterm(delayed: str) -> None:
+    # A launcher that kept forking after the listing, or that was resumed before its SIGTERM,
+    # could leave an unlisted fork running.
+    assert sys.platform == "linux"
+    forks = (
+        "import subprocess, time\n"
+        "while True:\n"
+        "    child = subprocess.Popen(['sleep', '60'], stdout=subprocess.DEVNULL)\n"
+        "    print(child.pid, flush=True)\n"
+        "    time.sleep(0.05)\n"
+    )
+    process = subprocess.Popen([sys.executable, "-c", forks], stdout=subprocess.PIPE, text=True)
+    assert process.stdout is not None
+    first = int(process.stdout.readline())
+    listed, terminate = office_process.listed_processes, process.terminate
+
+    def then_waits(end: float) -> list[Process]:
+        rows = listed(end)
+        time.sleep(0.5)  # A running launcher forks about ten more meanwhile.
+        return rows
+
+    def waits_then_terminates() -> None:
+        time.sleep(0.5)
+        terminate()
+
+    with pytest.MonkeyPatch.context() as patch:
+        if delayed == "after the listing":
+            patch.setattr(office_process, "listed_processes", then_waits)
+        else:
+            patch.setattr(process, "terminate", waits_then_terminates)
+        seen = stop_process(process)
+    started = [first, *(int(line) for line in process.stdout.read().split())]
+
+    def running(pid: int) -> bool:  # An orphan nobody reaps stays a zombie in a container.
+        row = office_process.linux_process(pid)
+        return row is not None and row.name == "sleep" and office_process.linux_state(pid) != "Z"
+
+    left = [pid for pid in started if running(pid)]
+    for pid in left:
+        os.kill(pid, signal.SIGKILL)
+    assert left == [], f"Forks left running: {left}; stop saw {seen}"
+    assert seen and all("sleep" in line and "had exited" in line for line in seen), seen
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux lists the launcher's processes")
+@pytest.mark.parametrize(
+    ("failing", "expected"),
+    [
+        ("listed_processes", "nothing was held: the listing failed: OSError('no listing')"),
+        ("descendants", "holding stopped early: OSError('no listing')"),
+    ],
+)
+def test_a_failed_hold_still_stops_and_resumes_the_launcher(
+    monkeypatch: pytest.MonkeyPatch, failing: str, expected: str
+) -> None:
+    # The launcher is paused before the listing; a failure after that must not leave it paused.
+    process = sleeper()
+
+    def fails(*arguments: object) -> list[Process]:
+        raise OSError("no listing")
+
+    monkeypatch.setattr(office_process, failing, fails)
+    started = time.monotonic()
+    seen = stop_process(process)
+    assert process.returncode is not None and time.monotonic() - started < 5
+    assert seen == [expected]
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux holds the launcher's processes")
+def test_the_receipt_and_a_forced_shutdown_record_what_the_stop_saw(
+    tmp_path: Path, session: None
+) -> None:
+    assert sys.platform == "linux"
+    process, office_pid = launch("dies")
+    handle = os.pidfd_open(office_pid)
+    try:
+        stall = StallWatch(
+            process,
+            tmp_path,
+            "stall-True-0",
+            expire=teardown.stall_if_idle,
+            limit=90,
+            deadline=time.monotonic(),
+        )
+        evidence = stall.start().close()
+        assert evidence is not None and evidence["launcher_exit_status"] is not None
+        assert [line.split(";")[0] for line in evidence["office_stop"]] == [
+            f"soffice.bin {office_pid} was running when its launcher's stop ended"
+        ]
+        assert select.select([handle], [], [], 0)[0]
+    finally:
+        with suppress(ProcessLookupError):
+            signal.pidfd_send_signal(handle, signal.SIGKILL)
+        os.close(handle)
+    log_path = tmp_path / "soffice.log"
+    log_path.write_text("", encoding="utf-8")
+    process, office_pid = launch("passes")
+    result = finish_process(process, log_path, timeout=0)
+    assert result["office_forced_shutdown"] is True
+    assert result["office_stop"] == [
+        f"soffice.bin {office_pid} had exited when its launcher's stop ended"
+    ]
+    clean = subprocess.Popen([sys.executable, "-c", "pass"], text=True)
+    assert "office_stop" not in finish_process(clean, log_path)
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Linux interrupts the gdb wrapper's inferior")
