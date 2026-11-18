@@ -91,8 +91,10 @@ The macOS helper records its owned process group on timeout and runs
 native TERM/KILL controls before installing the app; a zombie-only signalling refusal is accepted
 only after reading member states. Unverified cleanup retains the private directory and fails
 ([#162](https://github.com/viell-dev/slop-calc-sheet-manager/issues/162)).
-The Mac integration command has 30 minutes for the measured complete benchmark workload, with
-60 minutes for its job's installation, commands and evidence collection. Functional assertion
+The Mac integration runner has 30 minutes for the measured complete benchmark workload and ends
+at that deadline as a stalled session does, within a 33-minute command
+([#244](https://github.com/viell-dev/slop-calc-sheet-manager/issues/244)), with 60 minutes for
+its job's installation, commands and evidence collection. Functional assertion
 deadlines and correctness checks remain separate; the enclosing release wait/job budgets are
 documented in [RELEASING.md](https://github.com/viell-dev/slop-calc-sheet-manager/blob/main/RELEASING.md).
 
@@ -291,8 +293,14 @@ gdb wrapper because the stack collector reports that it sent the interrupt, not 
 receipt's wording; a test rewords it both ways (#267). `test_main_thread.py` checks that a close
 posted to the Windows main thread before the stall does not start once the stall is recorded, and
 fails its caller, while a close already started finishes (#261).
-The stacks of a stall that begins within about 18 minutes of a job's or the macOS helper's time
-limit may be lost there (#244). Soak sessions share one deadline with their runner and record the
+Each CI job that runs an office leaves about 18 minutes after its slowest measured healthy run
+for a stall's capture and upload, and the macOS integration runner ends at a deadline 3 minutes
+before its command's limit, so a stall anywhere in a run of measured length keeps its stacks.
+`test_ci_policy.py` checks every such job's limit against the durations measured in #244, and
+that no job running an office lacks one; `test_macos_integration.py` checks the runner's deadline
+against the capture's budgets and the job's limit against every command's. A run that grows past
+its measured length can still lose a late stall's stacks at the job's limit, as the native
+testing guide says. Soak sessions share one deadline with their runner and record the
 stall when the soak's own limit falls during startup or their checks; installation is not
 watched, so a limit that passes there is found at the launch that follows. `test_soak.py` runs
 the real runner with a slow start-up across that limit. The soak's summary draws no conclusion of

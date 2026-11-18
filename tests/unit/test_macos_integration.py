@@ -13,10 +13,14 @@ from typing import Any
 from unittest.mock import Mock
 
 import pytest
+import yaml
 
+from tests.integration import office_process
 from tools import macos_integration as cli
 
 GROUP = 47123
+REPOSITORY = Path(__file__).resolve().parents[2]
+INSTALL = cli.install
 
 
 @pytest.fixture(autouse=True)
@@ -321,6 +325,68 @@ def test_diagnostic_collection_error_cannot_leave_a_successful_host_record(
     result = json.loads((output / "host-results.json").read_text("utf-8"))
     assert result["assertions_passed"] is False
     assert "diagnostics unavailable" in result["error"]
+
+
+@pytest.mark.parametrize("probe", [False, True])
+def test_only_the_integration_runner_gets_its_own_deadline(
+    native_commands_stubbed: tuple[Path, Mock], monkeypatch: pytest.MonkeyPatch, probe: bool
+) -> None:
+    _, runner = native_commands_stubbed
+    if probe:
+        monkeypatch.setattr(sys, "argv", ["macos_integration.py", "--theme-pick-probe"])
+    # An inherited absolute deadline would take precedence over the runner's own (#244).
+    monkeypatch.setenv("SHEET_MANAGER_DEADLINE_MONOTONIC", "1.0")
+    monkeypatch.setenv("SHEET_MANAGER_DEADLINE_SECONDS", "7")
+    cli.main()
+    integration = [call for call in runner.call_args_list if call.args[1].name == "integration.log"]
+    assert len(integration) == 1
+    command, _, environment, timeout = integration[0].args
+    assert command[1].endswith("theme_pick_probe.py" if probe else "run.py")
+    assert environment["SHEET_MANAGER_DEADLINE_SECONDS"] == str(cli.RUNNER_DEADLINE)
+    assert "SHEET_MANAGER_DEADLINE_MONOTONIC" not in environment
+    assert timeout == cli.INTEGRATION_TIMEOUT
+    assert os.environ["SHEET_MANAGER_DEADLINE_MONOTONIC"] == "1.0", "The host's own was changed"
+
+
+def test_the_runner_deadline_leaves_the_stall_capture_inside_the_command_limit() -> None:
+    # At the deadline the watch looks at once, then has its capture and stop budgets (#45); a
+    # minute more covers the runner's start before its deadline counts and its exit afterwards.
+    needed = office_process.CAPTURE_SECONDS + office_process.STOP_SECONDS + 60
+    gap = cli.INTEGRATION_TIMEOUT - cli.RUNNER_DEADLINE
+    assert gap >= needed, "The command's limit would cut the stall capture short"
+    assert cli.RUNNER_DEADLINE >= 30 * 60, "#162 measured 30 minutes for the complete workload"
+
+
+@pytest.mark.parametrize("filename", ["macos.yml", "release-sweep.yml"])
+def test_the_job_outlasts_every_command_budget_and_its_upload(
+    native_commands_stubbed: tuple[Path, Mock], monkeypatch: pytest.MonkeyPatch, filename: str
+) -> None:
+    output, runner = native_commands_stubbed
+    root = output.parents[1]
+    # The real installation, so that its attach, copy and detach commands count too.
+    image = root / "libreoffice.dmg"
+    image.write_bytes(b"synthetic image")
+    pins = root / "ci/libreoffice.json"
+    pin = json.loads(pins.read_text("utf-8"))
+    pin["macos"]["sha256"] = hashlib.sha256(image.read_bytes()).hexdigest()
+    pins.write_text(json.dumps(pin), "utf-8")
+    monkeypatch.setattr(cli, "install", INSTALL)
+    cli.main()
+    logs = {call.args[1].name for call in runner.call_args_list}
+    assert {"mount.log", "copy.log", "unmount.log", "integration.log"} <= logs
+    # Each command's limit, or `run`'s default, then the audit of its former group.
+    commands = sum(
+        (call.args[3] if len(call.args) > 3 else 120) + cli.EXIT_GRACE
+        for call in runner.call_args_list
+    )
+    # The two native timeout controls, each with its TERM and KILL graces.
+    controls = 2 * (5 + cli.TERM_GRACE + cli.KILL_GRACE)
+    # The package action's download: a 600-second deadline and curl's 60-second retry window.
+    download = 660
+    text = (REPOSITORY / ".github/workflows" / filename).read_text("utf-8")
+    limit = int(yaml.load(text, yaml.BaseLoader)["jobs"]["macos"]["timeout-minutes"]) * 60
+    # A minute more for checkout, Python setup, the crash-report search and the upload.
+    assert limit >= download + commands + controls + 60
 
 
 def test_timeout_stops_only_the_new_private_process_group_before_propagating_failure(
