@@ -53,13 +53,16 @@ the supported toolkit and controller interfaces offer no sidebar pre-release hoo
 never takes that late row: native cursor events are ignored while a press is held, and owned
 keys move the list's own cursor. Refusing the gesture therefore writes back the list's cursor
 while it is still its sheet, also outside the picks, and keeps newer picks (#71). Only when that
-cursor is gone does a surviving pick take it, preferring the pressed sheet, also when a refresh
-during the press drops it. Never let a native cursor event during a held press reach the
-cursor: #70's first observer did, and the late release then moved the cursor and the next
-toggle onto the wrong row. A release names only the button released, so only the left button's
-ends the press. A refused release whose structure check finds a generation the list has not
-proved writes nothing: a retained handle may report its name for another sheet, and the queued
-write refreshes first.
+cursor is gone does a surviving pick take it, also when a refresh during the press drops it,
+preferring the pressed sheet while the press still identifies it: a refresh that dropped the
+picks since voids that claim, because a pick under the pressed name may then be a replacement.
+Never let a native cursor event during a held press reach the cursor: #70's first observer did,
+and the late release then moved the cursor and the next toggle onto the wrong row. A release
+names only the button released, so only the left button's ends the press. A refused release
+whose structure check finds a generation the list has not proved writes nothing: a retained
+handle may report its name for another sheet, and the queued write refreshes first. Any refresh
+that loses the identity proof writes the list's selection, even when it had no pick left to
+drop, so that the release's native selection cannot reach the next intake.
 
 Activation. A double click or Enter makes the sheet Calc's only selected tab and reads that back,
 because `setActiveSheet` keeps an existing group when the sheet belongs to it. Activation reads
@@ -758,12 +761,8 @@ class SheetList:
         observed = snapshot(self.document)
         rows = read_rows(self.controller, observed)
         generation = self._monitor.check()
-        if previous is not None and not self._identities_kept(
-            previous, observed, generation, renamed
-        ):
-            dropped = self._drop_all_picks()
-        else:
-            dropped = self._selection.carry(renamed)
+        proven = previous is None or self._identities_kept(previous, observed, generation, renamed)
+        dropped = self._selection.carry(renamed) if proven else self._drop_all_picks()
         self._proven = generation
         changed = rows != self.rows or not self._nodes
         self._observed = observed
@@ -772,7 +771,10 @@ class SheetList:
         )
         if changed:
             self._rebuild(rows)
-        elif dropped or tuple(self._selection.names()) != self._shown:
+        elif not proven or dropped or tuple(self._selection.names()) != self._shown:
+            # After a lost proof also when no pick dropped: the tree can still show a selection
+            # made against the sheets that proof covered, such as a refused release's, and the
+            # next intake would take it under a replacement's handle.
             self._apply_selection()
         if (
             pending is not None
@@ -920,10 +922,18 @@ class SheetList:
         self._selection.anchor = self._selection.cursor
         self._apply_selection()
 
-    def _fallback_cursor(self, pressed: str | None) -> Ref | None:
-        """A surviving pick for a lost cursor: the pressed sheet's, if picked, or the first."""
+    def _fallback_cursor(self, press: _Press | None) -> Ref | None:
+        """A surviving pick for a lost cursor: the pressed sheet's, if picked, or the first.
+
+        The pressed sheet comes first only while the press still identifies it: no refresh has
+        dropped the picks since the button went down, and its retained handle still reports its
+        name. A pick under that name after a lost proof may be another sheet, a replacement.
+        """
         picks = self._selection.picked
-        return next((ref for ref in picks if ref.name == pressed), picks[0] if picks else None)
+        first = picks[0] if picks else None
+        if press is None or press.voided or _name_or_none(press.handle) != press.name:
+            return first
+        return next((ref for ref in picks if ref.name == press.name), first)
 
     def _apply_selection(self) -> None:
         """Write the list's own picks and cursor to the tree; the cursor falls back to a pick."""
@@ -932,8 +942,7 @@ class SheetList:
         if cursor is None or cursor.name not in names:
             # During a held press, as on its refused release, the pressed sheet comes first: a
             # refresh that drops the cursor meanwhile must not hand the release another pick.
-            pressed = self._press.name if self._press is not None else None
-            cursor = self._selection.cursor = self._fallback_cursor(pressed)
+            cursor = self._selection.cursor = self._fallback_cursor(self._press)
         wanted = {ref.name for ref in self._selection.picked}
         indices = [index for index, name in enumerate(names) if name in wanted]
         self._shown = tuple(names[index] for index in indices)
@@ -1792,7 +1801,7 @@ class SheetList:
             # pick takes it, preferring the pressed sheet, never that late row.
             cursor = self._selection.cursor
             if cursor is None or cursor.name not in self.names():
-                self._selection.cursor = self._fallback_cursor(press.name)
+                self._selection.cursor = self._fallback_cursor(press)
             self._apply_selection()
             return
         row = press.row

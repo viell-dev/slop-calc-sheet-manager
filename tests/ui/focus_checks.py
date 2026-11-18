@@ -341,8 +341,10 @@ def _refused_hold(book, case, probe, press, marks) -> dict[str, Any]:
     pressed sheet's new row instead of Charlie, so no case observes the late release (measured
     in the full suite after `native_cursor_positions`, 26.2.1.2 gtk3). Each step waits for the
     event it follows, never for a count of events taken earlier, so that nothing heard before
-    the button went up can stand for the release or the list's answer to it. `marks` receives
-    when the moved rows were read and when the button went up.
+    the button went up can stand for the release or the list's answer to it. The cursor is
+    sampled and the button released in one callback on LibreOffice's main thread, so that no
+    event can come between them. `marks` receives when the moved rows were read and when the
+    button went up.
     """
     book.tree.makeNodeVisible(book.nodes()[0])
     wait_until(lambda: book.first_visible() == 0, "the list at its top")
@@ -354,6 +356,7 @@ def _refused_hold(book, case, probe, press, marks) -> dict[str, Any]:
         if case == "other_pick":
             book.click(3, modifiers=("Control_L",))
     picked = book.selection()
+    up: dict[str, Any] = {}  # What `button_up` sampled when it injected the button-up.
     book.hold(1, press)
     try:
         book.document.getSheets().moveByName(NAMES[1], 6)
@@ -380,19 +383,31 @@ def _refused_hold(book, case, probe, press, marks) -> dict[str, Any]:
             book.lab.input.repeat("Down", ("Control_L",))
         elif case == "renamed":
             # Ctrl+Down takes the cursor to Hotel, and Hotel's rename then drops that cursor
-            # in a refresh while Bravo is still held.
+            # in a refresh while Bravo is still held. Only a cursor heard on Hotel after the
+            # key shows that the rename is what dropped it.
+            keyed = len(probe.heard)
             book.lab.input.tap("Down", ("Control_L",), pause=0.5)
+            hotel = order.index(NAMES[7])
+            wait_until(lambda: probe.rows()[keyed:][-1:] == [hotel], "the cursor on Hotel")
             book.document.getSheets().getByName(NAMES[7]).setName(RENAMED)
             wait_until(lambda: view.names(book.tree) == book.order(), "the renamed list")
             order = book.order()
-        # Whatever the input queued has run; the cursor heard last is the one the button-up
-        # finds, and everything heard from here on comes after it.
-        view.on_main_thread(book.lab.context, lambda: None)
-        heard, rows = len(press.heard), len(probe.heard)
-        held = probe.rows()[-1] if rows else None
-        injected = time.monotonic()
+
+        def button_up():
+            # Whatever the input queued ran before this callback, and nothing else runs on
+            # LibreOffice's main thread until it returns: the cursor heard last is the one the
+            # button-up finds, and everything heard after `injected` came after the X server
+            # had the button-up (`XInput.button` synchronises with it).
+            up.update(heard=len(press.heard), rows=len(probe.heard))
+            up["held"] = probe.rows()[-1] if up["rows"] else None
+            up["injected"] = time.monotonic()
+            book.pointer.release()
+
+        view.on_main_thread(book.lab.context, button_up)
     finally:
-        book.pointer.release()
+        if "injected" not in up:
+            book.pointer.release()
+    heard, rows, held, injected = up["heard"], up["rows"], up["held"], up["injected"]
     marks.append((injected, "button up"))
     wait_until(
         lambda: "released" in [kind for kind, _ in press.heard[heard:]],
@@ -485,9 +500,9 @@ def check_selected_press_cursor(book):
     proves nothing (`_verdict`). The list then puts back its own cursor: Bravo's, a newer typed
     pick's, or wherever the keyboard took it during the hold, also outside the picks and with
     the X server's own timed repeat (#71). When a refresh during the hold drops that cursor, as
-    a rename of its sheet does, the pressed sheet takes it. Ctrl+Space then toggles exactly the
-    row the cursor is on. Every case runs before the check fails, so that one run shows which
-    of them a change breaks; a gesture that cannot be made fails at once.
+    a rename of the sheet it was heard on does, the pressed sheet takes it. Ctrl+Space then
+    toggles exactly the row the cursor is on. Every case runs before the check fails, so that
+    one run shows which of them a change breaks; a gesture that cannot be made fails at once.
     """
     accessible = book.tree.getProperty("XAccessible").getAccessibleContext()
     probe, press, marks = CursorProbe(), PressProbe(), []

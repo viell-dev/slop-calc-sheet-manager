@@ -1,15 +1,17 @@
 """Deterministic races and display guards; real UNO behaviour is checked in integration."""
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, replace
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import Mock
 
 import pytest
 
-from sheet_manager.selection import Ref, Selection
+from sheet_manager.keys import DOWN, END, HOME, PAGEDOWN, PAGEUP, SPACE, UP, A
+from sheet_manager.selection import Ref, Selection, structure_kept
 from sheet_manager.sheet_list import SheetRow
-from tests.unit.source_methods import method
+from tests.unit.source_methods import function, method
 
 
 @pytest.mark.parametrize("changed", ["structure", "activation"])
@@ -254,8 +256,6 @@ def test_a_newer_input_cancels_a_queued_panel_focus_request() -> None:
 
 
 def test_owned_navigation_accumulates_while_the_ui_queue_is_paused() -> None:
-    from sheet_manager.keys import DOWN, END, HOME, PAGEDOWN, PAGEUP, SPACE, UP, A
-
     names = ["Alfa", "Bravo", "Charlie", "Delta", "Echo"]
     handles = {name: object() for name in names}
     selection = Selection(lambda ref: True)
@@ -440,17 +440,30 @@ def test_stale_accessible_rows_preserve_cursor_without_hiding_other_errors(
 
 ROWS = ["Alfa", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Bravo", "Hotel"]
 LIST = "src/sheet_manager/uno_list.py"
-MIDDLE = 4  # com.sun.star.awt.MouseButton.MIDDLE
+LEFT, RIGHT, MIDDLE = 1, 2, 4  # com.sun.star.awt.MouseButton
+SHIFT, MOD1 = 1, 2  # com.sun.star.awt.KeyModifier
+NAME_OR_NONE = function(LIST, "_name_or_none", {"Any": Any})
 
 
 def bind(owner: Any, name: str, namespace: dict[str, Any] | None = None) -> None:
     """Give `owner` the list's own method `name`, read from the source."""
-    function = method(LIST, "SheetList", name, {"Ref": Ref, "_Press": Any, **(namespace or {})})
+    defaults = {"Ref": Ref, "_Press": Any, "_name_or_none": NAME_OR_NONE}
+    loaded = method(LIST, "SheetList", name, {**defaults, **(namespace or {})})
 
-    def bound(*arguments: Any) -> Any:
-        return function(owner, *arguments)
+    def bound(*arguments: Any, **keywords: Any) -> Any:
+        return loaded(owner, *arguments, **keywords)
 
     setattr(owner, name, bound)
+
+
+class Sheet:
+    """A retained sheet handle, reporting whatever name its sheet has now."""
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+    def getName(self) -> str:
+        return self.name
 
 
 def refused_press_owner(
@@ -478,7 +491,9 @@ def refused_press_owner(
         _selection_write_pending=False,
         _context_target=None,
         _menu_context=False,
-        _press=SimpleNamespace(row=1, name="Bravo", generation=0, voided=False),
+        _press=SimpleNamespace(
+            row=1, name="Bravo", handle=Sheet("Bravo"), generation=0, voided=False
+        ),
         _monitor=SimpleNamespace(check=lambda: generation),
         _proven=proven,
         _pressed_sheet_in_place=Mock(return_value=False),
@@ -494,7 +509,7 @@ def refused_press_owner(
 
 
 def release(owner: Any, buttons: int = 1) -> None:
-    released = method(LIST, "SheetList", "mouse_released", {"LEFT": 1, "RIGHT": 2})
+    released = method(LIST, "SheetList", "mouse_released", {"LEFT": LEFT, "RIGHT": RIGHT})
     released(owner, SimpleNamespace(Buttons=buttons))
 
 
@@ -584,89 +599,280 @@ def test_another_buttons_release_leaves_the_held_left_press_and_its_gate() -> No
     assert [ref.name if ref is not None else None for ref in applied] == ["Hotel"]
 
 
-class Sheet:
-    """A retained sheet handle, reporting whatever name its sheet has now."""
-
-    def __init__(self, name: str) -> None:
-        self.name = name
-
-    def getName(self) -> str:
-        return self.name
-
-
 @pytest.mark.parametrize(
-    "picks,expected", [(("Alfa", "Bravo"), "Bravo"), (("Alfa", "Delta"), "Alfa")]
+    "voided,reported,expected",
+    [(False, "Bravo", "Bravo"), (True, "Bravo", "Alfa"), (False, "Bravo 2", "Alfa")],
 )
-def test_a_refresh_during_the_hold_gives_a_lost_cursor_to_the_pressed_pick(
-    picks: tuple[str, ...], expected: str
+def test_only_a_press_that_still_identifies_its_sheet_takes_a_lost_cursor(
+    voided: bool, reported: str, expected: str
 ) -> None:
-    """Bravo, picked with others, is held and moved; Ctrl+Down takes the cursor to Hotel, and
-    Hotel is renamed before the release. The refresh drops Hotel's ref while Bravo is still
-    held, and the refused release then keeps whatever cursor that refresh wrote (#71).
+    """The pressed sheet takes a lost cursor before the first pick only while the press still
+    identifies it: no refresh has dropped the picks since it went down (`voided`), and its
+    retained handle still reports its name. Otherwise a pick under that name may be another
+    sheet, such as a replacement, and the first pick takes the cursor (#71).
     """
-    sheets = {name: Sheet(name) for name in ROWS}
-    selection = Selection(lambda ref: ref.token.getName() == ref.name)
-    selection.picked = [Ref(name, sheets[name]) for name in ROWS if name in picks]
-    selection.cursor = Ref("Hotel", sheets["Hotel"])
-    tree = SimpleNamespace(clearSelection=Mock(), addSelection=Mock())
-    owner = SimpleNamespace(
-        _press=SimpleNamespace(
-            row=1, name="Bravo", handle=sheets["Bravo"], generation=0, voided=False
-        ),
-        _observed=SimpleNamespace(sheets=[SimpleNamespace(name=name) for name in ROWS]),
-        _proven=0,
-        _generation=0,
-        _nodes=[object() for _ in ROWS],
-        rows=[SheetRow(name) for name in ROWS],
-        _shown=tuple(picks),
-        _view_generation=0,
-        _view_names=frozenset(ROWS),
-        _view_stopped=True,
-        _view_state=None,
-        _input=0,
-        _monitor=SimpleNamespace(check=lambda: 0),
-        _identities_kept=Mock(return_value=True),  # One rename by others keeps them.
-        _selection=selection,
-        _handles={},
-        tree=tree,
-        peer=SimpleNamespace(invalidate=Mock()),
-        _move_tree_cursor=Mock(),
-        _name_viewed=Mock(),
-        _update_moves=Mock(),
-    )
-    owner.names = lambda: [row.name for row in owner.rows]
+    owner, applied = refused_press_owner(("Alfa", "Bravo"), "Hotel", "Hotel")
+    owner._press.voided, owner._press.handle = voided, Sheet(reported)
+    release_refused(owner)
+    assert [ref.name if ref is not None else None for ref in applied] == [expected]
 
-    def rebuild(rows: list[SheetRow]) -> None:
-        owner.rows, owner._nodes = rows, [object() for _ in rows]
+
+class HeldBravo:
+    """A list running its own press, refreshes, keys and release, while Bravo is held.
+
+    Only the document, the tree and the UI queue are fakes. The tree is the set of rows it shows
+    as selected; posted work runs on `drain`. Replacing a sheet under its own name advances the
+    structure generation, as deleting and inserting it does, and the old handle keeps reporting
+    that name, as a deleted sheet's handle can.
+    """
+
+    METHODS = (
+        "_refresh",
+        "_identities_kept",
+        "_drop_all_picks",
+        "_fallback_cursor",
+        "_apply_selection",
+        "_show_native",
+        "_take_tree_selection",
+        "_current_picks",
+        "_ref",
+        "tree_key",
+        "_queue_selection",
+        "_flush_selection",
+        "mouse_pressed",
+        "mouse_released",
+        "_pressed_sheet_in_place",
+    )
+
+    def __init__(self, names: tuple[str, ...], picks: tuple[str, ...]) -> None:
+        self.sheets = [Sheet(name) for name in names]
+        self.native: set[str] = set()
+        self.posted: list[Any] = []
+        namespace: dict[str, Any] = {
+            "_Press": function(LIST, "_Press", {"dataclass": dataclass, "Any": Any}),
+            "Any": Any,
+            "Snapshot": Any,
+            "Mapping": Mapping,
+            "replace": replace,
+            "structure_kept": structure_kept,
+            "snapshot": self.snapshot,
+            "read_rows": self.read_rows,
+            **dict(LEFT=LEFT, RIGHT=RIGHT, SHIFT=SHIFT, MOD1=MOD1, A=A, SPACE=SPACE, UP=UP),
+            **dict(DOWN=DOWN, HOME=HOME, END=END, PAGEUP=PAGEUP, PAGEDOWN=PAGEDOWN),
+        }
+        monitor = SimpleNamespace(generation=0)
+        monitor.check = lambda: monitor.generation
+        observed = self.snapshot(None)
+        owner = self.owner = SimpleNamespace(
+            _disposed=False,
+            _pointer_depth=0,
+            _selection_write_pending=False,
+            _selection_scroll=False,
+            _restoring_cursor=False,
+            _press=None,
+            _context_target=None,
+            _menu_context=False,
+            _proven=0,
+            _generation=0,
+            _input=0,
+            _user_picks=False,
+            _view_generation=0,
+            _view_names=frozenset(names),
+            _view_stopped=True,
+            _page_rows=5,
+            _monitor=monitor,
+            _selection=Selection(function(LIST, "_current", {"Ref": Ref})),
+            _observed=observed,
+            _handles=dict(zip(names, observed.handles, strict=True)),
+            rows=[SheetRow(name) for name in names],
+            _nodes=list(names),  # A node is its row's name here.
+            _shown=(),
+            document=None,
+            controller=None,
+            tree=SimpleNamespace(
+                clearSelection=self.native.clear,
+                addSelection=self.native.add,
+                makeNodeVisible=Mock(),
+            ),
+            peer=SimpleNamespace(invalidate=Mock()),
+            geometry=lambda: SimpleNamespace(row_at=self.row_at),
+            post=self.post,
+            claim_window=Mock(),
+            activate=Mock(),
+            _note_view_input=Mock(),
+            _name_viewed=Mock(),
+            _update_moves=Mock(),
+            _show_cleared_notice=Mock(),
+        )
+        owner.names = lambda: [row.name for row in owner.rows]
+        owner.selected_names = lambda: [name for name in owner.names() if name in self.native]
+        owner.refresh = self.list_refresh
+        owner._move_tree_cursor = self.move_cursor
+        owner._rebuild = self.rebuild
+        for name in self.METHODS:
+            bind(owner, name, namespace)
+        owner._selection.take(picks, owner._handles, owner.names())
+        self.press(names.index("Bravo"))
+
+    def snapshot(self, document: object) -> Any:
+        return SimpleNamespace(
+            sheets=[SimpleNamespace(name=sheet.name) for sheet in self.sheets],
+            handles=list(self.sheets),
+        )
+
+    def read_rows(self, controller: object, seen: Any) -> list[SheetRow]:
+        return [SheetRow(sheet.name) for sheet in seen.sheets]
+
+    def row_at(self, y: int) -> int:
+        return y  # A row's Y is its index here.
+
+    def post(self, work: Callable[[], None], where: str) -> None:
+        self.posted.append(work)
+
+    def list_refresh(self, renamed: Mapping[str, str] | None = None) -> None:
+        self.owner._refresh(renamed or {})
+
+    def move_cursor(self, index: int, scroll: bool = True) -> None:
+        """In single selection mode, selecting a row moves the tree's cursor there too."""
+        self.native.clear()
+        self.native.add(self.owner.names()[index])
+
+    def rebuild(self, rows: list[SheetRow]) -> None:
+        """A new data model shows no selection until the list writes its own."""
+        owner = self.owner
+        owner.rows, owner._nodes, owner._shown = rows, [row.name for row in rows], ()
+        self.native.clear()
         owner._apply_selection()
 
-    owner._rebuild = rebuild
-    for name in ("_fallback_cursor", "_apply_selection", "_pressed_sheet_in_place"):
-        bind(owner, name)
-    sheets["Hotel"].name = "Hotel 2"
-    renamed = [sheet.name for sheet in sheets.values()]
-    observed = SimpleNamespace(
-        sheets=[SimpleNamespace(name=name) for name in renamed], handles=list(sheets.values())
-    )
+    def drain(self) -> None:
+        while self.posted:
+            self.posted.pop(0)()
 
-    def read_rows(controller: object, picture: Any) -> list[SheetRow]:
-        return [SheetRow(sheet.name) for sheet in picture.sheets]
+    def replace(self, name: str) -> Sheet:
+        index = [sheet.name for sheet in self.sheets].index(name)
+        self.sheets[index] = Sheet(name)
+        self.owner._monitor.generation += 1
+        return self.sheets[index]
 
-    refresh = method(
-        LIST,
-        "SheetList",
-        "_refresh",
-        {"snapshot": Mock(return_value=observed), "read_rows": read_rows, "Mapping": Mapping},
-    )
-    owner.document = owner.controller = None
-    refresh(owner, {})
-    assert selection.cursor.name == expected
-    kept = selection.cursor
-    release(owner)
-    assert owner._press is None
-    assert [ref.name for ref in selection.picked] == [name for name in renamed if name in picks]
-    assert selection.cursor is kept
-    owner._move_tree_cursor.assert_called_with(renamed.index(expected), scroll=False)
+    def move(self, name: str, index: int) -> None:
+        sheet = self.sheets.pop([sheet.name for sheet in self.sheets].index(name))
+        self.sheets.insert(index, sheet)
+
+    def rename(self, name: str, new: str) -> None:
+        next(sheet for sheet in self.sheets if sheet.name == name).name = new
+
+    def refresh(self) -> None:
+        self.owner.refresh()
+        self.drain()
+
+    def key(self, code: int, modifiers: int = 0) -> None:
+        self.owner.tree_key(code, modifiers)
+        self.drain()
+
+    def press(self, row: int) -> None:
+        event = SimpleNamespace(Buttons=LEFT, Y=row, Modifiers=0, ClickCount=1)
+        self.owner.mouse_pressed(event)
+        self.drain()
+
+    def release(self, row: int) -> None:
+        """The tree's native release selects the row under the pointer before the listener."""
+        self.native.clear()
+        self.native.add(self.owner.names()[row])
+        self.owner.mouse_released(SimpleNamespace(Buttons=LEFT, X=0, Y=row))
+        self.drain()
+
+    def cursor(self) -> str | None:
+        cursor = self.owner._selection.cursor
+        return cursor.name if cursor is not None else None
+
+    def picks(self) -> list[str]:
+        return self.owner._selection.names()
+
+
+ORIGINAL = ("Alfa", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel")
+
+
+@pytest.mark.parametrize("unpicked,expected", [(False, "Bravo"), (True, "Alfa")])
+def test_a_refresh_during_the_hold_gives_a_lost_cursor_to_the_pressed_pick(
+    unpicked: bool, expected: str
+) -> None:
+    """Alfa and Bravo are picked and Bravo is held while another window moves it to row 6.
+    Ctrl+Down takes the cursor to Hotel, and Hotel is renamed before the release. The refresh
+    drops Hotel's ref while Bravo is still held and gives the cursor to the pressed sheet, which
+    merely moved, or to the first pick once Ctrl+Space has unpicked Bravo. The refused release
+    keeps whatever cursor that refresh wrote (#71).
+    """
+    held = HeldBravo(ORIGINAL, ("Alfa", "Bravo"))
+    held.move("Bravo", 6)
+    held.refresh()
+    if unpicked:
+        held.key(SPACE, MOD1)
+    held.key(DOWN, MOD1)
+    assert held.cursor() == "Hotel"
+    held.rename("Hotel", "Hotel 2")
+    held.refresh()
+    assert held.cursor() == expected
+    kept = held.owner._selection.cursor
+    held.release(1)
+    assert held.owner._press is None
+    assert held.picks() == (["Alfa"] if unpicked else ["Alfa", "Bravo"])
+    assert held.owner._selection.cursor is kept
+    held.key(SPACE, MOD1)
+    assert held.picks() == ([] if unpicked else ["Alfa"])
+
+
+def test_a_voided_press_gives_its_same_name_replacement_no_cursor_preference() -> None:
+    """Bravo, held, is replaced under its name, and the refresh drops every pick and voids the
+    press. Ctrl+A then picks every sheet, the replacement Bravo among them, and Ctrl+End puts
+    the cursor on Hotel, which is renamed before the release. The refresh that drops that
+    cursor must not give it to the replacement for the pressed sheet's name: the first pick
+    takes it, and Ctrl+Space after the refused release unpicks Alfa (#71).
+    """
+    held = HeldBravo(("Alfa", "Bravo", "Charlie", "Hotel"), ("Bravo",))
+    held.replace("Bravo")
+    held.refresh()
+    assert held.owner._press.voided and held.picks() == []
+    held.key(A, MOD1)
+    held.key(END, MOD1)
+    assert held.cursor() == "Hotel"
+    held.rename("Hotel", "Hotel 2")
+    held.refresh()
+    assert held.cursor() == "Alfa"
+    held.release(1)
+    assert held.cursor() == "Alfa"
+    held.key(SPACE, MOD1)
+    assert held.picks() == ["Bravo", "Charlie"]
+
+
+def test_a_refresh_that_proves_nothing_writes_the_lists_selection_even_when_none_dropped() -> None:
+    """Bravo, held, is replaced under its name, and the refresh drops every pick. Hotel is
+    replaced too before the release, which the tree answers by selecting the pressed row. The
+    release writes nothing at that unproved generation; the refresh it asks for proves nothing
+    either and has no pick left to drop, but must still write the list's empty selection, or
+    the next command would take the replacement Bravo from the tree (#71).
+    """
+    held = HeldBravo(("Alfa", "Bravo", "Charlie", "Hotel"), ("Bravo",))
+    held.replace("Bravo")
+    held.refresh()
+    assert held.owner._press.voided and held.picks() == [] and held.native == set()
+    held.replace("Hotel")
+    held.release(1)
+    assert held.owner._proven == 2
+    assert held.native == set()
+    assert held.owner._current_picks() == []
+
+
+def test_a_pick_made_after_a_lost_proof_survives_a_refused_release() -> None:
+    """The control: after the refresh that dropped the picks, Down picks the replacement Bravo
+    at the proved generation, and the refused release keeps that newer pick (#71)."""
+    held = HeldBravo(("Alfa", "Bravo", "Charlie", "Hotel"), ("Bravo",))
+    replacement = held.replace("Bravo")
+    held.refresh()
+    held.key(DOWN)
+    held.release(1)
+    picks = held.owner._current_picks()
+    assert [ref.name for ref in picks] == ["Bravo"] and picks[0].token is replacement
+    assert held.native == {"Bravo"}
 
 
 @pytest.mark.parametrize(
