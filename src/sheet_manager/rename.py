@@ -219,6 +219,14 @@ def plan_renames(names: Sequence[str], renames: Iterable[tuple[str, str]]) -> Pl
     return Plan(before, tuple((name, changes[name]) for name in changed), after, tuple(steps))
 
 
+@dataclass(frozen=True)
+class ReplacementResult:
+    """Whether any proposal matched and how many proposals changed."""
+
+    matched: bool
+    changed: int
+
+
 class Batch:
     """The rename dialog's proposals for its targets, in document order."""
 
@@ -231,17 +239,21 @@ class Batch:
     def set(self, index: int, name: str) -> None:
         self.proposals[index] = name
 
-    def replace_all(self, find: str, replacement: str) -> int:
-        """Replace literal, case-sensitive `find` in every proposal; the number changed."""
+    def replace_all(self, find: str, replacement: str) -> ReplacementResult:
+        """Replace literal, case-sensitive text. An empty search has no matches."""
         if not find:
-            return 0
+            return ReplacementResult(matched=False, changed=0)
+        if find == replacement:
+            return ReplacementResult(
+                matched=any(find in proposal for proposal in self.proposals), changed=0
+            )
         changed = 0
         for index, proposal in enumerate(self.proposals):
             renamed = proposal.replace(find, replacement)
             if renamed != proposal:
                 self.proposals[index] = renamed
                 changed += 1
-        return changed
+        return ReplacementResult(matched=bool(changed), changed=changed)
 
     def reset(self) -> None:
         self.proposals = list(self.targets)

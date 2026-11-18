@@ -192,7 +192,8 @@ the end of a proposal can trigger a warning as you type, for example at `Bob'` o
 `Bob's`. When the proposal becomes valid and no other row is refused, the field returns to its
 ordinary name.
 
-<Unreleased /> **Replace All** reports when Find is empty, when there are no matches, or the first
+<Unreleased /> **Replace All** reports when Find is empty, when there are no matches, or when the
+search matches but the replacement leaves every proposed name unchanged. It reports the first
 affected sheet and reason if the replacement leaves a refused proposal. If you repeat the same
 replacement and the first press already replaced every match, the conflict stays available on
 the button. If the sheets changed since the dialog opened, **Rename** gives the refusal and asks

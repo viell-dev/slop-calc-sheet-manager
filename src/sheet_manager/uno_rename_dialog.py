@@ -27,7 +27,8 @@ document is changed only after the dialog has closed, by the caller.
   since clearing the field is part of ordinary editing. Once typing resumes, the current
   refusal can be announced again, including a trailing apostrophe while typing an internal one.
   When another row blocks Rename, identify the first affected sheet and leave the full details
-  on the preview rows. Repeating a refusal without changing its reason adds no name event.
+  on the preview rows. Replace All distinguishes absent text from matches left unchanged.
+  Repeating a refusal without changing its reason adds no name event.
 """
 
 from collections.abc import Callable, Mapping, Sequence
@@ -251,9 +252,14 @@ class RenameDialog:
             self._refuse("replace_all", tr("Type the text to find first."))
             return
         replacement = self._control("replace").getText()
-        if not self._batch.replace_all(find, replacement):
-            # A retry can find no matches because the first press already replaced them.
-            if self._refused_replacement != (find, replacement):
+        result = self._batch.replace_all(find, replacement)
+        if not result.changed:
+            if result.matched:
+                self._refuse(
+                    "replace_all", tr("The replacement did not change any proposed names.")
+                )
+            elif self._refused_replacement != (find, replacement):
+                # A retry can find no matches because the first press already replaced them.
                 self._refuse(
                     "replace_all", tr("No new name contains {text}.").format(text=quoted(find))
                 )

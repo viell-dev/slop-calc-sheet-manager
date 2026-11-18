@@ -9,6 +9,7 @@ from sheet_manager.rename import (
     TEMPORARY,
     Batch,
     Plan,
+    ReplacementResult,
     conflict,
     field_refusal,
     first_row_refusal,
@@ -326,11 +327,12 @@ def test_batch_replace_all_is_literal_case_sensitive_and_cumulative() -> None:
         ["WIP North", "WIP South", "wip West", "WIP.x"],
     )
     assert batch.targets == ("WIP North", "WIP South", "wip West", "WIP.x")
-    assert batch.replace_all("WIP ", "") == 2
+    assert batch.replace_all("WIP ", "") == ReplacementResult(matched=True, changed=2)
     assert batch.proposals == ["North", "South", "wip West", "WIP.x"]
-    assert batch.replace_all(".", "-") == 1  # Literal, not a pattern.
-    assert batch.replace_all("", "x") == 0
-    assert batch.replace_all("South", "S") == 1
+    assert batch.replace_all(".", "-") == ReplacementResult(matched=True, changed=1)
+    assert batch.replace_all("", "x") == ReplacementResult(matched=False, changed=0)
+    assert batch.replace_all("missing", "x") == ReplacementResult(matched=False, changed=0)
+    assert batch.replace_all("South", "S") == ReplacementResult(matched=True, changed=1)
     assert batch.proposals == ["North", "S", "wip West", "WIP-x"]
     assert batch.changes() == 3 and batch.problems() == ["", "", "", ""]
     batch.set(2, "North")
@@ -339,6 +341,17 @@ def test_batch_replace_all_is_literal_case_sensitive_and_cumulative() -> None:
         batch.plan()
     batch.reset()
     assert batch.proposals == list(batch.targets) and batch.changes() == 0
+
+
+@pytest.mark.parametrize(("find", "matched"), [("Draft", True), ("draft", False), ("", False)])
+def test_batch_identical_replacement_reports_whether_proposals_match(
+    find: str, matched: bool
+) -> None:
+    batch = Batch(["Draft North", "Draft South"], ["Draft North", "Draft South"])
+    result = batch.replace_all(find, find)
+    assert result.matched is matched
+    assert result.changed == 0
+    assert batch.proposals == ["Draft North", "Draft South"]
 
 
 def test_targets_follow_document_order() -> None:
