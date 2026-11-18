@@ -7,7 +7,8 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 - Record how long each integration-test installation of the package takes, as `install_seconds`
   in the results, and keep the elapsed time and unopkg's output when an installation exceeds its
-  90-second limit, which still fails the session
+  90-second limit, which still fails the session. The local testing guide says how to tell such a
+  timeout on a busy computer from a normal installation
   ([#235](https://github.com/viell-dev/slop-calc-sheet-manager/issues/235)).
 - Organise contributor testing guidance by task and platform, with dedicated Development pages
   for native LibreOffice testing and hosted workflows

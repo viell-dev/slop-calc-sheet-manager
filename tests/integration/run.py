@@ -79,8 +79,9 @@ WRITER_SETTLE_SECONDS = 1.0
 # a Find & Replace, after which Calc's sheet-name comparison ignores character width until the
 # office restarts (#112).
 LAST_SUITES = ("test_rename_sheets",)
-# The limit for `unopkg add`. Hosted runners installed the package in about 2 seconds on Linux,
-# Windows and macOS, measured from their artifacts' file times (#235).
+# The limit for `unopkg add`. Normal installs took 2 to 6 seconds on GitHub's Linux, Windows and
+# macOS runners and 5.5 seconds on a busy Windows laptop; two that exceeded the limit ran while
+# that laptop's processors were saturated (#235).
 INSTALL_SECONDS = 90
 
 

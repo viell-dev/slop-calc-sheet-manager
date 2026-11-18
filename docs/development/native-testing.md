@@ -61,6 +61,13 @@ python3 tools/build.py
   --program /opt/libreoffice26.8/program --oxt dist/sheet-manager-VERSION.oxt
 ```
 
+Each session first installs the OXT into its fresh profile, which normally takes a few seconds and
+is recorded as `install_seconds` in `results.json`. On a computer whose processors or memory are
+taken up by other work, such as several office test runs at once, the installation can exceed its
+90-second limit and fail the run before any suite starts. Compare its `install_seconds` and the
+computer's load with a normal installation, and run again once the computer is less busy
+([#235](https://github.com/viell-dev/slop-calc-sheet-manager/issues/235)).
+
 ## Linux Docker lab
 
 Run the complete Linux matrix in Docker with these commands (PowerShell 7 and POSIX shells both
@@ -162,7 +169,7 @@ $symbols = "srv*$cache*https://dev-downloads.libreoffice.org/symstore/symbols;sr
 ```
 
 Each installation with `unopkg add` has 90 seconds. Every results entry that installs the package
-records `install_seconds`, one value per startup attempt; GitHub's runners install it in about two
+records `install_seconds`, one value per startup attempt; GitHub's runners install it in two to six
 seconds on Linux, Windows and macOS. An installation that takes longer fails the session with
 `install_timed_out` and the elapsed time in its entry, and with `failure_stage` set to `install`
 ([#235](https://github.com/viell-dev/slop-calc-sheet-manager/issues/235)).
