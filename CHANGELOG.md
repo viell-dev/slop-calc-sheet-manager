@@ -5,6 +5,10 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- A drag begun on sheet list rows that are out of date is still refused, but the list now
+  refreshes after LibreOffice's drag-gesture callback returns rather than inside it, so that the
+  refresh's reading of Calc's selected tabs no longer runs in that callback
+  ([#264](https://github.com/viell-dev/slop-calc-sheet-manager/issues/264)).
 - Make the integration check for assistive selection verify that the list takes the pick, using
   Move to Top with stable rows and after a rebuilding refresh
   ([#251](https://github.com/viell-dev/slop-calc-sheet-manager/issues/251)).
