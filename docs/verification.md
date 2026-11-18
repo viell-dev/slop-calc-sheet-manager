@@ -261,6 +261,8 @@ runner's own session against a stand-in office and checks the timing, the exit s
 `results.json`. A stall that begins within about 18 minutes of a job's or the macOS helper's
 time limit still ends there without its stacks (#244); soak sessions keep theirs at the soak's
 own limit.
+`test_install_timing.py` checks that each package installation's elapsed time is recorded and
+that one exceeding its limit still fails, with that time and unopkg's output kept (#235).
 Windows crash dumps matter even when the office exits with status zero. Only startup is retried;
 its dumps are retained separately. Debugger runs also reject signals, incomplete exits and missing
 traces. The Xvfb helper disables key repeat; `single_tap_after_client_pause` verifies one cursor

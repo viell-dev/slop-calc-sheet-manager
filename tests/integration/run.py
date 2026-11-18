@@ -33,6 +33,8 @@ gtk3 saves a screenshot.
 # - A session with no progress for `office_process.STALL_SECONDS`, from its launch, fails,
 #   saves its client and office stacks and stops its office (#45); a stall is never retried.
 #   Report progress at suite and check boundaries; never use the limit as a test timeout.
+# - Install only through `add_package`, which records each install's elapsed time and keeps a
+#   timeout a failure (#235). Do not raise `INSTALL_SECONDS` without measured normal installs.
 
 import argparse
 import importlib.util
@@ -87,6 +89,10 @@ WRITER_SETTLE_SECONDS = 1.0
 # a Find & Replace, after which Calc's sheet-name comparison ignores character width until the
 # office restarts (#112).
 LAST_SUITES = ("test_rename_sheets",)
+# The limit for `unopkg add`. Normal installs took 2 to 6 seconds on GitHub's Linux, Windows and
+# macOS runners and 5.5 seconds on a busy Windows laptop; two that exceeded the limit ran while
+# that laptop's processors were saturated (#235).
+INSTALL_SECONDS = 90
 
 
 def property_value(name, value):
@@ -115,6 +121,39 @@ def wait_for(function, description, timeout=20):
             return result
         time.sleep(0.1)
     raise AssertionError(f"Timed out waiting for {description}")
+
+
+def _text(output):
+    if isinstance(output, bytes):
+        return output.decode("utf-8", "replace")
+    return output or ""
+
+
+def add_package(installer, profile, package, record, environment=None):
+    """Run `unopkg add`, appending its elapsed seconds to `record["install_seconds"]`.
+
+    `record` is a results entry, filled in place so that the time is kept when the install
+    fails, and compared with normal installs when it times out (#235). A timeout stays a failure:
+    the entry also gets `install_timed_out`, and the error carries unopkg's output so far.
+    """
+    seconds = cast(list[float], record.setdefault("install_seconds", []))
+    started = time.monotonic()
+    try:
+        return subprocess.run(
+            [str(installer), profile, "add", str(package)],
+            env=environment,
+            capture_output=True,
+            text=True,
+            timeout=INSTALL_SECONDS,
+        )
+    except subprocess.TimeoutExpired as expired:
+        record["install_timed_out"] = True
+        output = _text(expired.stdout) + _text(expired.stderr)
+        raise AssertionError(
+            f"unopkg add did not finish within {INSTALL_SECONDS} seconds\n{output}"
+        ) from None
+    finally:
+        seconds.append(round(time.monotonic() - started, 3))
 
 
 @contextmanager
@@ -162,17 +201,14 @@ def office_session(
         suffix = ".exe" if os.name == "nt" else ""
         installer = program / ("unopkg" + suffix)
         # Do not suppress the license here: installation must be noninteractive by metadata.
-        install = (
-            subprocess.run(
-                [str(installer), profile, "add", str(package)],
-                env=environment,
-                capture_output=True,
-                text=True,
-                timeout=90,
-            )
-            if package is not None
-            else None
-        )
+        install = None
+        if package is not None:
+            try:
+                install = add_package(installer, profile, package, result, environment)
+            except AssertionError:
+                temporary.cleanup()
+                result["failure_stage"] = "install"
+                raise
         if install is not None:
             installed = install.stdout + install.stderr
         elif profile_directory is not None:
@@ -182,6 +218,7 @@ def office_session(
         (output / f"install-{headless}-{attempt}.log").write_text(installed, encoding="utf-8")
         if install is not None and install.returncode:
             temporary.cleanup()
+            result["failure_stage"] = "install"
             raise AssertionError(f"Installation failed: {install.stdout}\n{install.stderr}")
         command = [
             str(program / ("soffice" + suffix)),
@@ -618,16 +655,12 @@ def exercise_without_extension(context, desktop, directory):
     return {"extension_absent": True, "document_lifecycle": True, "python": sys.version}
 
 
-def check_refusal(program, package, output) -> dict[str, object]:
+def check_refusal(program, package, output, record: dict[str, object]) -> None:
+    """Check that an unsupported office refuses the package; `record` is filled in place."""
     installer = program / ("unopkg.exe" if os.name == "nt" else "unopkg")
     with tempfile.TemporaryDirectory(prefix="sheet-manager-refusal-") as directory:
         profile = "-env:UserInstallation=" + Path(directory).as_uri()
-        result = subprocess.run(
-            [str(installer), profile, "add", str(package)],
-            capture_output=True,
-            text=True,
-            timeout=90,
-        )
+        result = add_package(installer, profile, package, record)
         combined = result.stdout + result.stderr
         (output / "refusal.log").write_text(combined, encoding="utf-8")
         assert result.returncode != 0, "Unsupported LibreOffice accepted the package"
@@ -640,7 +673,7 @@ def check_refusal(program, package, output) -> dict[str, object]:
             check=True,
         )
         assert "dev.viell.sheetmanager" not in listing.stdout
-        return {"refused": True, "dependency_error": True, "not_installed": True}
+        record.update({"refused": True, "dependency_error": True, "not_installed": True})
 
 
 def assert_deck(context, desktop, *, installed):
@@ -709,7 +742,9 @@ def check_lifecycle(program, package, output, result) -> None:
             return completed
 
         try:
-            added = run(str(installer), profile, "add", str(package))
+            added = add_package(installer, profile, package, result, environment)
+            log.append(f"$ {installer} {profile} add {package}\n{added.stdout}{added.stderr}")
+            log.append(f"exit {added.returncode} after {result['install_seconds'][-1]} seconds\n")
             assert added.returncode == 0, "Installation failed"
             assert IDENTIFIER in run(str(installer), profile, "list").stdout
             # The search below must find the installed copy before it can show the copy is gone.
@@ -837,7 +872,9 @@ def main():
 
     try:
         if arguments.expect_refusal:
-            results.append(check_refusal(program, package, output))
+            refusal: dict[str, object] = {}
+            results.append(refusal)
+            check_refusal(program, package, output, refusal)
         else:
             sessions = arguments.sessions or ("both" if arguments.screenshot else "headless")
             for headless in {"headless": [True], "gtk3": [False], "both": [True, False]}[sessions]:
