@@ -228,7 +228,9 @@ It waits for successful routine CI and verifies its required jobs. Its plan expl
 publication. Manual release dry runs and publication require the full sweep as well as routine CI.
 The gate waits up to 70 minutes, covering the longest native job (60 minutes) plus startup time.
 Validation and publication jobs allow 80 minutes for the wait, setup and asset validation.
-The Mac integration command has 30 minutes for its measured complete benchmark workload;
+The Mac integration runner has 30 minutes for its measured complete benchmark workload, within
+a 33-minute command so that a late stall keeps its stacks
+([#244](https://github.com/viell-dev/slop-calc-sheet-manager/issues/244));
 functional assertion deadlines are separate and unchanged
 ([#162](https://github.com/viell-dev/slop-calc-sheet-manager/issues/162)). If that metadata version is
 already published, the PR check emits a notice and skips release planning after static/unit
