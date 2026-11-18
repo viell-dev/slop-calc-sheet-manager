@@ -248,6 +248,12 @@ def test_refresh_seeds_the_new_proof_before_a_subsequent_tab_change(kept: bool) 
         "_refresh",
         {"snapshot": snapshot, "read_rows": read_rows, "Mapping": Mapping},
     )
+    prove = method(SOURCE, "SheetList", "_prove", {"Snapshot": Any})
+
+    def prove_rows(observed: Any, generation: int) -> None:
+        prove(owner, observed, generation)
+
+    owner._prove = prove_rows
     refresh(owner, {})
     assert owner._take_tree_selection.call_args_list[0].kwargs == {"defer": True}
     assert owner._proven == tabs._generation == 1

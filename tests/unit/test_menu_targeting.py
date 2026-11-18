@@ -765,7 +765,7 @@ def test_menu_completion_touches_no_calc_view(stopped: bool) -> None:
         _menu=SimpleNamespace(_controller=controller),
         refresh=Mock(),
         _selection=SimpleNamespace(revalidate=Mock()),
-        _apply_selection=Mock(),
+        _show_selection=Mock(),
     )
     finish = method("src/sheet_manager/uno_list.py", "SheetList", "_finish_menu", {})
     finish(caller)

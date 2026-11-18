@@ -536,10 +536,11 @@ class SheetList:
         self._handles: dict[str, Any] = {}
         self._nodes: list[object] = []
         # The list's own picks and keyboard cursor, as sheet identities (selection.py).
-        # `_shown` is the selection last written to the tree or adopted from accessibility.
+        # `_shown` is the selection last written to the tree or adopted from accessibility, or
+        # None while the tree may show another (#257, #265; see Barriers in the class docstring).
         # Owned pointer and keyboard gestures share a retained range anchor.
         self._selection = Selection(_current)
-        self._shown: tuple[str, ...] = ()
+        self._shown: tuple[str, ...] | None = ()
         # A sheet that may have been inserted or deleted since the picks were proved makes
         # every retained handle suspect (selection.py, structure.py), and the list then drops
         # its picks; `_generation` counts the drops, so that a drag or an open menu started
@@ -753,21 +754,27 @@ class SheetList:
         observed = snapshot(self.document)
         rows = read_rows(self.controller, observed)
         generation = self._monitor.check()
-        if previous is not None and not self._identities_kept(
-            previous, observed, generation, renamed
-        ):
-            dropped = self._drop_all_picks()
-        else:
+        if previous is None or self._identities_kept(previous, observed, generation, renamed):
             dropped = self._selection.carry(renamed)
-        self._proven = generation
+            # The same sheets as before: a retry after a failed rebuild starts from these names.
+            self._observed = observed
+        else:
+            dropped = self._drop_all_picks()
+            if pending is not None or self._press is not None:
+                # The tree's native selection was made against rows whose handles no longer
+                # prove their sheets: no one's pick now, though the rows may read the same (#265).
+                self._shown = None
         changed = rows != self.rows or not self._nodes
-        self._observed = observed
-        self._handles = dict(
-            zip((sheet.name for sheet in observed.sheets), observed.handles, strict=True)
-        )
         if changed:
-            self._rebuild(rows)
-        elif dropped or tuple(self._selection.names()) != self._shown:
+            self._rebuild(rows, observed, generation)
+        else:
+            self._prove(observed, generation)
+        self._name_viewed()
+        self._update_moves()
+        self._tabs.refreshed(generation)
+        # Writes that change only the selection come after the tab baseline, so that one failing,
+        # such as the clear a stale native selection needs, costs the refresh nothing else (#257).
+        if not changed and (dropped or tuple(self._selection.names()) != self._shown):
             self._apply_selection()
         if (
             pending is not None
@@ -777,9 +784,6 @@ class SheetList:
         ):
             # The queued intake checks the same proof, drops and order before taking it.
             self._show_native(pending)
-        self._name_viewed()
-        self._update_moves()
-        self._tabs.refreshed(generation)
 
     def _identities_kept(
         self,
@@ -801,6 +805,18 @@ class SheetList:
         reported = [_name_or_none(handle) for handle in previous.handles]
         recorded = [renamed.get(sheet.name, sheet.name) for sheet in previous.sheets]
         return structure_kept(recorded, reported, [sheet.name for sheet in observed.sheets])
+
+    def _prove(self, observed: Snapshot, generation: int) -> None:
+        """Make `observed` the snapshot of the rows the tree shows, proved at `generation`.
+
+        Only then do those rows' names look up its handles: a row must map to the handle it was
+        read with, not to the sheet that took its name since (#257).
+        """
+        self._proven = generation
+        self._observed = observed
+        self._handles = dict(
+            zip((sheet.name for sheet in observed.sheets), observed.handles, strict=True)
+        )
 
     def _drop_all_picks(self) -> bool:
         """Drop every pick, the cursor, the anchor, and a held press: none can be proved now."""
@@ -838,16 +854,25 @@ class SheetList:
             self._status.show_notice(False)
             self.set_bounds(*self._bounds)
 
-    def _rebuild(self, rows: list[SheetRow]) -> None:
-        """Replace the whole data model.
+    def _rebuild(self, rows: list[SheetRow], observed: Snapshot, generation: int) -> None:
+        """Replace the whole data model with `rows`, read from `observed` at `generation`.
 
         With a hidden root, the tree control mishandles every change event of the data model:
         changing one node's text re-parents all rows under a newly shown root. So the list
         never changes nodes in place; it builds a new model and restores the selection, the
         scroll position, and keyboard cursor. The range anchor belongs to the selection model
         and survives while its sheet identity remains valid.
+
+        The rows, their handles and their proof change together when the new model is shown: a
+        refused model leaves the old rows with what they were read with (#257). A setter can
+        also show the new model and then fail, leaving cached nodes that LibreOffice's
+        `getNodeRect` rejects; the retry then rebuilds without keeping the scroll position.
         """
-        top = self._first_visible_name()
+        try:
+            top = self._first_visible_name()
+        except Exception:
+            report("reading the sheet list's scroll position")
+            top = None
         model = self.context.ServiceManager.createInstanceWithContext(
             "com.sun.star.awt.tree.MutableTreeDataModel", self.context
         )
@@ -865,7 +890,8 @@ class SheetList:
             # Replacing the model focuses intermediate rows before the old cursor comes back.
             self.tree.getModel().DataModel = model
             self._nodes, self.rows = nodes, rows
-            self._shown = ()
+            self._prove(observed, generation)
+            self._shown = ()  # A new model shows nothing selected.
             names = self.names()
             if top in names and nodes:
                 # Scroll to the end first, so that showing the old top row puts it at the top.
@@ -878,17 +904,19 @@ class SheetList:
     def _show_native(self, names: tuple[str, ...]) -> None:
         """Show a native selection that awaits intake again over rebuilt rows, keeping the cursor.
 
-        Only the queued intake adopts it, after its own checks (`_take_tree_selection`).
+        Only the queued intake adopts it, after its own checks (`_take_tree_selection`). If a
+        call fails partway, the tree shows part of that selection, which no intake takes.
         """
         if tuple(self.selected_names()) == names:
             return
-        restoring = self._restoring_cursor
-        self._restoring_cursor = True
+        restoring, shown = self._restoring_cursor, self._shown
+        self._restoring_cursor, self._shown = True, None
         try:
             self.tree.clearSelection()  # Keeps the cursor where it is.
             for index, name in enumerate(self.names()):
                 if name in names:
                     self.tree.addSelection(self._nodes[index])
+            self._shown = shown
         finally:
             self._restoring_cursor = restoring
         self.peer.invalidate(0)
@@ -905,10 +933,28 @@ class SheetList:
         self._selection.take(names, self._handles, self.names())
         self._selection.cursor = self._ref(cursor)
         self._selection.anchor = self._selection.cursor
-        self._apply_selection()
+        self._show_selection()
+
+    def _show_selection(self) -> None:
+        """Write the list's selection outside a refresh (`_apply_selection`).
+
+        A write that may have stopped partway is retried as a failed refresh is, so that the
+        tree does not wait for the next input to show the picks again (#257).
+        """
+        try:
+            self._apply_selection()
+        except BaseException:
+            if self._shown is None:
+                self._refreshes.failed()
+            raise
 
     def _apply_selection(self) -> None:
-        """Write the list's own picks and cursor to the tree; the cursor falls back to a pick."""
+        """Write the list's own picks and cursor to the tree; the cursor falls back to a pick.
+
+        The write takes several native calls, and one can fail after others changed the tree.
+        From the first to the last selection call `_shown` is None, so a failure leaves it
+        None: the tree may show part of the write, which the intake must not take (#257).
+        """
         names = self.names()
         cursor = self._selection.cursor
         if cursor is None or cursor.name not in names:
@@ -916,10 +962,11 @@ class SheetList:
             self._selection.cursor = cursor
         wanted = {ref.name for ref in self._selection.picked}
         indices = [index for index, name in enumerate(names) if name in wanted]
-        self._shown = tuple(names[index] for index in indices)
         self._update_moves()
+        self._shown = None
         if cursor is None:
             self.tree.clearSelection()
+            self._shown = ()
             return
         self._move_tree_cursor(names.index(cursor.name), scroll=False)
         if cursor.name not in wanted:
@@ -927,12 +974,18 @@ class SheetList:
         for index in indices:
             if names[index] != cursor.name:
                 self.tree.addSelection(self._nodes[index])
-        self.peer.invalidate(0)
+        self._shown = tuple(names[index] for index in indices)
+        self.peer.invalidate(0)  # A failed repaint leaves a complete write: the next one paints.
 
     def _take_tree_selection(self, paint: bool = True, *, defer: bool = False) -> bool:
-        """Take native picks, deferring observations until queued owned input has run."""
+        """Take native picks, deferring observations until queued owned input has run.
+
+        Nothing is taken while `_shown` is None: the list cannot tell which of the tree's
+        selected rows the user chose, and its next write shows its own picks again (#257, #265).
+        """
         if (
-            self._pointer_depth
+            self._shown is None
+            or self._pointer_depth
             or self._selection_write_pending
             or self._press is not None
             or self._context_target is not None
@@ -973,16 +1026,19 @@ class SheetList:
         """The list's picks as they stand now, each still the sheet it was picked as.
 
         None while a sheet insertion or deletion has not been through a refresh yet: the
-        refresh this asks for decides what can still be proved.
+        refresh this asks for decides what can still be proved. None, too, while the tree may
+        show another selection than the picks (`_shown` is None): the user saw that, so this
+        shows the picks first and leaves them to the next command (#257).
         """
         if self._monitor.check() != self._proven:
             self.post(self.refresh, "refreshing the sheet list")
             return []
         if self._press is None:
             self._take_tree_selection()
+        unknown = self._shown is None
         if self._selection.revalidate() or tuple(self._selection.names()) != self._shown:
-            self._apply_selection()
-        return list(self._selection.picked)
+            self._show_selection()
+        return [] if unknown else list(self._selection.picked)
 
     def geometry(self) -> RowGeometry:
         if not self._nodes:
@@ -1016,8 +1072,15 @@ class SheetList:
         self._selection.cursor = ref
         self._selection.anchor = ref
         self._user_picks = True
-        self._move_tree_cursor(index, scroll)
+        self._shown = None  # As `_apply_selection` writes it: a failure leaves it unknown.
+        try:
+            self._move_tree_cursor(index, scroll=False)
+        except BaseException:
+            self._refreshes.failed()
+            raise
         self._shown = (self.rows[index].name,)
+        if scroll:
+            self.tree.makeNodeVisible(self._nodes[index])
 
     def _move_tree_cursor(self, index: int, scroll: bool = True) -> None:
         """Select only this row in the tree, which moves its keyboard cursor there too.
@@ -1089,7 +1152,7 @@ class SheetList:
                 self.refresh()
             else:
                 self._selection.revalidate()
-                self._apply_selection()
+                self._show_selection()
                 cursor = self._selection.cursor
                 if self._selection_scroll and cursor is not None and cursor.name in self.names():
                     self.tree.makeNodeVisible(self._nodes[self.names().index(cursor.name)])
@@ -1494,7 +1557,10 @@ class SheetList:
         self._input += 1
         self._tabs.note_input()
         self.claim_window()  # Also for activation without a press or key, such as through AT.
-        observed, picks, proof = self._observed, tuple(self._selection.picked), self._proven
+        # While the tree may show another selection than the picks (`_shown` is None), the user
+        # saw that one: refuse, and let the refresh this asks for show the picks (#257).
+        observed = self._observed if self._shown is not None else None
+        picks, proof = tuple(self._selection.picked), self._proven
         self.post(lambda: self._move_selection(action, observed, picks, proof), "moving sheets")
 
     def _move_selection(self, action, observed, picks, proof) -> None:
@@ -1635,7 +1701,7 @@ class SheetList:
             self._selection.cursor = next(
                 (ref for ref in picks if ref.name == press.name), picks[0] if picks else None
             )
-            self._apply_selection()
+            self._show_selection()
             return
         row = press.row
         if row is None or press.modifiers & (SHIFT | MOD1):
@@ -1767,7 +1833,7 @@ class SheetList:
                 # A command's result can still drop picks under the identity rules.
                 self.refresh()
                 self._selection.revalidate()
-                self._apply_selection()
+                self._show_selection()
         finally:
             self._activating = False
             self._menu_context = False

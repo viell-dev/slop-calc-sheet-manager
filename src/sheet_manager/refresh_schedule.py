@@ -91,7 +91,7 @@ class RefreshSchedule:
         try:
             refresh()
         except BaseException:
-            self._failed()
+            self.failed()
             raise
         else:
             self.stale_since = None
@@ -150,11 +150,13 @@ class RefreshSchedule:
         if not self._closed and self.stale_since is not None:
             self._due()
 
-    def _failed(self) -> None:
+    def failed(self) -> None:
         """Keep the changes the failed refresh did not show pending, and retry them (#186).
 
         Retries back off and stop after `REFRESH_RETRIES` failures in a row, rather than report
-        an error in a loop; a later document change or sheet switch then refreshes again.
+        an error in a loop; a later document change or sheet switch then refreshes again. The
+        owner also calls this, outside `measure`, for a selection write that may have stopped
+        partway: the retried refresh writes the selection again (`uno_list`, #257).
         """
         self._mark_stale(self._clock())
         self.failures += 1

@@ -155,6 +155,7 @@ def test_move_request_keeps_its_snapshot_refs_and_proof_while_queued() -> None:
         _selection=SimpleNamespace(picked=[object()]),  # A queued navigation callback is behind.
         _press=None,
         _take_tree_selection=take_selection,
+        _shown=(),
         _proven=7,
         post=post,
         _move_selection=move,
@@ -376,9 +377,15 @@ def test_failed_rebuild_releases_the_cursor_restoration_guard() -> None:
         raise RuntimeError("injected cursor restoration failure")
 
     owner._apply_selection = fail_restore
-    rebuild = method("src/sheet_manager/uno_list.py", "SheetList", "_rebuild", {"SheetRow": Any})
+    owner._prove = Mock()
+    rebuild = method(
+        "src/sheet_manager/uno_list.py",
+        "SheetList",
+        "_rebuild",
+        {"SheetRow": Any, "Snapshot": Any, "report": Mock()},
+    )
     with pytest.raises(RuntimeError, match="cursor restoration failure"):
-        rebuild(owner, [])
+        rebuild(owner, [], object(), 0)
     assert not owner._restoring_cursor
 
 
@@ -453,7 +460,7 @@ def test_refused_release_restores_a_surviving_pick_instead_of_native_release_cur
         _monitor=SimpleNamespace(check=lambda: 0),
         _pressed_sheet_in_place=Mock(return_value=False),
         _selection=selection,
-        _apply_selection=lambda: applied.append(selection.cursor),
+        _show_selection=lambda: applied.append(selection.cursor),
     )
     released = method(
         "src/sheet_manager/uno_list.py", "SheetList", "mouse_released", {"LEFT": 1, "RIGHT": 2}

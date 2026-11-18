@@ -219,11 +219,11 @@ def check_failed_refresh(context, document):
     rebuilds = []
 
     class FlakyList(SheetList):
-        def _rebuild(self, rows):
+        def _rebuild(self, rows, observed, generation):
             rebuilds.append([row.name for row in rows])
             if len(rebuilds) == 2:
                 raise RuntimeError("injected rebuild failure")
-            super()._rebuild(rows)
+            super()._rebuild(rows, observed, generation)
 
     sheet_list = FlakyList(context, frame, frame.getContainerWindow())
     try:
