@@ -1,12 +1,50 @@
 """Measure independent painted sessions with and without the extension; never retry a failure."""
 
+# A session that has not finished within SESSION_SECONDS fails with status 124. The runner gets
+# the same limit as its deadline (`SHEET_MANAGER_DEADLINE_SECONDS`), at which its stall watch
+# keeps the client's and the office's stacks and stops the office (#45); CAPTURE_GRACE_SECONDS
+# more lets it do that and exit before its process group is killed. Keep the grace above the
+# watch's CAPTURE_SECONDS and STOP_SECONDS together (`office_process`; a unit test checks it).
+
 import argparse
+import contextlib
 import json
 import os
 import signal
 import subprocess
 import sys
 from pathlib import Path
+from typing import TextIO
+
+SESSION_SECONDS = 180
+CAPTURE_GRACE_SECONDS = 150
+
+
+def run_session(
+    command: list[str],
+    log: TextIO,
+    limit: float = SESSION_SECONDS,
+    grace: float = CAPTURE_GRACE_SECONDS,
+) -> int:
+    """Run one runner in its own process group; return its status, or 124 after `limit` seconds.
+
+    A runner still running at `limit` fails whatever happens next; it then has `grace` seconds
+    to keep its stall evidence and exit, and its whole group is killed after that.
+    """
+    environment = dict(os.environ, SHEET_MANAGER_DEADLINE_SECONDS=str(limit))
+    process = subprocess.Popen(
+        command, stdout=log, stderr=subprocess.STDOUT, start_new_session=True, env=environment
+    )
+    try:
+        return process.wait(timeout=limit)
+    except subprocess.TimeoutExpired:
+        with contextlib.suppress(subprocess.TimeoutExpired):
+            process.wait(timeout=grace)
+        if os.name == "posix":
+            with contextlib.suppress(ProcessLookupError):  # The group may already be empty.
+                os.killpg(process.pid, signal.SIGKILL)
+        process.wait()
+        return 124
 
 
 def main():
@@ -31,8 +69,8 @@ def main():
         "debugger fatal markers also fail a run.",
         "",
         "| Mode | Session | Runner exit | Office/wrapper exit | Fatal markers | Assertions | "
-        "Results error |",
-        "| --- | ---: | ---: | --- | --- | --- | --- |",
+        "Stall | Results error |",
+        "| --- | ---: | ---: | --- | --- | --- | --- | --- |",
     ]
     try:
         for mode in ("installed", "absent"):
@@ -60,19 +98,7 @@ def main():
                 if arguments.backtrace:
                     command.append("--backtrace")
                 with (directory / "runner.log").open("w", encoding="utf-8") as log:
-                    process = subprocess.Popen(
-                        command,
-                        stdout=log,
-                        stderr=subprocess.STDOUT,
-                        start_new_session=True,
-                    )
-                    try:
-                        status = process.wait(timeout=180)
-                    except subprocess.TimeoutExpired:
-                        if os.name == "posix":
-                            os.killpg(process.pid, signal.SIGKILL)
-                        process.wait()
-                        status = 124
+                    status = run_session(command, log)
                 result_path = directory / "results.json"
                 results_error = None
                 try:
@@ -98,9 +124,10 @@ def main():
                 assertions = bool(results) and all(
                     result.get("assertions_passed") for result in results
                 )
+                stalls = sorted(path.name for path in directory.glob("stall-*.json"))
                 summary.append(
                     f"| {mode} | {number} | {status} | {office} | {markers} | {assertions} | "
-                    f"{results_error or ''} |"
+                    f"{', '.join(stalls)} | {results_error or ''} |"
                 )
     finally:
         output.mkdir(parents=True, exist_ok=True)

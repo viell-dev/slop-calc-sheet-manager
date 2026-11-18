@@ -8,11 +8,16 @@ stops its own office process tree instead of asking it to terminate, which would
 stuck thread too (#40). An earlier failure stays the one raised, with the timeout as a note, so
 that neither hides the other.
 
-Steps report progress through `note_progress`: the runner's `StallWatch` stops a session that
-reports none for its limit, after saving stacks (#45). Suites, checks and the runners' loops
-report it; a single step need not.
+Steps report progress through `note_progress`: the runner's `StallWatch` fails and stops a
+session that reports none for its limit, after saving stacks (#45). Suites, checks, the runners'
+loops and the benchmarks' workbooks and repetitions report it; a single step need not. Progress
+and expiry are one decision under one lock (`stall_if_idle`): progress noted before it prevents
+the stall, and a stall it records is final, so later progress cannot undo it. The stall is
+recorded as a stalled callback before any stacks are taken, so no close or restore starts during
+the capture.
 """
 
+import threading
 import time
 from collections.abc import Callable, Iterable
 from contextlib import suppress
@@ -20,22 +25,48 @@ from types import TracebackType
 from typing import Any
 
 _stalled: list[str] = []
-_progress = [time.monotonic()]
+_lock = threading.Lock()
+# The last progress and the longest interval between two reports in this session.
+_progress = [time.monotonic(), 0.0]
 
 
 def start_session() -> None:
-    """Forget stalled callbacks of an earlier office session in this process."""
-    _stalled.clear()
-    note_progress()
+    """Forget stalled callbacks and progress of an earlier office session in this process."""
+    with _lock:
+        _stalled.clear()
+        _progress[:] = [time.monotonic(), 0.0]
 
 
 def note_progress() -> None:
     """Note that the session has moved on to another suite, check or step."""
-    _progress[0] = time.monotonic()
+    with _lock:
+        now = time.monotonic()
+        _progress[:] = [now, max(_progress[1], now - _progress[0])]
 
 
 def seconds_since_progress() -> float:
-    return time.monotonic() - _progress[0]
+    with _lock:
+        return time.monotonic() - _progress[0]
+
+
+def longest_progress_interval() -> float:
+    """The longest time this session has gone without progress, including the current wait."""
+    with _lock:
+        return max(_progress[1], time.monotonic() - _progress[0])
+
+
+def stall_if_idle(limit: float, message: str, overdue: bool = False) -> float | None:
+    """Record `message` as a stall if no progress came for `limit` seconds, or if `overdue`.
+
+    Return the seconds since progress when the stall is recorded, otherwise None. The check and
+    the record hold the lock that `note_progress` takes, so they cannot interleave with it.
+    """
+    with _lock:
+        idle = time.monotonic() - _progress[0]
+        if idle < limit and not overdue:
+            return None
+        _stalled.append(message)
+        return idle
 
 
 def record_stalled_callback(message: str) -> None:

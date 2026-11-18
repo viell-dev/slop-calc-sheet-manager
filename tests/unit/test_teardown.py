@@ -1,13 +1,18 @@
 """A stalled main-thread callback fails the suite and never hides an earlier failure (#50)."""
 
+import time
 from collections.abc import Iterator
 
 import pytest
 
 from tests.integration.teardown import (
     close_leftovers,
+    longest_progress_interval,
+    note_progress,
     record_stalled_callback,
     run_checks,
+    seconds_since_progress,
+    stall_if_idle,
     stalled_callbacks,
     start_session,
 )
@@ -127,3 +132,33 @@ def test_a_new_session_forgets_earlier_stalls() -> None:
     start_session()
     assert stalled_callbacks() == []
     assert run_checks([("one", lambda: True)], [], Office().close) == {"one": True}
+
+
+def test_progress_decides_whether_an_idle_session_has_stalled() -> None:
+    # The stall watch's decision (#45): progress noted in time prevents it; once recorded, a
+    # stall stays, whatever progress follows.
+    assert stall_if_idle(60, "never") is None
+    time.sleep(0.05)
+    note_progress()
+    assert stall_if_idle(0.04, "not yet") is None
+    time.sleep(0.05)
+    idle = stall_if_idle(0.04, "No test progress")
+    assert idle is not None and idle >= 0.04
+    note_progress()
+    assert stalled_callbacks() == ["No test progress"]
+    assert seconds_since_progress() < 0.04
+
+
+def test_a_deadline_records_a_stall_despite_progress() -> None:
+    note_progress()
+    assert stall_if_idle(60, "deadline", overdue=True) is not None
+    assert stalled_callbacks() == ["deadline"]
+
+
+def test_the_longest_interval_without_progress_is_kept_per_session() -> None:
+    time.sleep(0.1)
+    note_progress()
+    note_progress()
+    assert 0.1 <= longest_progress_interval() < 1
+    start_session()
+    assert longest_progress_interval() < 0.1

@@ -30,9 +30,9 @@ gtk3 saves a screenshot.
 #   Never extend this startup handling into retrying test assertions or shutdown failures.
 # - Failed input polls retain only existing fixture reads/posts, without extra UNO calls (#160).
 # - Save completed suites as they finish: an external timeout can bypass Python finally (#162).
-# - A session with no progress for `office_process.STALL_SECONDS` saves its client and office
-#   stacks and stops its office (#45). Report progress at suite and check boundaries; never use
-#   the limit as a test timeout.
+# - A session with no progress for `office_process.STALL_SECONDS`, from its launch, fails,
+#   saves its client and office stacks and stops its office (#45); a stall is never retried.
+#   Report progress at suite and check boundaries; never use the limit as a test timeout.
 
 import argparse
 import importlib.util
@@ -68,9 +68,9 @@ from office_process import (
 )
 from sheet_list_view import move_buttons, tree_of
 from teardown import (
+    longest_progress_interval,
     note_progress,
-    record_stalled_callback,
-    seconds_since_progress,
+    stall_if_idle,
     stalled_callbacks,
     start_session,
 )
@@ -212,6 +212,17 @@ def office_session(
             text=True,
             cwd=directory,
         )
+        # Watch from the launch: a UNO call that never returns, startup's included, would
+        # otherwise hold the run until an enclosing limit, without evidence (#45). The watch
+        # records the stall, saves the stacks and stops the office first.
+        start_session()
+        watch = StallWatch(
+            process,
+            output,
+            f"stall-{headless}-{attempt}",
+            expire=stall_if_idle,
+            debugger_parent=backtrace,
+        ).start()
         try:
             # The stub calls this UNO "Any"; the actual value is a dynamic XComponentContext.
             local = cast(Any, uno.getComponentContext())
@@ -252,6 +263,7 @@ def office_session(
                                     text=True,
                                     cwd=directory,
                                 )
+                                watch.follow(process)
                                 continue
                         raise RuntimeError("Private soffice exited during startup") from None
                     time.sleep(0.1)
@@ -262,7 +274,11 @@ def office_session(
                 "com.sun.star.frame.Desktop", context
             )
             desktop.getComponents().hasElements()  # Detect the post-connect startup crash.
+            if watch.stalled:
+                raise TimeoutError("The stall watch stopped the office during startup")
         except Exception:
+            # A stall is never retried: it ends the session as a failure.
+            stall = watch.close()
             generated_trace = directory / "gdbtrace.log"
             startup = finish_process(
                 process,
@@ -278,6 +294,9 @@ def office_session(
             )
             startup["office_crash_dumps"] = dumps
             startup_dumps.extend(dumps)
+            if stall is not None:
+                startup["office_progress_stall"] = stall
+                startup["office_stalled_callbacks"] = stalled_callbacks()
             if profile_directory is not None:
                 # A reused profile outlives the attempt; its kept dumps must not count again.
                 for dump in (profile_path / "crash").glob("*.dmp"):
@@ -287,28 +306,19 @@ def office_session(
                 json.dumps(startup, indent=2) + "\n", encoding="utf-8"
             )
             temporary.cleanup()
-            if attempt == startup_attempts - 1:
+            if stall is not None or attempt == startup_attempts - 1:
                 result.update(startup)
                 result["failure_stage"] = "startup"
                 raise
             continue
-        start_session()
-        # A UNO call that never returns would otherwise hold the session until the job's
-        # limit, without evidence (#45); the watch saves stacks and stops the office first.
-        watch = StallWatch(
-            process,
-            output,
-            f"stall-{headless}-{attempt}",
-            idle=seconds_since_progress,
-            stalled=record_stalled_callback,
-            debugger_parent=backtrace,
-        ).start()
         try:
             yield context, desktop, directory
         finally:
-            watch.close()
-            if watch.evidence is not None:
-                result["office_progress_stall"] = watch.evidence
+            # After a stall this waits, bounded, for its capture and the office's stop.
+            stall = watch.close()
+            if stall is not None:
+                result["office_progress_stall"] = stall
+            result["longest_progress_interval_seconds"] = round(longest_progress_interval(), 1)
             try:
                 generated_trace = directory / "gdbtrace.log"
                 # Ends the office before the debugger's final output is copied. After a stalled
@@ -806,6 +816,7 @@ def main():
         "startup-restart-*.log",
         "crash-*.dmp",
         "crash-*-dump.ini",
+        "stall-*",
         "reorder-performance*.json",
         "rename-performance*.json",
     ):

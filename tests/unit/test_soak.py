@@ -5,9 +5,12 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
+
+from tests.integration import office_process, soak
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -65,3 +68,63 @@ def test_soak_continues_after_unreadable_results(tmp_path: Path, failure: str) -
     summary = (output / "soak-summary.md").read_text(encoding="utf-8")
     assert rows[0]["results_error"] in summary
     assert "| absent | 2 | 0 |" in summary
+
+
+@pytest.mark.skipif(os.name != "posix", reason="The soak runs only inside the Linux test image")
+def test_a_session_past_its_limit_fails_but_keeps_its_stall_evidence(tmp_path: Path) -> None:
+    # The runner's deadline is the soak's limit; it then keeps its stacks and exits (#45).
+    deadline = tmp_path / "deadline.txt"
+    runner = "\n".join(
+        [
+            "import os, pathlib, sys, time",
+            "out = pathlib.Path(sys.argv[1])",
+            "out.write_text(os.environ['SHEET_MANAGER_DEADLINE_SECONDS'])",
+            "time.sleep(1.5)",
+            "out.with_name('stall-False-0.json').write_text('{}')",
+            "sys.exit(1)",
+        ]
+    )
+    started = time.monotonic()
+    with (tmp_path / "runner.log").open("w", encoding="utf-8") as log:
+        status = soak.run_session(
+            [sys.executable, "-c", runner, str(deadline)], log, limit=0.5, grace=10
+        )
+    assert status == 124  # A session still running at the limit fails, whatever follows.
+    assert deadline.read_text(encoding="utf-8") == "0.5"
+    assert (tmp_path / "stall-False-0.json").exists()  # Its capture finished in the grace.
+    assert time.monotonic() - started < 10
+
+
+@pytest.mark.skipif(os.name != "posix", reason="The soak runs only inside the Linux test image")
+def test_a_session_that_outlasts_its_grace_has_its_group_killed(tmp_path: Path) -> None:
+    beats = tmp_path / "beats.txt"
+    heartbeat = "\n".join(
+        [
+            "import sys, time",
+            "while True:",
+            "    open(sys.argv[1], 'a').write('.')",
+            "    time.sleep(0.05)",
+        ]
+    )
+    runner = "\n".join(
+        [
+            "import subprocess, sys, time",
+            f"subprocess.Popen([sys.executable, '-c', {heartbeat!r}, {str(beats)!r}])",
+            "time.sleep(60)",
+        ]
+    )
+    started = time.monotonic()
+    with (tmp_path / "runner.log").open("w", encoding="utf-8") as log:
+        status = soak.run_session([sys.executable, "-c", runner], log, limit=0.5, grace=0.5)
+    assert status == 124
+    assert 1 <= time.monotonic() - started < 10
+    size = beats.stat().st_size
+    time.sleep(0.5)
+    assert beats.stat().st_size == size  # The office's stand-in in the group is gone too.
+
+
+def test_the_soak_grace_covers_the_stall_watchs_capture_and_stop() -> None:
+    # The watch looks every 5 s at most; the runner then shuts down and writes its results.
+    margin = 5 + 10
+    limit = office_process.CAPTURE_SECONDS + office_process.STOP_SECONDS + margin
+    assert limit <= soak.CAPTURE_GRACE_SECONDS
