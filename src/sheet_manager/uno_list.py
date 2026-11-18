@@ -45,7 +45,7 @@ shows nothing selected, starts that state while there are picks to write. While 
 queued intake takes no native selection and commands act on no picks. The next intake settles
 it (`_settle_shown`): if the tree shows exactly the picks, the record is known again. Anything
 else may be part of a write or a selection made since, such as through accessibility, which the
-list cannot tell apart, so it drops the picks, with the clearing notice, and the next write
+list cannot tell apart, so it drops the picks, with the clearing notice, and queues a write that
 clears the tree: restoring the picks could replace the user's latest selection, and taking the
 rows could act on a sheet nobody picked. A refresh writes after its tab baseline, and a write
 outside a refresh is retried as a failed refresh is (`RefreshSchedule.failed`). A write that can
@@ -105,8 +105,9 @@ description, state or relation setter, toolkit has no `AccessibleDescription`, a
 only a tooltip. Native selection made without an owned handler, such as through
 `XAccessibleSelection`, waits for the queued intake; a refresh that rebuilds the rows first shows
 that selection again (`_show_native`) under the proof, drop count and order the intake checks,
-so the intake still decides. A refresh that loses the proof clears it instead (#265, above), and
-one that fails before showing it again drops the picks it replaced (#257, above).
+so the intake still decides, and one that keeps the rows does not write the picks over it. A
+refresh that loses the proof clears it instead (#265, above), and one that fails before showing it
+again drops the picks it replaced (#257, above).
 The panel window lists the move buttons, the tree and the shown
 footer labels as its accessible children in creation order, which is their visual order, so
 create them in that order (#133, `uno_panel`).
@@ -821,20 +822,27 @@ class SheetList:
             self._name_viewed()
             self._update_moves()
             self._tabs.refreshed(generation)
-            # Writes that change only the selection come after the tab baseline, so that one
-            # failing, such as the clear a stale native selection needs, costs the refresh
-            # nothing else (#257).
-            if not changed and (dropped or tuple(self._selection.names()) != self._shown):
-                self._apply_selection()
-            if (
-                changed
-                and pending is not None
+            # The queued intake checks the same proof, drops and order before taking a native
+            # selection that waits for it.
+            waiting = (
+                pending is not None
                 and self._generation == drops
                 and generation == proof
                 and tuple(self.names()) == order
+            )
+            # Writes that change only the selection come after the tab baseline, so that one
+            # failing, such as the clear a stale native selection needs, costs the refresh
+            # nothing else (#257). Kept rows still show a waiting selection: writing the picks
+            # over it, as a pick order that differs from the rows' asks for, would replace the
+            # user's latest selection with older picks.
+            if (
+                not changed
+                and not waiting
+                and (dropped or tuple(self._selection.names()) != self._shown)
             ):
-                # The queued intake checks the same proof, drops and order before taking it.
-                # Kept rows still show it: only a rebuild replaced it.
+                self._apply_selection()
+            if changed and waiting:
+                # Only a rebuild replaced it.
                 reshowing = True
                 self._show_native(pending)
         except BaseException:
@@ -1130,15 +1138,20 @@ class SheetList:
         Anything else can be part of a write or a selection made since, such as through
         accessibility, and the list cannot tell the two apart: restoring the picks could replace
         the user's latest selection, and taking the rows could pick a sheet the user never
-        chose. So the picks are dropped, with the notice, and the record stays unknown until the
-        next write clears the tree (#257). With no picks left, as after an earlier drop, only
-        that write is due.
+        chose. So the picks are dropped, with the notice (#257). A tree that then shows nothing
+        shows exactly the picks. Rows it still shows are cleared by a queued write, as a key's
+        is, rather than left until a later one: a Ctrl+click on such a row would otherwise pick
+        the sheet the user saw selected and meant to deselect. The record stays unknown until
+        that write. With no picks left, as after an earlier drop, only the write is due.
         """
         wanted = {ref.name for ref in self._selection.picked}
-        if tuple(names) == tuple(name for name in self.names() if name in wanted):
-            self._shown = tuple(names)
-        elif self._selection.picked:
-            self._drop_picks(native=bool(names))
+        if tuple(names) != tuple(name for name in self.names() if name in wanted):
+            if self._selection.picked:
+                self._drop_picks(native=bool(names))
+            if names:
+                self._queue_selection()
+                return
+        self._shown = tuple(names)
 
     def _current_picks(self) -> list[Ref]:
         """The list's picks as they stand now, each still the sheet it was picked as.

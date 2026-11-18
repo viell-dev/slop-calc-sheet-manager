@@ -29,6 +29,7 @@ from tests.unit.list_peer import (
     move_to_top,
     picks,
     press,
+    release,
     sheet_list,
 )
 
@@ -796,3 +797,101 @@ def test_a_cleared_native_selection_over_followed_tabs_is_dropped_silently() -> 
     owner.retry(limit=1)
     owner.run_queue()
     assert picks(owner) == [] and len(owner.notices) == notices
+
+
+def test_a_failed_read_of_a_pending_assistive_pick_leaves_it_to_the_intake() -> None:
+    """A refresh that keeps the rows reads a pending accessibility pick twice: its intake posts
+    the take, and it reads the selection again for a rebuild or a lost proof. The second read
+    failing ends the refresh before it changes anything, so the posted intake still takes it."""
+    owner = sheet_list(Book(list(NAMES)))
+    click(owner, 1)
+    owner.tree.assistive_only("Delta")
+    owner.faults.fail("getSelection", after=1)
+    with pytest.raises(NativeFailure):
+        owner.refresh()
+    assert owner.faults.failed == ["getSelection"]
+    owner.run_queue()  # The deferred intake.
+    assert move_to_top(owner) == ["Delta"]
+
+
+@pytest.mark.parametrize(
+    "assistive", [pytest.param(["Echo"], id="Echo"), pytest.param([], id="cleared")]
+)
+def test_a_kept_rows_refresh_leaves_a_waiting_assistive_selection_over_reordered_picks(
+    assistive: list[str],
+) -> None:
+    """Review round two's plain-mode case, without any failure: Bravo and Delta are picked,
+    and others move Delta to the top, so the picks' order differs from the rows'. A selection
+    made through accessibility then waits for the intake. A refresh that keeps the rows wrote
+    Bravo and Delta over it for that order, and Move to Top moved them; `main` shows the
+    selection again. Kept rows still show it, so the refresh now leaves it to the intake."""
+    owner = multi_pick_shown()
+    owner.book.move("Delta", 0)
+    changed(owner)
+    owner.retry(limit=1)
+    assert owner.tree.shown() == ["Delta", "Bravo"] and picks(owner) == ["Bravo", "Delta"]
+    if assistive:
+        owner.tree.assistive_only(assistive[0])
+    else:
+        owner.tree.assistive_clear()
+    changed(owner)  # A change that keeps the rows, such as a cell edit.
+    owner.retry(limit=1)
+    owner.run_queue()
+    assert owner.tree.shown() == assistive
+    assert move_to_top(owner) == (assistive or None)
+
+
+def bravo_left_unknown() -> Any:
+    """Bravo picked, the cursor on Delta; a colour rebuild writes Bravo, and its last
+    `addSelection` fails after its effect: the tree shows Bravo, the record is unknown."""
+    owner = bravo_with_cursor_on("Delta")
+    owner.faults.fail("addSelection done")
+    colour_golf(owner)
+    assert owner.faults.failed == ["addSelection done"] and owner.tree.shown() == ["Bravo"]
+    assert owner._shown is None
+    return owner
+
+
+def sample_tabs(owner: Any) -> None:
+    """The tab observer's sample, which asks for the intake (`pending_native_picks`)."""
+    owner._take_tree_selection(paint=False, defer=True)
+    owner.run_queue()
+
+
+def test_rows_left_selected_after_dropped_picks_are_cleared_before_the_next_click() -> None:
+    """Review round two's after-mode case: Charlie alone is selected through accessibility
+    after the failure, and the tab sample's intake drops Bravo, with the notice. The tree kept
+    showing Charlie until a later write, so a Ctrl+click meant to deselect it picked Charlie,
+    which Move to Top then moved. The intake now queues the write that clears the tree, so that
+    Ctrl+click selects Charlie on a tree that showed nothing, and Charlie is the user's pick."""
+    owner = bravo_left_unknown()
+    owner.tree.assistive_only("Charlie")
+    notices = len(owner.notices)
+    sample_tabs(owner)
+    assert picks(owner) == [] and len(owner.notices) == notices + 1
+    assert owner.tree.shown() == [], "A row the list does not hold stayed selected"
+    assert owner._shown == () and cursor(owner) == "Delta"
+    node = owner.tree.node("Charlie")
+    owner.tree.selected = [*owner.tree.selected, node]  # The native Ctrl+press toggles it on.
+    press(owner, 2, modifiers=MOD1)
+    owner.run_queue()
+    release(owner, 2)
+    owner.run_queue()
+    assert picks(owner) == ["Charlie"] and owner.tree.shown() == ["Charlie"]
+    assert move_to_top(owner) == ["Charlie"]
+
+
+def test_an_assistive_pick_after_picks_dropped_over_an_empty_tree_is_taken() -> None:
+    """When the tree shows nothing after the failure, the intake drops the picks and the tree
+    then shows exactly them, none: a selection made next through accessibility is the user's
+    latest, and is taken rather than cleared by the retried write."""
+    owner = sheet_list(Book(list(NAMES)))
+    click(owner, 4)
+    key(owner, DOWN, MOD1)
+    owner.faults.fail("SelectionType")
+    colour_golf(owner)
+    assert owner.faults.failed == ["SelectionType"] and owner.tree.shown() == []
+    sample_tabs(owner)
+    assert picks(owner) == [] and owner._shown == ()
+    owner.tree.assistive_only("Delta")
+    assert move_to_top(owner) == ["Delta"]
