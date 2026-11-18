@@ -252,7 +252,10 @@ Xvfb lab's pointer calibration waits for the tree's own report of its move, so a
 cannot shift a workbook's calibrated positions and pixel coordinates by two pixels (#209).
 `test_rename_dialog_calibration.py` checks that the rename dialog's calibration takes its offset
 only from two reports that follow its two moves, so a late report of another point cannot move
-the dialog's clicks off their controls (#232).
+the dialog's clicks off their controls (#232). It also checks that the points start on the
+dialog's own window, inside the measured Openbox and Windows frames that the dialog's accessible
+area includes, where the dialog reports nothing; from the Windows frame, each calibration took
+about a minute (#253).
 Sessions fail on nonzero exits, forced
 shutdowns, fatal messages, crash dumps, stalled main-thread callbacks or held terminate requests.
 A session without progress for 15 minutes from its launch fails without a retry: the stall is
