@@ -45,11 +45,15 @@ class _Marker(unohelper.Base, XEventListener):
 
 
 def queue_marker(context, released: threading.Event) -> object:
-    """Return an office object whose release, when the office runs it, sets `released`."""
+    """Return an office object whose release, when the office runs it, sets `released`.
+
+    The signal is registered only once the office holds the listener, so a marker that could not
+    be queued is never taken for a released one.
+    """
     marker = _Marker()
-    weakref.finalize(marker, released.set)
     model = context.ServiceManager.createInstanceWithContext(MARKER_SERVICE, context)
     model.addEventListener(marker)
+    weakref.finalize(marker, released.set)
     return model
 
 
