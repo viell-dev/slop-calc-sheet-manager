@@ -11,6 +11,9 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   reach the job's limit first
   ([#45](https://github.com/viell-dev/slop-calc-sheet-manager/issues/45),
   [#244](https://github.com/viell-dev/slop-calc-sheet-manager/issues/244)).
+- Expose the selected proposal's name conflict on the focused New name field in Rename Sheets,
+  so a screen reader can announce the refusal while the user stays in the edit
+  ([#247](https://github.com/viell-dev/slop-calc-sheet-manager/issues/247)).
 - Record how long each integration-test installation of the package takes, as `install_seconds`
   in the results, and keep the elapsed time and unopkg's output when an installation exceeds its
   90-second limit, which still fails the session. The local testing guide says how to tell such a
