@@ -1250,11 +1250,16 @@ class SheetList:
             return False
 
     def activate_selection(self) -> None:
+        """Activate the single pick: Enter's work, which `queue_input` posts (`uno_keys`)."""
+        if self._disposed:
+            return  # The picks' checks read the disposed tree and maybe a detached monitor (#282).
         picked = self._current_picks()
         if len(picked) == 1:
             self.activate(picked[0].name, picked[0].token)
 
     def type_ahead(self, char: str) -> None:
+        if self._disposed:
+            return  # Queued by a key; it writes the tree, which is closed now (#282).
         prefix = self._type_ahead.feed(char, time.monotonic())
         names = self.names()
         current = names.index(self._cursor) if self._cursor in names else None
@@ -1709,6 +1714,8 @@ class SheetList:
             return False
 
     def open_menu_for_keyboard(self) -> None:
+        if self._disposed:
+            return  # Queued by a key, as Enter's activation is (#282).
         picked = self._current_picks()
         if not picked:
             return
