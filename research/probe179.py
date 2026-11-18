@@ -75,7 +75,7 @@ def cdb_script(work: pathlib.Path) -> str:
         bp("sclo", SC["DELAYTIMER"], r'.echotime; .printf \"DELAYTIMER ' + hdl + r'\\n\", ' + hdl_args + r'; kc 14; gc'),
         bp("sclo", SC["SCMOD-CFG"], r'.echotime; .printf \"SCMOD-CONFIGURATION-CHANGED broadcaster=%p hints=%x\\n\", @rdx, @r8d; kc 14; gc'),
     ]
-    merged = [
+    merged = [] if not MERGED else [
         bp("mergedlo", MERGED["CC-SETTINGS-STUB"], r'.echotime; .printf \"COLORCONFIG-DATACHANGED-EVENT\\n\"; kc 10; gc'),
         bp("mergedlo", MERGED["CC-NOTIFY"], r'.echotime; .printf \"COLORCONFIG-NOTIFY\\n\"; kc 10; gc'),
     ]
