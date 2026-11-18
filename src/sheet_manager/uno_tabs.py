@@ -3,7 +3,8 @@
 Calc sends no reliable notification for a tab selection that keeps the same active sheet, so the
 observer caches the reflected `getSelectedSheets` method and samples its retained controller on
 the UI thread every `VIEW_INTERVAL`. Never run that getter in a timer worker or a toolkit
-listener. Compare logical name membership, establish a fresh baseline after a namespace or
+listener: it does not take the solar mutex itself, and VCL runs toolkit mouse listeners without
+it (#269). Compare logical name membership, establish a fresh baseline after a namespace or
 proof change, and never consume pending modify evidence through the structure monitor's
 `check()` merely to observe tabs (#66). List input acknowledges the preceding native state at
 the listener boundary (`note_input`), so that queued Enter, menu, type-ahead, and move requests
@@ -26,7 +27,8 @@ temporarily unavailable. Actual native panel disposal disposes the list too.
 Contract. One observer belongs to one `uno_list.SheetList`, its host, and runs only on
 LibreOffice's main thread; `note_input` is the one method a toolkit listener calls, and it only
 posts. `refreshed` samples, so the host refreshes only in main-thread work, never inside a
-listener; a drag on stale rows posts its refresh (#264). The observer owns its timer chain, the
+listener; a drag on stale rows posts its refresh (#264), and a double click posts its
+activation, which reads the tabs too (#269). The observer owns its timer chain, the
 cached sidebar wrappers, and the baseline: the last sampled active sheet and tabs, with the
 names, the structure generation, and the host's input count they were sampled at. A sample
 follows Calc only when the state changed from that baseline, under the same names and

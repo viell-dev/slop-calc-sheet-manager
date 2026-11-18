@@ -16,8 +16,8 @@ anchor to the new names through their retained handles (`selection.Selection.car
 refresh counts only others' renames against its one-rename check.
 
 Every listener only records state or posts work to the main thread: LibreOffice calls some
-of them from other threads or in the middle of a change. The drag gesture's own checks are the
-one exception here (`SheetList`, #264).
+of them from other threads, without its solar mutex (#269), or in the middle of a change. The
+drag gesture's own checks are the one exception here (`SheetList`, #264).
 
 The tree. The list is a borderless `TreeControl`, so that it is a direct child of the panel
 window, with a hidden root. With a hidden root, the tree peer mishandles every data-model change
@@ -450,7 +450,12 @@ class SheetList:
     else runs on LibreOffice's main thread, and posted work re-checks what it relies on. The
     modify listener reaches the refresh schedule on the notifying thread (`document_modified`,
     `RefreshSchedule.changed`), and toolkit listeners reach the tab observer only through
-    `TabObserver.note_input`. The drag gesture is the exception: VCL calls its listener within
+    `TabObserver.note_input`. VCL runs the mouse listeners on the main thread, from one user
+    event it posts after its own input handling, but releases the solar mutex around them
+    (`VCLXWindow`'s callback queue; measured with gtk3 and gen in 26.2.1.2 and 26.8.2.2). Their
+    reads and writes of the list's tree and buttons are toolkit calls, which take the mutex
+    themselves; Calc's tab getter does not, so a double click posts its activation, as Enter
+    does (#269). The drag gesture is the exception: VCL calls its listener within
     its own mouse-move handling, rather than queued as the mouse listeners are, and `start_drag`
     starts the drag there, with the gesture's event as `startDrag`'s trigger. Before that it
     checks `_current_picks`, which can write the list's own tree and buttons as the mouse
@@ -1154,7 +1159,12 @@ class SheetList:
         the sheets as they are. Calc keeps an existing group when the sheet is already part of
         it, which would make a cell edit change every grouped sheet, so the single selection
         is established and read back.
+
+        It reads Calc's tabs, so it runs only in posted work, which Enter and a double click
+        queue, and does nothing once the list is disposed (#269).
         """
+        if self._disposed:
+            return
         if self._monitor.check() != self._proven:  # The handle may prove nothing now.
             self.post(self.refresh, "refreshing the sheet list")
             return
@@ -1653,7 +1663,9 @@ class SheetList:
         self._selection.choose(press.name, self._handles, self.names())
         self._queue_selection()
         if press.clicks == 2:
-            self.activate(press.name, press.handle)
+            # Activation reads Calc's tabs, which needs the lock this listener runs without (#269).
+            name, handle = press.name, press.handle
+            self.post(lambda: self.activate(name, handle), "activating a sheet")
 
     def _pressed_sheet_in_place(self, press: _Press) -> bool:
         """Whether the pressed row still shows the pressed sheet, under the same name."""

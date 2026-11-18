@@ -281,8 +281,10 @@ Breaking one of these has hung or crashed LibreOffice, or let an action reach th
   Every action checks its sheets when it runs, never against the list's cached rows. Read handles
   by index: Calc's lookup by name can find another sheet (`uno_reorder.py`,
   [#113](https://github.com/viell-dev/slop-calc-sheet-manager/issues/113)).
-- **Listeners** can be called on other threads or in the middle of a change. They only record
-  state or post work to the main thread (`uno_calc.MainThread`, an `AsyncCallback`). The structure
+- **Listeners** can be called on other threads, without LibreOffice's solar mutex (the toolkit's
+  mouse listeners, [#269](https://github.com/viell-dev/slop-calc-sheet-manager/issues/269)), or in
+  the middle of a change. They only record state or post work to the main thread
+  (`uno_calc.MainThread`, an `AsyncCallback`, whose work holds that mutex). The structure
   monitor's state reads (`uno_structure.py`) and the drag gesture's checks before it starts a drag
   (`uno_list.SheetList`) are the documented exceptions.
 - **Threads** start only through `uno_calc.start_thread`, never with `threading`: Calc hung when
