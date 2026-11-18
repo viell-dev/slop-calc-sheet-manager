@@ -19,6 +19,19 @@ sources; `isLocked` also takes the undo manager's own recursive mutex). They hav
 at that moment: a later read would miss an insertion and a deletion that cancel out, or a
 state that a batch turns off and on again. Nothing else is called back from a listener here,
 and the document event listener reads nothing.
+
+Threads (#284). Neither this monitor nor `StructureEvents` has a lock: LibreOffice's solar mutex
+keeps their updates apart. A notifying thread holds it while it reports a change, and
+everything else that updates the state runs with it held too. That covers `check()`,
+`own_move()`, the own move's markers and the replay queries, which run in posted work, in the
+panel's construction, during an Undo or Redo, in Calc's report of a sheet switch, or within
+VCL's own drag handling. A caller
+without the mutex, such as the toolkit's mouse listeners (#269), reads only `generation`, which
+the notifications keep current, and leaves `check()` to the work it posts. `check()` reads the
+count, the history and the state with three calls that each take the mutex for themselves, then
+stores them. Without the mutex held across all of that, another thread could insert a sheet
+after the count read and report it before the store. The monitor would then keep the older
+count, and the deletion of that sheet would match it and move nothing.
 """
 
 import contextlib

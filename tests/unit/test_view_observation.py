@@ -6,9 +6,10 @@ how the list pauses observation and follows Calc.
 """
 
 import contextlib
+import threading
 import time
 import uuid
-from collections.abc import Mapping
+from collections.abc import Callable, Generator, Mapping
 from dataclasses import dataclass, replace
 from types import SimpleNamespace
 from typing import Any
@@ -20,7 +21,7 @@ from sheet_manager.refresh_schedule import RefreshSchedule
 from sheet_manager.reorder import Sheet
 from sheet_manager.selection import Ref, Selection, structure_kept
 from sheet_manager.sheet_list import RowGeometry, SheetRow
-from sheet_manager.structure import VIEW_RESTORE_LIMIT, StructureEvents
+from sheet_manager.structure import VIEW_RESTORE_LIMIT, History, Quiet, StructureEvents
 from tests.unit.source_methods import function, method, source_class
 
 SOURCE = "src/sheet_manager/uno_list.py"
@@ -1003,3 +1004,127 @@ def test_a_single_clicks_release_picks_its_sheet_and_posts_no_activation() -> No
     assert not queued
     live.invoke.assert_not_called()
     owner.controller.setActiveSheet.assert_not_called()
+
+
+class Workbook:
+    """A document as the structure monitor reads it, which another program edits meanwhile.
+
+    One read can host another program's edit: the read takes its value, then the edit runs on
+    another thread and is reported to the monitor as LibreOffice reports a recorded change, the
+    undo action before the modify notification. The test waits for that thread before the read
+    returns, so the interleaving is exact.
+    """
+
+    RuntimeUID = "synthetic-workbook"
+    IsUndoEnabled = True
+
+    def __init__(self, names: tuple[str, ...]) -> None:
+        self.names = list(names)
+        self.titles: list[str] = []
+        self.listener: Any = None
+        self.edit: Callable[[], None] | None = None
+        self.edit_at = ""
+
+    def read(self, where: str, value: Any) -> Any:
+        if self.edit is not None and where == self.edit_at:
+            self.run_edit()
+        return value
+
+    def run_edit(self) -> None:
+        edit, self.edit = self.edit, None
+        assert edit is not None
+        thread = threading.Thread(target=edit)
+        thread.start()
+        thread.join()
+
+    def change(self, title: str, edit: Callable[[list[str]], None]) -> None:
+        edit(self.names)
+        self.titles.insert(0, title)
+        self.listener.undoActionAdded(None)
+        self.listener.modified(None)
+
+    def getSheets(self) -> "Workbook":
+        return self
+
+    def getCount(self) -> int:
+        return self.read("count", len(self.names))
+
+    def getUndoManager(self) -> "Workbook":
+        return self
+
+    def getAllUndoActionTitles(self) -> tuple[str, ...]:
+        return self.read("history", tuple(self.titles))
+
+    def isLocked(self) -> bool:
+        return self.read("quiet", False)
+
+    def hasControllersLocked(self) -> bool:
+        return False
+
+    def isActionLocked(self) -> bool:
+        return False
+
+    def isSetModifiedEnabled(self) -> bool:
+        return True
+
+    def addModifyListener(self, listener: Any) -> None:
+        self.listener = listener
+
+    def addUndoManagerListener(self, listener: Any) -> None:
+        pass
+
+    def addDocumentEventListener(self, listener: Any) -> None:
+        pass
+
+
+MONITOR = source_class(
+    "src/sheet_manager/uno_structure.py",
+    "StructureMonitor",
+    {
+        "unohelper": SimpleNamespace(Base=type("Base", (), {})),
+        "XModifyListener": type("XModifyListener", (), {}),
+        "XUndoManagerListener": type("XUndoManagerListener", (), {}),
+        "XDocumentEventListener": type("XDocumentEventListener", (), {}),
+        "StructureEvents": StructureEvents,
+        "Quiet": Quiet,
+        "History": History,
+        "Any": Any,
+        "Generator": Generator,
+        "contextlib": contextlib,
+        "_MONITORS": {},
+    },
+)
+
+
+@pytest.mark.parametrize("during", ["count", "history", "quiet", "name"])
+def test_another_programs_edit_during_a_release_leaves_its_later_edits_visible(during: str) -> None:
+    """#284: VCL runs the release without the solar mutex (#269), so another program can
+    change the document and report it while the release's own reads run.
+
+    Another thread inserts a sheet during one of those reads: the structure monitor's sheet
+    count, undo history or quiet state, or the pressed handle's name. If the release makes no
+    such read, the edit follows the release. A monitor check whose count read came before the
+    insertion, but whose update came after its report, would keep the old count, and so take
+    the deletion of that sheet, which the other program makes during the next press, for no
+    change at all. That press's generation would then still prove its handle, as a double
+    click's posted activation trusts it to (#269). The posted check must see the deletion.
+    """
+    owner, live, listener, queued = click_list()
+    book = Workbook(live.names)
+    monitor = MONITOR(book)
+    owner._monitor, owner._proven = monitor, monitor.generation
+    owner._apply_selection = Mock()
+    pressed = owner._handles["Bravo"]
+    pressed.getName = lambda: book.read("name", pressed.name)
+    book.edit_at = during
+    book.edit = lambda: book.change("Insert Sheet", lambda names: names.append("Delta"))
+    release_on(owner, live, listener, "Bravo", clicks=2)
+    if book.edit is not None:
+        book.run_edit()  # The release made no read of this kind.
+    while queued:
+        queued.pop(0)()
+    owner.controller.setActiveSheet.assert_not_called()  # The insertion moved the generation.
+    seen = monitor.generation  # As the next press captures it (`mouse_pressed`).
+    book.edit = lambda: book.change("Delete Sheet", lambda names: names.remove("Delta"))
+    book.run_edit()
+    assert monitor.check() != seen

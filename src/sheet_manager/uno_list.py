@@ -20,7 +20,8 @@ of them from other threads, without its solar mutex (#269), or in the middle of 
 exceptions here are the drag gesture's own checks (#264) and the mouse handlers, which read the
 tree, the sheet handles and the document, and write a refused release's picks back, through
 calls that lock for themselves, so that a gesture is decided and shown at once (`SheetList`,
-#269).
+#269). Those handlers read the structure monitor's generation but never check the monitor,
+whose update needs the solar mutex (#284).
 
 The tree. The list is a borderless `TreeControl`, so that it is a direct child of the panel
 window, with a hidden root. With a hidden root, the tree peer mishandles every data-model change
@@ -461,13 +462,16 @@ class SheetList:
     tree's geometry, the retained handles and the document, so that a release decides at once
     whether its gesture stands, and a refused release writes the picks back to the tree and
     buttons before later work reads them. Each of these calls locks for itself (checked in the
-    26.8.2.2 sources). The tree's and buttons' toolkit methods, the handles' `getName`, the
-    structure monitor's `check()` (the getters `uno_structure` names) and, on a refused
-    release, the permission getters in `uno_reorder.move_availability` take the mutex; the
-    undo-steps setting that `move_availability` also reads is configuration, which has its own
-    lock. Calc's tab getter takes no lock, so a double click posts its activation, as Enter
+    26.8.2.2 sources). The tree's and buttons' toolkit methods, the handles' `getName` and, on a
+    refused release, the permission getters in `uno_reorder.move_availability` take the mutex;
+    the undo-steps setting that `move_availability` also reads is configuration, which has its
+    own lock. Calc's tab getter takes no lock, so a double click posts its activation, as Enter
     does, with the generation its release verified (`_activate_pressed`, #269). Each call locks
-    only itself: another thread can change the document between them (#284).
+    only itself, so another thread can change the document between them. The release therefore
+    compares the press's generation with the structure monitor's `generation`, which every
+    change's report moves, and never calls its `check()`, whose update relies on the mutex
+    (`uno_structure`, #284). The work it posts, the selection flush and `_activate_pressed`,
+    checks the monitor before anything acts on a handle.
 
     The drag gesture is the other exception: VCL calls its listener within its own mouse-move
     handling, rather than queued as the mouse listeners are, and `start_drag` starts the drag
@@ -1650,7 +1654,9 @@ class SheetList:
         press, self._press = self._press, None
         if not event.Buttons & LEFT or press is None or press.name is None:
             return
-        moved = press.generation != self._monitor.check()
+        # Not `check()`: its update needs the solar mutex, which this listener runs without, and
+        # the work posted below checks before anything acts on the pressed handle (#284).
+        moved = press.generation != self._monitor.generation
         if press.voided or moved or not self._pressed_sheet_in_place(press):
             # A refresh during the press moved the pressed sheet away or showed another sheet
             # under its name. The gesture then has no effect at all (#28): no activation, and

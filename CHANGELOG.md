@@ -5,6 +5,10 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- A click's release in the list no longer checks the document's sheet structure itself, which
+  could leave the structure monitor comparing later changes with an outdated sheet count when
+  another program changed the sheets at that moment. The work the release posts checks it
+  instead ([#284](https://github.com/viell-dev/slop-calc-sheet-manager/issues/284)).
 - A double click in the list now activates its sheet after the mouse listener returns, as Enter
   already did: LibreOffice runs that listener without the global lock that reading Calc's
   selected tabs needs ([#269](https://github.com/viell-dev/slop-calc-sheet-manager/issues/269)).
