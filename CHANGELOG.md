@@ -10,6 +10,10 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   so rewording that text can no longer drop the wait and the wrapper's recorded exit status. This
   changes the test runner, not the extension
   ([#267](https://github.com/viell-dev/slop-calc-sheet-manager/issues/267)).
+- The painted soak now removes every session directory an earlier soak left in its output before
+  its first session, so that a shorter soak's artifact no longer carries an earlier, longer
+  soak's sessions. It follows no symbolic link there. This changes the test runner, not the
+  extension ([#268](https://github.com/viell-dev/slop-calc-sheet-manager/issues/268)).
 - A drag begun on sheet list rows that are out of date is still refused, but the list now
   refreshes after LibreOffice's drag-gesture callback returns rather than inside it, so that the
   refresh's reading of Calc's selected tabs no longer runs in that callback
