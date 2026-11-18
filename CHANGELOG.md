@@ -5,6 +5,9 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- When Replace All finds matching text but changes no proposed names, Rename Sheets explains
+  this in the status and through the button's accessible name
+  ([#259](https://github.com/viell-dev/slop-calc-sheet-manager/issues/259)).
 - End each LibreOffice test session only after the office has run the UNO releases the test
   process sent before the session's end. An office asked to terminate while it still ran them,
   as after the 1,000-sheet check, could crash at exit in a LibreOffice bridge thread, with or
