@@ -8,10 +8,10 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 - On Linux, a test session's forced stop now also stops a LibreOffice `soffice.bin` that outlives
   its launcher: one whose `oosplash` launcher was killed, or that `oosplash` had started but not
   yet taken over when it was told to stop, as at its first-start restart. Both were measured with
-  LibreOffice 26.8.2.2; such an office kept running after the stop. The launcher is paused while
-  its processes are listed, and the stall receipt and a forced shutdown's results record what the
-  stop saw of each. This changes the test runner, not the extension
-  ([#266](https://github.com/viell-dev/slop-calc-sheet-manager/issues/266)).
+  LibreOffice 26.8.2.2; such an office kept running after the stop. The launcher is paused, with
+  each of its threads stopped, while its processes are listed, and the stall receipt and a forced
+  shutdown's results record what the stop saw of each. This changes the test runner, not the
+  extension ([#266](https://github.com/viell-dev/slop-calc-sheet-manager/issues/266)).
 - On Windows, a test document close that was posted to LibreOffice's main thread before the
   stall watch recorded a stall no longer starts when that thread reaches it, so it cannot change
   the office while its stacks are being taken; the close helper then fails as after any stall.

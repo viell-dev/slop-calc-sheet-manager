@@ -61,9 +61,13 @@ wrapper. Rules for changing it:
   held process still running when the launcher's stop ends. Natively (26.8.2.2) `oosplash`
   passed SIGTERM on, and the gdb wrapper's inferior died with gdb even when gdb was killed, but a
   `soffice.bin` outlived an `oosplash` killed after 10 s, and one forked at the exit-81 restart
-  outlived an `oosplash` stopped before it had recorded that fork (#266). Signal any process but
-  the session's own unreaped launcher only through a pidfd taken while its identity is checked,
-  never by its number alone.
+  outlived an `oosplash` stopped before it had recorded that fork (#266). `oosplash` forks from a
+  helper thread (`osl_executeProcess`) while its main thread waits, and a fork under way when
+  SIGSTOP arrives finishes before its own thread stops, so the listing waits until every thread
+  of the launcher is seen stopped. Signal a process only through a pidfd taken while its identity
+  is checked, never by its number alone: for the launcher, `waitid` confirms that the pidfd names
+  this process's own unreaped child. `Popen.terminate` and `kill` on this process's own children,
+  which signal by number once `poll()` finds the child unreaped, are the exception.
 - The limit is not a test timeout, and never shorten it to speed up a run. The slowest measured
   suite took 649 s (Intel macOS `test_reorder`, #162), so the benchmarks also report progress at
   each workbook and repetition; each session records its `longest_progress_interval_seconds`.
@@ -73,6 +77,7 @@ wrapper. Rules for changing it:
 
 import faulthandler
 import json
+import math
 import os
 import re
 import select
@@ -117,8 +122,11 @@ DEADLINE = enclosing_deadline(os.environ)
 # Linux PAUSE_SECONDS, the launcher's 10 s and 10 s, then OFFICE_STOP_SECONDS twice).
 CAPTURE_SECONDS = 60.0
 STOP_SECONDS = 60.0
-# How long `stop_process` waits on Linux to see the launcher paused before it lists the processes.
+# How long `stop_process` waits on Linux to see every thread of the launcher paused before it
+# lists the processes.
 PAUSE_SECONDS = 1.0
+# The states of a thread that has exited, or that /proc no longer shows (None).
+EXITED: set[str | None] = {"Z", "X", None}
 # How long a process still running after its launcher's stop has to exit after SIGTERM, and then
 # after SIGKILL. A stalled soffice.bin exited within 2 ms of SIGTERM (26.8.2.2, #266).
 OFFICE_STOP_SECONDS = 5.0
@@ -177,7 +185,9 @@ def stop_process(process: subprocess.Popen[str]) -> list[str]:
     arrived, at the exit-81 restart (#266). So on Linux every process that is or may become the
     office is held first (`hold_offices`), and each one still running when the launcher's stop
     ends is stopped (`stop_offices`). The result is empty on other platforms, and when the
-    launcher had already been reaped, since its ID may then name another process's tree.
+    launcher had already been reaped, since its ID may then name another process's tree. If the
+    stop raises, what it saw goes with the error as notes (`office_stop: …`), which a traceback,
+    such as a stall receipt's `diagnostic_errors.stop`, prints.
     """
     if process.poll() is not None:
         return []
@@ -202,10 +212,11 @@ def stop_process(process: subprocess.Popen[str]) -> list[str]:
         except subprocess.TimeoutExpired:
             process.kill()
             process.wait(timeout=10)
-    finally:
-        resume(held)
-        seen = stop_offices(held)
-    return seen
+    except BaseException as error:
+        for line in end_hold(held):
+            error.add_note(f"office_stop: {line}")
+        raise
+    return end_hold(held)
 
 
 @dataclass
@@ -222,30 +233,16 @@ def hold_offices(process: subprocess.Popen[str], held: Held) -> None:
 
     Held are each `soffice.bin` descended from the launcher and each of the launcher's own
     children: `oosplash` forks `soffice.bin` before it records it as the child to pass SIGTERM
-    on to, and the fork has the launcher's name until it execs. The launcher is sent SIGSTOP and
-    seen paused before the listing, so it starts nothing between the listing and its SIGTERM;
+    on to, and the fork has the launcher's name until it execs. The launcher is paused before
+    the listing (`pause`), so it starts nothing between the listing and its SIGTERM;
     `stop_process` resumes it after that SIGTERM. `poll()` found the launcher unreaped, so its ID
     names it during the listing; one that another thread reaped meanwhile has a `returncode`
     afterwards, and the listing is then not used. Each process's listed start time is checked
     while its pidfd holds it, so a signal sent through the pidfd can only reach that process; its
     name is not compared, since an exec, such as the fork's into `soffice.bin`, changes it.
     """
-    if sys.platform != "linux":
+    if sys.platform != "linux" or not pause(process, held):
         return
-    try:
-        held.launcher = os.pidfd_open(process.pid)
-        signal.pidfd_send_signal(held.launcher, signal.SIGSTOP)
-    except OSError as error:
-        held.seen.append(f"the launcher {process.pid} was not paused: {error!r}")
-    else:
-        end = time.monotonic() + PAUSE_SECONDS
-        while linux_state(process.pid) not in ("T", "Z", None) and time.monotonic() < end:
-            time.sleep(0.001)
-        if (state := linux_state(process.pid)) != "T":
-            held.seen.append(
-                f"the launcher {process.pid} was not seen paused within {PAUSE_SECONDS:g} s "
-                f"(state {state}), so it may have started a process after the listing"
-            )
     try:
         rows = listed_processes(time.monotonic() + OFFICE_STOP_SECONDS)
     except Exception as error:  # The launcher is stopped all the same.
@@ -254,16 +251,18 @@ def hold_offices(process: subprocess.Popen[str], held: Held) -> None:
     if process.returncode is not None:
         held.seen.append(f"nothing was held: the launcher {process.pid} was reaped meanwhile")
         return
-    found = {row.pid: row for row in descendants(rows, process.pid, "soffice.bin")}
     launcher = next((row for row in rows if row.pid == process.pid), None)
-    if launcher is not None:
-        found.update(
-            (row.pid, row)
-            for row in rows
-            if row.parent == launcher.pid
-            and row.pid != launcher.pid
-            and row.started >= launcher.started
-        )
+    if launcher is None:
+        held.seen.append(f"nothing was held: the listing had no row for the launcher {process.pid}")
+        return
+    found = {row.pid: row for row in descendants(rows, process.pid, "soffice.bin")}
+    found.update(
+        (row.pid, row)
+        for row in rows
+        if row.parent == launcher.pid
+        and row.pid != launcher.pid
+        and row.started >= launcher.started
+    )
     if not found:
         held.seen.append(
             f"the listing had no soffice.bin or other child under the launcher {process.pid}"
@@ -282,6 +281,71 @@ def hold_offices(process: subprocess.Popen[str], held: Held) -> None:
         held.processes[row.pid] = (handle, row.name)
 
 
+def pause(process: subprocess.Popen[str], held: Held) -> bool:
+    """On Linux, pause the launcher through a pidfd kept in `held`; see each of its threads stop.
+
+    Return whether to list the processes beneath it: not when its ID no longer names this
+    process's own unreaped child, nor when it had exited, since its children then have another
+    parent. A launcher that could not be paused, or was not seen paused, is still listed under,
+    and what was seen is recorded.
+
+    `poll()` found the launcher unreaped, but another thread may have reaped it since, and its ID
+    would then name whatever process has it now; `waitid` accepts only this process's own
+    unreaped child, so nothing else is sent SIGSTOP or SIGCONT. Every thread is waited for, not
+    only the first, which /proc/<pid>/stat describes: a thread that is forking when SIGSTOP
+    arrives finishes the fork before it stops, so once each thread is stopped, every child the
+    launcher started is in the listing.
+    """
+    if sys.platform != "linux":
+        return False
+    try:
+        handle = os.pidfd_open(process.pid)
+    except OSError as error:
+        held.seen.append(f"the launcher {process.pid} was not paused: {error!r}")
+        return True
+    try:
+        exited = os.waitid(os.P_PIDFD, handle, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+    except OSError as error:
+        os.close(handle)
+        if isinstance(error, ChildProcessError):
+            held.seen.append(
+                f"nothing was held: the launcher's ID {process.pid} no longer names an unreaped "
+                "child of this process"
+            )
+            return False
+        held.seen.append(f"the launcher {process.pid} was not paused: {error!r}")
+        return True
+    if exited is not None:
+        os.close(handle)
+        held.seen.append(f"nothing was held: the launcher {process.pid} had already exited")
+        return False
+    held.launcher = handle  # From here on, `resume` continues it and `stop_offices` closes it.
+    try:
+        signal.pidfd_send_signal(handle, signal.SIGSTOP)
+    except OSError as error:
+        held.seen.append(f"the launcher {process.pid} was not paused: {error!r}")
+        return True
+    end = time.monotonic() + PAUSE_SECONDS
+    while True:
+        states = set(linux_thread_states(process.pid))
+        if states <= EXITED:
+            held.seen.append(
+                f"nothing was held: the launcher {process.pid} had exited before it was seen paused"
+            )
+            return False
+        if states <= {"T", *EXITED}:
+            return True
+        if time.monotonic() >= end:
+            listed = ", ".join(sorted(str(state) for state in states))
+            held.seen.append(
+                f"the launcher {process.pid} was not seen paused within {PAUSE_SECONDS:g} s "
+                f"(its threads' states: {listed}), so it may have started a process after the "
+                "listing"
+            )
+            return True
+        time.sleep(0.001)
+
+
 def resume(held: Held) -> None:
     """Let a launcher that `hold_offices` paused run again, so that it acts on its SIGTERM."""
     if sys.platform == "linux" and held.launcher is not None:
@@ -289,16 +353,26 @@ def resume(held: Held) -> None:
             signal.pidfd_send_signal(held.launcher, signal.SIGCONT)
 
 
+def end_hold(held: Held) -> list[str]:
+    """Resume the launcher, then stop what it held (`stop_offices`); return what was seen."""
+    try:
+        resume(held)
+    finally:
+        seen = stop_offices(held)
+    return seen
+
+
 def stop_offices(held: Held) -> list[str]:
     """Stop each held process still running after its launcher's stop; close every pidfd.
 
     Return what was seen of each held process. Its exit is seen as its pidfd becoming readable,
-    so this returns only once each one has exited or its last wait has ended.
+    so this returns only once each one has exited or its last wait has ended. Each running one
+    is checked in turn against one deadline, so the time recorded is when its exit was seen, an
+    upper bound on when it exited.
     """
     seen = list(held.seen)
     if sys.platform != "linux":
         return seen
-    exited_after: dict[int, float] = {}
     try:
         running: dict[int, str] = {}  # The ID and how to name it.
         for pid, (handle, listed) in held.processes.items():
@@ -309,32 +383,42 @@ def stop_offices(held: Held) -> list[str]:
             name = current.name if current is not None else listed
             running[pid] = f"{name} {pid}" + (f" (listed as {listed})" if name != listed else "")
         started = time.monotonic()
+        sent: dict[int, list[str]] = {pid: [] for pid in running}  # The signals delivered.
+        gone: dict[int, str] = {}  # The signal that found it already reaped, so reached nothing.
+        exited_within: dict[int, float] = {}
 
-        def signal_and_wait(pids: list[int], number: signal.Signals) -> None:
+        def signal_and_wait(pids: list[int], number: signal.Signals, label: str) -> None:
             for pid in pids:
-                with suppress(ProcessLookupError):  # It exited meanwhile.
+                try:
                     signal.pidfd_send_signal(held.processes[pid][0], number)
+                except ProcessLookupError:
+                    gone[pid] = number.name
+                else:
+                    sent[pid].append(label)
             end = time.monotonic() + OFFICE_STOP_SECONDS
             for pid in pids:
                 if pidfd_exited(held.processes[pid][0], max(0.0, end - time.monotonic())):
-                    exited_after[pid] = time.monotonic() - started
+                    exited_within[pid] = time.monotonic() - started
 
-        signal_and_wait(list(running), signal.SIGTERM)
-        killed = [pid for pid in running if pid not in exited_after]
-        signal_and_wait(killed, signal.SIGKILL)
+        signal_and_wait(list(running), signal.SIGTERM, "SIGTERM")
+        signal_and_wait(
+            [pid for pid in running if pid not in exited_within],
+            signal.SIGKILL,
+            f"SIGKILL after {OFFICE_STOP_SECONDS:g} s",
+        )
         for pid, name in running.items():
-            sent = "SIGTERM" + (
-                f", then SIGKILL after {OFFICE_STOP_SECONDS:g} s" if pid in killed else ""
-            )
-            after = exited_after.get(pid)
+            told = [f"was sent {', then '.join(sent[pid])}"] if sent[pid] else []
+            if pid in gone:
+                told.append(f"had gone before {gone[pid]}")
+            within = exited_within.get(pid)
             outcome = (
-                f"had exited {after:.1f} s after SIGTERM"
-                if after is not None
-                else f"was still running {2 * OFFICE_STOP_SECONDS:g} s after SIGTERM"
+                f"was seen exited within {tenths_up(within):.1f} s"
+                if within is not None
+                else f"was not seen exited within {2 * OFFICE_STOP_SECONDS:g} s"
             )
             seen.append(
-                f"{name} was running when its launcher's stop ended; it was sent {sent} and "
-                f"{outcome}"
+                f"{name} was running when its launcher's stop ended; it {', then '.join(told)} "
+                f"and {outcome}"
             )
     finally:
         for handle, _ in held.processes.values():
@@ -344,15 +428,44 @@ def stop_offices(held: Held) -> list[str]:
     return seen
 
 
+def tenths_up(seconds: float) -> float:
+    """`seconds` rounded up to a tenth, so that a time said to be "within" it stays true."""
+    return math.ceil(seconds * 10) / 10
+
+
 def pidfd_exited(handle: int, timeout: float) -> bool:
-    """Whether the process behind the pidfd `handle` exits within `timeout` seconds."""
-    return bool(select.select([handle], [], [], timeout)[0])
+    """Whether the process behind the pidfd `handle` exits within `timeout` seconds.
+
+    `poll`, unlike `select`, takes a descriptor numbered 1024 or more.
+    """
+    if sys.platform != "linux":
+        raise OSError("pidfd_exited is for Linux pidfds")
+    poller = select.poll()
+    poller.register(handle, select.POLLIN)
+    return bool(poller.poll(timeout * 1000))
 
 
 def linux_state(pid: int) -> str | None:
-    """`pid`'s state as /proc lists it now, such as T for stopped, or None once it has gone."""
+    """`pid`'s state as /proc lists it now, such as T for stopped, or None once it has gone.
+
+    This is the state of its first thread only.
+    """
+    return stat_state(Path(f"/proc/{pid}/stat"))
+
+
+def linux_thread_states(pid: int) -> list[str | None]:
+    """The state of each of `pid`'s threads as /proc lists them now; empty once it has gone."""
+    try:
+        threads = [entry.name for entry in Path(f"/proc/{pid}/task").iterdir()]
+    except OSError:
+        return []
+    return [stat_state(Path(f"/proc/{pid}/task/{thread}/stat")) for thread in threads]
+
+
+def stat_state(path: Path) -> str | None:
+    """The state field of the /proc stat file `path`, or None once it has gone."""
     with suppress(OSError):
-        text = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8", errors="replace")
+        text = path.read_text(encoding="utf-8", errors="replace")
         return text.rpartition(")")[2].split()[0]
     return None
 

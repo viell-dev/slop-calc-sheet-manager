@@ -11,10 +11,11 @@ import subprocess
 import sys
 import threading
 import time
+import types
 from collections.abc import Callable, Iterator
 from contextlib import suppress
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -969,6 +970,18 @@ def launch(behaviour: str, office: str = "exits") -> tuple[subprocess.Popen[str]
     return process, int(process.stdout.readline())
 
 
+def kill_if(pid: int, still: Callable[[int], bool]) -> None:
+    """Send `pid` SIGKILL through a pidfd if `still(pid)` holds while the pidfd holds it."""
+    assert sys.platform == "linux"
+    with suppress(ProcessLookupError):
+        handle = os.pidfd_open(pid)
+        try:
+            if still(pid):
+                signal.pidfd_send_signal(handle, signal.SIGKILL)
+        finally:
+            os.close(handle)
+
+
 @pytest.mark.skipif(sys.platform != "linux", reason="Linux holds the launcher's processes")
 @pytest.mark.parametrize(
     ("behaviour", "office", "expected"),
@@ -977,14 +990,14 @@ def launch(behaviour: str, office: str = "exits") -> tuple[subprocess.Popen[str]
         (
             "dies",
             "exits",
-            r"was running when its launcher's stop ended; it was sent SIGTERM and had exited "
-            r"\d+\.\d s after SIGTERM",
+            r"was running when its launcher's stop ended; it was sent SIGTERM and was seen "
+            r"exited within \d+\.\d s",
         ),
         (
             "dies",
             "ignores",
             r"was running when its launcher's stop ended; it was sent SIGTERM, then SIGKILL "
-            r"after 0\.5 s and had exited \d+\.\d s after SIGTERM",
+            r"after 0\.5 s and was seen exited within \d+\.\d s",
         ),
     ],
 )
@@ -1031,7 +1044,7 @@ def test_a_fork_that_has_not_yet_become_the_office_is_held_too() -> None:
         assert select.select([handle], [], [], 0)[0], "The fork outlived stop_process"
         assert len(seen) == 1 and re.fullmatch(
             rf"soffice.bin {child} \(listed as oosplash\) was running when its launcher's stop "
-            r"ended; it was sent SIGTERM and had exited \d+\.\d s after SIGTERM",
+            r"ended; it was sent SIGTERM and was seen exited within \d+\.\d s",
             seen[0],
         )
     finally:
@@ -1081,9 +1094,9 @@ def test_the_launcher_starts_nothing_between_the_listing_and_its_sigterm(delayed
 
     left = [pid for pid in started if running(pid)]
     for pid in left:
-        os.kill(pid, signal.SIGKILL)
+        kill_if(pid, running)
     assert left == [], f"Forks left running: {left}; stop saw {seen}"
-    assert seen and all("sleep" in line and "had exited" in line for line in seen), seen
+    assert seen and all("sleep" in line and " exited " in line for line in seen), seen
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Linux lists the launcher's processes")
@@ -1146,6 +1159,288 @@ def test_the_receipt_and_a_forced_shutdown_record_what_the_stop_saw(
     ]
     clean = subprocess.Popen([sys.executable, "-c", "pass"], text=True)
     assert "office_stop" not in finish_process(clean, log_path)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux holds the launcher's processes")
+def test_a_listed_process_whose_start_time_changed_is_neither_held_nor_signalled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # As if the listed office had exited and its ID had passed to a newer process before its
+    # pidfd was opened: the pidfd would then hold that newer process.
+    assert sys.platform == "linux"
+    process, office_pid = launch("dies")
+    listed = office_process.listed_processes
+
+    def newer(end: float) -> list[Process]:
+        return [
+            dataclasses.replace(row, started=row.started + 1) if row.pid == office_pid else row
+            for row in listed(end)
+        ]
+
+    handle = os.pidfd_open(office_pid)
+    try:
+        monkeypatch.setattr(office_process, "listed_processes", newer)
+        seen = stop_process(process)
+        assert seen == [f"soffice.bin {office_pid} was not held: its start time had changed"]
+        assert not office_process.pidfd_exited(handle, 0), "A process it did not hold was stopped"
+    finally:
+        with suppress(ProcessLookupError):
+            signal.pidfd_send_signal(handle, signal.SIGKILL)
+        os.close(handle)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux holds the launcher's processes")
+def test_a_listing_taken_while_the_launcher_was_reaped_is_not_used(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Once the launcher is reaped, its ID can pass to another process, so a listing rooted at it
+    # may describe another process's tree. Here the launcher is reaped during the listing.
+    assert sys.platform == "linux"
+    process, office_pid = launch("dies")
+    listed = office_process.listed_processes
+
+    def then_reaped(end: float) -> list[Process]:
+        rows = listed(end)
+        process.kill()  # SIGKILL ends even a paused process,
+        process.wait()  # and another thread's wait would reap it.
+        return rows
+
+    handle = os.pidfd_open(office_pid)
+    try:
+        monkeypatch.setattr(office_process, "listed_processes", then_reaped)
+        seen = stop_process(process)
+        assert seen == [f"nothing was held: the launcher {process.pid} was reaped meanwhile"]
+        assert not office_process.pidfd_exited(handle, 0), "A process it did not hold was stopped"
+    finally:
+        with suppress(ProcessLookupError):
+            signal.pidfd_send_signal(handle, signal.SIGKILL)
+        os.close(handle)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux pauses the launcher")
+def test_a_stop_that_fails_resumes_the_launcher_and_keeps_what_it_saw(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The launcher is paused before its SIGTERM; a stop that fails there must still resume it,
+    # stop what it held and keep what it saw with the error, which a receipt records.
+    assert sys.platform == "linux"
+    process, office_pid = launch("dies")
+
+    def fails() -> None:
+        raise OSError("no SIGTERM")
+
+    monkeypatch.setattr(process, "terminate", fails)
+    try:
+        with pytest.raises(OSError, match="no SIGTERM") as raised:
+            stop_process(process)
+        states = office_process.linux_thread_states(process.pid)
+        assert states and "T" not in states, f"The launcher was left paused: {states}"
+        assert len(raised.value.__notes__) == 1 and re.fullmatch(
+            rf"office_stop: soffice.bin {office_pid} was running when its launcher's stop ended; "
+            r"it was sent SIGTERM and was seen exited within \d+\.\d s",
+            raised.value.__notes__[0],
+        )
+    finally:
+        process.kill()
+        process.wait()
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux pauses the launcher")
+def test_an_id_that_names_no_child_of_this_process_is_never_paused() -> None:
+    # Another thread could reap the launcher after `poll()`, and its ID could pass to a process
+    # that is not this one's child before the pidfd is opened. Here the ID is the office's, a
+    # grandchild, which waitid refuses as this process's child.
+    assert sys.platform == "linux"
+    process, office_pid = launch("passes")
+    imposter = cast(subprocess.Popen[str], types.SimpleNamespace(pid=office_pid, returncode=None))
+    held = office_process.Held()
+    try:
+        office_process.hold_offices(imposter, held)
+        assert held.launcher is None and not held.processes
+        assert held.seen == [
+            f"nothing was held: the launcher's ID {office_pid} no longer names an unreaped child "
+            "of this process"
+        ]
+        states = office_process.linux_thread_states(office_pid)
+        assert states and "T" not in states, "A process that is not the launcher was paused"
+    finally:
+        kill_if(office_pid, lambda pid: True)
+        stop_process(process)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux pauses the launcher")
+def test_a_launcher_that_had_already_exited_is_not_paused() -> None:
+    assert sys.platform == "linux"
+    process = subprocess.Popen([sys.executable, "-c", "pass"], text=True)
+    wait_until(lambda: office_process.linux_state(process.pid) == "Z")  # Exited, not reaped.
+    held = office_process.Held()
+    office_process.hold_offices(process, held)
+    assert held.launcher is None and not held.processes
+    assert held.seen == [f"nothing was held: the launcher {process.pid} had already exited"]
+    assert process.wait(timeout=5) == 0
+
+
+# A launcher whose second thread forks, as oosplash's `osl_executeProcess` helper thread does
+# while its main thread waits (#266). Each fork is made slow, about 30 ms in the checks
+# container, by thousands of mappings that use no memory; the thread writes "fork" just before
+# each fork, and each child sleeps for the given seconds, by which the test finds it.
+SLOW_FORKS = r"""
+import ctypes, mmap, os, sys, threading, time
+libc = ctypes.CDLL(None, use_errno=True)
+libc.mmap.restype = ctypes.c_void_p
+libc.mmap.argtypes = [
+    ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_long
+]
+libc.mprotect.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int]
+pages = 15000
+private = mmap.MAP_PRIVATE | mmap.MAP_ANONYMOUS
+base = libc.mmap(None, 2 * pages * mmap.PAGESIZE, 0, private, -1, 0)  # PROT_NONE: no memory.
+if base in (None, ctypes.c_void_p(-1).value):
+    raise OSError(ctypes.get_errno(), "mmap")
+for page in range(pages):  # Every other page readable, never touched: two mappings each.
+    if libc.mprotect(base + 2 * page * mmap.PAGESIZE, mmap.PAGESIZE, mmap.PROT_READ):
+        raise OSError(ctypes.get_errno(), "mprotect")
+def forks():
+    while True:
+        os.write(1, b"fork\n")
+        if os.fork() == 0:
+            os.execvp("sleep", ["sleep", sys.argv[1]])
+        time.sleep(0.1)
+threading.Thread(target=forks, daemon=True).start()
+while True:
+    time.sleep(60)
+"""
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux pauses the launcher")
+def test_a_fork_under_way_on_another_thread_is_held(monkeypatch: pytest.MonkeyPatch) -> None:
+    # SIGSTOP stops a waiting thread at once, but a thread inside fork() stops only once its
+    # child exists. A listing taken when the first thread had stopped could miss that child,
+    # which then outlived the stop if the fork ended before the launcher acted on its SIGTERM;
+    # the kernel cancels a fork still under way then. Every thread is now seen stopped first.
+    # The listing is slowed here so that such a fork ends in between. A stop that arrives before
+    # the fork begins makes no child, and the test then passes without exercising this.
+    assert sys.platform == "linux"
+    token = f"59.{time.time_ns() % 10**9:09d}"  # How long its children sleep, which marks them.
+    process = subprocess.Popen(
+        [sys.executable, "-W", "ignore", "-c", SLOW_FORKS, token],
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    listed = office_process.listed_processes
+
+    def slowly(end: float) -> list[Process]:
+        rows = listed(end)
+        time.sleep(0.2)  # Several times as long as the fork.
+        return rows
+
+    monkeypatch.setattr(office_process, "listed_processes", slowly)
+    assert process.stdout is not None
+    assert process.stdout.readline() == "fork\n"
+    time.sleep(0.005)  # Inside the fork, well before its child exists.
+    seen = stop_process(process)
+
+    def forked(pid: int) -> bool:  # Before its exec, a fork still has the launcher's arguments.
+        with suppress(OSError):
+            arguments = Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0")
+            return token.encode() in arguments and office_process.linux_state(pid) != "Z"
+        return False
+
+    process.stdout.close()
+    pids = [int(entry.name) for entry in Path("/proc").iterdir() if entry.name.isdigit()]
+    left = [pid for pid in pids if forked(pid)]
+    for pid in left:
+        kill_if(pid, forked)
+    assert left == [], f"Forks left running: {left}; the stop saw {seen}"
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux waits on pidfds")
+def test_held_processes_are_stopped_with_descriptors_numbered_past_1024() -> None:
+    # select() refuses a descriptor numbered 1024 or more, the number every pidfd would get in a
+    # runner with many files open.
+    assert sys.platform == "linux"
+    import resource
+
+    soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+    if hard != resource.RLIM_INFINITY and hard < 1200:
+        pytest.skip(f"This process may open only {hard} descriptors")
+    resource.setrlimit(resource.RLIMIT_NOFILE, (max(soft, 1200), hard))
+    process, office_pid = launch("dies")
+    handle = os.pidfd_open(office_pid)
+    filler: list[int] = []
+    try:
+        while not filler or filler[-1] < 1100:  # Each takes the lowest free number.
+            filler.append(os.dup(handle))
+        seen = stop_process(process)
+        assert office_process.pidfd_exited(handle, 0), "The office outlived stop_process"
+        assert len(seen) == 1 and re.fullmatch(
+            rf"soffice.bin {office_pid} was running when its launcher's stop ended; it was sent "
+            r"SIGTERM and was seen exited within \d+\.\d s",
+            seen[0],
+        )
+    finally:
+        for number in filler:
+            os.close(number)
+        with suppress(ProcessLookupError):
+            signal.pidfd_send_signal(handle, signal.SIGKILL)
+        os.close(handle)
+        resource.setrlimit(resource.RLIMIT_NOFILE, (soft, hard))
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux lists the launcher's processes")
+@pytest.mark.parametrize("launcher_listed", [True, False])
+def test_a_listing_says_whether_it_lacked_the_launcher_or_only_its_children(
+    monkeypatch: pytest.MonkeyPatch, launcher_listed: bool
+) -> None:
+    assert sys.platform == "linux"
+    process = sleeper()
+    listed = office_process.listed_processes
+
+    def without_the_launcher(end: float) -> list[Process]:
+        return [row for row in listed(end) if row.pid != process.pid]
+
+    if not launcher_listed:
+        monkeypatch.setattr(office_process, "listed_processes", without_the_launcher)
+    seen = stop_process(process)
+    assert seen == [
+        f"the listing had no soffice.bin or other child under the launcher {process.pid}"
+        if launcher_listed
+        else f"nothing was held: the listing had no row for the launcher {process.pid}"
+    ]
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux holds the launcher's processes")
+def test_a_signal_that_finds_a_held_process_gone_is_not_recorded_as_sent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A held process seen running can still exit and be reaped before its SIGTERM, which then
+    # reaches nothing. Here it is this process's own child, listed as the launcher's, so that
+    # the test can reap it at that moment.
+    assert sys.platform == "linux"
+    process, other = sleeper(), sleeper()
+    listed, exited = office_process.listed_processes, office_process.pidfd_exited
+
+    def adopted(end: float) -> list[Process]:
+        return [
+            dataclasses.replace(row, parent=process.pid) if row.pid == other.pid else row
+            for row in listed(end)
+        ]
+
+    def reaped_once_seen_running(handle: int, timeout: float) -> bool:
+        if other.returncode is None:  # The stop's first look, which finds it running.
+            other.kill()
+            other.wait()
+            return False
+        return exited(handle, timeout)
+
+    monkeypatch.setattr(office_process, "listed_processes", adopted)
+    monkeypatch.setattr(office_process, "pidfd_exited", reaped_once_seen_running)
+    seen = stop_process(process)
+    assert len(seen) == 1 and re.fullmatch(
+        rf"\S+ {other.pid} was running when its launcher's stop ended; it had gone before "
+        r"SIGTERM and was seen exited within \d+\.\d s",
+        seen[0],
+    )
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Linux interrupts the gdb wrapper's inferior")
