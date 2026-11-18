@@ -29,8 +29,8 @@ class CursorProbe(unohelper.Base, XAccessibleEventListener):
     def __init__(self):
         self.heard = []
 
-    def rows(self, since=0):
-        return [row for _, row in self.heard[since:]]
+    def rows(self):
+        return [row for _, row in self.heard]
 
     def notifyEvent(self, event):
         if event.EventId == CURSOR_CHANGED:
