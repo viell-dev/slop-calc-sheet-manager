@@ -1,16 +1,27 @@
-"""Observe each Calc view through the installed panel's public native controls."""
+"""Observe each Calc view through the installed panel's public native controls.
+
+Reload's explicit-pick assertion stays unchanged (#88). For a failure to classify itself, the
+replacement panel's tree records delivered presses, releases and native selection changes, and
+the replacement model records its later modify notifications, through `input_trace` from the
+callbacks alone; the failed poll retains them with the posted click. They are attached during
+panel setup, before the baseline, never as reads just before the click.
+"""
 
 import time
+from contextlib import suppress
 from types import SimpleNamespace
 
 import unohelper
 from com.sun.star.container import NoSuchElementException
 from com.sun.star.document import XDocumentEventListener
+from com.sun.star.util import XModifyListener
+from input_trace import record
 from main_thread import close_document
 from sheet_list_view import (
     footer_text,
     labels,
     names,
+    observe_input,
     on_main_thread,
     poll,
     root,
@@ -36,6 +47,19 @@ class _Loaded(unohelper.Base, XDocumentEventListener):
     def documentEventOccured(self, Event):
         if Event.EventName == "OnLoad":
             self.documents.append(Event.Source)
+
+    def disposing(self, Source):
+        pass
+
+
+class _Modified(unohelper.Base, XModifyListener):
+    """Record each modify notification's time for a failed poll, without reading UNO (#88)."""
+
+    def __init__(self, proxy_id):
+        self.proxy_id = proxy_id
+
+    def modified(self, aEvent):
+        record("document_modified", self.proxy_id)
 
     def disposing(self, Source):
         pass
@@ -249,37 +273,55 @@ def check_reload(context, desktop, directory):
         broadcaster.removeDocumentEventListener(loaded)
     # Reacquire the panel after native sidebar context initialization.
     panel, tree = open_list(context, replacement)
-    poll(lambda: names(tree) == NAMES, "the reloaded rows")
-    select_tabs(context, frame, [0, 2])
-    poll(
-        lambda: status(panel) == "Edits affect 2 Calc tabs: Alfa, Charlie",
-        "the replacement controller's group status",
-    )
-    # The settled replacement panel must observe later input and the replacement model.
-    Robot(context).click(tree, row_point(tree, 0))
+    # Failure-only evidence (#88): did the click reach the tree, did a native selection follow,
+    # and did a modification arrive after the baseline? Recorded from callbacks only.
+    observe_input(tree)
+    modified = _Modified(id(tree))
+    replacement.addModifyListener(modified)
     try:
-        poll(lambda: selection(tree, NAMES) == ["Alfa"], "an explicit pick after reload")
-    except AssertionError as error:
-        error.add_note(
-            f"Reloaded rows={names(tree)!r}, picks={selection(tree, NAMES)!r}, "
-            f"status={status(panel)!r}, focused={tree.hasFocus()!r}"
+        poll(lambda: names(tree) == NAMES, "the reloaded rows")
+        select_tabs(context, frame, [0, 2])
+        poll(
+            lambda: status(panel) == "Edits affect 2 Calc tabs: Alfa, Charlie",
+            "the replacement controller's group status",
         )
+        # The settled replacement panel must observe later input and the replacement model.
+        Robot(context).click(tree, row_point(tree, 0))
         try:
-            window = frame.getContainerWindow()
+            poll(lambda: selection(tree, NAMES) == ["Alfa"], "an explicit pick after reload")
+        except AssertionError as error:
             error.add_note(
-                f"Tree bounds={tree.getPosSize()!r}, visible={tree.isVisible()!r}, "
-                f"enabled={tree.isEnabled()!r}, frame_active={frame.isActive()!r}, "
-                f"frame_enabled={window.isEnabled()!r}, frame_visible={window.isVisible()!r}, "
-                f"same_controller={frame.getController() == current!r}"
+                f"Reloaded rows={names(tree)!r}, picks={selection(tree, NAMES)!r}, "
+                f"status={status(panel)!r}, focused={tree.hasFocus()!r}"
             )
-        except Exception as diagnostic_error:
-            error.add_note(f"Reload window diagnostics failed: {diagnostic_error!r}")
-        raise
-    select_tabs(context, frame, [0, 3])
-    poll(lambda: selection(tree, NAMES) == ["Alfa", "Delta"], "the replacement observer")
-    replacement.getSheets().getByName("Bravo").setName("AfterReload")
-    expected = ["Alfa", "AfterReload", *NAMES[2:]]
-    poll(lambda: names(tree) == expected, "a property change on the replacement model")
+            try:
+                window = frame.getContainerWindow()
+                error.add_note(
+                    f"Tree bounds={tree.getPosSize()!r}, visible={tree.isVisible()!r}, "
+                    f"enabled={tree.isEnabled()!r}, frame_active={frame.isActive()!r}, "
+                    f"frame_enabled={window.isEnabled()!r}, "
+                    f"frame_visible={window.isVisible()!r}, "
+                    f"same_controller={frame.getController() == current!r}"
+                )
+                # A shown notice means the list cleared a pick it could no longer prove.
+                notice = footer_text(panel, "Why the sheet list").getText()
+                error.add_note(f"Selection notice={notice!r}")
+            except Exception as diagnostic_error:
+                error.add_note(f"Reload window diagnostics failed: {diagnostic_error!r}")
+            error.add_note(
+                "Posted click, delivered press/release, native selection changes and "
+                "document_modified events are in input-observations.json."
+            )
+            raise
+        select_tabs(context, frame, [0, 3])
+        poll(lambda: selection(tree, NAMES) == ["Alfa", "Delta"], "the replacement observer")
+        replacement.getSheets().getByName("Bravo").setName("AfterReload")
+        expected = ["Alfa", "AfterReload", *NAMES[2:]]
+        poll(lambda: names(tree) == expected, "a property change on the replacement model")
+    finally:
+        # Never let a failed removal (a lost office) replace the original assertion.
+        with suppress(Exception):
+            replacement.removeModifyListener(modified)
     return {"controller_replaced": True, "replacement_observer": True}
 
 

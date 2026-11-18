@@ -149,23 +149,39 @@ def check_plain_click_ends_group(book):
         address = book.controller.getSelection().getRangeAddress()
         return (address.Sheet, address.StartColumn, address.StartRow)
 
-    # Click a cell of the sheet, as a user does, and type there. In CI with gen under gdb, Calc
-    # once moved the cell cursor more than 0.6 s after the click and once not within ten seconds;
-    # locally it moved within 0.15 s in 15 of 15 attempts. This check is about where the typing
-    # goes, so a click that has not arrived after five seconds is repeated once, and the evidence
-    # says so.
+    # Click a cell of the sheet, as a user does, and type there. In October 2026 CI with gen
+    # under gdb, Calc once moved the cell cursor more than 0.6 s after the click and once not
+    # within ten seconds (#42). The repeat added then, after five seconds, never ran in any
+    # retained CI artifact from 2026-10-19 to 2026-11-17 (205 gen and 229 gtk3 sessions), so it
+    # only hid a recurrence. One click must move the cursor within five seconds; a failure keeps
+    # watching, without further input, to record whether the click arrived late or not at all.
     before = cursor()
     screen = Pointer(book.lab.input, (0, 0))
-    attempts = 0
-    while True:
-        attempts += 1
-        screen.click(260, 420, pause=0)
-        try:
-            wait_until(lambda: cursor() != before, "the click to move the cell cursor", 5)
-            break
-        except AssertionError:
-            if attempts == 2:
-                raise
+    sent = time.monotonic()
+    screen.click(260, 420, pause=0)
+    try:
+        wait_until(lambda: cursor() != before, "the click to move the cell cursor", 5)
+    except AssertionError as error:
+        try:  # Classification only: a failed read must not replace the original assertion.
+            arrival = None
+            deadline = time.monotonic() + 10
+            while arrival is None and time.monotonic() < deadline:
+                if cursor() != before:
+                    arrival = round(time.monotonic() - sent, 2)
+                time.sleep(0.1)
+            error.add_note(
+                f"Cell cursor before the click {before!r}, now {cursor()!r}, tabs "
+                f"{book.calc_tabs()!r}; "
+                + (
+                    f"the click arrived late, {arrival} s after it was sent"
+                    if arrival is not None
+                    else "the click had not arrived 15 s after it was sent"
+                )
+            )
+        except Exception as diagnostic_error:
+            error.add_note(f"Click diagnostics failed: {diagnostic_error!r}")
+        raise
+    click_seconds = round(time.monotonic() - sent, 3)
     address = book.controller.getSelection().getRangeAddress()
     book.lab.input.tap("x")
     book.lab.input.tap("Return", pause=0.6)
@@ -180,7 +196,7 @@ def check_plain_click_ends_group(book):
         "cell": [address.Sheet, address.StartColumn, address.StartRow],
         "bravo": cell(NAMES[1]),
         "delta": cell(NAMES[3]),
-        "click_attempts": attempts,
+        "click_seconds": click_seconds,
     }
     assert address.Sheet == 1 and evidence["bravo"] == "x" and evidence["delta"] == "", evidence
     sheets.getByName(NAMES[1]).getCellByPosition(address.StartColumn, address.StartRow).setString(
