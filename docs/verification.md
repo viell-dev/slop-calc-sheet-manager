@@ -176,9 +176,15 @@ Accessibility evidence and limits are in
 
 ## Performance measurements
 
-Pure planning has a five-second regression budget at 10,000 sheets for one-call and reverse-order
-move plans; rename tests budget five seconds for a 1,000-sheet cycle and chain. Native timings are
-measurements, not limits:
+Pure planning has a regression budget of five seconds of process CPU time at 10,000 sheets for
+one-call and reverse-order move plans, which take under a second even on a loaded host. It
+catches a planner that grows quadratically in Python, such as the old block scan (36 to 43 seconds
+for the one-call plan), but not a slowdown by a constant factor, nor a return to the earlier list
+simulation, whose quadratic scans run in C (3 to 7 seconds on a loaded laptop). Inside a virtual
+machine, CPU time still counts time that the host takes away
+([#214](https://github.com/viell-dev/slop-calc-sheet-manager/issues/214)). Rename tests budget
+five seconds of elapsed time for a 1,000-sheet cycle and chain. Native timings are measurements,
+not limits:
 
 - `reorder-performance-<session>.json`: three runs each at 200 and 1,000 sheets with cross-sheet
   formulas, named ranges and charts; first, half, all-but-last and alternating selections moved

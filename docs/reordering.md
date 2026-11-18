@@ -99,8 +99,11 @@ future reorder commands with the same validation. `Plan` includes `before`, `tar
   blocks. Other sheets move right to left before their already-positioned successors. This uses
   the fewest individual sheet moves, including when moving unselected sheets is cheaper.
   A Fenwick prefix-maximum tree finds the weighted subsequence in O(B log B), where B is the
-  number of blocks. Simulating K calls costs O(KN) with Python lists. The last immutable plan is
-  cached, so immediate preflight validation does not plan again; final contiguity checks are O(N).
+  number of blocks. Each run of moved sheets then stands in front of the next kept sheet, so a
+  Fenwick count of the sheets not yet moved gives each call's index in O(log N), and planning
+  costs O(N log N) ([#214](https://github.com/viell-dev/slop-calc-sheet-manager/issues/214)). The
+  last immutable plan is cached, so immediate preflight validation does not plan again; final
+  contiguity checks are O(N).
 
 The adapter refuses read-only documents, protected document structure, recorded changes, disabled
 or locked undo, zero configured undo steps, an inactive document frame, stale state, and no-op
