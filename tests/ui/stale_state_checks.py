@@ -21,6 +21,7 @@ from menu_checks import hide_through_menu
 from workbook import NAMES, PressProbe, reset, wait_until
 from xinput import Pointer
 
+from sheet_manager.sheet_list import list_name
 from sheet_manager.uno_calc import dispatch, select_tabs
 
 PUSH_BUTTON = uno.getConstantByName("com.sun.star.accessibility.AccessibleRole.PUSH_BUTTON")
@@ -520,17 +521,23 @@ def check_click_hidden_before_refresh(book):
 
 
 def check_newer_selection_kept(book):
-    """Completed edits and queued real input precede repaint; newer picks survive it (#44)."""
+    """Completed edits and queued real input precede repaint; newer picks survive it (#44).
+
+    An activation and a tab colour only repaint the kept tree (#22). The tree's accessible name
+    names the viewed sheet from the refreshed rows (#83), so it marks whether the refresh that
+    shows the activation has run.
+    """
     wait_until(lambda: book.labels() == NAMES, "the preceding visibility change to repaint")
+
+    def shown(name):
+        viewed = book.tree.getProperty("XAccessible").getAccessibleContext()
+        return viewed.getAccessibleName() == list_name(name)
+
     # A completed activation repaint gives this gesture a fresh baseline, independent of
     # the previous check's queued colour/visibility changes and maximum-refresh deadline.
     for index in (4, 0):
-        before = view.root(book.tree)
         book.controller.setActiveSheet(book.document.Sheets.getByName(NAMES[index]))
-        wait_until(
-            lambda old=before: view.root(book.tree) not in (None, old),
-            "the baseline activation to repaint",
-        )
+        wait_until(lambda index=index: shown(NAMES[index]), "the baseline activation to repaint")
     select_tabs(book.lab.context, book.frame, [0])
     book.click(0)
     wait_until(lambda: book.selection() == [NAMES[0]], "a settled pick before the queued input")
@@ -549,7 +556,7 @@ def check_newer_selection_kept(book):
             releases[0] += 1
             if releases[0] == 3:
                 try:
-                    state["marker_not_yet_moved"] = view.root(book.tree) == model
+                    state["marker_not_yet_moved"] = shown(NAMES[0])
                 except Exception:
                     state["error"] = traceback.format_exc()
                 finally:
@@ -583,19 +590,19 @@ def check_newer_selection_kept(book):
         assert received.wait(10), state
         assert not state["error"] and state["marker_not_yet_moved"], state
         assert len(book.undo_titles()) == len(history) + 1, "The fixture edit was not recorded"
-        wait_until(
-            lambda: view.root(book.tree) not in (None, model), "the activated row to repaint"
-        )
+        wait_until(lambda: shown(NAMES[1]), "the activated row to repaint")
         time.sleep(1)
         evidence = {
             **state,
             "releases": releases[0],
             "after_refresh": book.selection(),
             "active": book.active(),
+            "model_kept": view.root(book.tree) == model,
         }
         assert evidence["releases"] == 3, evidence
         assert evidence["after_refresh"] == [NAMES[1], NAMES[3]], evidence
         assert evidence["active"] == NAMES[1], evidence
+        assert evidence["model_kept"], evidence
         return evidence
     finally:
         book.tree.removeMouseListener(probe)

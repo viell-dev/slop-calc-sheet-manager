@@ -89,9 +89,9 @@ place; one that rebuilds the rows first shows it again (`_show_native`) under th
 count and order the intake checks, so the intake still decides. A refresh that loses the identity
 proof clears it with the list's own picks, even when there were none: it was made against the
 sheets that proof covered, and the kept tree would offer it to the next intake under a
-replacement's handle (`_drop_all_picks`). The panel window lists the move buttons, the tree and the shown
-footer labels as its accessible children in creation order, which is their visual order, so
-create them in that order (#133, `uno_panel`).
+replacement's handle (`_drop_all_picks`). The panel window lists the move buttons, the tree and
+the shown footer labels as its accessible children in creation order, which is their visual
+order, so create them in that order (#133, `uno_panel`).
 
 Following Calc's tabs. Calc sends no reliable notification for a tab selection that keeps the
 same active sheet, so each list caches the reflected `getSelectedSheets` method and samples its

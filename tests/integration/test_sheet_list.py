@@ -27,6 +27,7 @@ from sheet_list_view import (
     BATCHES,
     LOCKS,
     UNRECORDED,
+    Paints,
     cover_batch,
     footer_text,
     held_batch,
@@ -35,10 +36,12 @@ from sheet_list_view import (
     names,
     on_main_thread,
     open_list,
+    pixel,
     poll,
     release,
     root,
     row_point,
+    row_rect,
     selected_tabs,
     selection,
     unrecorded_batch,
@@ -918,7 +921,7 @@ def measure_large_menu(context, document, count):
     }
 
 
-def measure_large_workbook(context, desktop, count):
+def measure_large_workbook(context, desktop, count, headless):
     """Record wall-clock following/rebuild costs, with correctness assertions (see #22)."""
     document = make_workbook(desktop, [f"Sheet {n:04}" for n in range(1, count + 1)])
     started = time.monotonic()
@@ -957,10 +960,33 @@ def measure_large_workbook(context, desktop, count):
     time.sleep(0.8)
     assert root(tree) == before, "An ordinary edit must retain the native model"
     first = document.getSheets().getByIndex(0)
-    for color in (0x2A6099, 0x993322, -1):
-        first.TabColor = color
-        time.sleep(0.8)
-        assert root(tree) == before, "A tab colour is painted; it must retain the native model"
+    rect = row_rect(tree, 0)  # Shows the first row, whose swatch painted sessions read.
+    swatch = (20, rect.Y + rect.Height // 2)  # Inside the 8-pixel swatch `uno_rows` paints.
+    paints = Paints()
+    tree.addPaintListener(paints)
+    try:
+        paints.quiet()
+        plain = None if headless else pixel(tree, *swatch)
+        painted = []
+        for color in (0x2A6099, 0x993322, -1):
+            seen = paints.count
+            first.TabColor = color
+            started = time.monotonic()
+            # Each colour waits for its own refresh: the last restores the first's look.
+            poll(lambda seen=seen: paints.count > seen, "the tab colour's repaint", 120)
+            if not headless:
+                shown = plain if color == -1 else color
+                assert plain != color, f"{plain:06X}"  # Otherwise the wait proves nothing.
+                poll(
+                    lambda shown=shown: pixel(tree, *swatch) == shown,
+                    f"the first row's swatch to show {shown:06X}",
+                    120,
+                )
+            painted.append(round(time.monotonic() - started, 4))
+            assert root(tree) == before, "A tab colour is painted; it must keep the native model"
+            paints.quiet()
+    finally:
+        tree.removePaintListener(paints)
     rebuilds = []
     # Protection changes the label, which only a new model can show (#22).
     for protect in (True, False, True, False):
@@ -994,6 +1020,8 @@ def measure_large_workbook(context, desktop, count):
         "tab_only_same_model": True,
         "cell_edit_same_model": True,
         "tab_color_same_model": True,
+        "tab_color_repaint_seconds": painted,
+        "tab_color_swatch_read": not headless,
         "label_rebuild_seconds": rebuilds,
         "menu_build": menu,
         "method": "100ms polling; wall times include debounce/backpressure; no performance gate",
@@ -1012,7 +1040,7 @@ def exercise(context, desktop, directory, output, *, headless):
             ("stale_clicks", lambda: check_stale_clicks(context, desktop)),
             ("activation_fallback", lambda: check_activation_fallback(context, desktop)),
             ("show", lambda: check_show(context, desktop)),
-            ("large_workbook", lambda: measure_large_workbook(context, desktop, 1000)),
+            ("large_workbook", lambda: measure_large_workbook(context, desktop, 1000, headless)),
         ),
         _CREATED,
         lambda document: close_document(context, document),

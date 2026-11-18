@@ -6,14 +6,19 @@ Input polls retain the fixtures' existing reads/posts through ``input_trace`` on
 Opt-in input listeners record scalar delivery/selection events only. Attach them during panel
 setup, never as extra state reads immediately before a click. Detailed reads run only
 after a failed poll; callback failures must not replace that assertion.
+Painted-only state, the current-sheet arrow and the tab-colour swatches, has no UNO property.
+`Paints` counts the tree's `XPaintListener` events, which every session delivers; `pixel` reads
+the tree's own `XDevice` back, which only painted sessions support: headless (svp) reads return
+a uniform background (measured with 26.8.2.2, #22).
 """
 
+import struct
 import threading
 import time
 import traceback
 
 import unohelper
-from com.sun.star.awt import XCallback, XMouseListener
+from com.sun.star.awt import XCallback, XMouseListener, XPaintListener
 from com.sun.star.lang import IllegalArgumentException
 from com.sun.star.view import XSelectionChangeListener
 from input_trace import record, retain
@@ -297,6 +302,49 @@ def row_rect(tree, index, scroll=True):
         except IllegalArgumentException:  # The node left the tree in a rebuild.
             if time.monotonic() > deadline:
                 raise
+
+
+class Paints(unohelper.Base, XPaintListener):
+    """Count a window's paints; a quiet list paints only after an invalidation."""
+
+    def __init__(self):
+        self.count = 0
+
+    def windowPaint(self, event):
+        self.count += 1
+
+    def disposing(self, source):
+        pass
+
+    def quiet(self, seconds=1.0, timeout=30):
+        """Wait until no paint has arrived for `seconds`, so that the next one is new."""
+        deadline = time.monotonic() + timeout
+        seen, since = self.count, time.monotonic()
+        while time.monotonic() - since < seconds:
+            if time.monotonic() > deadline:
+                raise AssertionError(f"The window kept painting: {self.count} paints")
+            time.sleep(0.1)
+            if self.count != seen:
+                seen, since = self.count, time.monotonic()
+
+
+def pixel(tree, x, y):
+    """The colour a painted session shows at (x, y) in the tree's coordinates, as 0xRRGGBB.
+
+    `XDevice.createBitmap` copies what the window has painted; `getDIB` returns it as a BMP file.
+    """
+    data = bytes(tree.createBitmap(x, y, 1, 1).getDIB().value)
+    assert data[:2] == b"BM", data[:16]
+    (offset,) = struct.unpack_from("<I", data, 10)
+    (header,) = struct.unpack_from("<I", data, 14)
+    (bits,) = struct.unpack_from("<H", data, 28)
+    if bits in (24, 32):
+        blue, green, red = data[offset : offset + 3]
+    else:  # A palette; the only pixel is in the first byte's high bits.
+        assert bits in (1, 4, 8), bits
+        entry = 14 + header + 4 * (data[offset] >> (8 - bits))
+        blue, green, red = data[entry : entry + 3]
+    return red << 16 | green << 8 | blue
 
 
 def row_point(tree, index, fraction=0.5, *, scroll=True):

@@ -2,8 +2,10 @@
 
 Letters, Space, Delete and the other keys typed in the list never edit a cell or modify the
 document. Calc's shortcuts still work from the list, and their dialogs keep the focus
-while they are open (#23). A refresh keeps the keyboard cursor where it was (#29), and a second
-document's list works independently of the first.
+while they are open (#23). A refresh that rebuilds the rows keeps the keyboard cursor where it
+was (#29), and a second document's list works independently of the first. These checks rebuild
+the rows by protecting a sheet, which changes its label: a painted-only change such as a tab
+colour keeps the tree and its cursor (#22).
 """
 
 import time
@@ -227,53 +229,49 @@ def check_single_tap_after_client_pause(book):
     return evidence
 
 
+def toggle_protection(book, sheet):
+    """Protect or unprotect `sheet` and wait for the new data model that shows its label."""
+    model = view.root(book.tree)
+    if sheet.isProtected():
+        sheet.unprotect("")
+    else:
+        sheet.protect("")
+    wait_until(lambda: view.root(book.tree) not in (None, model), "the list to rebuild")
+
+
 def check_cursor_across_refresh(book):
-    """A refresh keeps the keyboard cursor where it was, not on the first selected row (#29)."""
+    """A rebuild keeps the keyboard cursor where it was, not on the first selected row (#29)."""
     foxtrot = book.document.getSheets().getByName(NAMES[5])
-
-    def graphic():
-        return view.root(book.tree)
-
     evidence = {}
     for keysym, modifiers in (("space", ("Control_L",)), ("Down", ("Shift_L",))):
         outcomes = []
         for refreshed in (False, True):
-            if foxtrot.TabColor != -1:
-                before_model = graphic()
-                foxtrot.TabColor = -1
-                wait_until(lambda m=before_model: graphic() not in (None, m), "no colour")
+            if foxtrot.isProtected():
+                toggle_protection(book, foxtrot)
             book.click(1)
             book.lab.input.tap("Down", ("Control_L",))
             book.lab.input.tap("Down", ("Control_L",), pause=0.4)
             if refreshed:
-                plain = graphic()
-                foxtrot.TabColor = 0x3FAF46
-                wait_until(lambda p=plain: graphic() != p, "the list to rebuild")
+                toggle_protection(book, foxtrot)
                 time.sleep(0.4)
             book.lab.input.tap(keysym, modifiers, pause=0.5)
             outcomes.append(book.selection())
         evidence[f"{'+'.join(modifiers)}+{keysym}"] = outcomes
         assert outcomes[0] == outcomes[1], evidence
     assert evidence["Control_L+space"][1] == [NAMES[1], NAMES[3]], evidence
-    foxtrot.TabColor = -1
+    toggle_protection(book, foxtrot)
     return evidence
 
 
 def check_native_cursor_positions(book):
     """Native focus events cover edge and page navigation independently of the picks."""
     foxtrot = book.document.getSheets().getByName(NAMES[5])
-
-    def rebuild():
-        graphic = view.root(book.tree)
-        foxtrot.TabColor = 0x668833 if foxtrot.TabColor == 0x3FAF46 else 0x3FAF46
-        wait_until(lambda: view.root(book.tree) not in (None, graphic), "the new list model")
-
     evidence = {}
     for key, index in (("End", -1), ("Home", 0)):
         book.click(1)
         book.lab.input.tap(key, ("Control_L",), pause=0.3)
         before = set(book.selection())  # Home/End retain the native control's pick semantics.
-        rebuild()
+        toggle_protection(book, foxtrot)
         book.lab.input.tap("space", ("Control_L",), pause=0.4)
         wanted = [name for name in NAMES if name in before ^ {NAMES[index]}]
         assert book.selection() == wanted
@@ -282,11 +280,12 @@ def check_native_cursor_positions(book):
     book.lab.input.tap("Next", pause=0.4)
     page = book.selection()
     assert len(page) == 1 and page != [NAMES[1]], page
-    rebuild()
+    toggle_protection(book, foxtrot)
     book.lab.input.tap("space", ("Control_L",), pause=0.4)
     assert book.selection() == []
     evidence["PageDown"] = page
-    foxtrot.TabColor = -1
+    if foxtrot.isProtected():
+        toggle_protection(book, foxtrot)
     return evidence
 
 

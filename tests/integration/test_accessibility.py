@@ -12,6 +12,9 @@ metadata checks: no screen reader runs, so what one announces is not verified he
   the tree. The list's timers and observation only post to LibreOffice's main-thread queue, so
   holding the main thread after a property change, past the refresh delay, and then selecting
   queues the rebuilding refresh ahead of any intake: the ordering is deterministic.
+- A refresh that only repaints, keeping the tree (#22), lets the intake take such a selection
+  too. One made against a sheet that is then replaced under its name is never taken, even when
+  the list owns no pick: the refresh that finds the lost identity proof clears it.
 - Every control of the panel is a child of the panel window's accessible context, at its own index
   in parent and in visual order, and each ancestor up to the top is listed by its parent (#133).
   A walk down from the top, as a screen reader's object navigation or a bridge's focus tracking
@@ -35,11 +38,13 @@ from sheet_list_view import (
     on_main_thread,
     open_list,
     poll,
+    root,
     row_point,
     selection,
 )
 from teardown import run_checks
 from test_sheet_list import VCL_RIGHT, Robot, say
+from test_sheet_list import replace as replace_sheet
 
 from sheet_manager.sheet_list import list_name
 from sheet_manager.uno_calc import select_tabs
@@ -234,6 +239,59 @@ def check_assistive_selection_before_rebuild(context, desktop):
     return {"taken": True}
 
 
+def check_assistive_selection_in_a_kept_tree(context, desktop):
+    document = workbook(desktop, "Alfa")
+    sheets = document.getSheets()
+    _, tree = open_list(context, document)
+    poll(lambda: names(tree) == FIVE, "every sheet in the list")
+    poll(lambda: read(context, tree)["name"] == viewing("Alfa"), "the viewed sheet's name")
+    model = root(tree)
+
+    def select_then(index, change, color):
+        tree_context = accessible(tree)
+        tree_context.clearAccessibleSelection()
+        tree_context.selectAccessibleChild(index)  # As a screen reader selects a row.
+        change()
+        # A tab colour only repaints. Holding the main thread past the refresh delay queues
+        # that refresh ahead of any intake of the selection, as in the rebuild case above.
+        sheets.getByName("Alfa").TabColor = color
+        time.sleep(REFRESH_HOLD)
+
+    say("control: a kept tree lets the queued intake take an assistive selection")
+    on_main_thread(context, lambda: select_then(2, lambda: None, 0x2A6099))  # Charlie.
+    time.sleep(1.0)  # The refresh and several observation ticks, each with its queued intake.
+    assert root(tree) == model, "A tab colour must keep the tree"
+    sheets.getByName("Echo").protect("")
+    poll(lambda: "Echo (protected)" in labels(tree), "a rebuild after the intake")
+    assert selection(tree, FIVE) == ["Charlie"], selection(tree, FIVE)  # Taken, not just shown.
+    model = root(tree)
+
+    say("an earlier loss of proof leaves the list without picks, cursor or anchor")
+
+    def insert_and_delete():
+        sheets.insertNewByName("Extra", len(FIVE))
+        sheets.removeByName("Extra")
+
+    on_main_thread(context, insert_and_delete)
+    poll(lambda: selection(tree, FIVE) == [], "the refresh that drops every pick")
+    time.sleep(1.0)
+    assert selection(tree, FIVE) == [] and root(tree) == model, selection(tree, FIVE)
+
+    say("a selection made against a sheet replaced before its intake is never taken")
+    on_main_thread(
+        context, lambda: select_then(1, lambda: replace_sheet(document, "Bravo"), 0x993322)
+    )
+    poll(lambda: selection(tree, FIVE) == [], "the refresh to clear the unproven selection")
+    assert root(tree) == model, "Names and labels are unchanged: the tree must be kept"
+    time.sleep(1.0)  # Observation ticks would take a selection still shown.
+    assert selection(tree, FIVE) == [], selection(tree, FIVE)
+    sheets.getByName("Delta").protect("")
+    poll(lambda: "Delta (protected)" in labels(tree), "a rebuild that writes the list's picks")
+    assert selection(tree, FIVE) == [], selection(tree, FIVE)
+    close(context, document)
+    return {"control_taken": True, "replaced_not_taken": True}
+
+
 def _child(parent, index):
     return parent.getAccessibleChild(index).getAccessibleContext()
 
@@ -356,6 +414,10 @@ def exercise(context, desktop, directory, output, *, headless):
             (
                 "assistive_selection_before_rebuild",
                 lambda: check_assistive_selection_before_rebuild(context, desktop),
+            ),
+            (
+                "assistive_selection_in_a_kept_tree",
+                lambda: check_assistive_selection_in_a_kept_tree(context, desktop),
             ),
         ],
         _CREATED,
