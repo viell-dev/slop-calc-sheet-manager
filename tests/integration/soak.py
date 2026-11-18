@@ -54,9 +54,9 @@ def run_session(
 ) -> int:
     """Run one runner in its own process group; return its status, or 124 after `limit` seconds.
 
-    A runner still running at `limit` fails whatever happens next; it then has `grace` seconds
-    to keep its stall evidence and exit, and its whole group is killed after that. The runner's
-    deadline is this same moment.
+    A runner found still running at `limit` fails whatever happens next; it then has `grace`
+    seconds to write its stall evidence and exit, and its whole group is killed after that. The
+    runner's deadline is this same moment.
     """
     deadline = time.monotonic() + limit
     environment = dict(os.environ, SHEET_MANAGER_DEADLINE_MONOTONIC=repr(deadline))

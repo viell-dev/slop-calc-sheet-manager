@@ -704,6 +704,7 @@ def test_an_empty_listing_claims_only_what_it_shows(
     # The real listing, under a launcher with no soffice.bin child, or under one the runner has
     # reaped while its soffice.bin lives on. Neither shows that no office runs, and the
     # launcher's exit is not the office's (#45).
+    assert sys.platform == "linux"
     office = tmp_path / "soffice.bin"
     shutil.copyfile(shutil.which("sleep") or "/bin/sleep", office)
     office.chmod(0o755)
@@ -763,8 +764,11 @@ def test_an_interrupt_to_the_gdb_wrapper_is_recorded_as_sent_not_as_saved_stacks
         row = listed(pid)
         return dataclasses.replace(row, name="gdb") if row and pid == os.getpid() else row
 
+    def traced_by_this_process(pid: int) -> int:
+        return os.getpid()
+
     monkeypatch.setattr(office_process, "linux_process", as_gdb)
-    monkeypatch.setattr(office_process, "tracer_of", lambda pid: os.getpid())
+    monkeypatch.setattr(office_process, "tracer_of", traced_by_this_process)
     try:
         target = office_process.linux_process(target_process.pid)
         assert target is not None

@@ -407,7 +407,7 @@ def native_stacks(target: Process, path: Path, *, debugger_parent: bool, end: fl
     it is held, and the handle is held until the action ends. On Linux, only the gdb wrapper's
     inferior is touched, through its pidfd: it is sent SIGINT, after which gdb normally prints
     every thread's stack into its own trace. That the signal was sent is all this observes; a
-    gdb that is itself blocked prints nothing. Otherwise the result says why nothing was tried.
+    gdb that is itself blocked prints nothing. The result says what was done, or why nothing was.
     """
     if sys.platform == "linux":
         if not debugger_parent:

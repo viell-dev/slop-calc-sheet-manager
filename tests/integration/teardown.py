@@ -9,16 +9,16 @@ stuck thread too (#40). An earlier failure stays the one raised, with the timeou
 that neither hides the other.
 
 Steps report progress through `note_progress`: the runner's `StallWatch` fails and stops a
-session that reports none for its limit, after saving stacks (#45). Suites, checks, the runners'
-loops and the benchmarks' workbooks and repetitions report it; a single step need not. Progress
-and expiry are one decision under one lock (`stall_if_idle`): progress noted before it prevents
-the stall, and a stall it records is final, so later progress cannot undo it. The stall is
-recorded as a stalled callback before any stacks are taken, so no close or restore starts during
-the capture: the shared close helpers (`main_thread.close_document`, `run.close_writer`) check
-`refuse_after_stall` first, also for the test bodies' own closes. A close or other call already
-under way when the stall is recorded, including a close `close_document` has already posted to
-the main thread on Windows, and work a test posts to the main thread itself, continue until the
-runner stops the office.
+session that reports none for its limit, after trying to save stacks (#45). Suites, checks, the
+runners' loops and the benchmarks' workbooks and repetitions report it; a single step need not.
+Progress and expiry are one decision under one lock (`stall_if_idle`): progress noted before it
+prevents the stall, and a stall it records is final, so later progress cannot undo it. The stall
+is recorded as a stalled callback before any stacks are tried, so no close or restore starts
+during the capture: the shared close helpers (`main_thread.close_document`,
+`run.close_writer`) check `refuse_after_stall` first, also for the test bodies' own closes. A
+close or other call already under way when the stall is recorded, including a close
+`close_document` has already posted to the main thread on Windows, and work a test posts to the
+main thread itself, continue until the runner stops the office.
 """
 
 import threading

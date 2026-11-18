@@ -217,8 +217,9 @@ what follows from it:
 - `office_search` says what the process listing returned: no `soffice.bin` under the launcher, or
   that the listing was not used because the launcher's ID no longer names it. Neither shows that
   no office was running.
-- `launcher_exit_status` is the launcher's exit status after the stop, or `null` if it had not
-  exited. It is not the office's: a `soffice.bin` can outlive its launcher.
+- `launcher_exit_status` is the launcher's exit status as `Popen.poll()` reported it after the
+  stop, or `null` when it reported none. It is not the office's: a `soffice.bin` can outlive its
+  launcher ([#266](https://github.com/viell-dev/slop-calc-sheet-manager/issues/266)).
 - `diagnostic_errors` holds each step that failed, and under `capture` the step that had not
   finished when the 60 seconds ended; `collection_finished` is true only if every step returned
   before then.
