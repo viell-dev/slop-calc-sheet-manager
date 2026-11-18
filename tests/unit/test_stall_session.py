@@ -42,13 +42,20 @@ class FakeModule(types.ModuleType):
 class Office:
     """The child process standing in for soffice, and the fake UNO objects connected to it."""
 
-    def __init__(self, resolve: Callable[["Office"], None] | None = None) -> None:
+    def __init__(
+        self,
+        resolve: Callable[["Office"], None] | None = None,
+        first: Callable[[Path], str] | None = None,
+    ) -> None:
         self.launches: list[subprocess.Popen[str]] = []
         self.resolve_hook = resolve
+        self.first = first  # The first launch's program, given the office's working directory.
 
     def popen(self, command: list[str], **options: Any) -> subprocess.Popen[str]:
+        first = self.first is not None and not self.launches
+        program = self.first(Path(options["cwd"])) if self.first is not None and first else OFFICE
         process = subprocess.Popen(
-            [sys.executable, "-c", OFFICE],
+            [sys.executable, "-c", program],
             stdin=subprocess.PIPE,
             stdout=options["stdout"],
             stderr=subprocess.STDOUT,
@@ -347,3 +354,39 @@ def test_a_rerun_leaves_no_stall_evidence_of_an_earlier_run(
     raised, result, _ = session(runner, monkeypatch, tmp_path, Office(), body)
     assert raised is None and result["run_complete"]
     assert not list(output.glob("stall-*"))
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="The gdb wrapper runs only on Linux")
+def test_the_gdb_wrappers_startup_restart_hands_the_new_office_to_the_watch(
+    runner: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Under --backtrace the first soffice.bin exits 81 to initialize its profile, and the runner
+    # starts another; a stall later must stop that one, not the first.
+    def bootstrap(directory: Path) -> str:
+        trace = directory / "gdbtrace.log"
+        trace.write_text("[Inferior 1 (process 7) exited with code 0121]", encoding="utf-8")
+        return "raise SystemExit(81)"
+
+    def connects_after_restart(office: Office) -> None:
+        if len(office.launches) == 1:
+            office.wait_stopped()
+            raise RuntimeError("Connector: couldn't connect to pipe")
+
+    office = Office(resolve=connects_after_restart, first=bootstrap)
+
+    times: dict[str, float] = {}
+
+    def blocked_uno_call(context: Any, desktop: Any, directory: Path) -> dict[str, object]:
+        teardown.note_progress()
+        times["progress"] = time.monotonic()
+        times["stopped"] = office.wait_stopped()
+        raise RuntimeError("Binary URP bridge disposed during call")
+
+    raised, result, _ = session(
+        runner, monkeypatch, tmp_path, office, blocked_uno_call, "--backtrace"
+    )
+    assert isinstance(raised, AssertionError | RuntimeError), raised
+    assert len(office.launches) == 2 and result["office_startup_restart"] == 81
+    stall = result["office_progress_stall"]
+    assert stall["launcher_pid"] == office.launches[1].pid and stall["office_stopped"]
+    assert LIMIT <= times["stopped"] - times["progress"] < 2 * LIMIT

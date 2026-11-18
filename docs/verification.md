@@ -242,8 +242,13 @@ Xvfb lab's pointer calibration waits for the tree's own report of its move, so a
 cannot shift a workbook's calibrated positions and pixel coordinates by two pixels (#209).
 Sessions fail on nonzero exits, forced
 shutdowns, fatal messages, crash dumps, stalled main-thread callbacks or held terminate requests.
-A session without progress for 15 minutes keeps its client and office stacks and fails before the
-job's limit (#45); native stacks need the gdb wrapper on Linux or CDB on Windows.
+A session without progress for 15 minutes from its launch fails without a retry: the stall is
+recorded before its client and office stacks are saved, and its office is then stopped (#45).
+Native stacks need the gdb wrapper on Linux or CDB on Windows. `test_stall_session.py` runs the
+runner's own session against a stand-in office and checks the timing, the exit status and
+`results.json`. A stall that begins within about 18 minutes of a job's or the macOS helper's
+time limit still ends there without its stacks (#244); soak sessions keep theirs at the soak's
+own limit.
 Windows crash dumps matter even when the office exits with status zero. Only startup is retried;
 its dumps are retained separately. Debugger runs also reject signals, incomplete exits and missing
 traces. The Xvfb helper disables key repeat; `single_tap_after_client_pause` verifies one cursor

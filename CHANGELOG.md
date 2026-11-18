@@ -5,9 +5,12 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
-- End a test session that stops making progress after 15 minutes, keeping the test client's
-  and LibreOffice's stacks, instead of waiting for the CI job's time limit without evidence
-  ([#45](https://github.com/viell-dev/slop-calc-sheet-manager/issues/45)).
+- Fail a test session that stops making progress for 15 minutes, keeping the test client's and
+  LibreOffice's stacks, instead of waiting for the CI job's time limit without evidence. A soak
+  session that outlasts its 180-second limit keeps them too; a stall late in a CI job can still
+  reach the job's limit first
+  ([#45](https://github.com/viell-dev/slop-calc-sheet-manager/issues/45),
+  [#244](https://github.com/viell-dev/slop-calc-sheet-manager/issues/244)).
 - Check the documentation's availability markers at every marked version, including when
   a newer test build appears beside an older stable release
   ([#196](https://github.com/viell-dev/slop-calc-sheet-manager/issues/196)).

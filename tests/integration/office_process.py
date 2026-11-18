@@ -496,14 +496,15 @@ class StallWatch:
                 if idle is None:
                     continue
                 self._state = "stalled"
+                process = self.process
                 self._evidence = {
                     "cause": "deadline" if overdue else "no progress",
                     "limit_seconds": self.limit,
                     "idle_seconds": round(idle, 1),
                     "receipt": f"{self.prefix}.json",
+                    "launcher_pid": process.pid,
                     "office_stacks": {},
                 }
-                process = self.process
             self._capture(process)
 
     def _capture(self, process: subprocess.Popen[str]) -> None:
