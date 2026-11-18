@@ -747,6 +747,21 @@ def test_enter_while_the_tree_may_show_another_selection_acts_on_none() -> None:
     assert owner.tree.shown() == ["Bravo"], "The picks are written for the next command"
 
 
+def test_a_command_while_the_intake_waits_over_an_unknown_record_refuses_once() -> None:
+    """`queue_move` reads the tree first, which settles an unknown record, so its own check of
+    the record decides only while the intake waits, here for a queued write: the tree may still
+    show part of the failed one, the cursor's row Hotel. The queued write shows the picks, and
+    the next command acts on them."""
+    owner = bravo_with_cursor_on("Golf")
+    owner.faults.fail("clearSelection")
+    key(owner, DOWN, MOD1)
+    assert owner._shown is None and owner.tree.shown() == ["Hotel"]
+    owner._queue_selection()  # A key's coalesced write, queued.
+    assert move_to_top(owner) is None
+    assert owner.tree.shown() == ["Bravo"], "The queued write showed the picks"
+    assert move_to_top(owner) == ["Bravo"]
+
+
 def test_a_held_press_over_a_lost_proof_keeps_its_native_row_from_the_intake() -> None:
     """A native press shows Bravo before its listener; Bravo is replaced under its own name.
     The refresh's clear and the queued write's clear both fail, and a drag then starts. The
