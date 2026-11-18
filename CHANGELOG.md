@@ -6,8 +6,9 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 ## Unreleased
 
 - Make more moves of a sheet whose name LibreOffice confuses with another sheet's, such as `fi`
-  beside `ﬁ`. Where the move can be made in as many steps without using the confused name, for
-  example by moving the sheet beside it, the list now makes it that way instead of refusing it
+  beside `ﬁ`. When the usual way of making a move needs the confused name, the list tries one
+  other, equally short way, for example moving the sheet beside it, and refuses the move only if
+  that way needs a confused name too
   ([#125](https://github.com/viell-dev/slop-calc-sheet-manager/issues/125)).
 - Plan moves that reorder many sheets faster: planning the reversal of 10,000 sheets takes under
   a second instead of three to seven on a loaded laptop, with the same moves. The planning

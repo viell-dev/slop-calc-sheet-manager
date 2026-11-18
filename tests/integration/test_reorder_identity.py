@@ -180,9 +180,14 @@ class _LookupAfterPreflight:
 class _Lookup:
     def __init__(self, sheets):
         self.real, self.honest = sheets, False
+        self.moves: list[tuple[str, int]] = []  # Every move forwarded to Calc.
 
     def __getattr__(self, name) -> Any:
         return getattr(self.real, name)
+
+    def moveByName(self, name, index):
+        self.moves.append((name, index))
+        self.real.moveByName(name, index)
 
     def getByName(self, name):
         if self.honest:
@@ -277,6 +282,8 @@ def check_confusable_names(context, desktop, first, second):
         assert preflight(context, lying, observed, plan).allowed
         guarded = apply_order(context, lying, observed, plan)
         assert guarded.status == "failed-restored" and "lookup" in guarded.detail, guarded
+        # The order alone cannot show this: the name finds the first sheet, already at index 0.
+        assert lying.sheets.moves == [], f"The check forwarded {lying.sheets.moves}"
         assert tuple(sheets.ElementNames) == apart and not undo.AllUndoActionTitles
         assert identities() == ["first", "last", "second"]
         sheets.moveByName("Last", 2)
