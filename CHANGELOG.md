@@ -8,6 +8,9 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 - End a test session that stops making progress after 15 minutes, keeping the test client's
   and LibreOffice's stacks, instead of waiting for the CI job's time limit without evidence
   ([#45](https://github.com/viell-dev/slop-calc-sheet-manager/issues/45)).
+- Check the documentation's availability markers at every marked version, including when
+  a newer test build appears beside an older stable release
+  ([#196](https://github.com/viell-dev/slop-calc-sheet-manager/issues/196)).
 - Plan moves that reorder many sheets faster: planning the reversal of 10,000 sheets takes under
   a second instead of three to seven on a loaded laptop, with the same moves. The planning
   budget test now measures CPU time and reports it with the elapsed time
@@ -60,6 +63,9 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   summary and security policy with published behaviour
   ([#197](https://github.com/viell-dev/slop-calc-sheet-manager/issues/197),
   [#199](https://github.com/viell-dev/slop-calc-sheet-manager/issues/199)).
+- Audit former macOS test process groups for a bounded time after each command exits, give
+  timed-out groups a bounded TERM drain before KILL, and detach the disk image when a failed
+  attach left it mounted ([#163](https://github.com/viell-dev/slop-calc-sheet-manager/issues/163)).
 
 ## 0.0.10 - 2026-11-03
 

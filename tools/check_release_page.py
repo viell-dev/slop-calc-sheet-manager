@@ -1,7 +1,12 @@
-"""Build with synthetic history; verify downloads and publication-aware instruction markers."""
+"""Verify rendered downloads, release baselines and markers against synthetic history.
+
+Use representative histories for the whole guide and one small VitePress build for all marker
+thresholds. Keep prose contracts for instructions whose marker placement must also be checked.
+"""
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -10,7 +15,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 
 from build import ROOT
-from release_data import package_metadata, version_parts
+from release_data import VERSION, package_metadata, version_parts
 
 RELEASES = "https://github.com/viell-dev/slop-calc-sheet-manager/releases"
 SOURCE = package_metadata((ROOT / "extension" / "description.xml").read_bytes())[0]
@@ -65,9 +70,8 @@ class Paragraphs(HTMLParser):
 
 # Guide instructions for behaviour first published in each version. A rendered marker must show
 # exactly when the published baseline (`baseline`) is older than that version. A paragraph may
-# also carry a marker for a later addition: any other marker shown must be unversioned
-# ("pending") or for a version after the instruction's own and no later than the source's, and
-# "Unreleased" must appear exactly when some marker is shown.
+# also carry a marker for another addition. Each visible marker must be pending or newer than
+# the baseline, and "Unreleased" must appear exactly when some marker is shown.
 FIRST_PUBLISHED = {
     "0.0.4": (
         "buttons above the list",
@@ -83,6 +87,13 @@ FIRST_PUBLISHED = {
     "0.0.6": ("When the menu targets two or more sheets",),
     "0.0.8": ("Undo and Redo of a move the list made",),
     "0.0.9": ("The list itself is named after the sheet Calc shows",),
+    "0.0.10": (
+        "This adjustment keeps the native selection's tint",
+        "Their labels stay visible on Linux",
+        "Hide Sheet returns to the sheet you were viewing",
+        "opens this guide in your browser",
+        "opens a short bundled English help page",
+    ),
 }
 
 
@@ -93,11 +104,15 @@ def baseline(builds: Sequence[Mapping[str, object]]) -> str | None:
     return max(pool, key=version_parts) if pool else None
 
 
+def unavailable(version: str, described: str | None) -> bool:
+    return described is None or version_parts(version) > version_parts(described)
+
+
 def check_instructions(html: str, *, described: str | None) -> str:
     paragraphs = Paragraphs()
     paragraphs.feed(html)
     for version, instructions in FIRST_PUBLISHED.items():
-        marked = described is None or version_parts(version) > version_parts(described)
+        marked = unavailable(version, described)
         for instruction in instructions:
             matches = [
                 (text, markers) for text, markers in paragraphs.paragraphs if instruction in text
@@ -110,7 +125,10 @@ def check_instructions(html: str, *, described: str | None) -> str:
                 and ("Unreleased" in text) == bool(markers)
                 and all(
                     other == "pending"
-                    or version_parts(version) < version_parts(other) <= version_parts(SOURCE)
+                    or (
+                        unavailable(other, described)
+                        and version_parts(other) <= version_parts(SOURCE)
+                    )
                     for other in others
                 )
             ), (
@@ -137,12 +155,91 @@ def links(version: str) -> list[str]:
     return [f"{RELEASES}/tag/{version}", package, package + ".sha256"]
 
 
+def build_site(node: str, source: Path, output: Path, env: Mapping[str, str]) -> None:
+    subprocess.run(
+        [node, "node_modules/vitepress/bin/vitepress.js", "build", source, "--outDir", output],
+        cwd=ROOT,
+        env={**os.environ, **env},
+        check=True,
+    )
+
+
+def check_marker_boundaries(node: str, output: Path) -> None:
+    """Render the real component across all version thresholds in one small VitePress build."""
+    versions = {SOURCE}
+    for path in (ROOT / "docs").rglob("*.md"):
+        versions.update(
+            re.findall(rf'<Unreleased\s+since="({VERSION})"\s*/>', path.read_text("utf-8"))
+        )
+    ordered = sorted(versions, key=version_parts)
+    newest = ordered[-1]
+    histories: list[tuple[str | None, str | None]] = [(None, None), (None, "0.0.0")]
+    histories.extend((None, version) for version in ordered)
+    histories.extend((version, newest) for version in ordered)
+    examples = "<Unreleased /> Pending.\n\n" + "\n\n".join(
+        f'<Unreleased since="{version}" /> First available in {version}.' for version in ordered
+    )
+
+    # Keep the fixture under ROOT so VitePress resolves the same installed dependencies.
+    with tempfile.TemporaryDirectory(prefix=".release-markers-", dir=ROOT) as directory:
+        source = Path(directory)
+        theme = source / ".vitepress/theme"
+        theme.mkdir(parents=True)
+        shutil.copyfile(ROOT / "docs/.vitepress/theme/Unreleased.vue", theme / "Unreleased.vue")
+        (theme / "index.ts").write_text(
+            'import Layout from "./Layout.vue";\n'
+            'import Unreleased from "./Unreleased.vue";\n'
+            "export default { Layout, enhanceApp({ app }) {\n"
+            '  app.component("Unreleased", Unreleased);\n'
+            "} };\n",
+            encoding="utf-8",
+        )
+        (theme / "Layout.vue").write_text(
+            """<script setup>
+import { computed, provide } from "vue";
+import { Content, dataSymbol, useData } from "vitepress";
+
+const data = useData();
+const theme = computed(() => {
+  const { stable, prerelease } = data.frontmatter.value;
+  return { release: {
+    stable: stable && { version: stable },
+    prerelease: prerelease && { version: prerelease },
+  } };
+});
+provide(dataSymbol, { ...data, theme });
+</script>
+
+<template><Content /></template>
+""",
+            encoding="utf-8",
+        )
+        for index, (stable, prerelease) in enumerate(histories):
+            frontmatter = json.dumps({"stable": stable, "prerelease": prerelease})
+            (source / f"case-{index}.md").write_text(
+                f"---\n{frontmatter}\n---\n\n{examples}\n", encoding="utf-8"
+            )
+        build_site(node, source, output, {})
+
+    for index, (stable, prerelease) in enumerate(histories):
+        described = stable or prerelease
+        expected = ["pending", *(version for version in ordered if unavailable(version, described))]
+        html = (output / f"case-{index}.html").read_text("utf-8")
+        observed = re.findall(r'data-since="([^"]+)"', html)
+        assert observed == expected, (
+            "Component markers disagree with published history",
+            {"stable": stable, "prerelease": prerelease},
+            {"expected": expected, "observed": observed},
+        )
+
+
 def main() -> None:
     node = shutil.which("node")
     if node is None:
         raise SystemExit("Select the Node.js version in .nvmrc before checking the docs")
     with tempfile.TemporaryDirectory(prefix="sheet-manager-release-page-") as scratch:
         directory = Path(scratch)
+        check_marker_boundaries(node, directory / "markers")
         history = directory / "releases.json"
         fixture = [
             {"version": number, "prerelease": candidate, "minimum": minimum, "published": date}
@@ -158,120 +255,54 @@ def main() -> None:
             "minimum": "26.2.1",
             "published": "2026-10-25T00:00:00Z",
         }
-        next_build = {**candidate, "version": "0.0.4", "published": "2026-10-26T00:00:00Z"}
-        alpha = {**candidate, "version": "0.0.5", "published": "2026-10-28T00:00:00Z"}
-        next_alpha = {**candidate, "version": "0.0.6", "published": "2026-10-29T00:00:00Z"}
-        beta = {**candidate, "version": "0.0.7", "published": "2026-10-31T00:00:00Z"}
-        second_beta = {**candidate, "version": "0.0.8", "published": "2026-10-31T12:00:00Z"}
-        third_beta = {**candidate, "version": "0.0.9", "published": "2026-10-31T18:00:00Z"}
-        first_stable = {**next_build, "version": "0.1.0", "prerelease": False}
+        current = {**candidate, "version": SOURCE, "published": "2026-11-03T00:00:00Z"}
+        older_stable = {**candidate, "prerelease": False}
+        current_stable = {**current, "prerelease": False}
         for name, builds, notice in (
             ("empty", [], "Sheet Manager has no release yet."),
             # Merged preparation, a failed publication and an abandoned draft all have the same
             # published history. The newer source must not silently become released instructions.
             ("preparing", [candidate], "0.0.3, the newest test build"),
             (
-                "candidate-published",
-                [candidate, next_build],
-                "0.0.4, the newest test build",
-            ),
-            (
-                "alpha-published",
-                [candidate, next_build, alpha],
-                "0.0.5, the newest test build",
-            ),
-            (
-                "next-alpha-published",
-                [candidate, next_build, alpha, next_alpha],
-                "0.0.6, the newest test build",
-            ),
-            # A beta is a prerelease like any other to the history and the page.
-            (
-                "beta-published",
-                [candidate, next_build, alpha, next_alpha, beta],
-                "0.0.7, the newest test build",
-            ),
-            (
-                "second-beta-published",
-                [candidate, next_build, alpha, next_alpha, beta, second_beta],
-                "0.0.8, the newest test build",
-            ),
-            (
-                "third-beta-published",
-                [candidate, next_build, alpha, next_alpha, beta, second_beta, third_beta],
-                "0.0.9, the newest test build",
+                "current-test-build",
+                [candidate, current],
+                f"{SOURCE}, the newest test build",
             ),
             (
                 "stable-with-candidate",
-                [{**candidate, "prerelease": False}, next_build],
+                [older_stable, current],
                 "Sheet Manager 0.0.3, the latest release",
             ),
             (
-                "stable-published",
-                [candidate, {**next_build, "prerelease": False}],
-                "Sheet Manager 0.0.4, the latest release",
-            ),
-            (
-                "first-stable-candidate",
-                [{**next_build, "prerelease": False}, {**first_stable, "prerelease": True}],
-                "Sheet Manager 0.0.4, the latest release",
-            ),
-            (
-                "first-stable-published",
-                [candidate, next_build, first_stable],
-                "Sheet Manager 0.1.0, the latest release",
+                "current-stable",
+                [candidate, current_stable],
+                f"Sheet Manager {SOURCE}, the latest release",
             ),
             ("published", fixture, "Sheet Manager 0.1.90, the latest release"),
         ):
             history.write_text(json.dumps(builds), encoding="utf-8")
             output = directory / name
-            subprocess.run(
-                [
-                    node,
-                    "node_modules/vitepress/bin/vitepress.js",
-                    "build",
-                    "docs",
-                    "--outDir",
-                    output,
-                ],
-                cwd=ROOT,
-                env={**os.environ, "SHEET_MANAGER_RELEASES": str(history)},
-                check=True,
-            )
+            build_site(node, ROOT / "docs", output, {"SHEET_MANAGER_RELEASES": str(history)})
             html = (output / "guide/releases.html").read_text(encoding="utf-8")
             instructions = (output / "guide/use.html").read_text(encoding="utf-8")
             plain = check_instructions(instructions, described=baseline(builds))
             assert notice in plain, (name, notice)
             tables = Tables()
             tables.feed(html)
-            if name == "empty":
-                assert "No stable releases have been published yet." in html
-                assert "No test builds have been published yet." in html
-                assert not any(tables.links)
-            elif name == "published":
-                expected = [links("0.1.90"), links("0.1.91") + links("0.0.2")]
-                assert tables.links[:2] == expected, tables.links[:2]
-                assert "No test builds have been published yet." not in html
-            elif name == "alpha-published":
-                assert "No stable releases have been published yet." in html
-                assert links("0.0.5") + links("0.0.4") + links("0.0.3") in tables.links
-            elif name == "next-alpha-published":
-                assert links("0.0.6") + links("0.0.5") + links("0.0.4") + links("0.0.3") in (
-                    tables.links
+            expected: list[list[str]] = []
+            for prerelease, label in ((False, "stable releases"), (True, "test builds")):
+                versions = sorted(
+                    (str(item["version"]) for item in builds if item["prerelease"] is prerelease),
+                    key=version_parts,
+                    reverse=True,
                 )
-            elif name == "beta-published":
-                assert "No stable releases have been published yet." in html
-                assert (
-                    links("0.0.7")
-                    + links("0.0.6")
-                    + links("0.0.5")
-                    + links("0.0.4")
-                    + links("0.0.3")
-                    in tables.links
-                )
-            elif name == "first-stable-published":
-                assert tables.links[:2] == [links("0.1.0"), links("0.0.4") + links("0.0.3")]
-        print("Release pages: downloads, preparation, publication and no-history markers passed")
+                assert (f"No {label} have been published yet." in html) == (not versions), name
+                if versions:
+                    expected.append([link for version in versions for link in links(version)])
+            # The version-number table contains no links.
+            linked_tables = [table for table in tables.links if table]
+            assert linked_tables == expected, (name, linked_tables, expected)
+        print("Release pages: downloads, baselines, prose contracts and marker boundaries passed")
 
 
 if __name__ == "__main__":
