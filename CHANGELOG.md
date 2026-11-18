@@ -13,12 +13,26 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   such a call only while a panel closes
   ([#257](https://github.com/viell-dev/slop-calc-sheet-manager/issues/257),
   [#265](https://github.com/viell-dev/slop-calc-sheet-manager/issues/265)).
+- A drag begun on sheet list rows that are out of date is still refused, but the list now
+  refreshes after LibreOffice's drag-gesture callback returns rather than inside it, so that the
+  refresh's reading of Calc's selected tabs no longer runs in that callback
+  ([#264](https://github.com/viell-dev/slop-calc-sheet-manager/issues/264)).
+- Make the integration check for assistive selection verify that the list takes the pick, using
+  Move to Top with stable rows and after a rebuilding refresh
+  ([#251](https://github.com/viell-dev/slop-calc-sheet-manager/issues/251)).
 - Known issues now says the sheet list keeps rebuilding its rows after a sheet switch or tab
   colour change, and why
   ([#22](https://github.com/viell-dev/slop-calc-sheet-manager/issues/22)).
 - When Replace All finds matching text but changes no proposed names, Rename Sheets explains
   this in the status and through the button's accessible name
   ([#259](https://github.com/viell-dev/slop-calc-sheet-manager/issues/259)).
+- End each LibreOffice test session only after the office has run the UNO releases the test
+  process sent before the session's end. An office asked to terminate while it still ran them,
+  as after the 1,000-sheet check, could crash at exit in a LibreOffice bridge thread, with or
+  without the extension. Releases sent during that wait are not covered, such as from a document
+  that a failed check left open. The wait, the terminate request and the office's exit now share
+  one 30-second limit. This changes the test runner, not the extension
+  ([#242](https://github.com/viell-dev/slop-calc-sheet-manager/issues/242)).
 - Make name syntax and conflicts in other rows available from New name in Rename Sheets.
   Replace All and Rename also expose refusals through their accessible names, including an empty
   Find field or a replacement with no matches

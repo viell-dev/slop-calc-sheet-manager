@@ -7,15 +7,21 @@ how the list pauses observation and follows Calc.
 
 import contextlib
 import time
+import uuid
 from collections.abc import Mapping
+from dataclasses import dataclass, replace
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import Mock
 
 import pytest
 
+from sheet_manager.refresh_schedule import RefreshSchedule
+from sheet_manager.reorder import Sheet
+from sheet_manager.selection import Ref, Selection, structure_kept
+from sheet_manager.sheet_list import SheetRow
 from sheet_manager.structure import VIEW_RESTORE_LIMIT, StructureEvents
-from tests.unit.source_methods import method, source_class
+from tests.unit.source_methods import function, method, source_class
 
 SOURCE = "src/sheet_manager/uno_list.py"
 TABS = "src/sheet_manager/uno_tabs.py"
@@ -617,3 +623,176 @@ def test_a_switch_during_an_own_replay_is_followed_only_if_the_replay_failed(out
     assert owner._follow_input == (None if outcome == "proven" else 5)
     owner._refreshes.activated.assert_called_once_with(False)
     owner._run_refresh.assert_not_called()
+
+
+class Handle:
+    """A retained sheet handle: it reports the sheet's current name, as Calc's does."""
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+    def getName(self) -> str:
+        return self.name
+
+    def getIsScenario(self) -> bool:
+        return False
+
+
+def drag_list() -> tuple[Any, Any, Any, list[Any]]:
+    """A list showing Alfa, Bravo and Charlie with Alfa picked, wired for the real drag start.
+
+    `start_drag`, `refresh`, `_refresh`, `_current_picks`, the identity checks, the refresh
+    schedule, the picks and `uno_reorder.is_current` are the shipped code; Calc's sheets, the tree
+    and the drag source are fakes. Work the list posts waits in the returned queue, so a test
+    can tell what ran inside the gesture listener from what ran when the posted work arrived.
+    """
+    owner, tabs, live = observer()
+    queued: list[Any] = []
+    live.handles = [Handle(name) for name in live.names]
+
+    def snapshot(document: Any) -> Any:
+        handles = tuple(live.handles)
+        return SimpleNamespace(
+            sheets=tuple(Sheet(handle.getName()) for handle in handles),
+            document_id="synthetic",
+            monitor=owner._monitor,
+            generation=owner._monitor.generation,
+            handles=handles,
+        )
+
+    def read_rows(controller: Any, picture: Any) -> list[SheetRow]:
+        return [SheetRow(sheet.name, active=sheet.name == live.active) for sheet in picture.sheets]
+
+    def rebuild(rows: list[SheetRow], observed: Any, generation: int) -> None:
+        owner.rows, owner._nodes = rows, [object() for _ in rows]
+        owner._prove(observed, generation)
+
+    def bind(name: str, namespace: dict[str, Any]) -> None:
+        loaded = method(SOURCE, "SheetList", name, namespace)
+
+        def bound(*arguments: object, **keywords: object) -> Any:
+            return loaded(owner, *arguments, **keywords)
+
+        setattr(owner, name, bound)
+
+    def post(work: Any, where: str) -> None:
+        queued.append(work)
+
+    def transferable(token: str) -> Any:
+        return SimpleNamespace(token=token)
+
+    owner.rows = [SheetRow(name, active=name == live.active) for name in live.names]
+    owner._nodes = [object() for _ in owner.rows]
+    owner.names = lambda: [row.name for row in owner.rows]
+    owner._monitor.check = lambda: owner._monitor.generation
+    owner._refreshes = RefreshSchedule(Mock(), Mock())
+    owner._main = SimpleNamespace(post=post)
+    owner._generation, owner._user_picks = 0, False
+    owner._handles = dict(zip(live.names, live.handles, strict=True))
+    owner._selection = Selection(function(SOURCE, "_current", {"Ref": Ref}))
+    owner._selection.take(["Alfa"], owner._handles, owner.names())
+    owner._shown = ("Alfa",)
+    owner._apply_selection, owner._rebuild = Mock(), Mock(side_effect=rebuild)
+    owner._show_native, owner._name_viewed = Mock(), Mock()
+    owner._busy, owner._drag = False, None
+    owner._drag_source = SimpleNamespace(startDrag=Mock())
+    owner._listeners = {"source": object()}
+    owner.document.RuntimeUID = "synthetic"
+    owner.document.isReadonly = owner.document.isProtected = lambda: False
+    current = function(
+        "src/sheet_manager/uno_reorder.py",
+        "is_current",
+        {"Any": Any, "Snapshot": Any, "snapshot": snapshot},
+    )
+    drag_type = source_class(SOURCE, "_Drag", {"dataclass": dataclass, "Snapshot": Any})
+    bind("post", {})
+    bind("refresh", {"Mapping": Mapping})
+    bind("_refresh", {"snapshot": snapshot, "read_rows": read_rows, "Mapping": Mapping})
+    bind("_prove", {"Snapshot": Any})
+    name_or_none = function(SOURCE, "_name_or_none", {"Any": Any})
+    bind(
+        "_identities_kept",
+        {
+            "Snapshot": Any,
+            "Mapping": Mapping,
+            "_name_or_none": name_or_none,
+            "structure_kept": structure_kept,
+        },
+    )
+    bind("_drop_all_picks", {"replace": replace})
+    bind("_current_picks", {"Ref": Ref})
+    bind(
+        "start_drag",
+        {
+            "is_current": current,
+            "_Transferable": transferable,
+            "_Drag": drag_type,
+            "uuid": uuid,
+            "ACTION_MOVE": 2,
+        },
+    )
+    owner._observed = snapshot(owner.document)
+    return owner, tabs, live, queued
+
+
+@pytest.mark.parametrize("stale", ["unpicked_rename", "insertion"])
+def test_a_drag_on_stale_rows_is_refused_and_samples_tabs_only_in_its_posted_refresh(
+    stale: str,
+) -> None:
+    """#264: the gesture listener never runs the selected-tabs getter.
+
+    A rename of an unpicked sheet keeps the structure generation, so only `is_current` sees
+    that the rows are stale; an insertion moves the generation, which `_current_picks` sees.
+    Either way the refresh, and the new tab baseline it samples, wait for the posted work.
+    """
+    owner, tabs, live, queued = drag_list()
+    if stale == "unpicked_rename":
+        live.handles[2].name = "Delta"
+    else:
+        live.handles.append(Handle("Delta"))
+        owner._monitor.generation = 1
+    live.names = tuple(handle.name for handle in live.handles)
+    owner.start_drag(object())
+    live.invoke.assert_not_called()
+    owner._theme.apply.assert_not_called()  # The sample's palette step did not run either.
+    owner._drag_source.startDrag.assert_not_called()
+    assert owner._drag is None
+    assert owner.names() == ["Alfa", "Bravo", "Charlie"]  # Nothing refreshed yet.
+    assert len(queued) == 1
+    queued.pop()()
+    live.invoke.assert_called_once()
+    assert owner.names() == list(live.names)
+    assert tabs._state == ("Alfa", frozenset({"Alfa"}))  # A new baseline, not new picks.
+    owner._select.assert_not_called()
+    assert owner._selection.names() == (["Alfa"] if stale == "unpicked_rename" else [])
+    assert not queued
+
+
+def test_a_stale_drags_posted_refresh_does_nothing_once_the_list_is_disposed() -> None:
+    owner, tabs, live, queued = drag_list()
+    live.handles[2].name = "Delta"
+    live.names = ("Alfa", "Bravo", "Delta")
+    owner.start_drag(object())
+    owner._disposed = True
+    tabs.dispose()
+    queued.pop()()
+    live.invoke.assert_not_called()
+    assert owner.names() == ["Alfa", "Bravo", "Charlie"]
+
+
+def test_a_drag_on_current_rows_starts_at_once_without_posting_or_sampling_tabs() -> None:
+    owner, _, live, queued = drag_list()
+    event = object()
+    observed = owner._observed
+    owner.start_drag(event)
+    owner._drag_source.startDrag.assert_called_once()
+    trigger, action, _, _, transferable, listener = owner._drag_source.startDrag.call_args.args
+    assert (trigger, action, listener) == (event, 2, owner._listeners["source"])
+    assert owner._drag.transferable is transferable
+    assert (owner._drag.names, owner._drag.observed, owner._drag.generation) == (
+        ["Alfa"],
+        observed,
+        0,
+    )
+    assert not queued
+    live.invoke.assert_not_called()
