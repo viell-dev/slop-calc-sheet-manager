@@ -14,9 +14,12 @@ failed, cancelled or skipped work. Every checkout uses the exact event revision.
 The Linux job captures each phase's combined console output in `test-results/ci/`, preserving
 the runner's failure status through `tee`. It uploads `linux-current-headless` before input
 starts, even when headless checks fail; input requires successful headless checks. The final
-`linux-current` artifact also includes input output when available. The job retains its
-45-minute limit. A hard timeout can prevent the final upload, so inspect the earlier artifact
-as well as the job log and check annotations; missing evidence is not a pass.
+`linux-current` artifact also includes input output when available. The job's 60-minute limit
+leaves the [stall watch](./native-testing.md#failures-and-shutdown) 18 minutes after the end of
+its slowest measured healthy run to record a stall, save its stacks and upload them
+([#244](https://github.com/viell-dev/slop-calc-sheet-manager/issues/244)). A hard timeout can
+still prevent the final upload, so inspect the earlier artifact as well as the job log and
+check annotations; missing evidence is not a pass.
 
 ## Release sweep
 
@@ -25,7 +28,9 @@ It retains all three pinned Linux builds, headless and painted integration, GTK3
 unsupported-version refusal, Windows headless integration, the complete Windows desktop suite,
 and Intel macOS headless packaged integration and lifecycle.
 Its **Full release sweep** aggregate requires every lane. Any test or shutdown failure fails the
-job; artifacts are required, and no error message is an allowed crash.
+job; artifacts are required, and no error message is an allowed crash. Each job that runs an
+office leaves at least the same 18 minutes after its slowest measured healthy run; the macOS
+helper ends its runner at a deadline instead, as [below](#macos-packaged-integration) says.
 
 The sweep's Linux gtk3 jobs upload `linux-gtk3-<lane>-painted` before starting real input.
 Input requires successful painted integration and evidence upload. Both phases retain their
@@ -110,6 +115,14 @@ own session or process group is outside this audit. A command timeout still fail
 `*.timeout.json` receipt records a three-second TERM drain and any escalation to KILL, and the
 leader is reaped only after its group has stopped. A failed attach that left the image mounted
 is still detached.
+
+The integration runner has 30 minutes, the time measured for the complete benchmark workload on
+a slower runner ([#162](https://github.com/viell-dev/slop-calc-sheet-manager/issues/162)). At
+that deadline its stall watch records a stall, saves the client's stacks and stops the office,
+as for a session without progress, within the integration command's 33-minute limit. A stall
+late in the run therefore keeps its stacks instead of meeting the command's limit first
+([#244](https://github.com/viell-dev/slop-calc-sheet-manager/issues/244)). The job's 60 minutes
+cover every command's limit, the download and the upload.
 
 Dispatch focused checks with `gh workflow run macos.yml --ref <branch>`, respecting the platform
 [cadence above](#release-sweep). See the [verification map](../verification.md#where-checks-run)

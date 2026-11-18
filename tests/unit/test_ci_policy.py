@@ -1,4 +1,8 @@
-"""Missing/skipped evidence cannot become a green aggregate or a publication gate."""
+"""Missing/skipped evidence cannot become a green aggregate or a publication gate.
+
+Job limits also leave a late stall time to keep its stacks, and the release gate's wait outlasts
+them.
+"""
 
 from inspect import signature
 from typing import Any
@@ -6,6 +10,7 @@ from typing import Any
 import pytest
 import yaml
 
+from tests.integration import office_process
 from tools import github_release
 from tools.build import ROOT
 from tools.ci_policy import (
@@ -99,9 +104,7 @@ def test_linux_retains_early_failure_before_starting_input(
     workflow = yaml.load(
         (ROOT / ".github/workflows" / workflow_name).read_text("utf-8"), Loader=yaml.BaseLoader
     )
-    job = workflow["jobs"][job_name]
-    assert job["timeout-minutes"] == "45", "Diagnostic handling must not widen the job budget"
-    steps = job["steps"]
+    steps = workflow["jobs"][job_name]["steps"]
     integration = next(i for i, step in enumerate(steps) if first_phase in step.get("run", ""))
     upload = steps[integration + 1]
     assert upload["uses"].startswith("actions/upload-artifact@")
@@ -140,13 +143,72 @@ def test_macos_is_required_even_when_every_other_sweep_dependency_passes(
         require_dependencies(results, SWEEP)
 
 
-def test_release_wait_and_outer_jobs_outlast_the_native_jobs() -> None:
-    sweep = yaml.load(
-        (ROOT / ".github/workflows/release-sweep.yml").read_text("utf-8"), Loader=yaml.BaseLoader
+def workflow_jobs(filename: str) -> dict[str, Any]:
+    text = (ROOT / ".github/workflows" / filename).read_text("utf-8")
+    return yaml.load(text, Loader=yaml.BaseLoader)["jobs"]
+
+
+# The slowest healthy end of each job's office work, in minutes from the job's start, measured
+# from successful runs up to 2026-11-18 (#244). Re-measure when a lane's duration changes. The
+# macOS jobs are checked in test_macos_integration.py, where their runner ends at its own deadline.
+HEALTHY_MINUTES = {
+    ("ci.yml", "linux"): 38.4,
+    ("release-sweep.yml", "linux"): 11.8,
+    # The sweep's own runs ended by 37.7; routine CI runs the same real-input phase.
+    ("release-sweep.yml", "linux-gtk3"): 38.4,
+    ("release-sweep.yml", "refusal"): 2.1,
+    ("release-sweep.yml", "windows"): 16.7,
+    ("release-sweep.yml", "desktop"): 8.4,
+    ("windows-desktop.yml", "desktop"): 8.4,
+}
+# Jobs that run the office without a measured length here, and why that is enough.
+OWN_DEADLINES = {
+    ("release-sweep.yml", "macos"): "the helper's runner deadline",
+    ("macos.yml", "macos"): "the helper's runner deadline",
+    ("gtk3-soak.yml", "soak"): "each session's own 180-second deadline (#240)",
+}
+OFFICE_RUNNERS = (
+    "tools/linux_integration.py",
+    "tools/macos_integration.py",
+    "tests/integration/run.py",
+    "tests/ui/run_windows_ui.py",
+)
+
+
+@pytest.mark.parametrize(("filename", "job"), sorted(HEALTHY_MINUTES))
+def test_a_stall_at_the_end_of_a_healthy_run_keeps_its_stacks(filename: str, job: str) -> None:
+    limit = int(workflow_jobs(filename)[job]["timeout-minutes"]) * 60
+    # The watch looks at least every 5 seconds, then has its capture and stop budgets (#45).
+    watch = (
+        office_process.STALL_SECONDS
+        + 5
+        + office_process.CAPTURE_SECONDS
+        + office_process.STOP_SECONDS
     )
+    # Then the runner's and the container's exit and the upload, and room for a runner slower
+    # than any measured.
+    needed = HEALTHY_MINUTES[filename, job] * 60 + watch + 60 + 3 * 60
+    assert limit >= needed, f"A stall late in {job} would lose its stacks at the job's limit"
+
+
+def test_every_job_that_runs_an_office_leaves_room_for_a_stall_capture() -> None:
+    # A job that calls a reusable workflow has no steps; that workflow's own jobs are scanned.
+    office_jobs = {
+        (path.name, name)
+        for path in (ROOT / ".github/workflows").glob("*.yml")
+        for name, job in workflow_jobs(path.name).items()
+        for step in job.get("steps", [])
+        if any(runner in step.get("run", "") for runner in OFFICE_RUNNERS)
+    }
+    assert office_jobs == set(HEALTHY_MINUTES) | set(OWN_DEADLINES)
+
+
+def test_release_wait_and_outer_jobs_outlast_the_native_jobs() -> None:
+    # The gate waits for routine CI and then the sweep, within one deadline (#162).
     longest = max(
         int(job["timeout-minutes"]) * 60
-        for job in sweep["jobs"].values()
+        for filename in ("ci.yml", "release-sweep.yml")
+        for job in workflow_jobs(filename).values()
         if "timeout-minutes" in job
     )
     wait = float(signature(github_release.require_ci).parameters["timeout"].default)
