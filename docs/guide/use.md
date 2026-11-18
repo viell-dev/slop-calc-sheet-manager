@@ -176,15 +176,24 @@ A row that cannot be renamed shows ⚠ and the reason, and Rename stays unavaila
 is correct. The status line below the list explains the selected row, or counts the changes. A new
 name is refused when it:
 
-- is empty, contains `:` `\` `/` `?` `*` `[` or `]`, or begins or ends with an apostrophe;
+- is empty, contains `:` `\` `/` `?` `*` `[` `]` or a null character, or begins or ends with an
+  apostrophe;
 - is another sheet's name, now or after the renames;
 - is too close to another sheet's name: Calc treats names that differ only in letter case as the
   same name, and the dialog also refuses a few pairs that LibreOffice can confuse, such as `ß` and
   `ss`, or the dotted and dotless i (`I`, `İ`, `i`, `ı`).
 
-With a screen reader, move to **Sheets** to hear the reason with the proposal. <Unreleased />
-In tests with Orca on Linux (gtk3) and NVDA on Windows, each reader announced a name conflict
-while focus stayed in **New name**. See [known issues](./known-issues.md#known-issues) for limits.
+With a screen reader, move to **Sheets** with Alt+S and use the arrow keys to hear each refused
+proposal and its reason. <Unreleased /> **New name** reports the selected proposal's refusal
+while you edit. If that proposal is valid and another is refused, the field gives the first
+affected sheet and its reason. Clearing **New name** leaves the empty-name reason on its preview
+row, so you can type the new name without an extra warning.
+
+<Unreleased /> When **Replace All** leaves refused proposals, the button gives the first affected
+sheet and reason. If the sheets changed since the dialog opened, **Rename** gives the refusal and
+asks you to cancel and try again. You can return focus to the button with Tab or Shift+Tab to hear
+its result again before editing or selecting another row.
+See [known issues](./known-issues.md#known-issues) for tested screen-reader behavior.
 
 Names are used exactly as typed. Spaces at either end are kept, and the list shows such names in
 quotation marks. Sheets can swap names, or pass them around in a cycle; the dialog renames them

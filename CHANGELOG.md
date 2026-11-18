@@ -5,6 +5,9 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Make name syntax and conflicts in other rows available from New name in Rename Sheets.
+  Replace All and Rename also expose refusals from those actions through their accessible names
+  ([#254](https://github.com/viell-dev/slop-calc-sheet-manager/issues/254)).
 - Expose the selected proposal's name conflict on the focused New name field in Rename Sheets,
   so a screen reader can announce the refusal while the user stays in the edit
   ([#247](https://github.com/viell-dev/slop-calc-sheet-manager/issues/247)).

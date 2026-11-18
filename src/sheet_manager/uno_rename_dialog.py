@@ -20,11 +20,12 @@ document is changed only after the dialog has closed, by the caller.
   at a time was slow through UNO, measured with 1,000 items (#102).
 - Rename keeps its real enablement while using the shared Linux disabled paint fallback
   (`uno_calc.enable_button`, #166). Its native peer exists before the first `_update`/show.
-- The visible status label exposes changes on an unfocused accessible object. For a name
-  conflict, also put the reason in the New name edit peer's accessible name (#247). This
-  raises NAME_CHANGED on the edit itself without moving focus. Keep its original label and
-  restore it when the conflict clears. Typing through an empty or incomplete name does not
-  announce an extra error through this route.
+- The status label is an unfocused accessible object. Put the relevant refusal in the native
+  edit or action button peer's accessible name (#247, #254), so NAME_CHANGED reaches that
+  control without moving focus. Keep its ordinary name for identification and restore it when
+  the message clears. A selected row's empty proposal stays in the status and preview only,
+  since clearing the field is part of ordinary editing. When another row blocks Rename,
+  identify that sheet with the first reason and leave the full details on the preview rows.
 """
 
 from collections.abc import Callable
@@ -34,7 +35,7 @@ import unohelper
 from com.sun.star.awt import XActionListener, XItemListener, XTextListener
 
 from sheet_manager.i18n import tr
-from sheet_manager.rename import Batch, Plan, problem, quoted, row_label, summary
+from sheet_manager.rename import Batch, Plan, quoted, row_label, summary
 from sheet_manager.uno_calc import MainThread, enable_button
 
 CANCEL = 2  # com.sun.star.awt.PushButtonType.CANCEL: closes the dialog without a result.
@@ -74,8 +75,8 @@ class RenameDialog:
         self._pending: set[str] = set()
         self._row = 0
         self._labels: list[str] = []
-        self._edit_label: str | None = None
-        self._edit_conflict = ""
+        self._accessible_labels: dict[str, str] = {}
+        self._accessible_reasons: dict[str, str] = {}
         self._result: Plan | None = None
         self._dialog: Any = None
 
@@ -241,7 +242,7 @@ class RenameDialog:
         changed = self._batch.replace_all(find, self._control("replace").getText())
         self._show_row()
         if changed:
-            self._update()
+            self._update(action="replace_all")
         else:
             self._update(tr("No new name contains {text}.").format(text=quoted(find)))
 
@@ -258,14 +259,14 @@ class RenameDialog:
             return
         reason = self._check(plan)
         if reason:
-            self._update(reason)
+            self._update(reason, action="rename")
             return
         self._result = plan
         self._dialog.endExecute()
 
     # Showing the state
 
-    def _update(self, note: str = "") -> None:
+    def _update(self, note: str = "", *, action: str = "") -> None:
         found = self._batch.problems()
         labels = [
             row_label(old, new, reason)
@@ -276,21 +277,33 @@ class RenameDialog:
         self._control("status").getModel().Label = status
         valid = bool(self._batch.changes()) and not any(found)
         enable_button(self._control("rename"), valid)
-        reason = found[self._row]
-        # Batch.problems returns message text for both syntax errors and conflicts.
-        conflict = reason if reason and not problem(self._batch.proposals[self._row]) else ""
-        self._show_edit_conflict(conflict)
+        first_refusal = next(
+            (
+                f"{quoted(sheet)}: {reason}"
+                for sheet, reason in zip(self._batch.targets, found, strict=True)
+                if reason
+            ),
+            "",
+        )
+        edit_reason = found[self._row] or first_refusal
+        if not self._batch.proposals[self._row]:
+            edit_reason = ""
+        self._show_accessible_reason("name", edit_reason)
+        self._show_accessible_reason(
+            "replace_all", first_refusal if action == "replace_all" else ""
+        )
+        self._show_accessible_reason("rename", note if action == "rename" else "")
 
-    def _show_edit_conflict(self, reason: str) -> None:
-        if reason == self._edit_conflict:
+    def _show_accessible_reason(self, control: str, reason: str) -> None:
+        if reason == self._accessible_reasons.get(control, ""):
             return
-        peer = self._control("name").getPeer()
-        if self._edit_label is None:
-            self._edit_label = str(peer.getProperty("AccessibleName"))
+        peer = self._control(control).getPeer()
+        if control not in self._accessible_labels:
+            self._accessible_labels[control] = str(peer.getProperty("AccessibleName"))
         # Localizing this composition may need a translatable template (#170).
-        name = " ".join(filter(None, (self._edit_label, reason)))
+        name = " ".join(filter(None, (self._accessible_labels[control], reason)))
         peer.setProperty("AccessibleName", name)
-        self._edit_conflict = reason
+        self._accessible_reasons[control] = reason
 
     def _write_rows(self, labels: list[str]) -> None:
         rows = self._control("rows")
