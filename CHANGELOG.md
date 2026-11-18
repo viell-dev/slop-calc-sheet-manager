@@ -5,6 +5,12 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Add contributor references for LibreOffice packaging, sidebar design and interface checks
+  ([#201](https://github.com/viell-dev/slop-calc-sheet-manager/issues/201)).
+- Keep verified package SHA-256 digests in deployed release history, so a replaced OXT and
+  matching replacement checksum stop feed generation, and publish a release only when GitHub's
+  digests of its uploaded files equal the files the workflow built
+  ([#193](https://github.com/viell-dev/slop-calc-sheet-manager/issues/193)).
 - Keep the move buttons usable when LibreOffice treats the focused document window as
   inactive. They could stay disabled while sheets were picked, until a dialog opened from the
   list; clicking or typing in the list now makes its window active, as switching to it does
@@ -20,10 +26,26 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 - Refresh the Debian 13 integration image digest and the checks image's Python to 3.12.16.
 - Update the development checks image and local Node.js pin together to 24.22.2, including
   the documentation container example.
+- Report unsupported rootless or UID-remapped Docker contexts before building the Linux lab
+  ([#191](https://github.com/viell-dev/slop-calc-sheet-manager/issues/191)).
 - Update development tools to pytest 9.2.0, Ruff 0.17.4, types-PyYAML 6.0.12.20261103 and
   nodeenv 1.12.0. These dependencies do not ship in the extension.
+- Correct contributor guidance in the list, menu and Show module docstrings: a single click
+  picks without switching sheets, Hide alone dispatches synchronously, and Show is one of
+  several changes the list makes itself
+  ([#200](https://github.com/viell-dev/slop-calc-sheet-manager/issues/200)).
 - Bound LibreOffice lab downloads and log their mirror and transfer measurements, so a slow
   mirror fails during setup instead of consuming the native CI testing budget.
+- Cache the pinned LibreOffice test installers by SHA-256 and verify them before use, avoiding
+  repeat downloads from the TDF archive ([#215](https://github.com/viell-dev/slop-calc-sheet-manager/issues/215)).
+- Keep a failed real-input check's record when its screenshot, desktop evidence or input
+  clean-up also fails: the record is written first, and each later step's error is kept beside
+  it ([#190](https://github.com/viell-dev/slop-calc-sheet-manager/issues/190)).
+
+- Put installation and a worked example first in the README, and align the guide's Hide
+  summary and security policy with published behaviour
+  ([#197](https://github.com/viell-dev/slop-calc-sheet-manager/issues/197),
+  [#199](https://github.com/viell-dev/slop-calc-sheet-manager/issues/199)).
 - Make two intermittent test failures classify themselves. A failed pick after Reload keeps
   the click's delivery, the list's selection events and later document modifications. The
   real-input grid click is no longer repeated, and a failed one records whether it arrived late

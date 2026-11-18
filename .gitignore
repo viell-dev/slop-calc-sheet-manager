@@ -10,6 +10,7 @@ __pycache__/
 /build/
 /test-results/
 /_site/
+/.cache/libreoffice-packages/
 
 # User guide
 /node_modules/

@@ -5,6 +5,8 @@
 # Never mount a host display socket or use an existing office profile. The Windows MSI installer,
 # `ci/install-windows.ps1`, is only for disposable CI runners; developer machines use their
 # existing installation.
+# Artifact mounts require direct UID/GID mapping. Refuse rootless and userns-remap daemons
+# before building rather than weakening the container user or the host directory permissions.
 
 import argparse
 import hashlib
@@ -13,7 +15,30 @@ import os
 import subprocess
 from typing import cast
 
-from build import ROOT, build
+if __package__:
+    from .build import ROOT, build
+    from .libreoffice_package import ensure_package, read_pin
+else:
+    from build import ROOT, build
+    from libreoffice_package import ensure_package, read_pin
+
+
+def require_supported_docker() -> None:
+    info = subprocess.run(
+        ["docker", "info", "--format", "{{json .SecurityOptions}}"],
+        check=True,
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    options = cast(list[str] | None, json.loads(info.stdout))
+    for option in options or ():
+        mode = option.split(",", maxsplit=1)[0]
+        if mode in {"name=rootless", "name=userns"}:
+            raise SystemExit(
+                f"Docker reports {mode}. The Linux lab needs direct UID/GID mapping for "
+                "its writable results mount. Select Docker Desktop or a rootful Docker "
+                "context without userns-remap (check `docker context ls`)."
+            )
 
 
 def main() -> None:
@@ -51,8 +76,8 @@ def main() -> None:
             raise SystemExit("Run the integration helper as an unprivileged host user")
     else:
         uid, gid = 1000, 1000
-    pins = cast(dict[str, dict[str, str]], json.loads((ROOT / "ci/libreoffice.json").read_text()))
-    pin = pins[arguments.lane]
+    require_supported_docker()
+    pin = read_pin(arguments.lane)
     fingerprint = hashlib.sha256(
         (ROOT / "ci/Dockerfile").read_bytes()
         + json.dumps(pin, sort_keys=True).encode()
@@ -70,7 +95,17 @@ def main() -> None:
     if not cached:
         if arguments.skip_build:
             print("No image matches this Dockerfile, pin, and UID/GID; rebuilding", flush=True)
-        command = ["docker", "build", "--file", str(ROOT / "ci/Dockerfile"), "--tag", image]
+        archive = ensure_package(arguments.lane, pin)
+        command = [
+            "docker",
+            "build",
+            "--file",
+            str(ROOT / "ci/Dockerfile"),
+            "--tag",
+            image,
+            "--build-context",
+            f"lo-package={archive.parent}",
+        ]
         for key in ("version", "series", "url", "sha256"):
             command.extend(["--build-arg", f"LO_{key.upper()}={pin[key]}"])
         command.extend(["--build-arg", f"TEST_UID={uid}", "--build-arg", f"TEST_GID={gid}"])

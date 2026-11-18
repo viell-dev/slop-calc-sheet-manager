@@ -104,8 +104,8 @@ different zlib versions cannot change the result. Add new shipped modules to the
 
 The OXT also includes one English XHP quick-help page, registered through its manifest as an
 extension help component. LibreOffice compiles it during installation; no HelpLinker SDK or
-generated help databases are shipped. Keep its short guidance consistent with the guide when
-changing selection, movement or recovery. The online guide remains the detailed manual.
+generated help databases are shipped. For reviewing shipped text and the online guide, follow the
+[affected-surface review in AGENTS.md](AGENTS.md#public-surfaces-and-documentation).
 
 ## Tests
 
@@ -188,8 +188,11 @@ python tools/linux_integration.py unsupported
 The helper builds `ci/Dockerfile`, verifies the repository-pinned TDF archive checksum, builds the
 extension, and runs the container unprivileged with networking disabled. Source and the OXT are
 mounted read-only; only `test-results/<lane>/` is writable on the host. On Linux, run as a non-root
-user: the helper maps that user's UID/GID into the container so artifacts remain writable. The
-container has a temporary home directory. It uses Xvfb and Openbox inside the container and
+user against a rootful Docker daemon without `userns-remap`: the helper maps the host user's
+UID/GID directly into the container so artifacts remain writable. For a rootless or remapped
+daemon, select a compatible context with `docker context ls` and `docker context use`. Docker
+Desktop on Windows is supported. The container has a temporary home directory. It uses Xvfb
+and Openbox inside the container and
 never mounts a host display socket. `--skip-build` reuses only an image matching the Dockerfile,
 lane pin and host UID/GID; a missing or outdated image is rebuilt. `--sessions headless` (the
 default), `--sessions gtk3`, and `--sessions both` select independent office sessions. Painted
@@ -197,9 +200,19 @@ gtk3 sessions save `deck.png`; `--screenshot` remains an alias for running both 
 `--sessions` is omitted. The `unsupported` lane asserts that
 26.2.0 refuses installation for a dependency error and leaves the extension uninstalled.
 
-The image download retries from the archive URL after errors, including a redirected mirror's
-certificate failure, with at most three retries. TLS verification and the pinned SHA-256 gate
-remain required; an exhausted download or checksum mismatch fails the build.
+The Linux helper needs curl 7.71 or newer and Docker with BuildKit. It keeps each verified
+archive under `.cache/libreoffice-packages/<sha256>/` and supplies it to the build in a read-only
+context. On a miss, curl tries TDF's stable mirror network when the archive pin names a versioned
+build, then falls back to the archive if that route cannot supply the exact bytes. Both routes
+require HTTPS with certificate verification and share the download budget. The archive route
+allows at most three retries, including after a redirected mirror's certificate failure. An
+exhausted download or checksum mismatch on the final source fails setup. Remove the affected
+cache file before retrying a corrupt local entry.
+
+GitHub Actions restores the exact digest for the Linux archive, Windows MSI or macOS DMG and
+checks its SHA-256 before use. Only runs on `main` populate the shared cache, and the cache
+contains only public installer files. A changed pin or an evicted entry takes the same bounded
+download path.
 
 Image changes retain older `sheet-manager-ci:<version>-<fingerprint>` tags locally; list them with
 `docker image ls sheet-manager-ci` and remove obsolete tags explicitly with `docker image rm <tag>`
@@ -336,9 +349,13 @@ screen, DPI, keyboard layout), each check's result, and the office's exit status
 and crash dumps; `ui-win/checks.json`, with each check's evidence or traceback and its duration;
 screenshots taken at menus, dialogs and drags; and the office log and the built OXT. A failed
 check also leaves `failed-<check>.png`, and its entry in `checks.json` records the foreground
-window, the pointer position and the office's visible top-level windows. The job fails on a failed
-check, an extension error in the office log, a nonzero exit, a forced shutdown, a fatal message or
-a crash dump, as the integration runner does; only startup is retried.
+window, the pointer position and the office's visible top-level windows. On both platforms that
+entry is written before the screenshot and desktop evidence are taken and held input is
+released; a step that fails adds its traceback under `diagnostic_errors`, keeping the check's
+own error and the remaining steps
+([#190](https://github.com/viell-dev/slop-calc-sheet-manager/issues/190)). The job fails on a
+failed check, an extension error in the office log, a nonzero exit, a forced shutdown, a fatal
+message or a crash dump, as the integration runner does; only startup is retried.
 
 Never run the suite on your own computer: its input goes to whatever has the focus.
 `winput.WinInput` refuses to start unless `SHEET_MANAGER_REAL_DESKTOP=1` is set, which only the

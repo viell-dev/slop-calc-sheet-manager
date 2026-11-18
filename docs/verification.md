@@ -21,6 +21,11 @@ Record run results, deliberate-break experiments and review findings in the owni
   Real XTEST input exercises native dispatch and drag behaviour that synthetic UNO input cannot.
 - **Documentation:** guide build, offline feed combination and rendered synthetic-history checks.
 
+The Linux lab requires direct UID/GID mapping for its writable results mount. The helper
+rejects rootless and daemon-level remapped Docker contexts before building. Verification
+receipts for rootful Linux, rootless Docker and Docker Desktop are tracked in
+[#191](https://github.com/viell-dev/slop-calc-sheet-manager/issues/191).
+
 The required **Routine CI** aggregate checks every routine dependency on every PR and push to
 `main`, refusing missing, failed or skipped work. **Release sweep** is manual, on demand and at most
 weekly. Its aggregate and publication gate require every supported release lane for the exact
@@ -77,7 +82,7 @@ documented in [RELEASING.md](https://github.com/viell-dev/slop-calc-sheet-manage
 
 | Promise | Current checks | Runs and limits |
 | --- | --- | --- |
-| Linux image downloads retry mirror failures while retaining TLS and pinned-digest checks | `ci/Dockerfile`; controlled loopback TLS/digest experiment in [#61](https://github.com/viell-dev/slop-calc-sheet-manager/issues/61) | Image builds; the recorded control reproduces an untrusted mirror followed by a valid payload, not the availability of every public mirror. Exhausted retries and digest mismatches still fail. |
+| Native test packages are cached by exact SHA-256 and verified before use | `test_libreoffice_package.py` covers cold downloads, stable-to-archive fallback, verified hits, corrupt restores and failed downloads. The original mirror TLS/digest control is in [#61](https://github.com/viell-dev/slop-calc-sheet-manager/issues/61). Hosted cache receipts are tracked in [#215](https://github.com/viell-dev/slop-calc-sheet-manager/issues/215). | Routine CI, release sweep, gtk3 soak and the focused Windows/macOS workflows. A miss or eviction still needs a TDF download. Exhausted downloads and digest mismatches on the final source fail setup. |
 | Unsupported LibreOffice refuses installation and leaves nothing installed | `run.py:check_refusal` | Refusal lane; only the pinned unsupported build is tried. |
 | Supported versions install; Calc and read-only workbooks get the deck, Writer does not | `tests/integration/run.py:exercise`, fresh-profile `unopkg add` | Integration; the installation dialog is not driven. |
 | Panel size follows the sidebar and panel disposal follows document closure | `run.py` geometry and disposal assertions | Integration; compares growth, since gtk3 does not report the requested absolute height (#9). |
@@ -85,7 +90,7 @@ documented in [RELEASING.md](https://github.com/viell-dev/slop-calc-sheet-manage
 | Packages contain exactly the allowlisted files and build reproducibly | `test_build.py`, `tools/check.py` | Checks; two builds must match byte for byte. |
 | Repeated compatibility, package and guide claims agree with their sources | `test_consistency.py` | Checks; prose still needs review. Historical versions and policy examples are independent of the source version. |
 | Downloads and availability markers follow published history | `tools/check_release_page.py` | Documentation; empty history, preparation, publication and an older stable alongside a newer test build. Checks channel order, rendered OXT/checksum links and markers. Public bytes still need post-publication verification. |
-| Stages are explicit; releases require complete routine and full-sweep evidence for the exact revision; tags, assets and feed history cannot regress | `test_release_data.py`, `test_github_release.py`, `test_release_ci.py`, affected-PR planning previews | Checks and Release workflow; missing, stale, failed, skipped or duplicate required jobs are refused. PR previews cannot authorize publication. Mocks/dry runs do not create live tags or upload assets. A stage or green run does not establish feature completeness or human usability. |
+| Stages are explicit; releases require complete routine and full-sweep evidence for the exact revision; tags, assets and feed history cannot regress | `test_release_data.py`, `test_github_release.py`, `test_release_ci.py`, affected-PR planning previews | Checks and Release workflow. History tests cover migration from the pinned tag-rebuild receipts, which stay a second anchor, and reject paired OXT/checksum replacement before writing feeds, during planning, in the recheck just before publication, and when an uploaded asset's GitHub digest differs from the built file ([#193](https://github.com/viell-dev/slop-calc-sheet-manager/issues/193)). The tag rebuilds themselves were a one-time check, recorded in the issue. The deployed digest protects subsequent downloads. Missing, stale, failed, skipped or duplicate required jobs are refused. PR previews cannot authorize publication, and mocks/dry runs do not create live tags or upload assets. A stage or green run does not establish feature completeness or human usability. |
 | Compatible newer updates are offered and install correctly | `test_updates.py`, `tests/ui/update_dialog.py` | Provider/dependency checks in integration; real dialogs, download/install and same-profile restart in Linux UI jobs, using gen and loopback feeds. See the [release verification boundary](https://github.com/viell-dev/slop-calc-sheet-manager/blob/main/RELEASING.md#verification-boundary) for GUI, HTTPS and post-publication limits. |
 
 ## Sheet identity and synchronization
@@ -215,7 +220,9 @@ key-handler-removal experiment are recorded in
 ## The checks themselves
 
 `test_office_process.py`, `test_teardown.py`, `test_stalled_cleanup.py` and UI-runner unit tests
-ensure that failed checks cannot pass through cleanup. Sessions fail on nonzero exits, forced
+ensure that failed checks cannot pass through cleanup. `test_ui_failure_records.py` fails each
+real-input failure diagnostic and clean-up step in turn and checks that the failed check's record
+is already on disk and keeps its own error (#190). Sessions fail on nonzero exits, forced
 shutdowns, fatal messages, crash dumps, stalled main-thread callbacks or held terminate requests.
 Windows crash dumps matter even when the office exits with status zero. Only startup is retried;
 its dumps are retained separately. Debugger runs also reject signals, incomplete exits and missing
