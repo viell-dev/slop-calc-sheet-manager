@@ -3,10 +3,11 @@
 # A session that this process finds still running at SESSION_SECONDS fails with status 124. The
 # runner gets the same moment as its deadline, as an absolute time on the monotonic clock that
 # both share (`SHEET_MANAGER_DEADLINE_MONOTONIC`), so its own start-up cannot move it later. There
-# its stall watch records the stall, tries to save stacks and stops the office (#45);
-# CAPTURE_GRACE_SECONDS more lets it do that and exit before its process group is killed. Keep
-# the grace above the watch's CAPTURE_SECONDS and STOP_SECONDS together (`office_process`; a unit
-# test checks it). Kill the group before reaping the runner: until it is reaped, its process ID,
+# its stall watch records the stall, tries to save stacks and stops the launcher it started
+# (#45); CAPTURE_GRACE_SECONDS more lets it do that and exit before its process group is killed.
+# Keep the grace above the watch's CAPTURE_SECONDS and STOP_SECONDS together (`office_process`; a
+# unit test checks it): a stalled session's shutdown adds no release wait or terminate request
+# (`end_office`). Kill the group before reaping the runner: until it is reaped, its process ID,
 # which is the group's, cannot pass to a new process. A runner that exits after the limit while
 # this process is not scheduled reports its own status (#244).
 # The summary gives each session's status and what its `results.json` says, and points to the

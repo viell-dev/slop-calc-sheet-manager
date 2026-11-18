@@ -648,15 +648,14 @@ class _ActivationOwner:
         self._handles: dict[str, Any] = {}
         self._monitor = SimpleNamespace(generation=0, check=lambda: 0)
         self._proven = 0
+        # This activation-only adapter has no list or periodic tab observer.
+        self._tabs = SimpleNamespace(note_input=lambda: None)
 
     def post(self, function, where):
         pass
 
     def refresh(self):
         pass
-
-    def _note_view_input(self):
-        pass  # This activation-only adapter has no list or periodic observer.
 
 
 def redirected_activation(context, desktop, hidden):

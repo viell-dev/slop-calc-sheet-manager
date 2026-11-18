@@ -5,6 +5,9 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Make the integration check for assistive selection verify that the list takes the pick, using
+  Move to Top with stable rows and after a rebuilding refresh
+  ([#251](https://github.com/viell-dev/slop-calc-sheet-manager/issues/251)).
 - Known issues now says the sheet list keeps rebuilding its rows after a sheet switch or tab
   colour change, and why
   ([#22](https://github.com/viell-dev/slop-calc-sheet-manager/issues/22)).
@@ -13,12 +16,21 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   ([#259](https://github.com/viell-dev/slop-calc-sheet-manager/issues/259)).
 - Fail a test session that stops making progress for 15 minutes instead of waiting for the CI
   job's time limit without evidence: the runner records the stall, tries to save the test
-  client's and LibreOffice's stacks, stops LibreOffice, and records what it tried and saw. A soak
-  session that reaches its 180-second limit during startup or its checks records the stall too.
-  The soak empties each session's directory before the session starts, and its summary points
-  there instead of judging stalls. The stacks of a stall late in a CI job may be lost at the job's
-  limit ([#45](https://github.com/viell-dev/slop-calc-sheet-manager/issues/45),
+  client's and LibreOffice's stacks, stops the LibreOffice launcher it started (on Windows, with
+  its whole process tree), and records what it tried and saw. Such a session then ends without the
+  wait for queued UNO releases or a terminate request, as after a stalled main-thread callback. A
+  soak session that reaches its 180-second limit during startup or its checks records the stall
+  too. The soak empties each session's directory before the session starts, and its summary
+  points there instead of judging stalls. The stacks of a stall late in a CI job may be lost at
+  the job's limit ([#45](https://github.com/viell-dev/slop-calc-sheet-manager/issues/45),
   [#244](https://github.com/viell-dev/slop-calc-sheet-manager/issues/244)).
+- End each LibreOffice test session only after the office has run the UNO releases the test
+  process sent before the session's end. An office asked to terminate while it still ran them,
+  as after the 1,000-sheet check, could crash at exit in a LibreOffice bridge thread, with or
+  without the extension. Releases sent during that wait are not covered, such as from a document
+  that a failed check left open. The wait, the terminate request and the office's exit now share
+  one 30-second limit. This changes the test runner, not the extension
+  ([#242](https://github.com/viell-dev/slop-calc-sheet-manager/issues/242)).
 - Make name syntax and conflicts in other rows available from New name in Rename Sheets.
   Replace All and Rename also expose refusals through their accessible names, including an empty
   Find field or a replacement with no matches
@@ -87,6 +99,9 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   picks without switching sheets, Hide alone dispatches synchronously, and Show is one of
   several changes the list makes itself
   ([#200](https://github.com/viell-dev/slop-calc-sheet-manager/issues/200)).
+- Move the sheet list's tab observation and refresh timing into modules of their own, with
+  documented state contracts; the list behaves as before
+  ([#194](https://github.com/viell-dev/slop-calc-sheet-manager/issues/194)).
 - Bound LibreOffice lab downloads and log their mirror and transfer measurements, so a slow
   mirror fails during setup instead of consuming the native CI testing budget.
 - Cache the pinned LibreOffice test installers by SHA-256 and verify them before use, avoiding

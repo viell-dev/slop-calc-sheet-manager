@@ -28,15 +28,20 @@ gtk3 saves a screenshot.
 #   status. The wrapper bypasses the normal launcher's exit-81 bootstrap restart, so the runner
 #   handles that restart once, only before connecting UNO, and keeps the initialization trace.
 #   Never extend this startup handling into retrying test assertions or shutdown failures.
+# - Before asking the office to terminate, wait until it has run the UNO releases this process
+#   sent (`client_releases`): an office that exits while it still runs them crashed at exit
+#   (#242). No round trip waits for them, so never replace the marker with a call or a sleep.
 # - Failed input polls retain only existing fixture reads/posts, without extra UNO calls (#160).
 # - Save completed suites as they finish: an external timeout can bypass Python finally (#162).
 # - A session with no progress for `office_process.STALL_SECONDS`, from its launch, fails;
-#   its watch tries to save the client and office stacks, then stops the office (#45). A stall
-#   is never retried. Report progress at suite and check boundaries; never use the limit as a
-#   test timeout. Hand the gdb wrapper's replacement office to the watch with
+#   its watch tries to save the client and office stacks, then stops the launcher it started
+#   (#45). A stall is never retried. Report progress at suite and check boundaries; never use
+#   the limit as a test timeout. Hand the gdb wrapper's replacement office to the watch with
 #   `StallWatch.follow`, and stop it before any UNO call when the watch refuses it after a
 #   stall. A watch closes only before its deadline, so the session records
 #   `checks_ended_before_deadline` then. Record what the session observed, not what it implies.
+#   Close the watch before `end_office`: its stall is a stalled callback, so shutdown then sends
+#   neither the release wait nor the terminate request to an office whose calls stopped.
 # - Install only through `add_package`, which records each install's elapsed time and keeps a
 #   timeout a failure (#235). Do not raise `INSTALL_SECONDS` without measured normal installs.
 
@@ -54,11 +59,13 @@ import time
 import uuid
 import zipfile
 from contextlib import contextmanager
+from functools import partial
 from pathlib import Path
 from typing import Any, cast
 
 import uno
 import unohelper
+from client_releases import settle_releases
 from com.sun.star.awt import MouseEvent
 from com.sun.star.beans import PropertyValue
 from com.sun.star.lang import XEventListener
@@ -273,7 +280,7 @@ def office_session(
         )
         # Watch from the launch: a UNO call that never returns, startup's included, would
         # otherwise hold the run until an enclosing limit, without evidence (#45). The watch
-        # records the stall, tries to save the stacks, then stops the office.
+        # records the stall, tries to save the stacks, then stops the launcher.
         start_session()
         watch = StallWatch(
             process,
@@ -392,8 +399,9 @@ def office_session(
             result["longest_progress_interval_seconds"] = round(longest_progress_interval(), 1)
             try:
                 generated_trace = directory / "gdbtrace.log"
-                # Ends the office before the debugger's final output is copied. After a stalled
-                # main-thread callback it stops the office instead of asking it (#50).
+                # Ends the office before the debugger's final output is copied, once it has run
+                # this process's releases (#242). After a stalled main-thread callback it stops
+                # the office instead of asking it (#50).
                 result.update(
                     end_office(
                         desktop,
@@ -401,6 +409,7 @@ def office_session(
                         log_path,
                         stalled=stalled_callbacks(),
                         backtrace_path=generated_trace if backtrace else None,
+                        settle=partial(settle_releases, context),
                     )
                 )
                 if trace_path is not None:

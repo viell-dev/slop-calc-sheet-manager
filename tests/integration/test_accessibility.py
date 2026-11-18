@@ -9,9 +9,10 @@ metadata checks: no screen reader runs, so what one announces is not verified he
   plain sheet name with textual states.
 - An assistive selection, made through `XAccessibleSelection` as a screen reader selects rows,
   is taken even when a property refresh rebuilds the rows before the list's queued intake reads
-  the tree. The list's timers and observation only post to LibreOffice's main-thread queue, so
-  holding the main thread after a property change, past the refresh delay, and then selecting
-  queues the rebuilding refresh ahead of any intake: the ordering is deterministic.
+  the tree. Move to Top reflects the list's own picks, so each phase starts from the first row
+  and waits for that button to become enabled. The list's timers and observation only post to
+  LibreOffice's main-thread queue. Holding that thread after a property change, past the refresh
+  delay, and then selecting queues the rebuilding refresh ahead of any intake.
 - Every control of the panel is a child of the panel window's accessible context, at its own index
   in parent and in visual order, and each ancestor up to the top is listed by its parent (#133).
   A walk down from the top, as a screen reader's object navigation or a bridge's focus tracking
@@ -41,9 +42,9 @@ from sheet_list_view import (
 from teardown import run_checks
 from test_sheet_list import VCL_RIGHT, Robot, say
 
+from sheet_manager.refresh_schedule import REFRESH_DELAY
 from sheet_manager.sheet_list import list_name
 from sheet_manager.uno_calc import select_tabs
-from sheet_manager.uno_list import REFRESH_DELAY
 from sheet_manager.uno_menu import MOVE_IDS
 
 NAME_CHANGED = uno.getConstantByName("com.sun.star.accessibility.AccessibleEventId.NAME_CHANGED")
@@ -192,11 +193,21 @@ def check_assistive_selection_before_rebuild(context, desktop):
     document = workbook(desktop, "Alfa")
     controller = document.getCurrentController()
     sheets = document.getSheets()
-    _, tree = open_list(context, document)
+    panel, tree = open_list(context, document)
     poll(lambda: names(tree) == FIVE, "every sheet in the list")
     poll(lambda: read(context, tree)["name"] == viewing("Alfa"), "the viewed sheet's name")
-    Robot(context).click(tree, row_point(tree, 0))
-    poll(lambda: selection(tree, FIVE) == ["Alfa"], "a click to pick Alfa")
+    buttons = move_buttons(panel)
+    top = buttons["Top"]
+    bottom = buttons["Bottom"]
+    robot = Robot(context)
+
+    def pick_alfa():
+        robot.click(tree, row_point(tree, 0))
+        poll(lambda: selection(tree, FIVE) == ["Alfa"], "a click to pick Alfa")
+        poll(
+            lambda: not top.isEnabled() and bottom.isEnabled(),
+            "move controls for a pick of the first row",
+        )
 
     def select(index):
         tree_context = accessible(tree)
@@ -204,13 +215,15 @@ def check_assistive_selection_before_rebuild(context, desktop):
         tree_context.selectAccessibleChild(index)  # As a screen reader selects a row.
 
     say("control: with stable rows, the queued intake takes an assistive selection")
+    pick_alfa()
     on_main_thread(context, lambda: select(1))
-    time.sleep(1.0)  # Several observation ticks, each followed by its queued intake.
+    poll(top.isEnabled, "Move to Top enabled by the list's pick of Bravo with stable rows")
     sheets.getByName("Echo").protect("")
     poll(lambda: "Echo (protected)" in labels(tree), "a rebuild after the intake")
     assert selection(tree, FIVE) == ["Bravo"], selection(tree, FIVE)
 
     say("an assistive selection just before a rebuilding refresh is taken too")
+    pick_alfa()
 
     def select_then_rebuild():
         sheets.getByName("Charlie").protect("")  # The list schedules a rebuilding refresh.
@@ -222,8 +235,9 @@ def check_assistive_selection_before_rebuild(context, desktop):
 
     on_main_thread(context, select_then_rebuild)
     poll(lambda: "Charlie (protected)" in labels(tree), "the refresh that rebuilds the rows")
+    poll(top.isEnabled, "Move to Top enabled by the list's pick of Delta after the rebuild")
     poll(lambda: selection(tree, FIVE) == ["Delta"], "the assistive selection after the rebuild")
-    # Another rebuild writes the list's own picks: the selection was taken, not just shown.
+    # The adopted pick stays visible across a further rebuild.
     sheets.getByName("Alfa").protect("")
     poll(lambda: "Alfa (protected)" in labels(tree), "a second rebuild")
     seen = read(context, tree)

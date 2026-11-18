@@ -5,7 +5,9 @@ which then leaves no evidence. Integration and UI stalls of this kind were seen 
 stacks (#45). `StallWatch` therefore fails a session that reports no progress (`teardown`) for
 `STALL_SECONDS` (15 minutes; `SHEET_MANAGER_STALL_SECONDS` overrides it), or that is still
 running at the deadline an enclosing runner gives this process (`DEADLINE`), and then stops the
-office through `stop_process` so that the blocked call fails. Rules for changing it:
+launcher it started through `stop_process`, on Windows with its whole process tree, so that the
+blocked call fails: on Linux it then failed with a disposed bridge under both launchers measured,
+the plain one and the gdb wrapper. Rules for changing it:
 
 - Closing the watch, progress, expiry and accepting the gdb wrapper's replacement office are one
   decision, under the watch's lock and `teardown`'s progress lock; nothing external, such as a
@@ -14,6 +16,11 @@ office through `stop_process` so that the blocked call fails. Rules for changing
   stall is recorded as a stalled callback first, so no close or settings restore starts during
   the capture, and `assert_clean_shutdown` fails it whatever the capture does. A replacement
   refused after a stall is stopped before any UNO call to it.
+- The session closes the watch before `end_office`, so shutdown is never watched. Because a
+  stall is a stalled callback, `end_office` then sends neither `settle` nor the terminate
+  request and stops the launcher at once if it still runs: the stall already fails the session,
+  and an office whose calls stopped returning could hold either for graceful shutdown's whole
+  grace (#50, #242).
 - The watch runs from the office's launch. Installation, before it, is not watched: a deadline
   that passes then is found at the launch, which records a startup stall, so a receipt shows
   when the watch found a stall, not when the limit passed.
@@ -21,13 +28,13 @@ office through `stop_process` so that the blocked call fails. Rules for changing
   waits for the first `stall-*.json` receipt, then tries to save the client's Python stacks and
   the office's native stacks, with debugger output streamed into its file; a step or result that
   arrives after the budget's end is never recorded. Each collector subprocess (CDB, the Windows
-  process listing) is killed at that time, or at once if starting it took longer. The watch's own
-  thread starts the stop when the collector finishes or the budget ends, whatever the collector,
-  the client or a receipt write is doing; a receipt thread is the receipt's only writer, so an
-  older snapshot never replaces a newer one, and receipt I/O never delays the stop. A failed
-  step, including a failed listing, is recorded beside the others, never read as an empty
-  process tree. The session waits for the watch, bounded; a wait that ended first is recorded
-  apart from the evidence (`wait_timed_out`).
+  process listing) is sent a kill at that time, or at once if starting it took longer. The
+  watch's own thread starts the stop when the collector finishes or the budget ends, whatever the
+  collector, the client or a receipt write is doing; a receipt thread is the receipt's only
+  writer, so an older snapshot never replaces a newer one, and receipt I/O never delays the stop.
+  A failed step, including a failed listing, is recorded beside the others, never read as an
+  empty process tree. The session waits for the watch, bounded; a wait that ended first is
+  recorded apart from the evidence (`wait_timed_out`).
 - The evidence records what the watch did and saw in this session, never a conclusion drawn from
   it: the files it wrote, an interrupt it sent, a debugger's or the gdb wrapper's exit status,
   what a listing returned, whether the launcher had exited after the stop. An interrupt sent to
@@ -226,26 +233,45 @@ def end_office(
     log_path: Path,
     *,
     stalled: list[str],
+    settle: Callable[[float], str | None],
     backtrace_path: Path | None = None,
     grace: float = 30,
 ) -> dict[str, object]:
     """End this session's office and record how it ended.
 
-    Normally the office is asked to terminate over UNO and given `grace` seconds to return from
-    that request and then to exit, after which it is stopped. A request that does not return,
-    such as one held by a dialog (#40), leaves the office running, so it is stopped too: the
-    session fails with a forced shutdown instead of hanging until the job's time limit.
+    Graceful shutdown has `grace` seconds in all, counted from one monotonic deadline: each step
+    gets only the time the steps before it left. First `settle` waits until the office has run
+    the UNO releases this process sent: an office that exits while it still runs them can crash
+    (#242, `client_releases`). It returns None, or why it stopped waiting; then the office is
+    stopped instead of asked, and the session fails with that reason in its results. Every
+    session passes it, so it is required. Next the office is asked to terminate over UNO, and
+    finally it has the rest of the time to exit, after which it is stopped. A request that does
+    not return, such as one held by a dialog (#40), leaves the office running, so it is stopped
+    too: the session fails with a forced shutdown instead of hanging until the job's time limit.
+    The release wait's duration and the whole shutdown's are recorded.
 
     After a stalled main-thread callback (`teardown`), the request could wait for the stuck
-    thread without bound (#50), so it is not sent and the office is stopped at once; the session
-    then fails, with the stall and the forced shutdown in its results.
+    thread without bound (#50), so neither it nor `settle` is sent and the office is stopped at
+    once; the session then fails, with the stall and the forced shutdown in its results. A stall
+    that a `StallWatch` recorded is such a callback, and the watch is closed before this runs.
     """
-    returned = not stalled and request_termination(desktop, grace)
+    started = time.monotonic()
+    deadline = started + grace
+
+    def remaining() -> float:
+        return max(0.0, deadline - time.monotonic())
+
+    unsettled = None if stalled else settle(remaining())
+    waited = round(time.monotonic() - started, 3)
+    returned = not stalled and unsettled is None and request_termination(desktop, remaining())
     ended = finish_process(
-        process, log_path, timeout=grace if returned else 0, backtrace_path=backtrace_path
+        process, log_path, timeout=remaining() if returned else 0, backtrace_path=backtrace_path
     )
     ended["office_stalled_callbacks"] = list(stalled)
+    ended["office_unsettled_releases"] = unsettled
+    ended["office_release_wait_seconds"] = waited
     ended["office_terminate_returned"] = returned
+    ended["office_shutdown_seconds"] = round(time.monotonic() - started, 3)
     return ended
 
 
@@ -255,6 +281,7 @@ def assert_clean_shutdown(result: dict[str, object]) -> None:
     assert not result["office_fatal_markers"], result
     assert not result.get("office_crash_dumps"), result
     assert not result.get("office_stalled_callbacks"), result
+    assert not result.get("office_unsettled_releases"), result
     assert not result.get("office_progress_stall"), result
 
 
@@ -361,11 +388,11 @@ def run_collector(
 ) -> int | None:
     """Run a diagnostic command until `end`, on `time.monotonic()`'s clock.
 
-    Return its exit status, or None if it was killed at `end`, or not started after it. The time
-    left is taken after the command starts, so a slow start does not extend its life; one that
-    starts after `end` is killed at once. Its output goes to files, which keep what it wrote
-    before it was killed. A pipe could stay open in a child of the command and hold this thread
-    after the kill.
+    Return its exit status, or None if it was sent a kill at `end`, or not started after it. The
+    time left is taken after the command starts, so a slow start does not extend its life; one
+    that starts after `end` is sent a kill at once. After a kill its exit is waited for up to 5 s
+    and not checked. Its output goes to files, which keep what it wrote before then. A pipe could
+    stay open in a child of the command and hold this thread after the kill.
     """
     if time.monotonic() >= end:
         return None
@@ -627,7 +654,7 @@ class StallWatch:
     def _supervise(
         self, process: subprocess.Popen[str], launcher: Process | None, end: float
     ) -> None:
-        """Let the collector work until `end`, then stop the office, on the watch's own thread.
+        """Let the collector work until `end`, then stop the launcher, on the watch's own thread.
 
         Nothing delays the start of the stop past `end`: this thread writes no files, and a
         collector still working then is left behind, its later steps and results refused.
@@ -646,8 +673,8 @@ class StallWatch:
                 self._evidence["collection_finished"] = self._collected
                 if not self._collected:
                     self._evidence.setdefault("diagnostic_errors", {})["capture"] = (
-                        f"{self._step_name} had not finished when the {self.budget:g} s budget "
-                        "ended"
+                        f"the collector was at {self._step_name} when the {self.budget:g} s "
+                        "budget ended"
                     )
         finally:
             self._step("stop", lambda: self.stop(process), collector=False)
@@ -675,12 +702,16 @@ class StallWatch:
             # found or empty, unless that ID still names the launcher. Checked after the listing:
             # if the ID names the launcher now, it named it throughout the listing.
             current = linux_process(process.pid)
-            if launcher is None or current is None or current.started != launcher.started:
-                now = "no process" if current is None else "another start time"
-                reason = (
-                    f"listing not used: /proc shows {now} for the launcher's ID {process.pid}, "
-                    "so its descendants may not be this session's"
-                )
+            if launcher is None:
+                seen = f"the watch took no identity for the launcher {process.pid}"
+            elif current is None:
+                seen = f"/proc shows no process for the launcher's ID {process.pid}"
+            elif current.started != launcher.started:
+                seen = f"/proc shows another start time for the launcher's ID {process.pid}"
+            else:
+                seen = None
+            if seen is not None:
+                reason = f"listing not used: {seen}, so its descendants may not be this session's"
                 self._record(lambda evidence: evidence.update(office_search=reason))
                 targets = None
         if targets == []:

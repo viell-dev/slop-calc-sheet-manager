@@ -758,7 +758,7 @@ def test_menu_completion_touches_no_calc_view(stopped: bool) -> None:
     controller = Mock()
     caller = SimpleNamespace(
         _disposed=False,
-        _view_stopped=stopped,
+        _tabs=SimpleNamespace(stopped=stopped, acknowledge=Mock()),
         _activating=True,
         _menu_context=True,
         _context_target=object(),
@@ -766,13 +766,12 @@ def test_menu_completion_touches_no_calc_view(stopped: bool) -> None:
         refresh=Mock(),
         _selection=SimpleNamespace(revalidate=Mock()),
         _apply_selection=Mock(),
-        _acknowledge_view=Mock(),
     )
     finish = method("src/sheet_manager/uno_list.py", "SheetList", "_finish_menu", {})
     finish(caller)
     assert not controller.mock_calls, "Completing the menu changed Calc's view"
     assert not caller._activating and not caller._menu_context and caller._context_target is None
-    caller._acknowledge_view.assert_called_once()
+    caller._tabs.acknowledge.assert_called_once()
     if stopped:
         caller.refresh.assert_not_called()
     else:

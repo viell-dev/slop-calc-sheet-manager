@@ -116,9 +116,9 @@ documented in [RELEASING.md](https://github.com/viell-dev/slop-calc-sheet-manage
 | Promise | Current checks | Runs and limits |
 | --- | --- | --- |
 | Picks and retained snapshots never transfer to a replacement sheet within the notification boundary | `test_selection.py` randomized sessions and broken controls; `test_reorder_identity.py`; `test_sheet_list.py:check_identity`; real-input structural-change, held-lock and stale-drop checks | Checks, integration and Linux UI. Covers same-count replacements, name reuse, recorded/unrecorded batches, locks, Undo/Redo, saves and shared-monitor lifetime. Entirely silenced, save-window-only and deliberately typed-input-shaped structural edits remain outside the [contract](./reordering.md). |
-| Delayed observations and refreshes cannot overwrite newer input or activate stale rows | `test_view_observation.py`, `test_pointer_observation.py`, `test_assistive_selection.py`; integration stale-click cases; real-input `newer_selection_kept`, `press_then_change`, `newer_pick_survives_voided_press` | Checks, integration and Linux UI. Ordering adapters do not establish native visibility or selection behaviour. Held-press checks wait for the list's own listener via `Workbook.hold`; changes before it runs are ordered before the press (#134). |
+| Delayed observations and refreshes cannot overwrite newer input or activate stale rows | `test_view_observation.py`, `test_refresh_schedule.py`, `test_pointer_observation.py`, `test_assistive_selection.py`; integration stale-click cases; real-input `newer_selection_kept`, `press_then_change`, `newer_pick_survives_voided_press` | Checks, integration and Linux UI. Ordering adapters do not establish native visibility or selection behaviour. Held-press checks wait for the list's own listener via `Workbook.hold`; changes before it runs are ordered before the press (#134). |
 | This window's native tabs and grouped-editing status follow without rebuilding rows or replacing independent picks | `test_sync_sheet_list.py:check_tabs`; observation unit tests; real-input synchronization checks | Integration, Checks and Linux UI. Tabs are sampled about every 0.25 seconds between interactions, not received as timestamped events. |
-| Observation pauses while hidden and stays bound to the correct view through window changes and reload | `test_sync_sheet_list.py:check_hidden`, `check_views`, `check_reload`; `reload_accepts_real_input`; visibility/timer unit tests | Integration, Checks and Linux UI; minimize requires a painted session. Visibility is checked about once a second. Input during native initialization may still clear conservatively (#88). A failed Reload pick retains the posted click, delivered press/release, native selection changes and later modify notifications from callbacks, and names any selection notice, so the failure classifies itself. |
+| Observation pauses while hidden and stays bound to the correct view through window changes and reload | `test_sync_sheet_list.py:check_hidden`, `check_views`, `check_reload`; `reload_accepts_real_input`; visibility/timer unit tests | Integration, Checks and Linux UI; minimize requires a painted session. Visibility is checked about once a second. Input during native initialization may still clear conservatively (#88). A failed Reload pick retains the posted click, delivered press/release, native selection changes and later modify notifications from callbacks, and names any selection notice, so the failure classifies itself. Disposal's rejection of an already queued sample or acknowledgement is checked with fakes; whether a native release dispatches queued events is not measured. |
 | Rows show each sheet's own order, viewed state, visibility, protection, scenarios and colour | Unit/integration `test_sheet_list.py`; `test_reorder_identity.py:check_confusable_names` | Checks and integration. Property changes rebuild the native model; rapid switches can lag (#22). |
 | Names Calc confuses still use the picked sheet's handle; a move that needs a confused name uses the planner's equally short mirror image when Calc can address all its calls, and is refused otherwise | `check_confusable_names` with `ﬁ`/`fi` and `I`/`ı`; `test_reorder.py:lookup_conflict` and `addressable_plan` against an independent replay model and the planner on reversed orders | Integration and Checks. Exercises rows, Show, Hide, moves (one made by the mirror image, with its Undo and view restoration), refusals, per-call guards and batch rename. Grouped-tab Undo forces view reactivation and checks its activation sequence by identifying cells; menu Delete refuses either side of a confusable pair without changing the view, data or undo history (#138), then deletes exactly the second sheet as one undo step after the other is renamed, with complete restoration on Undo. Only two measured pairs and English locales; scenario combinations remain unverified. Calc's formula lookup remains defective (#113), and some moves are refused (#125). |
 
@@ -180,11 +180,11 @@ The measured native naming rules and deliberate-break results are in
 | Cursor/range anchor survives rebuilds; refused held clicks preserve surviving picks | Retained-anchor and coalesced-intent unit tests; `cursor_across_refresh`, `native_cursor_positions`, `selected_press_cursor` | Checks and Linux UI. A refused hold need not retain an unpicked cursor position; no cursor is promised without surviving picks. |
 | Selection notice expires after ten seconds without changing focus, picks or grouped warning | `test_selection_notice.py`, real-input `selection_notice` | Checks and Linux UI. Text fit was inspected at one GTK width; no automated font/width/DPI assertion, Windows notice check or screen-reader announcement check. |
 | Dividers track native bounds and avoid scrollbars | `test_row_paint.py`, `row_paint_scroll`, `row_paint_long_names` | Checks and Linux UI; focused GTK 120-DPI evidence in #86. Synthetic short/long names and pinned themes; only the last lower divider may be omitted. Horizontal endpoint gestures are inspected in screenshots, not an asserted final position. Windows painting is unverified. |
-| <Unreleased since="0.0.9" /> Accessible list name identifies the viewed sheet; external accessibility picks survive a rebuilding refresh | `test_accessibility.py:check_viewed_sheet`, `check_assistive_selection_before_rebuild`; pure assistive-selection tests; `viewed_sheet_name` | Integration, Checks, Linux UI and Windows desktop name check. Reads public UNO metadata/events; no screen reader or cross-process selection bridge runs. Name can lag with the arrow (#22). |
+| <Unreleased since="0.0.9" /> Accessible list name identifies the viewed sheet; external accessibility picks survive a rebuilding refresh | `test_accessibility.py:check_viewed_sheet`, `check_assistive_selection_before_rebuild`; pure assistive-selection tests; `viewed_sheet_name` | Integration, Checks, Linux UI and Windows desktop name check. Reads public UNO metadata/events. The rebuild check observes Move to Top enabling when the list adopts a pick below the first row, both with stable rows and after a rebuild. No screen reader or cross-process selection bridge runs. Name can lag with the arrow (#22). |
 | <Unreleased since="0.0.9" /> Accessible hierarchy reaches the list and lists controls in visual order; margin drags leave the sidebar docked | `test_accessibility.py:check_hierarchy`, `run.py:drag_from_margins`, `margin_drag_keeps_sidebar_docked` | Integration, Linux UI and Windows desktop drag check. Disabled unnamed backdrop is last. gtk3 does not undock even without handling the press, so gen/win are needed to expose that regression. A one-off gtk3 AT-SPI probe found controls and focus/cursor/name events; no AT-SPI or IAccessible2 bridge probe runs in CI (#133). |
 | Help hands the guide URI to the desktop; <Unreleased since="0.0.10" /> the header's `?` opens bundled quick help | `help_menu` with real SystemShellExecute and a private URI recorder; `test_help.py` installed topic, locale fallback and unknown-HID control; `header_help` real click and internal viewer | Integration verifies native help compilation/lookup; Linux gtk3/gen UI checks the actual header and unchanged document state. The fixed Linux lab measures the click from its calibrated panel origin. Browser rendering, arbitrary header themes and Windows/Aqua header input are not established. XML-help support is optional in LibreOffice builds; the online menu action remains available (#81). |
 | Partial initialization and failed popup creation leave no list-owned registrations or stale menu state | `test_adapter_failures.py` with forwarding adapters and owned-key failure tests | Integration. Shared structure monitor intentionally lives until document disposal. Key-handler removal is not directly observed by panel-disposal tests. |
-| <Unreleased /> A list that cannot open shows a message naming only the error type; failed refreshes stay pending and retry with a bounded backoff; panel disposal and move-button callbacks finish after failures | `test_panel_failures.py`; `test_adapter_failures.py:check_failed_panel`, `check_failed_refresh` | Checks and Integration. Failures are injected through test-only subclasses and patched constructors; how often LibreOffice itself causes them is not measured. |
+| <Unreleased /> A list that cannot open shows a message naming only the error type; failed refreshes stay pending and retry with a bounded backoff; panel disposal and move-button callbacks finish after failures | `test_panel_failures.py`, `test_refresh_schedule.py`; `test_adapter_failures.py:check_failed_panel`, `check_failed_refresh` | Checks and Integration. Failures are injected through test-only subclasses and patched constructors; how often LibreOffice itself causes them is not measured. |
 
 Input and paint investigations, including negative controls, are in
 [#23](https://github.com/viell-dev/slop-calc-sheet-manager/issues/23),
@@ -257,22 +257,37 @@ the dialog's clicks off their controls (#232). It also checks that the points st
 dialog's own window, inside the measured Openbox and Windows frames that the dialog's accessible
 area includes, where the dialog reports nothing; from the Windows frame, each calibration took
 about a minute (#253).
-Sessions fail on nonzero exits, forced
-shutdowns, fatal messages, crash dumps, stalled main-thread callbacks or held terminate requests.
+Before termination, every session waits until the office has run the UNO releases the test
+process sent before the wait, because an office that exits while it runs them can crash (#242).
+The integration suite `test_client_releases.py` drops 2,000 dialog models in a live office. When
+the wait returns, the office must have signalled every one's release as it ran it, and a retained
+model must still be unsignalled. Releases sent during the wait are outside it, such as from a
+document that a failed check left open. The unit tests of the same name check that each step of
+the wait ends within its limit, including a blocked garbage collection, and that a bridge that
+disconnects after the marker is queued fails the wait. `test_office_process.py` checks that the
+wait, the terminate request and the exit share one deadline. Sessions fail on nonzero exits,
+forced shutdowns, fatal messages, crash dumps, stalled main-thread callbacks, held terminate
+requests or releases left running.
 A session without progress for 15 minutes from its launch fails without a retry: the stall is
-recorded before its client and office stacks are tried. The office's stop starts when the capture
-ends, 60 seconds after detection at the latest, even when the client, a debugger and a receipt
-write are all blocked; `stop_process`'s own limits then bound the stop, about 60 seconds more. A
-capture step or result after those 60 seconds is not recorded (#45). The receipt records only what
-the watch did and saw: a SIGINT sent to the gdb wrapper is not saved stacks, a listing with no
-`soffice.bin` does not show that none ran, and the launcher's exit status is not the office's.
-Native stacks need the gdb wrapper on Linux or CDB on Windows. `test_stall_session.py` runs the
-runner's own session against a stand-in office and checks the timing, the exit status and
-`results.json`, including a stall during the gdb wrapper's restart and document closes refused
-after a stall; `test_office_process.py` checks the receipt's single writer, held receipt writes,
-late results, failed process listings, collector deadlines, a launcher whose ID may have been
-reused, with an empty listing too, and what the receipt says of an interrupt and the wrapper's
-exit. A close already posted to the main thread on Windows before the stall still runs (#261).
+recorded before its client and office stacks are tried. The stop of the launcher the runner
+started, with its whole process tree on Windows, starts when the capture ends, 60 seconds after
+detection at the latest, even when the client, a debugger and a receipt write are all blocked;
+`stop_process`'s own limits then bound the stop, about 60 seconds more. A capture step or result
+after those 60 seconds is not recorded (#45). The receipt records only what the watch did and
+saw: a SIGINT sent to the gdb wrapper is not saved stacks, a listing with no `soffice.bin` does
+not show that none ran, and the launcher's exit status is not the office's. Native stacks need the
+gdb wrapper on Linux or CDB on Windows. The stall is recorded as a stalled main-thread callback,
+so the session's shutdown, which starts after the watch has closed, neither waits for releases
+nor asks the office to terminate. `test_stall_session.py` runs the runner's own session against a
+stand-in office and checks the timing, the exit status and `results.json`, including a stall
+during the gdb wrapper's restart, document closes refused after a stall, a stalled session whose
+office is still running at shutdown, which must send neither and stop it without spending the
+graceful shutdown's 30 seconds, and a healthy session whose release wait outlasts the stall
+limit, which must not be taken for a stall. `test_office_process.py` checks the receipt's single
+writer, held receipt writes, late results, failed process listings, collector deadlines, a
+launcher whose ID may have been reused or whose identity was never taken, with an empty listing
+too, and what the receipt says of an interrupt and the wrapper's exit. A close already posted to
+the main thread on Windows before the stall still runs (#261).
 The stacks of a stall that begins within about 18 minutes of a job's or the macOS helper's time
 limit may be lost there (#244). Soak sessions share one deadline with their runner and record the
 stall when the soak's own limit falls during startup or their checks; installation is not
@@ -291,5 +306,6 @@ Fixture procedures and artifact diagnosis are in
 [Native LibreOffice testing](./development/native-testing.md#failures-and-shutdown).
 Lifecycle failure evidence is in
 [#40](https://github.com/viell-dev/slop-calc-sheet-manager/issues/40),
-[#48](https://github.com/viell-dev/slop-calc-sheet-manager/issues/48), and
-[#50](https://github.com/viell-dev/slop-calc-sheet-manager/issues/50).
+[#48](https://github.com/viell-dev/slop-calc-sheet-manager/issues/48),
+[#50](https://github.com/viell-dev/slop-calc-sheet-manager/issues/50), and
+[#242](https://github.com/viell-dev/slop-calc-sheet-manager/issues/242).

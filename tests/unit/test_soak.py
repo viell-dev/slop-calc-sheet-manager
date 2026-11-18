@@ -76,8 +76,11 @@ def test_soak_continues_after_unreadable_results(tmp_path: Path, failure: str) -
 @pytest.mark.skipif(
     sys.platform != "linux", reason="The soak runs only inside the Linux test image"
 )
-def test_a_session_past_its_limit_fails_but_keeps_its_stall_evidence(tmp_path: Path) -> None:
-    # The runner's deadline is the soak's limit; it then keeps its stacks and exits (#45).
+def test_a_session_past_its_limit_fails_and_has_its_grace_to_record_the_stall(
+    tmp_path: Path,
+) -> None:
+    # The runner's deadline is the soak's limit; the grace then lets it write its receipt and
+    # exit (#45).
     deadline = tmp_path / "deadline.txt"
     runner = "\n".join(
         [

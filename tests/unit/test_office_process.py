@@ -147,6 +147,11 @@ class Desktop:
         self.terminate_requests += 1
 
 
+def no_releases(limit: float) -> None:
+    """The release wait of a session whose office has nothing left to run."""
+    return None
+
+
 def test_a_stalled_session_stops_its_office_without_asking_it(tmp_path: Path) -> None:
     # After a stalled main-thread callback a UNO terminate request could block for good (#50).
     log_path, desktop = tmp_path / "soffice.log", Desktop()
@@ -155,7 +160,9 @@ def test_a_stalled_session_stops_its_office_without_asking_it(tmp_path: Path) ->
             [sys.executable, "-c", "import time; time.sleep(60)"], stdout=log, text=True
         )
         started = time.monotonic()
-        result = end_office(desktop, process, log_path, stalled=["a close timed out"])
+        result = end_office(
+            desktop, process, log_path, stalled=["a close timed out"], settle=no_releases
+        )
     assert desktop.terminate_requests == 0
     assert process.poll() is not None and time.monotonic() - started < 30
     assert result["office_forced_shutdown"] is True
@@ -168,11 +175,74 @@ def test_a_session_without_stalls_asks_its_office_to_terminate(tmp_path: Path) -
     log_path, desktop = tmp_path / "soffice.log", Desktop()
     with log_path.open("w", encoding="utf-8") as log:
         process = subprocess.Popen([sys.executable, "-c", "pass"], stdout=log, text=True)
-        result = end_office(desktop, process, log_path, stalled=[])
+        result = end_office(desktop, process, log_path, stalled=[], settle=no_releases)
     assert desktop.terminate_requests == 1
     assert result["office_stalled_callbacks"] == []
     assert result["office_terminate_returned"] is True
+    assert isinstance(result["office_shutdown_seconds"], float)
     assert_clean_shutdown(result)
+
+
+def test_queued_releases_settle_before_the_office_is_asked(tmp_path: Path) -> None:
+    # An office that exits while it still runs this process's UNO releases can crash (#242).
+    log_path, desktop = tmp_path / "soffice.log", Desktop()
+    calls: list[tuple[float, int]] = []
+
+    def settle(limit: float) -> None:
+        calls.append((limit, desktop.terminate_requests))
+        time.sleep(0.2)
+
+    with log_path.open("w", encoding="utf-8") as log:
+        process = subprocess.Popen([sys.executable, "-c", "pass"], stdout=log, text=True)
+        result = end_office(desktop, process, log_path, stalled=[], grace=7, settle=settle)
+    assert len(calls) == 1, "Settle once"
+    limit, requests = calls[0]
+    assert 6.5 < limit <= 7 and requests == 0, "Settle within the grace period, before asking"
+    assert desktop.terminate_requests == 1
+    assert result["office_unsettled_releases"] is None
+    assert isinstance(result["office_release_wait_seconds"], float)
+    assert result["office_release_wait_seconds"] >= 0.2
+    assert_clean_shutdown(result)
+
+
+def test_unsettled_releases_stop_the_office_without_asking(tmp_path: Path) -> None:
+    log_path, desktop = tmp_path / "soffice.log", Desktop()
+    reason = "LibreOffice did not run this process's UNO releases within 0.5 s"
+    with log_path.open("w", encoding="utf-8") as log:
+        process = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(60)"], stdout=log, text=True
+        )
+        started = time.monotonic()
+        result = end_office(
+            desktop, process, log_path, stalled=[], grace=0.5, settle=lambda limit: reason
+        )
+    assert desktop.terminate_requests == 0
+    assert process.poll() is not None and time.monotonic() - started < 30
+    assert result["office_unsettled_releases"] == reason
+    assert result["office_forced_shutdown"] is True
+    with pytest.raises(AssertionError):
+        assert_clean_shutdown(result)
+    # The reason alone fails a session, even one whose office happened to exit cleanly.
+    exited = {**result, "office_exit_code": 0, "office_forced_shutdown": False}
+    assert_clean_shutdown({**exited, "office_unsettled_releases": None})
+    with pytest.raises(AssertionError):
+        assert_clean_shutdown(exited)
+
+
+def test_a_stalled_session_does_not_wait_for_releases(tmp_path: Path) -> None:
+    # A release that needs the stuck main thread's lock would never run (#50).
+    log_path, desktop = tmp_path / "soffice.log", Desktop()
+    calls: list[float] = []
+    with log_path.open("w", encoding="utf-8") as log:
+        process = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(60)"], stdout=log, text=True
+        )
+        result = end_office(
+            desktop, process, log_path, stalled=["a close timed out"], settle=calls.append
+        )
+    assert calls == [] and desktop.terminate_requests == 0
+    assert result["office_forced_shutdown"] is True
+    assert result["office_unsettled_releases"] is None
 
 
 @pytest.mark.skipif(os.name != "nt", reason="soffice.exe runs soffice.bin as a child on Windows")
@@ -219,13 +289,78 @@ def test_a_terminate_request_held_by_a_dialog_stops_the_office(tmp_path: Path) -
             [sys.executable, "-c", "import time; time.sleep(60)"], stdout=log, text=True
         )
         started = time.monotonic()
-        result = end_office(desktop, process, log_path, stalled=[], grace=0.5)
+        result = end_office(desktop, process, log_path, stalled=[], grace=0.5, settle=no_releases)
     assert desktop.terminate_requests == 1
     assert process.poll() is not None and time.monotonic() - started < 30
     assert result["office_terminate_returned"] is False
     assert result["office_forced_shutdown"] is True
     with pytest.raises(AssertionError):
         assert_clean_shutdown(result)
+
+
+def test_a_long_release_wait_leaves_the_terminate_request_only_the_remainder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Graceful shutdown has one deadline: a wait that uses most of it leaves a held terminate
+    # request only what is left, rather than a fresh grace period of its own.
+    log_path, desktop = tmp_path / "soffice.log", BlockedDesktop()
+    limits: list[float] = []
+    request = office_process.request_termination
+
+    def recorded(desktop: object, timeout: float) -> bool:
+        limits.append(timeout)
+        return request(desktop, timeout)
+
+    def settle(limit: float) -> None:
+        time.sleep(1.6)
+
+    monkeypatch.setattr(office_process, "request_termination", recorded)
+    with log_path.open("w", encoding="utf-8") as log:
+        process = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(60)"], stdout=log, text=True
+        )
+        started = time.monotonic()
+        result = end_office(desktop, process, log_path, stalled=[], grace=2, settle=settle)
+        elapsed = time.monotonic() - started
+    assert len(limits) == 1 and limits[0] <= 0.45, limits
+    assert elapsed < 3, "Graceful shutdown must end within its one grace period"
+    assert desktop.terminate_requests == 1
+    assert result["office_unsettled_releases"] is None, "The wait itself finished in time"
+    assert result["office_terminate_returned"] is False
+    assert result["office_forced_shutdown"] is True
+    with pytest.raises(AssertionError):
+        assert_clean_shutdown(result)
+
+
+def test_a_long_release_wait_leaves_the_exit_only_the_remainder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    log_path, desktop = tmp_path / "soffice.log", Desktop()
+    timeouts: list[float] = []
+    finish = office_process.finish_process
+
+    def recorded(
+        process: subprocess.Popen[str],
+        log_path: Path,
+        *,
+        timeout: float = 30,
+        backtrace_path: Path | None = None,
+    ) -> dict[str, object]:
+        timeouts.append(timeout)
+        return finish(process, log_path, timeout=timeout, backtrace_path=backtrace_path)
+
+    def settle(limit: float) -> None:
+        time.sleep(1.6)
+
+    monkeypatch.setattr(office_process, "finish_process", recorded)
+    with log_path.open("w", encoding="utf-8") as log:
+        process = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(60)"], stdout=log, text=True
+        )
+        result = end_office(desktop, process, log_path, stalled=[], grace=2, settle=settle)
+    assert len(timeouts) == 1 and timeouts[0] <= 0.45, timeouts
+    assert result["office_terminate_returned"] is True
+    assert result["office_forced_shutdown"] is True
 
 
 def sleeper() -> subprocess.Popen[str]:
@@ -261,7 +396,7 @@ def wait_until(condition: Callable[[], object], seconds: float = 20) -> None:
         time.sleep(0.02)
 
 
-def test_a_session_without_progress_keeps_its_stacks_and_stops_its_office(
+def test_a_session_without_progress_tries_its_stacks_and_stops_its_launcher(
     tmp_path: Path, session: None
 ) -> None:
     # A UNO call that never returns would hold the client until the job's limit (#45).
@@ -307,7 +442,7 @@ def test_a_session_without_progress_keeps_its_stacks_and_stops_its_office(
         )
 
 
-def test_progress_keeps_the_watch_from_stopping_the_office(tmp_path: Path, session: None) -> None:
+def test_progress_keeps_the_watch_from_stopping_the_launcher(tmp_path: Path, session: None) -> None:
     process = sleeper()
     stall = watch(process, tmp_path).start()
     try:
@@ -408,7 +543,9 @@ def test_a_hung_collector_cannot_delay_the_stop(tmp_path: Path, session: None) -
             evidence["launcher_exit_status"] is not None
             and evidence["collection_finished"] is False
         )
-        assert evidence["diagnostic_errors"]["capture"].startswith(f"office_{process.pid} had not")
+        assert evidence["diagnostic_errors"]["capture"].startswith(
+            f"the collector was at office_{process.pid} when"
+        )
         release.set()  # The collector returns late; what it brings is no longer recorded.
         time.sleep(0.3)
         closed = stall.close()
@@ -444,7 +581,9 @@ def test_a_collector_past_its_budget_starts_no_further_step(
         assert searches == [], "The process listing ran after the capture's budget"
         evidence = stall.close()
         assert evidence is not None and evidence["collection_finished"] is False
-        assert evidence["diagnostic_errors"]["capture"].startswith("client_stacks had not")
+        assert evidence["diagnostic_errors"]["capture"].startswith(
+            "the collector was at client_stacks when"
+        )
     finally:
         release.set()
         stop_process(process)
@@ -587,7 +726,7 @@ def test_a_held_receipt_write_neither_delays_the_stop_nor_admits_a_late_result(
         evidence = stall.close()
         assert evidence is not None and evidence["launcher_exit_status"] is not None
         assert evidence["office_stacks"] == {} and evidence["collection_finished"] is False
-        assert "had not finished" in evidence["diagnostic_errors"]["capture"]
+        assert "the collector was at " in evidence["diagnostic_errors"]["capture"]
         receipt = json.loads((tmp_path / "stall-True-0.json").read_text(encoding="utf-8"))
         assert receipt == evidence
     finally:
@@ -697,6 +836,46 @@ def test_no_native_stacks_unless_the_launchers_id_still_names_it(
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Linux roots the office's tree at an ID")
+def test_a_launcher_whose_identity_was_never_taken_is_not_trusted(
+    tmp_path: Path, session: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The watch is built on a launcher that was already reaped, so it never took its identity.
+    # When the launcher's ID then names a live process, as after reuse, there is nothing to
+    # compare it with, so the tree listed under that ID is not used (#45).
+    process, office, other = sleeper(), sleeper(), sleeper()
+    process.kill()
+    process.wait()
+    assert office_process.linux_process(process.pid) is None
+    target = Process(office.pid, process.pid, "soffice.bin", 1)
+    touched: list[Process] = []
+
+    def stacks(found: Process, path: Path, **options: Any) -> str:
+        touched.append(found)
+        return "read"
+
+    stall = watch(process, tmp_path, limit=0.5, find=offices(target), stacks=stacks)
+    listed = office_process.linux_process
+
+    def reused(pid: int) -> Process | None:
+        return listed(other.pid if pid == process.pid else pid)
+
+    monkeypatch.setattr(office_process, "linux_process", reused)
+    stall.start()
+    try:
+        wait_until(teardown.stalled_callbacks)
+        evidence = stall.close()
+        assert touched == [], "Native stacks were read from a tree under an unidentified launcher"
+        assert evidence is not None and evidence["office_stacks"] == {}
+        assert evidence["office_search"] == (
+            f"listing not used: the watch took no identity for the launcher {process.pid}, so "
+            "its descendants may not be this session's"
+        )
+    finally:
+        stop_process(office)
+        stop_process(other)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux roots the office's tree at an ID")
 @pytest.mark.parametrize("launcher", ["running", "reaped"])
 def test_an_empty_listing_claims_only_what_it_shows(
     tmp_path: Path, session: None, launcher: str
@@ -793,7 +972,7 @@ def test_the_gdb_wrappers_exit_is_recorded_only_when_it_was_seen(
     tmp_path: Path, session: None, wrapper: str
 ) -> None:
     # After the interrupt, gdb normally prints the stacks and exits. Its status is recorded only
-    # when the watch saw it exit within the budget; a held gdb leaves a step that had not finished.
+    # when the watch saw it exit within the budget; a held gdb leaves the collector at that step.
     exits = "import sys, time; time.sleep(0.2); sys.exit(3)"
     program = exits if wrapper == "exits" else "import time; time.sleep(60)"
     process = subprocess.Popen([sys.executable, "-c", program], text=True)
@@ -816,7 +995,7 @@ def test_the_gdb_wrappers_exit_is_recorded_only_when_it_was_seen(
         else:
             assert "wrapper_exit_status" not in evidence and not evidence["collection_finished"]
             assert evidence["diagnostic_errors"]["capture"] == (
-                "wrapper_exit had not finished when the 1.5 s budget ended"
+                "the collector was at wrapper_exit when the 1.5 s budget ended"
             )
             assert evidence["launcher_exit_status"] is not None  # Stopped after the budget.
     finally:
@@ -861,7 +1040,7 @@ def test_without_the_gdb_wrapper_no_debugger_attaches_by_process_id(
         stop_process(process)
 
 
-def test_every_failed_capture_step_is_recorded_and_the_office_still_stops(
+def test_every_failed_capture_step_is_recorded_and_the_launcher_still_stopped(
     tmp_path: Path, session: None
 ) -> None:
     process = sleeper()
