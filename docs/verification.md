@@ -52,8 +52,17 @@ suite and is required by the manual release sweep. The runner requests `svp`; Aq
 OS input, GUI installation/update, upgrades from published macOS builds, Apple Silicon and
 system-wide/delayed crash reports remain unverified. Installer unit checks cover integrity,
 private paths, diagnostic ownership and failure propagation for version mismatch, new crash
-reports or diagnostic collection failure. Those checks are separate from the native evidence
-linked in #145. A standalone focused Mac run cannot replace the complete exact-revision sweep.
+reports or diagnostic collection failure. Command lifecycle controls distinguish a child that
+drains after TERM from a TERM-resistant group requiring KILL. After ordinary exits, the former
+group is observed for a bounded time without signals; a member still live after it, or an
+unverifiable group, fails the lane and retains the private app and an audit receipt. A
+descendant that starts its own session or process group escapes this audit, which shows only
+that the command's own group emptied. Unit checks with a simulated group cover the drain,
+escalation, failed snapshots, interrupted waits and the bounded audit; native evidence for the
+audit through installation and packaged integration is linked from
+[#163](https://github.com/viell-dev/slop-calc-sheet-manager/issues/163). The installer unit
+checks are separate from the native evidence linked in #145. A standalone focused Mac run cannot
+replace the complete exact-revision sweep.
 A focused [human usability pass](./manual-tests.md) remains a separate release requirement.
 Failed integration input polls also retain a bounded trace of the fixtures' existing selection
 reads, row coordinates and posted pointer actions, without extra UNO reads, waits or retries
@@ -89,7 +98,7 @@ documented in [RELEASING.md](https://github.com/viell-dev/slop-calc-sheet-manage
 | Headless conversion works; removal leaves no deck, factory or installed payload | `run.py:check_lifecycle`, with presence controls before removal | Headless integration; one conversion direction, command-line removal. LibreOffice's staging copy under `user/extensions/tmp` is excluded. |
 | Packages contain exactly the allowlisted files and build reproducibly | `test_build.py`, `tools/check.py` | Checks; two builds must match byte for byte. |
 | Repeated compatibility, package and guide claims agree with their sources | `test_consistency.py` | Checks; prose still needs review. Historical versions and policy examples are independent of the source version. |
-| Downloads and availability markers follow published history | `tools/check_release_page.py` | Documentation; empty history, preparation, publication and an older stable alongside a newer test build. Checks channel order, rendered OXT/checksum links and markers. Public bytes still need post-publication verification. |
+| Downloads and availability markers follow published history | `tools/check_release_page.py` | Documentation. Full guide builds check channel order, OXT/checksum links, baselines and selected instructions before and after publication. One focused fixture renders the marker component at each marked version, including a newer test build beside an older stable baseline ([#196](https://github.com/viell-dev/slop-calc-sheet-manager/issues/196)). Public bytes still need post-publication verification. |
 | Stages are explicit; releases require complete routine and full-sweep evidence for the exact revision; tags, assets and feed history cannot regress | `test_release_data.py`, `test_github_release.py`, `test_release_ci.py`, affected-PR planning previews | Checks and Release workflow. History tests cover migration from the pinned tag-rebuild receipts, which stay a second anchor, and reject paired OXT/checksum replacement before writing feeds, during planning, in the recheck just before publication, and when an uploaded asset's GitHub digest differs from the built file ([#193](https://github.com/viell-dev/slop-calc-sheet-manager/issues/193)). The tag rebuilds themselves were a one-time check, recorded in the issue. The deployed digest protects subsequent downloads. Missing, stale, failed, skipped or duplicate required jobs are refused. PR previews cannot authorize publication, and mocks/dry runs do not create live tags or upload assets. A stage or green run does not establish feature completeness or human usability. |
 | Compatible newer updates are offered and install correctly | `test_updates.py`, `tests/ui/update_dialog.py` | Provider/dependency checks in integration; real dialogs, download/install and same-profile restart in Linux UI jobs, using gen and loopback feeds. See the [release verification boundary](https://github.com/viell-dev/slop-calc-sheet-manager/blob/main/RELEASING.md#verification-boundary) for GUI, HTTPS and post-publication limits. |
 
@@ -228,7 +237,10 @@ key-handler-removal experiment are recorded in
 `test_office_process.py`, `test_teardown.py`, `test_stalled_cleanup.py` and UI-runner unit tests
 ensure that failed checks cannot pass through cleanup. `test_ui_failure_records.py` fails each
 real-input failure diagnostic and clean-up step in turn and checks that the failed check's record
-is already on disk and keeps its own error (#190). Sessions fail on nonzero exits, forced
+is already on disk and keeps its own error (#190). `test_lab_calibration.py` checks that the
+Xvfb lab's pointer calibration waits for the tree's own report of its move, so a busy office
+cannot shift a workbook's calibrated positions and pixel coordinates by two pixels (#209).
+Sessions fail on nonzero exits, forced
 shutdowns, fatal messages, crash dumps, stalled main-thread callbacks or held terminate requests.
 Windows crash dumps matter even when the office exits with status zero. Only startup is retried;
 its dumps are retained separately. Debugger runs also reject signals, incomplete exits and missing
