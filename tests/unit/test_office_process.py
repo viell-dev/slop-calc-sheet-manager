@@ -167,6 +167,7 @@ def test_queued_releases_settle_before_the_office_is_asked(tmp_path: Path) -> No
 
     def settle(limit: float) -> None:
         calls.append((limit, desktop.terminate_requests))
+        time.sleep(0.2)
 
     with log_path.open("w", encoding="utf-8") as log:
         process = subprocess.Popen([sys.executable, "-c", "pass"], stdout=log, text=True)
@@ -174,6 +175,8 @@ def test_queued_releases_settle_before_the_office_is_asked(tmp_path: Path) -> No
     assert calls == [(7, 0)], "Settle once, within the grace period, before asking"
     assert desktop.terminate_requests == 1
     assert result["office_unsettled_releases"] is None
+    assert isinstance(result["office_release_wait_seconds"], float)
+    assert result["office_release_wait_seconds"] >= 0.2
     assert_clean_shutdown(result)
 
 

@@ -5,6 +5,7 @@ import re
 import shutil
 import subprocess
 import threading
+import time
 from collections.abc import Callable
 from contextlib import suppress
 from pathlib import Path
@@ -143,19 +144,22 @@ def end_office(
     Before asking, `settle(grace)` waits until the office has run the UNO releases this process
     sent: an office that exits while it still runs them can crash (#242, `client_releases`). It
     returns None, or why it stopped waiting; then the office is stopped instead of asked, and
-    the session fails with that reason in its results.
+    the session fails with that reason in its results. The wait's duration is recorded.
 
     After a stalled main-thread callback (`teardown`), the request could wait for the stuck
     thread without bound (#50), so neither it nor `settle` is sent and the office is stopped at
     once; the session then fails, with the stall and the forced shutdown in its results.
     """
+    waited = time.monotonic()
     unsettled = settle(grace) if settle is not None and not stalled else None
+    waited = round(time.monotonic() - waited, 3)
     returned = not stalled and unsettled is None and request_termination(desktop, grace)
     ended = finish_process(
         process, log_path, timeout=grace if returned else 0, backtrace_path=backtrace_path
     )
     ended["office_stalled_callbacks"] = list(stalled)
     ended["office_unsettled_releases"] = unsettled
+    ended["office_release_wait_seconds"] = waited
     ended["office_terminate_returned"] = returned
     return ended
 
