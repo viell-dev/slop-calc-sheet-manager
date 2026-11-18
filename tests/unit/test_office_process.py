@@ -1281,6 +1281,50 @@ def test_a_launcher_that_had_already_exited_is_not_paused() -> None:
     assert process.wait(timeout=5) == 0
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux pauses the launcher")
+def test_a_launcher_that_exits_before_it_is_seen_paused_is_not_listed_under(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Its children have another parent once it has exited, so a listing would find none of them.
+    assert sys.platform == "linux"
+    process = sleeper()
+    handle = os.pidfd_open(process.pid)
+
+    def killed(pid: int) -> list[str | None]:
+        signal.pidfd_send_signal(handle, signal.SIGKILL)  # It exits but stays unreaped.
+        return ["R"]  # As /proc showed it just before.
+
+    try:
+        monkeypatch.setattr(office_process, "linux_thread_states", killed)
+        seen = stop_process(process)
+    finally:
+        os.close(handle)
+    assert seen == [
+        f"nothing was held: the launcher {process.pid} had exited before it was seen paused"
+    ]
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux pauses the launcher")
+def test_a_launcher_whose_threads_cannot_be_read_is_still_listed_under(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Threads that /proc does not show are no sign that the launcher has exited.
+    assert sys.platform == "linux"
+    process = sleeper()
+
+    def unreadable(pid: int) -> list[str | None]:
+        return []
+
+    monkeypatch.setattr(office_process, "PAUSE_SECONDS", 0.1)
+    monkeypatch.setattr(office_process, "linux_thread_states", unreadable)
+    seen = stop_process(process)
+    assert seen == [
+        f"the launcher {process.pid} was not seen paused within 0.1 s (its threads' states: none "
+        "could be read), so it may have started a process after the listing",
+        f"the listing had no soffice.bin or other child under the launcher {process.pid}",
+    ]
+
+
 # A launcher whose second thread forks, as oosplash's `osl_executeProcess` helper thread does
 # while its main thread waits (#266). Each fork is made slow, about 30 ms in the checks
 # container, by thousands of mappings that use no memory; the thread writes "fork" just before
@@ -1420,15 +1464,20 @@ def test_a_signal_that_finds_a_held_process_gone_is_not_recorded_as_sent(
     assert sys.platform == "linux"
     process, other = sleeper(), sleeper()
     listed, exited = office_process.listed_processes, office_process.pidfd_exited
+    taken = threading.Event()
 
     def adopted(end: float) -> list[Process]:
-        return [
+        rows = [
             dataclasses.replace(row, parent=process.pid) if row.pid == other.pid else row
             for row in listed(end)
         ]
+        taken.set()
+        return rows
 
     def reaped_once_seen_running(handle: int, timeout: float) -> bool:
-        if other.returncode is None:  # The stop's first look, which finds it running.
+        # The first look after the listing is the stop's at the held process, which finds it
+        # running; the pause's looks at the launcher come before the listing.
+        if taken.is_set() and other.returncode is None:
             other.kill()
             other.wait()
             return False

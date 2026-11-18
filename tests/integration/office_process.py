@@ -330,16 +330,16 @@ def pause(process: subprocess.Popen[str], held: Held) -> bool:
         return True
     end = time.monotonic() + PAUSE_SECONDS
     while True:
-        states = set(linux_thread_states(process.pid))
-        if states <= EXITED:
+        if pidfd_exited(handle, 0):  # Readable only once every thread has exited.
             held.seen.append(
                 f"nothing was held: the launcher {process.pid} had exited before it was seen paused"
             )
             return False
-        if states <= {"T", *EXITED}:
+        states = set(linux_thread_states(process.pid))
+        if "T" in states and states <= {"T", *EXITED}:
             return True
         if time.monotonic() >= end:
-            listed = ", ".join(sorted(str(state) for state in states))
+            listed = ", ".join(sorted(str(state) for state in states)) or "none could be read"
             held.seen.append(
                 f"the launcher {process.pid} was not seen paused within {PAUSE_SECONDS:g} s "
                 f"(its threads' states: {listed}), so it may have started a process after the "
