@@ -59,10 +59,10 @@ picks since voids that claim, because a pick under the pressed name may then be 
 Never let a native cursor event during a held press reach the cursor: #70's first observer did,
 and the late release then moved the cursor and the next toggle onto the wrong row. A release
 names only the button released, so only the left button's ends the press. A refused release
-whose structure check finds a generation the list has not proved writes nothing: a retained
-handle may report its name for another sheet, and the queued write refreshes first. Any refresh
-that loses the identity proof writes the list's selection, even when it had no pick left to
-drop, so that the release's native selection cannot reach the next intake.
+whose structure check finds a generation the list has not proved writes none of its refs: a
+retained handle may report its name for another sheet. It clears the row the release selected
+and leaves the rest to the queued write, which refreshes first, so that the release's native
+selection cannot reach the next intake even when that refresh fails to write.
 
 Activation. A double click or Enter makes the sheet Calc's only selected tab and reads that back,
 because `setActiveSheet` keeps an existing group when the sheet belongs to it. Activation reads
@@ -761,8 +761,12 @@ class SheetList:
         observed = snapshot(self.document)
         rows = read_rows(self.controller, observed)
         generation = self._monitor.check()
-        proven = previous is None or self._identities_kept(previous, observed, generation, renamed)
-        dropped = self._selection.carry(renamed) if proven else self._drop_all_picks()
+        if previous is not None and not self._identities_kept(
+            previous, observed, generation, renamed
+        ):
+            dropped = self._drop_all_picks()
+        else:
+            dropped = self._selection.carry(renamed)
         self._proven = generation
         changed = rows != self.rows or not self._nodes
         self._observed = observed
@@ -771,10 +775,7 @@ class SheetList:
         )
         if changed:
             self._rebuild(rows)
-        elif not proven or dropped or tuple(self._selection.names()) != self._shown:
-            # After a lost proof also when no pick dropped: the tree can still show a selection
-            # made against the sheets that proof covered, such as a refused release's, and the
-            # next intake would take it under a replacement's handle.
+        elif dropped or tuple(self._selection.names()) != self._shown:
             self._apply_selection()
         if (
             pending is not None
@@ -1786,9 +1787,14 @@ class SheetList:
                 # No refresh has proved the list's refs since a sheet may have been inserted or
                 # deleted, so a retained handle may report its name for another sheet: write
                 # none of them. The queued write refreshes first (`_flush_selection`), and that
-                # refresh decides what survives, while its pending flag keeps the release's
-                # native selection and cursor from being taken meanwhile.
+                # refresh drops every pick, because the generation moved. Only clear the row the
+                # release selected, now: a clear writes no ref, and a failure of that refresh's
+                # own write or model assignment then cannot leave the row for the intake at the
+                # newly proved generation. The write's pending flag keeps the release's
+                # selection and cursor from being taken before that refresh.
                 self._queue_selection()
+                self.tree.clearSelection()  # Keeps the cursor where it is.
+                self.peer.invalidate(0)
                 return
             # The list's own picks come back, each still the sheet it was picked as, including
             # any newer pick made meanwhile, by following Calc or by keyboard, also after a

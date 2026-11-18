@@ -501,6 +501,8 @@ def refused_press_owner(
         _handles=handles,
         rows=[SimpleNamespace(name=name) for name in ROWS],
         names=lambda: list(ROWS),
+        tree=SimpleNamespace(clearSelection=Mock()),
+        peer=SimpleNamespace(invalidate=Mock()),
         _queue_selection=Mock(),
         _apply_selection=lambda: applied.append(selection.cursor),
     )
@@ -574,8 +576,9 @@ def test_a_refused_release_writes_only_refs_proved_at_the_current_generation(pro
     """Hotel was replaced under its name after Ctrl+Down reached it: the monitor is at 1.
 
     Its old handle can report "Hotel" for the replacement, so before any refresh (`proven` 0)
-    the release writes nothing and leaves the queued write's refresh to decide. A refresh
-    during the hold that proved generation 1 already kept Hotel's newer ref; that stays.
+    the release writes none of the list's refs: it only clears the row the release selected and
+    leaves the queued write's refresh to decide. A refresh during the hold that proved
+    generation 1 already kept Hotel's newer ref; that stays.
     """
     owner, applied = refused_press_owner(("Bravo",), "Hotel", generation=1, proven=proven)
     release_refused(owner)
@@ -583,8 +586,10 @@ def test_a_refused_release_writes_only_refs_proved_at_the_current_generation(pro
     if proven == 0:
         assert applied == []
         owner._queue_selection.assert_called_once_with()
+        owner.tree.clearSelection.assert_called_once_with()
     else:
         assert [ref.name if ref is not None else None for ref in applied] == ["Hotel"]
+        owner.tree.clearSelection.assert_not_called()
 
 
 def test_another_buttons_release_leaves_the_held_left_press_and_its_gate() -> None:
@@ -617,13 +622,20 @@ def test_only_a_press_that_still_identifies_its_sheet_takes_a_lost_cursor(
     assert [ref.name if ref is not None else None for ref in applied] == [expected]
 
 
+class NativeFailure(Exception):
+    """A native tree call that a test makes fail; no native trigger is known (#257)."""
+
+
 class HeldBravo:
     """A list running its own press, refreshes, keys and release, while Bravo is held.
 
-    Only the document, the tree and the UI queue are fakes. The tree is the set of rows it shows
-    as selected; posted work runs on `drain`. Replacing a sheet under its own name advances the
-    structure generation, as deleting and inserting it does, and the old handle keeps reporting
-    that name, as a deleted sheet's handle can.
+    Only the document, the tree, Calc's tab selection and the UI queue are fakes. The tree is
+    the set of rows it shows as selected; posted work runs on `drain`. Replacing a sheet under
+    its own name advances the structure generation, as deleting and inserting it does, and the
+    old handle keeps reporting that name, as a deleted sheet's handle can. `fail` makes a native
+    call fail once; as in LibreOffice, the failure ends only the listener or the posted work it
+    happens in, and is reported (`failures`). A failed refresh is retried by calling `refresh`
+    again, as its scheduled retry would. The tab observer runs only after `watch_tabs`.
     """
 
     METHODS = (
@@ -636,18 +648,24 @@ class HeldBravo:
         "_take_tree_selection",
         "_current_picks",
         "_ref",
+        "_select",
         "tree_key",
         "_queue_selection",
         "_flush_selection",
         "mouse_pressed",
         "mouse_released",
         "_pressed_sheet_in_place",
+        "_observe_view",
+        "_remember_view",
     )
 
     def __init__(self, names: tuple[str, ...], picks: tuple[str, ...]) -> None:
         self.sheets = [Sheet(name) for name in names]
         self.native: set[str] = set()
         self.posted: list[Any] = []
+        self.failing: dict[str, int] = {}  # A call's name, and how many calls succeed first.
+        self.failures: list[str] = []  # Where an injected failure ended the work.
+        self.tabs: tuple[str, tuple[str, ...]] = (names[0], (names[0],))  # Calc's active, group.
         namespace: dict[str, Any] = {
             "_Press": function(LIST, "_Press", {"dataclass": dataclass, "Any": Any}),
             "Any": Any,
@@ -660,25 +678,34 @@ class HeldBravo:
             **dict(LEFT=LEFT, RIGHT=RIGHT, SHIFT=SHIFT, MOD1=MOD1, A=A, SPACE=SPACE, UP=UP),
             **dict(DOWN=DOWN, HOME=HOME, END=END, PAGEUP=PAGEUP, PAGEDOWN=PAGEDOWN),
         }
-        monitor = SimpleNamespace(generation=0)
+        monitor = SimpleNamespace(generation=0, events=SimpleNamespace(viewing_replay=lambda: None))
         monitor.check = lambda: monitor.generation
         observed = self.snapshot(None)
         owner = self.owner = SimpleNamespace(
             _disposed=False,
+            _busy=False,
             _pointer_depth=0,
             _selection_write_pending=False,
             _selection_scroll=False,
             _restoring_cursor=False,
             _press=None,
+            _drag=None,
             _context_target=None,
+            _menu=SimpleNamespace(is_open=False),
             _menu_context=False,
             _proven=0,
             _generation=0,
             _input=0,
             _user_picks=False,
+            _view_state=None,
+            _view_input=0,
+            _view_ack_pending=False,
             _view_generation=0,
             _view_names=frozenset(names),
             _view_stopped=True,
+            _stale_since=None,
+            _theme=None,
+            _status=None,
             _page_rows=5,
             _monitor=monitor,
             _selection=Selection(function(LIST, "_current", {"Ref": Ref})),
@@ -687,10 +714,17 @@ class HeldBravo:
             rows=[SheetRow(name) for name in names],
             _nodes=list(names),  # A node is its row's name here.
             _shown=(),
-            document=None,
-            controller=None,
+            document=SimpleNamespace(
+                hasControllersLocked=lambda: False,
+                isActionLocked=lambda: False,
+                getSheets=lambda: SimpleNamespace(
+                    getElementNames=lambda: [sheet.name for sheet in self.sheets]
+                ),
+            ),
+            controller=SimpleNamespace(getActiveSheet=lambda: Sheet(self.tabs[0])),
+            _tabs_method=SimpleNamespace(invoke=self.selected_tabs),
             tree=SimpleNamespace(
-                clearSelection=self.native.clear,
+                clearSelection=self.clear_selection,
                 addSelection=self.native.add,
                 makeNodeVisible=Mock(),
             ),
@@ -703,6 +737,7 @@ class HeldBravo:
             _name_viewed=Mock(),
             _update_moves=Mock(),
             _show_cleared_notice=Mock(),
+            document_modified=Mock(),
         )
         owner.names = lambda: [row.name for row in owner.rows]
         owner.selected_names = lambda: [name for name in owner.names() if name in self.native]
@@ -732,27 +767,61 @@ class HeldBravo:
     def list_refresh(self, renamed: Mapping[str, str] | None = None) -> None:
         self.owner._refresh(renamed or {})
 
+    def fail(self, call: str, after: int = 0) -> None:
+        """Make the native call `call` fail once, after `after` calls that succeed."""
+        self.failing[call] = after
+
+    def native_call(self, call: str) -> None:
+        if call in self.failing:
+            if self.failing[call] == 0:
+                del self.failing[call]
+                raise NativeFailure(call)
+            self.failing[call] -= 1
+
+    def clear_selection(self) -> None:
+        self.native_call("clearSelection")
+        self.native.clear()
+
+    def selected_tabs(self, controller: object, arguments: tuple[()]) -> tuple[list[int]]:
+        names = [sheet.name for sheet in self.sheets]
+        return ([names.index(name) for name in self.tabs[1]],)
+
     def move_cursor(self, index: int, scroll: bool = True) -> None:
         """In single selection mode, selecting a row moves the tree's cursor there too."""
         self.native.clear()
         self.native.add(self.owner.names()[index])
 
     def rebuild(self, rows: list[SheetRow]) -> None:
-        """A new data model shows no selection until the list writes its own."""
+        """A new data model shows no selection until the list writes its own.
+
+        A failed model assignment leaves the old model, its rows and their selection.
+        """
+        self.native_call("DataModel")
         owner = self.owner
         owner.rows, owner._nodes, owner._shown = rows, [row.name for row in rows], ()
         self.native.clear()
         owner._apply_selection()
 
+    def run(self, where: str, work: Callable[[], None]) -> None:
+        """Run `work` as LibreOffice runs a listener or posted work: a failure is reported."""
+        try:
+            work()
+        except NativeFailure:
+            self.failures.append(where)
+
     def drain(self) -> None:
         while self.posted:
-            self.posted.pop(0)()
+            self.run("posted work", self.posted.pop(0))
 
     def replace(self, name: str) -> Sheet:
         index = [sheet.name for sheet in self.sheets].index(name)
         self.sheets[index] = Sheet(name)
         self.owner._monitor.generation += 1
         return self.sheets[index]
+
+    def insert(self, name: str, index: int) -> None:
+        self.sheets.insert(index, Sheet(name))
+        self.owner._monitor.generation += 1
 
     def move(self, name: str, index: int) -> None:
         sheet = self.sheets.pop([sheet.name for sheet in self.sheets].index(name))
@@ -762,24 +831,44 @@ class HeldBravo:
         next(sheet for sheet in self.sheets if sheet.name == name).name = new
 
     def refresh(self) -> None:
-        self.owner.refresh()
+        self.run("refresh", self.owner.refresh)
+        self.drain()
+
+    def watch_tabs(self) -> None:
+        """Start the tab observer, which takes Calc's current tabs as its baseline."""
+        self.owner._view_stopped = False
+        self.owner._observe_view(True)
+
+    def view_tick(self) -> None:
+        self.owner._observe_view(False)
         self.drain()
 
     def key(self, code: int, modifiers: int = 0) -> None:
         self.owner.tree_key(code, modifiers)
         self.drain()
 
+    def pointer(self, where: str, handler: Callable[[Any], None], event: Any) -> None:
+        """As the list's mouse listener runs its handlers (`_Mouse._handle`)."""
+        owner = self.owner
+        owner._pointer_depth += 1
+        try:
+            self.run(where, lambda: handler(event))
+        finally:
+            owner._pointer_depth -= 1
+            if not owner._pointer_depth:
+                owner._queue_selection()
+        self.drain()
+
     def press(self, row: int) -> None:
         event = SimpleNamespace(Buttons=LEFT, Y=row, Modifiers=0, ClickCount=1)
-        self.owner.mouse_pressed(event)
-        self.drain()
+        self.pointer("press", self.owner.mouse_pressed, event)
 
     def release(self, row: int) -> None:
         """The tree's native release selects the row under the pointer before the listener."""
         self.native.clear()
         self.native.add(self.owner.names()[row])
-        self.owner.mouse_released(SimpleNamespace(Buttons=LEFT, X=0, Y=row))
-        self.drain()
+        event = SimpleNamespace(Buttons=LEFT, X=0, Y=row)
+        self.pointer("release", self.owner.mouse_released, event)
 
     def cursor(self) -> str | None:
         cursor = self.owner._selection.cursor
@@ -865,12 +954,12 @@ def test_a_sheet_renamed_to_the_pressed_name_gets_no_cursor_preference() -> None
     assert held.cursor() == "Alfa"
 
 
-def test_a_refresh_that_proves_nothing_writes_the_lists_selection_even_when_none_dropped() -> None:
+def test_a_refused_release_at_an_unproved_generation_clears_the_row_it_selected() -> None:
     """Bravo, held, is replaced under its name, and the refresh drops every pick. Hotel is
     replaced too before the release, which the tree answers by selecting the pressed row. The
-    release writes nothing at that unproved generation; the refresh it asks for proves nothing
-    either and has no pick left to drop, but must still write the list's empty selection, or
-    the next command would take the replacement Bravo from the tree (#71).
+    release writes none of the list's refs at that unproved generation, and the refresh it asks
+    for has no pick left to drop, so it writes nothing: the release must clear the row itself,
+    or the next command would take the replacement Bravo from the tree (#71).
     """
     held = HeldBravo(("Alfa", "Bravo", "Charlie", "Hotel"), ("Bravo",))
     held.replace("Bravo")
@@ -883,23 +972,70 @@ def test_a_refresh_that_proves_nothing_writes_the_lists_selection_even_when_none
     assert held.owner._current_picks() == []
 
 
-def test_a_lost_proof_clears_a_native_selection_awaiting_intake() -> None:
-    """The same write outside a hold: a plain click on Bravo, Ctrl+Space to unpick it, and a
-    replacement of Bravo leave nothing picked and no cursor. Assistive technology then selects
-    Charlie, and Charlie is replaced under its name before the intake. The refresh must clear
-    that selection rather than leave it for the next command under the replacement's handle.
+def unpicked_bravo_held() -> HeldBravo:
+    """Bravo, picked and held, moves to row 6, and Ctrl+Space unpicks it: nothing is picked."""
+    held = HeldBravo(ORIGINAL, ("Bravo",))
+    held.move("Bravo", 6)
+    held.refresh()
+    held.key(SPACE, MOD1)
+    assert held.picks() == [] and held.cursor() == "Bravo" and held.native == set()
+    return held
+
+
+@pytest.mark.parametrize("failed", [0, 1])
+def test_a_failed_clear_after_a_refused_release_leaves_no_pick_for_the_retry(failed: int) -> None:
+    """Then Charlie is replaced under its name, and the button goes up over Charlie's row before
+    the refresh, which the tree answers by selecting it. One clear of the tree fails: the
+    release's own, or the refresh's (`failed`). Neither the refresh's retry nor the next command
+    may take Charlie, the replacement, as the user's pick.
+    """
+    held = unpicked_bravo_held()
+    held.replace("Charlie")
+    held.fail("clearSelection", after=failed)
+    held.release(1)
+    assert len(held.failures) == 1 and "clearSelection" not in held.failing
+    held.refresh()  # The retry, which a failed refresh schedules.
+    assert held.owner._current_picks() == []
+    assert held.picks() == [] and held.native == set()
+
+
+def test_a_failed_model_assignment_after_a_refused_release_leaves_no_pick() -> None:
+    """Then another window inserts a sheet, and the button goes up over Charlie's row before the
+    refresh. That refresh rebuilds the rows, and assigning the new data model fails, which
+    leaves the old tree. Neither the next command nor the retry may take Charlie, a sheet the
+    user only released the refused click over.
+    """
+    held = unpicked_bravo_held()
+    held.insert("India", 8)
+    held.fail("DataModel")
+    held.release(1)
+    assert held.failures == ["posted work"]
+    assert held.owner._current_picks() == []
+    held.refresh()
+    assert held.owner._current_picks() == []
+    assert held.picks() == [] and held.native == set()
+
+
+def test_a_second_same_name_replacement_keeps_the_tab_baseline() -> None:
+    """With no press held, a replacement of Bravo drops its pick and the cursor. A second one
+    has nothing left to drop and rows that read the same, so its refresh writes nothing, and no
+    write that could fail is left to keep it from taking Calc's tabs as its baseline. A later
+    group of Alfa and Charlie in Calc is then followed (#71).
     """
     held = HeldBravo(("Alfa", "Bravo", "Charlie", "Hotel"), ())
     held.release(1)
-    held.key(SPACE, MOD1)
+    held.watch_tabs()
     held.replace("Bravo")
     held.refresh()
-    assert held.owner._selection.cursor is None and held.native == set()
-    held.native.add("Charlie")
-    held.replace("Charlie")
+    assert held.picks() == [] and held.cursor() is None and held.native == set()
+    held.replace("Bravo")
+    held.fail("clearSelection")
     held.refresh()
-    assert held.native == set()
-    assert held.owner._current_picks() == []
+    held.failing.clear()
+    held.tabs = ("Alfa", ("Alfa", "Charlie"))
+    held.refresh()  # A retry, if the refresh failed.
+    held.view_tick()
+    assert held.picks() == ["Alfa", "Charlie"]
 
 
 def test_a_pick_made_after_a_lost_proof_survives_a_refused_release() -> None:
