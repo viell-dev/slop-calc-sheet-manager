@@ -60,9 +60,15 @@ If Sheet Manager does not work in an environment where it is expected to, please
   sidebar, and with LibreOffice's gtk3 interface on Linux the accessibility bridge reports nothing
   from the list. <Unreleased since="0.0.9" /> They can now, and the gtk3 bridge reports the list's
   focus, rows and name changes
-  ([#133](https://github.com/viell-dev/slop-calc-sheet-manager/issues/133)). No screen reader runs
-  in the checks: they read LibreOffice's accessibility interface,
-  and the gtk3 bridge was probed once. Windows screen readers have not been tried.
+  ([#133](https://github.com/viell-dev/slop-calc-sheet-manager/issues/133)). Automated checks
+  read LibreOffice's accessibility interface. Separate screen-reader probes used Orca on Linux
+  (gtk3) and NVDA on Windows. NVDA did not read the focused list rows in the Windows probe
+  ([#249](https://github.com/viell-dev/slop-calc-sheet-manager/issues/249)).
+  <Unreleased /> In Rename Sheets, both readers announced a conflict in the focused **New name**
+  field in the tested configurations. If the proposal changes from a conflict to an invalid
+  name, the field returns to its ordinary name even though Rename is still unavailable.
+  Use **Sheets** to hear the proposal and its current reason
+  ([#254](https://github.com/viell-dev/slop-calc-sheet-manager/issues/254)).
 - **Large lists.** The list rebuilds after renames, moves and changes to visibility or
   protection. <Unreleased /> Switching sheets and changing tab colours only repaint it. In
   workbooks with many sheets, the active-sheet marker, and <Unreleased since="0.0.9" /> the list's

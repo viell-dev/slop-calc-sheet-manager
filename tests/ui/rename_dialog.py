@@ -9,10 +9,13 @@ against a motion listener on the dialog's own background, with the lab's `Tracke
 
 import sys
 import time
+from itertools import groupby
 from typing import Any
 
 import uno
+import unohelper
 from button_pixels import capture as capture_disabled_buttons
+from com.sun.star.accessibility import XAccessibleEventListener
 from lab import Tracker, settled_report
 from run import wait_for
 from sheet_list_view import on_main_thread
@@ -21,10 +24,26 @@ from xinput import Pointer
 from sheet_manager.uno_calc import select_tabs
 from sheet_manager.uno_menu import RENAME, RENAME_SHEETS
 
+FOCUSED = uno.getConstantByName("com.sun.star.accessibility.AccessibleStateType.FOCUSED")
+NAME_CHANGED = uno.getConstantByName("com.sun.star.accessibility.AccessibleEventId.NAME_CHANGED")
 # Calibration (#232): how long the dialog may take to report the confirming second move before
 # the next point is tried, and how many points may fail to confirm before calibration fails.
 CONFIRM_SECONDS = 2
 REJECTED_POINTS = 3
+
+
+class NameChanges(unohelper.Base, XAccessibleEventListener):
+    """Record UNO name-change events from the edit peer."""
+
+    def __init__(self):
+        self.names = []
+
+    def notifyEvent(self, event):
+        if event.EventId == NAME_CHANGED:
+            self.names.append(event.NewValue)
+
+    def disposing(self, source):
+        pass
 
 
 def _reported(tracker, before, seconds):
@@ -112,11 +131,15 @@ class Dialog:
         walk(root, 0)
         return sorted(found, key=lambda c: (c.getLocationOnScreen().Y, c.getLocationOnScreen().X))
 
-    def text(self, window):
-        """An edit field's text, from the accessible text field at the same height."""
+    def edit(self, window):
+        """The accessible edit field at the same height as its outer window."""
         fields = self._accessible("TEXT")
         assert len(fields) == 3, [field.getAccessibleName() for field in fields]
-        return fields[(self.find, self.replace, self.name).index(window)].getText()
+        return fields[(self.find, self.replace, self.name).index(window)]
+
+    def text(self, window):
+        """Read the contents of an edit through its accessible text interface."""
+        return self.edit(window).getText()
 
     def _items(self):
         return self._accessible("LIST_ITEM")
@@ -320,21 +343,73 @@ def check_keyboard(book):
         book.lab.input.tap("Down", pause=0.3)
         wait_for(lambda: dialog.text(dialog.name) == "Ch4rlie", "the second row in the name field")
         book.lab.input.tap("n", ("Alt_L",), pause=0.3)  # The New name field.
-        book.lab.input.tap("a", ("Control_L",), pause=0.1)
-        type_text(book.lab, "a/b")
-        wait_for(lambda: "cannot contain" in dialog.state()["status"], "the refused name")
-        evidence["refused"] = dialog.state()
-        assert not dialog.state()["rename_enabled"] and "⚠" in dialog.items()[1]
-        evidence["disabled_label_refused"] = capture_disabled_buttons(
-            book.lab,
-            {"Rename": dialog.buttons["Rename"]},
-            "rename-refused-label",
-            dialog.calibrate().offset if sys.platform.startswith("linux") else None,
-        )
-        book.lab.screenshot("rename-sheets-refused-name")
-        book.lab.input.tap("a", ("Control_L",), pause=0.1)
-        type_text(book.lab, "Bravo")  # Free once Bravo has its new name: a chain.
-        wait_for(lambda: dialog.state()["rename_enabled"], "a valid batch again")
+        field = dialog.edit(dialog.name)
+        assert field.getAccessibleStateSet() & FOCUSED
+        assert field.getAccessibleName() == "New name:"
+        changes = NameChanges()
+        field.addAccessibleEventListener(changes)
+        try:
+            book.lab.input.tap("a", ("Control_L",), pause=0.1)
+            type_text(book.lab, "a/b")
+            wait_for(lambda: "cannot contain" in dialog.state()["status"], "the refused name")
+            evidence["refused"] = dialog.state()
+            assert not dialog.state()["rename_enabled"] and "⚠" in dialog.items()[1]
+            evidence["disabled_label_refused"] = capture_disabled_buttons(
+                book.lab,
+                {"Rename": dialog.buttons["Rename"]},
+                "rename-refused-label",
+                dialog.calibrate().offset if sys.platform.startswith("linux") else None,
+            )
+            book.lab.screenshot("rename-sheets-refused-name")
+            assert field.getAccessibleName() == "New name:"
+
+            book.lab.input.tap("a", ("Control_L",), pause=0.1)
+            type_text(book.lab, "Echo")  # Already used by an unpicked sheet.
+            reason = "Another sheet is already named “Echo”."
+            duplicate_name = f"New name: {reason}"
+            wait_for(lambda: dialog.state()["status"] == reason, "a duplicate refusal")
+            wait_for(lambda: duplicate_name in changes.names, "the edit's name change")
+            assert field.getAccessibleName() == duplicate_name
+            assert field.getAccessibleStateSet() & FOCUSED
+            assert not dialog.state()["rename_enabled"]
+
+            book.lab.input.tap("Home")
+            book.lab.input.tap("Right", ("Shift_L",))
+            type_text(book.lab, "e")  # Echo -> echo changes the reason.
+            near_reason = (
+                "Too close to “Echo”, another sheet's name: Calc can treat them as one name."
+            )
+            near_name = f"New name: {near_reason}"
+            wait_for(lambda: near_name in changes.names, "the comparison-key conflict event")
+            assert dialog.items()[1] == f"Charlie   →   echo   ⚠ {near_reason}"
+            book.lab.input.tap("End")
+            book.lab.input.tap("Left", ("Shift_L",))
+            events_before_edit = len(changes.names)
+            type_text(book.lab, "O")  # echo -> echO keeps the same reason.
+            wait_for(
+                lambda: dialog.items()[1] == f"Charlie   →   echO   ⚠ {near_reason}",
+                "the changed proposal with the same conflict",
+            )
+            assert field.getAccessibleName() == near_name
+            assert not dialog.state()["rename_enabled"]
+
+            book.lab.input.tap("a", ("Control_L",), pause=0.1)
+            type_text(book.lab, "Bravo")  # Free once Bravo has its new name: a chain.
+            wait_for(lambda: dialog.state()["rename_enabled"], "a valid batch again")
+            wait_for(lambda: changes.names[-1:] == ["New name:"], "the ordinary edit name event")
+            assert field.getAccessibleName() == "New name:"
+            assert field.getAccessibleStateSet() & FOCUSED
+            evidence["edit_name_changes"] = list(changes.names)
+            # The restore event comes after any events from the same-reason edit.
+            assert changes.names[events_before_edit] == "New name:", changes.names
+            # A single peer update can deliver consecutive duplicate events.
+            assert [name for name, _ in groupby(changes.names)] == [
+                duplicate_name,
+                near_name,
+                "New name:",
+            ], changes.names
+        finally:
+            field.removeAccessibleEventListener(changes)
         assert dialog.items()[1] == "Charlie   →   Bravo", dialog.items()
         book.lab.screenshot("rename-sheets-ready")
         book.lab.input.tap("r", ("Alt_L",), pause=0.5)  # Rename.
