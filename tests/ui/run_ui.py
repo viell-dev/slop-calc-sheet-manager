@@ -193,6 +193,8 @@ def main():
     for vcl in arguments.vcl or ["gtk3", "gen"]:
         output = (arguments.output / f"ui-{vcl}").resolve()
         output.mkdir(parents=True, exist_ok=True)
+        for stale in output.glob("stall-*"):  # An earlier run's stall evidence (#45).
+            stale.unlink()
         configure_desktop_opener(output)
         result: dict[str, object] = {"vcl": vcl}
         summary[vcl] = result

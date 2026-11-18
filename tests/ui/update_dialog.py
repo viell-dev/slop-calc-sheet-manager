@@ -25,6 +25,7 @@ import uno  # noqa: E402
 import unohelper  # noqa: E402
 from com.sun.star.ui.dialogs import XDialogClosedListener  # noqa: E402
 from lab import Lab  # noqa: E402
+from main_thread import close_document  # noqa: E402
 from release_data import (  # noqa: E402
     DESCRIPTION,
     IDENTIFIER,
@@ -35,6 +36,7 @@ from release_data import (  # noqa: E402
     package_metadata,
 )
 from run import assert_deck, office_session, wait_for  # noqa: E402
+from teardown import stalled_callbacks  # noqa: E402
 from xinput import RIGHT, Pointer  # noqa: E402
 
 ENABLED = uno.getConstantByName("com.sun.star.accessibility.AccessibleStateType.ENABLED")
@@ -308,9 +310,14 @@ def exercise(program, package, output, result, backtrace):
                 assert "No errors." in result["installation_text"], result["installation_text"]
                 click(lab, named(nodes, "OK"))
             finally:
+                # No cleanup starts on a stalled office or during the stall watch's capture (#45):
+                # each tap and the close check first. A tap under way when a stall is recorded
+                # finishes.
                 for _ in range(4):
-                    lab.input.tap("Escape", pause=0.3)
-                document.close(True)
+                    if not stalled_callbacks():
+                        lab.input.tap("Escape", pause=0.3)
+                if not stalled_callbacks():
+                    close_document(context, document)
         restart = output / "restart"
         restart.mkdir()
         result["restart"] = restarted = {}
@@ -356,6 +363,8 @@ def main():
     parser.add_argument("--backtrace", action="store_true")
     arguments = parser.parse_args()
     arguments.output.mkdir(parents=True, exist_ok=True)
+    for stale in arguments.output.rglob("stall-*"):  # An earlier run's stall evidence (#45).
+        stale.unlink()
     result: dict[str, object] = {"vcl": "gen"}
     try:
         # Deployment state survives our controlled restart, then the profile is removed.

@@ -7,19 +7,70 @@ settings restore is tried (#51), the UI runner stops too (#52), the session fail
 stops its own office process tree instead of asking it to terminate, which would wait for the
 stuck thread too (#40). An earlier failure stays the one raised, with the timeout as a note, so
 that neither hides the other.
+
+Steps report progress through `note_progress`: the runner's `StallWatch` fails and stops a
+session that reports none for its limit, after trying to save stacks (#45). Suites, checks, the
+runners' loops and the benchmarks' workbooks and repetitions report it; a single step need not.
+Progress and expiry are one decision under one lock (`stall_if_idle`): progress noted before it
+prevents the stall, and a stall it records is final, so later progress cannot undo it. The stall
+is recorded as a stalled callback before any stacks are tried, so no close or restore starts
+during the capture: the shared close helpers (`main_thread.close_document`,
+`run.close_writer`) check `refuse_after_stall` first, also for the test bodies' own closes. A
+close or other call already under way when the stall is recorded, including a close
+`close_document` has already posted to the main thread on Windows, and work a test posts to the
+main thread itself, continue until the runner stops the office's launcher.
 """
 
+import threading
+import time
 from collections.abc import Callable, Iterable
 from contextlib import suppress
 from types import TracebackType
 from typing import Any
 
 _stalled: list[str] = []
+_lock = threading.Lock()
+# The last progress and the longest interval between two reports in this session.
+_progress = [time.monotonic(), 0.0]
 
 
 def start_session() -> None:
-    """Forget stalled callbacks of an earlier office session in this process."""
-    _stalled.clear()
+    """Forget stalled callbacks and progress of an earlier office session in this process."""
+    with _lock:
+        _stalled.clear()
+        _progress[:] = [time.monotonic(), 0.0]
+
+
+def note_progress() -> None:
+    """Note that the session has moved on to another suite, check or step."""
+    with _lock:
+        now = time.monotonic()
+        _progress[:] = [now, max(_progress[1], now - _progress[0])]
+
+
+def seconds_since_progress() -> float:
+    with _lock:
+        return time.monotonic() - _progress[0]
+
+
+def longest_progress_interval() -> float:
+    """The longest time this session has gone without progress, including the current wait."""
+    with _lock:
+        return max(_progress[1], time.monotonic() - _progress[0])
+
+
+def stall_if_idle(limit: float, message: str, overdue: bool = False) -> float | None:
+    """Record `message` as a stall if no progress came for `limit` seconds, or if `overdue`.
+
+    Return the seconds since progress when the stall is recorded, otherwise None. The check and
+    the record hold the lock that `note_progress` takes, so they cannot interleave with it.
+    """
+    with _lock:
+        idle = time.monotonic() - _progress[0]
+        if idle < limit and not overdue:
+            return None
+        _stalled.append(message)
+        return idle
 
 
 def record_stalled_callback(message: str) -> None:
@@ -29,6 +80,16 @@ def record_stalled_callback(message: str) -> None:
 
 def stalled_callbacks() -> list[str]:
     return list(_stalled)
+
+
+def refuse_after_stall(action: str) -> None:
+    """Raise TimeoutError instead of starting `action` once a callback or the session has stalled.
+
+    A document close on a stuck office could wait for good, and one during the stall watch's
+    capture would change the state being captured (#45, #50).
+    """
+    if _stalled:
+        raise TimeoutError(f"Not {action}: {_stalled[0]}")
 
 
 def _note(error: BaseException, message: str) -> None:
@@ -133,6 +194,7 @@ def run_checks(
             if _stalled:
                 break  # No check runs against a stuck office; the clean-up below raises.
             print(f"{label}:", name, flush=True)
+            note_progress()
             results[name] = check() or True
     except BaseException as failure:
         close_leftovers(documents, close, failure)

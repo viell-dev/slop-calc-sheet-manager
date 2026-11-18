@@ -74,7 +74,8 @@ def settle_releases(context, timeout: float) -> str | None:
     Each step can block: collection runs Python finalizers, and the marker and the confirmation
     are UNO calls that a stuck office would not answer. So every step runs on one thread, which
     is left behind if a step never ends, and the whole wait ends after `timeout` seconds: the
-    runner then stops the office instead of hanging (#40). The reason names the unfinished step.
+    runner then stops the launcher it started (its whole process tree on Windows) instead of
+    hanging (#40). The reason names the unfinished step.
     """
     deadline = time.monotonic() + timeout
     step = ["collecting garbage"]

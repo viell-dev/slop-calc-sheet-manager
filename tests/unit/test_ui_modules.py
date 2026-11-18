@@ -7,6 +7,7 @@ other way round, so a runner can reuse the workbook, the lab and the checks on i
 
 import ast
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -35,3 +36,52 @@ def test_shared_ui_modules_import_no_runner(path: Path) -> None:
 
 def test_the_runners_exist() -> None:
     assert {path.stem for path in UI.glob("*.py")} >= RUNNERS
+
+
+@pytest.mark.parametrize("stall", [False, True])
+def test_the_update_dialogs_cleanup_checks_for_a_stall_before_each_step(stall: bool) -> None:
+    # The cleanup runs as written, with fakes: a stall recorded during its first Escape tap
+    # leaves the remaining taps and the close unstarted (#45).
+    tree = ast.parse((UI / "update_dialog.py").read_text(encoding="utf-8"))
+    (cleanup,) = [
+        node.finalbody
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Try) and "tap(" in ast.unparse(ast.Module(node.finalbody, []))
+    ]
+    stalled: list[str] = []
+    taps: list[bool] = []
+    closes: list[object] = []
+
+    def tap(key: str, pause: float) -> None:
+        taps.append(bool(stalled))
+        if stall:
+            stalled.append("a synthetic stall during the first Escape")
+
+    def close_document(context: object, document: object) -> None:
+        closes.append(document)
+
+    namespace: dict[str, object] = {
+        "stalled_callbacks": lambda: list(stalled),
+        "lab": SimpleNamespace(input=SimpleNamespace(tap=tap)),
+        "close_document": close_document,
+        "context": None,
+        "document": "workbook",
+    }
+    exec(compile(ast.Module(cleanup, []), "update_dialog.py", "exec"), namespace)
+    assert taps == ([False] if stall else [False] * 4)
+    assert closes == ([] if stall else ["workbook"])
+
+
+def test_the_update_dialog_closes_its_document_only_through_the_shared_helper() -> None:
+    # `main_thread.close_document` refuses to close after a stall (#45); a direct close would not.
+    tree = ast.parse((UI / "update_dialog.py").read_text(encoding="utf-8"))
+    direct = [
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "close"
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "document"
+    ]
+    assert direct == []
