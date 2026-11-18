@@ -1,7 +1,8 @@
 """A failed UI check's record survives failures of its own diagnostics and clean-up (#190).
 
-The UI runner imports UNO, so `run_named` and `after_failure` are read from its source and run
-against a fake lab, with the real `teardown` module, as in `test_stalled_cleanup.py`.
+The UI check loop imports UNO through the workbook fixture, so `run_named` and `after_failure`
+are read from its source and run against a fake lab, with the real `teardown` module, as in
+`test_stalled_cleanup.py`.
 """
 
 import json
@@ -16,7 +17,7 @@ import pytest
 from tests.integration.teardown import record_stalled_callback, stalled_callbacks, start_session
 from tests.unit.source_methods import function
 
-RUNNER = "tests/ui/run_ui.py"
+RUNNER = "tests/ui/check_loop.py"
 STEPS = ("screenshot", "desktop", "release_held", "escape")
 PRIMARY = "AssertionError: original synthetic assertion"
 

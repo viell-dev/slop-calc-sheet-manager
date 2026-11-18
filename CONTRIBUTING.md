@@ -235,6 +235,8 @@ A real-input regression pauses for one second with Down pressed and still expect
 step. These tests exercise explicit key events, not the operating system's timed repeat behavior.
 
 Inside the container, `tests/ui/run_ui.py --check NAME` (repeatable) selects checks.
+`run_ui.py` lists the checks in order; they live in `tests/ui/*_checks.py` by subject, with the
+shared workbook fixture and its rules in `workbook.py`.
 Results and screenshots are in `test-results/<lane>/ui-gtk3/` and `ui-gen/`.
 Windows synthetic input bypasses key handlers and cannot start a native drag; use the
 [visible Windows desktop](#visible-windows-desktop) workflow for those paths. Human usability
@@ -331,9 +333,10 @@ Windows session 0. The workflow installs the MSI pinned in `ci/libreoffice.json`
 Tip of the Day and the first-start dialog turned off, and the synthetic 80-sheet workbook
 maximised to the desktop with the Sheet Manager deck shown. `tests/ui/winput.py` sends keys and
 pointer input through Windows' `SendInput` with the same interface as the X11 helper, so the suite
-runs the checks of `run_ui.py` and `rename_dialog.py` themselves rather than copies, and reads the
-results back through public UNO as on Linux. Window and screen geometry are read from the live
-desktop; nothing assumes the runner's present 1024×768 screen at 96 DPI.
+runs the shared checks of `tests/ui/*_checks.py` and `rename_dialog.py` themselves rather than
+copies, with `workbook.py`'s fixture and `check_loop.py`'s loop, and reads the results back
+through public UNO as on Linux. Window and screen geometry are read from the live desktop;
+nothing assumes the runner's present 1024×768 screen at 96 DPI.
 
 The [verification map](docs/verification.md#the-visible-windows-desktop) identifies the shared
 checks this workflow runs and the paths it does not cover. Its artifacts establish functional
