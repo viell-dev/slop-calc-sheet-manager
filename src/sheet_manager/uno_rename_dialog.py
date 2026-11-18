@@ -24,18 +24,28 @@ document is changed only after the dialog has closed, by the caller.
   edit or action button peer's accessible name (#247, #254), so NAME_CHANGED reaches that
   control without moving focus. Keep its ordinary name for identification and restore it when
   the message clears. A selected row's empty proposal stays in the status and preview only,
-  since clearing the field is part of ordinary editing. When another row blocks Rename,
-  identify that sheet with the first reason and leave the full details on the preview rows.
+  since clearing the field is part of ordinary editing. Once typing resumes, the current
+  refusal can be announced again, including a trailing apostrophe while typing an internal one.
+  When another row blocks Rename, identify the first affected sheet and leave the full details
+  on the preview rows. Repeating a refusal without changing its reason adds no name event.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 import unohelper
 from com.sun.star.awt import XActionListener, XItemListener, XTextListener
 
 from sheet_manager.i18n import tr
-from sheet_manager.rename import Batch, Plan, quoted, row_label, summary
+from sheet_manager.rename import (
+    Batch,
+    Plan,
+    field_refusal,
+    first_row_refusal,
+    quoted,
+    row_label,
+    summary,
+)
 from sheet_manager.uno_calc import MainThread, enable_button
 
 CANCEL = 2  # com.sun.star.awt.PushButtonType.CANCEL: closes the dialog without a result.
@@ -77,6 +87,7 @@ class RenameDialog:
         self._labels: list[str] = []
         self._accessible_labels: dict[str, str] = {}
         self._accessible_reasons: dict[str, str] = {}
+        self._refused_replacement: tuple[str, str] | None = None
         self._result: Plan | None = None
         self._dialog: Any = None
 
@@ -237,14 +248,22 @@ class RenameDialog:
     def _replace(self) -> None:
         find = self._control("find").getText()
         if not find:
-            self._update(tr("Type the text to find first."))
+            self._refuse("replace_all", tr("Type the text to find first."))
             return
-        changed = self._batch.replace_all(find, self._control("replace").getText())
+        replacement = self._control("replace").getText()
+        if not self._batch.replace_all(find, replacement):
+            # A retry can find no matches because the first press already replaced them.
+            if self._refused_replacement != (find, replacement):
+                self._refuse(
+                    "replace_all", tr("No new name contains {text}.").format(text=quoted(find))
+                )
+            return
         self._show_row()
-        if changed:
-            self._update(action="replace_all")
-        else:
-            self._update(tr("No new name contains {text}.").format(text=quoted(find)))
+        found = self._batch.problems()
+        reason = first_row_refusal(self._batch, found)
+        self._update(found=found, button_refusals={"replace_all": reason})
+        if reason:
+            self._refused_replacement = (find, replacement)
 
     def _reset(self) -> None:
         self._batch.reset()
@@ -255,19 +274,31 @@ class RenameDialog:
         try:
             plan = self._batch.plan()
         except ValueError as error:
-            self._update(str(error))
+            self._refuse("rename", str(error))
             return
         reason = self._check(plan)
         if reason:
-            self._update(reason, action="rename")
+            self._refuse("rename", reason)
             return
         self._result = plan
         self._dialog.endExecute()
 
     # Showing the state
 
-    def _update(self, note: str = "", *, action: str = "") -> None:
-        found = self._batch.problems()
+    def _refuse(self, button: str, reason: str) -> None:
+        self._update(reason, button_refusals={button: reason})
+
+    def _update(
+        self,
+        note: str = "",
+        *,
+        found: Sequence[str] | None = None,
+        button_refusals: Mapping[str, str] | None = None,
+    ) -> None:
+        """Refresh the preview, using any supplied validation and action-button feedback."""
+        self._refused_replacement = None
+        if found is None:
+            found = self._batch.problems()
         labels = [
             row_label(old, new, reason)
             for (old, new), reason in zip(self._batch.renames(), found, strict=True)
@@ -277,22 +308,9 @@ class RenameDialog:
         self._control("status").getModel().Label = status
         valid = bool(self._batch.changes()) and not any(found)
         enable_button(self._control("rename"), valid)
-        first_refusal = next(
-            (
-                f"{quoted(sheet)}: {reason}"
-                for sheet, reason in zip(self._batch.targets, found, strict=True)
-                if reason
-            ),
-            "",
-        )
-        edit_reason = found[self._row] or first_refusal
-        if not self._batch.proposals[self._row]:
-            edit_reason = ""
-        self._show_accessible_reason("name", edit_reason)
-        self._show_accessible_reason(
-            "replace_all", first_refusal if action == "replace_all" else ""
-        )
-        self._show_accessible_reason("rename", note if action == "rename" else "")
+        self._show_accessible_reason("name", field_refusal(self._batch, self._row, found))
+        for button in ("replace_all", "rename"):
+            self._show_accessible_reason(button, (button_refusals or {}).get(button, ""))
 
     def _show_accessible_reason(self, control: str, reason: str) -> None:
         if reason == self._accessible_reasons.get(control, ""):

@@ -187,12 +187,18 @@ With a screen reader, move to **Sheets** with Alt+S and use the arrow keys to he
 proposal and its reason. <Unreleased /> **New name** reports the selected proposal's refusal
 while you edit. If that proposal is valid and another is refused, the field gives the first
 affected sheet and its reason. Clearing **New name** leaves the empty-name reason on its preview
-row, so you can type the new name without an extra warning.
+row. As you start typing again, the field can repeat a refusal on another row. An apostrophe at
+the end of a proposal can trigger a warning as you type, for example at `Bob'` on the way to
+`Bob's`. When the proposal becomes valid and no other row is refused, the field returns to its
+ordinary name.
 
-<Unreleased /> When **Replace All** leaves refused proposals, the button gives the first affected
-sheet and reason. If the sheets changed since the dialog opened, **Rename** gives the refusal and
-asks you to cancel and try again. You can return focus to the button with Tab or Shift+Tab to hear
-its result again before editing or selecting another row.
+<Unreleased /> **Replace All** reports when Find is empty, when there are no matches, or the first
+affected sheet and reason if the replacement leaves a refused proposal. If you repeat the same
+replacement and the first press already replaced every match, the conflict stays available on
+the button. If the sheets changed since the dialog opened, **Rename** gives the refusal and asks
+you to cancel and try again. Pressing **Rename** again while it has focus and the reason is the
+same produces no new announcement. Move focus away and back with Tab or Shift+Tab to hear the
+button's result again before editing a proposal or selecting another row.
 See [known issues](./known-issues.md#known-issues) for tested screen-reader behavior.
 
 Names are used exactly as typed. Spaces at either end are kept, and the list shows such names in
