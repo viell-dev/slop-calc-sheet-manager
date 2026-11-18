@@ -193,7 +193,6 @@ def test_refresh_seeds_the_new_proof_before_a_subsequent_tab_change(kept: bool) 
     owner._selection = SimpleNamespace(carry=carry, names=selected_names)
     owner._shown = ()
     owner._apply_selection = Mock()
-    owner._apply_kept_selection = Mock()  # A lost proof writes the picks (#22).
     owner._generation = 0
     owner._name_viewed = Mock()
 

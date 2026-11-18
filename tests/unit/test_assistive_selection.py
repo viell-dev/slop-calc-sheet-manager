@@ -104,6 +104,7 @@ def refresher(change: str) -> Any:
         _generation=0,
         _nodes=[object()],
         _replacement_pending=False,
+        _refresh_failures=0,
         rows=[SheetRow(name) for name in NAMES],
         _shown=("Alfa",),
         _view_generation=0,
@@ -134,6 +135,14 @@ def refresher(change: str) -> Any:
         owner.rows = rows
 
     owner._rebuild.side_effect = rebuild
+    painted = method(
+        SOURCE, "SheetList", "_painted_only", {"SheetRow": SheetRow, "node_text": node_text}
+    )
+
+    def painted_only(rows: list[SheetRow], proven: bool, dropped: bool) -> bool:
+        return painted(owner, rows, proven, dropped)
+
+    owner._painted_only = painted_only
 
     def read_rows(controller: Any, picture: Any) -> list[SheetRow]:
         return [SheetRow(sheet.name, protected=sheet.name == "Charlie") for sheet in picture.sheets]
@@ -142,12 +151,7 @@ def refresher(change: str) -> Any:
         SOURCE,
         "SheetList",
         "_refresh",
-        {
-            "snapshot": Mock(return_value=observed),
-            "read_rows": read_rows,
-            "Mapping": Mapping,
-            "node_text": node_text,
-        },
+        {"snapshot": Mock(return_value=observed), "read_rows": read_rows, "Mapping": Mapping},
     )
     owner.document = owner.controller = None
     return owner, lambda: refresh(owner, {})
@@ -180,15 +184,15 @@ def test_a_held_press_leaves_the_tree_selection_to_its_handlers() -> None:
     owner._show_native.assert_not_called()
 
 
-def test_a_kept_tree_lets_the_intake_take_native_picks_awaiting_it() -> None:
+def test_native_picks_awaiting_intake_survive_a_painted_change_that_replaces_the_tree() -> None:
     book = Book(NAMES)
     owner = sheet_list(book)
     nodes = owner._nodes
     owner.tree.assistive_select("Bravo")
-    book.sheet("Alfa").color = 0x2A6099  # Only painted state changes: the tree is kept.
-    owner._refresh({})
-    assert owner._nodes is nodes
-    assert owner.tree.shown() == ["Bravo"]
+    book.sheet("Alfa").color = 0x2A6099  # Only painted state changes, but the tree shows a
+    owner.attempt()  # selection the list does not own yet, so it takes `main`'s rebuild.
+    assert owner._nodes is not nodes
+    assert owner.tree.shown() == ["Bravo"]  # Shown again for the intake (`_show_native`).
     owner.run_queue()  # The queued intake.
     bravo = book.handle(book.sheet("Bravo"))
     # The intake itself took it: `_current_picks` would also take a selection still shown.
@@ -235,33 +239,25 @@ def test_a_lost_proof_clears_native_picks_awaiting_intake(loss: str, painted: bo
     assert owner.tree.shown() == []
 
 
-@pytest.mark.parametrize("failures", [1, 2])
-@pytest.mark.parametrize("loss", ["replacement", "unreadable handle", "two renames"])
-def test_a_failed_write_after_a_lost_proof_leaves_nothing_to_take(loss: str, failures: int) -> None:
+def test_a_failed_write_after_two_renames_leaves_nothing_to_take() -> None:
     book = Book(NAMES)
     owner = sheet_list(book)
     nodes = owner._nodes
     owner.tree.assistive_select("Bravo")  # Awaiting intake, as through accessibility.
-    lose_proof(book, loss)
-    owner.tree.failures = failures  # Writing the picks fails, then writing them to new nodes.
-    try:
-        owner._refresh({})
-    except RuntimeError as error:
-        assert "clear" in str(error)
-        failed = True
-    else:
-        failed = False
-    # Identical rows keep the nodes, whose failed write replaces them; renamed rows replace them
-    # at once. Either way the new nodes come first, with nothing selected: nothing made against
-    # the lost proof is left for an intake, between a failure and the retry or after it (#186).
-    assert failed == (failures == 2 or loss == "two renames")
+    lose_proof(book, "two renames")
+    owner.tree.failures = 1  # Writing the picks, none, to the new nodes fails.
+    with pytest.raises(RuntimeError, match="clear"):
+        owner.attempt()
+    # The renamed rows replace the nodes before any write: the new nodes come first, with
+    # nothing selected, so nothing made against the lost proof is left for an intake, between
+    # the failure and the retry or after it (#186). A failed write over rows that read the same
+    # is left to the retry, as on `main` (#257).
     assert owner._nodes is not nodes
     assert owner.tree.shown() == []
-    book.handle(book.sheet("Delta")).readable = True  # A handle unreadable for a moment.
     assert not owner._take_tree_selection(paint=False)  # A move request reads the tree first.
     assert owner._current_picks() == []
     owner.run_queue()
     assert not owner._selection.picked
-    owner._refresh({})  # The retry.
+    owner.attempt()  # The retry.
     owner.run_queue()
     assert owner.tree.shown() == [] and owner._current_picks() == []

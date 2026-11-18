@@ -70,9 +70,9 @@ If Sheet Manager does not work in an environment where it is expected to, please
   Use **Sheets** to hear the proposal and its current reason
   ([#254](https://github.com/viell-dev/slop-calc-sheet-manager/issues/254)).
 - **Large lists.** The list rebuilds after renames, moves and changes to visibility or
-  protection. <Unreleased /> Switching sheets or changing a tab colour alone only repaints it. In
-  workbooks with many sheets, the active-sheet marker, and <Unreleased since="0.0.9" /> the list's
-  accessible name, can still lag during rapid sheet switches; the measurements are in
+  protection. <Unreleased /> Switching sheets or changing a tab colour alone usually only repaints
+  it. In workbooks with many sheets, the active-sheet marker, and <Unreleased since="0.0.9" /> the
+  list's accessible name, can still lag during rapid sheet switches; the measurements are in
   [#22](https://github.com/viell-dev/slop-calc-sheet-manager/issues/22).
 - **Final row divider.** At the end of a long list, the last row's lower divider can be absent.
   The painter leaves an ambiguous boundary pixel clear to keep decorations off scrollbars

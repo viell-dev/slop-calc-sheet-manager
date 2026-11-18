@@ -12,13 +12,14 @@ metadata checks: no screen reader runs, so what one announces is not verified he
   the tree. The list's timers and observation only post to LibreOffice's main-thread queue, so
   holding the main thread after a property change, past the refresh delay, and then selecting
   queues the rebuilding refresh ahead of any intake: the ordering is deterministic.
-- A refresh that only repaints, keeping the tree (#22), lets the intake take such a selection
-  too. One made against a sheet that is then replaced under its name is never taken, even when
-  the list owns no pick: the refresh that finds the lost identity proof replaces the tree when
-  the rows changed, and writes the list's picks, none, to the kept tree when they read the same.
-  Either clears it. A rebuild shows a selection still awaiting intake again (`_show_native`), so
-  the tree's selection alone cannot tell whether the list took it. Move to Top, enabled only by
-  the list's own picks away from the first row, shows that.
+- A tab colour alone only repaints the tree (#22), but not while a selection awaits the intake:
+  that refresh rebuilds the rows, and the intake still takes the selection. One made against a
+  sheet that is then replaced under its name is never taken, even when the list owns no pick: the
+  refresh that finds the lost identity proof replaces the tree when the rows changed, and writes
+  the list's picks, none, to the kept tree when they read the same. Either clears it. A rebuild
+  shows a selection still awaiting intake again (`_show_native`), so the tree's selection alone
+  cannot tell whether the list took it. Move to Top, enabled only by the list's own picks away
+  from the first row, shows that.
 - Every control of the panel is a child of the panel window's accessible context, at its own index
   in parent and in visual order, and each ancestor up to the top is listed by its parent (#133).
   A walk down from the top, as a screen reader's object navigation or a bridge's focus tracking
@@ -243,7 +244,7 @@ def check_assistive_selection_before_rebuild(context, desktop):
     return {"taken": True}
 
 
-def check_assistive_selection_in_a_kept_tree(context, desktop):
+def check_assistive_selection_and_replaced_sheets(context, desktop):
     document = workbook(desktop, "Alfa")
     sheets = document.getSheets()
     panel, tree = open_list(context, document)
@@ -254,24 +255,24 @@ def check_assistive_selection_in_a_kept_tree(context, desktop):
     poll(lambda: not top.isEnabled(), "Move to Top disabled before any such pick")
     initial = selection(tree, FIVE)
     assert initial in ([], ["Alfa"]), initial
-    model = root(tree)
 
     def select_then(index, change, color):
         tree_context = accessible(tree)
         tree_context.clearAccessibleSelection()
         tree_context.selectAccessibleChild(index)  # As a screen reader selects a row.
         change()
-        # A tab colour only repaints. Holding the main thread past the refresh delay queues
-        # that refresh ahead of any intake of the selection, as in the rebuild case above.
+        # A tab colour alone only repaints. Holding the main thread past the refresh delay
+        # queues that refresh ahead of any intake of the selection, as in the rebuild case above.
         sheets.getByName("Alfa").TabColor = color
         time.sleep(REFRESH_HOLD)
 
-    say("control: a kept tree lets the queued intake take an assistive selection")
+    say("control: the queued intake takes an assistive selection across a tab colour")
     on_main_thread(context, lambda: select_then(2, lambda: None, 0x2A6099))  # Charlie.
     # The refresh and observation ticks, each with its queued intake, follow. Only the list's
     # own pick of Charlie enables Move to Top: the tree shows the selection either way.
     poll(top.isEnabled, "Move to Top enabled by the list's pick of Charlie")
-    assert root(tree) == model, "A tab colour must keep the tree"
+    # A refresh that finds the selection still awaiting intake rebuilds the rows rather than
+    # keep them for the colour (#22); one after the intake keeps them. Either way it is taken.
     sheets.getByName("Echo").protect("")
     poll(lambda: "Echo (protected)" in labels(tree), "a rebuild after the intake")
     assert selection(tree, FIVE) == ["Charlie"], selection(tree, FIVE)  # Taken, not just shown.
@@ -445,8 +446,8 @@ def exercise(context, desktop, directory, output, *, headless):
                 lambda: check_assistive_selection_before_rebuild(context, desktop),
             ),
             (
-                "assistive_selection_in_a_kept_tree",
-                lambda: check_assistive_selection_in_a_kept_tree(context, desktop),
+                "assistive_selection_and_replaced_sheets",
+                lambda: check_assistive_selection_and_replaced_sheets(context, desktop),
             ),
         ],
         _CREATED,

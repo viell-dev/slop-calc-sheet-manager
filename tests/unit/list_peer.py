@@ -14,10 +14,15 @@ what the list relies on from Calc and from the tree control for these calls:
   call can during a refresh (#186), and the assignment can fail before or after showing its
   nodes; `reports` records what the list logged.
 
+`attempt()` runs a refresh as its timer does, through the real `refresh` wrapper: a failure
+counts until a refresh succeeds and schedules its retry, whose waits `waits` records. A posted
+`refresh`, as `_current_picks` asks for one, is only counted (`refreshes_asked`).
+
 It models those calls and is not evidence of LibreOffice's behaviour: the native checks are in
 `tests/integration` and `tests/ui`.
 """
 
+import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from types import SimpleNamespace
@@ -33,9 +38,9 @@ METHODS = (
     "_ref",
     "_refresh",
     "_identities_kept",
+    "_painted_only",
     "_drop_all_picks",
     "_rebuild",
-    "_apply_kept_selection",
     "_show_native",
     "_name_viewed",
     "_select",
@@ -264,6 +269,10 @@ def sheet_list(book: Book) -> Any:
         "row_label": row_label,
         "snapshot": snapshot,
         "structure_kept": structure_kept,
+        "time": time,
+        "REFRESH_RETRY": 0.5,
+        "REFRESH_RETRY_MAX": 8.0,
+        "REFRESH_RETRIES": 5,
         "_name_or_none": function(SOURCE, "_name_or_none", {"Any": Any}),
     }
     tree, peer = Tree(), Peer()
@@ -284,6 +293,11 @@ def sheet_list(book: Book) -> Any:
         _handles={},
         _nodes=[],
         _replacement_pending=False,
+        _refresh_failures=0,
+        _stale_since=None,
+        _refreshed_at=0.0,
+        _refresh_cost=0.0,
+        waits=[],
         rows=[],
         _shown=(),
         _selection=Selection(function(SOURCE, "_current", {"Ref": Ref})),
@@ -321,9 +335,11 @@ def sheet_list(book: Book) -> Any:
     owner.post, owner.run_queue, owner.refresh = post, run_queue, refresh
     owner.refreshes_asked = 0
     owner.reports = reports
-    for name in METHODS:
+    owner._schedule = owner.waits.append
+    for name in (*METHODS, "_refresh_failed", "_mark_stale"):
         loaded = method(SOURCE, "SheetList", name, dict(namespace))
         setattr(owner, name, loaded.__get__(owner))
+    owner.attempt = method(SOURCE, "SheetList", "refresh", dict(namespace)).__get__(owner)
     owner._refresh({})
     run_queue()
     return owner

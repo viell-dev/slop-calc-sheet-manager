@@ -51,8 +51,8 @@ the sidebar is closed, or the window is minimized. It resumes when the panel is 
 within a second. Each window on a workbook follows its own Calc selection. The list also refreshes
 after renames, insertions, deletions, moves, visibility, colour, and protection changes; ordinary
 cell edits do not rebuild its rows. <Unreleased /> A sheet switch or a tab colour change alone
-only repaints its rows, while the list's picks stay the same and it can still establish which
-sheet each row shows.
+usually only repaints its rows. The list still rebuilds them while a pick is being made or its
+picks have just changed, and when it cannot establish which sheet each row shows.
 
 ## Move a selection
 
