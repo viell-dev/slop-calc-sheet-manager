@@ -249,6 +249,8 @@ real-input failure diagnostic and clean-up step in turn and checks that the fail
 is already on disk and keeps its own error (#190). `test_lab_calibration.py` checks that the
 Xvfb lab's pointer calibration waits for the tree's own report of its move, so a busy office
 cannot shift a workbook's calibrated positions and pixel coordinates by two pixels (#209).
+`test_install_timing.py` checks that each package installation's elapsed time is recorded and
+that one exceeding its limit still fails, with that time and unopkg's output kept (#235).
 Sessions fail on nonzero exits, forced
 shutdowns, fatal messages, crash dumps, stalled main-thread callbacks or held terminate requests.
 Windows crash dumps matter even when the office exits with status zero. Only startup is retried;

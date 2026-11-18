@@ -161,6 +161,12 @@ $symbols = "srv*$cache*https://dev-downloads.libreoffice.org/symstore/symbols;sr
 & $cdb -z $dump -y $symbols -c '.ecxr; !analyze -v; ~* kp; q'
 ```
 
+Each installation with `unopkg add` has 90 seconds. Every results entry that installs the package
+records `install_seconds`, one value per startup attempt; GitHub's runners install it in about two
+seconds on Linux, Windows and macOS. An installation that takes longer fails the session with
+`install_timed_out` and the elapsed time in its entry, and with `failure_stage` set to `install`
+([#235](https://github.com/viell-dev/slop-calc-sheet-manager/issues/235)).
+
 A document close that takes more than 60 seconds fails the session. After a stalled callback,
 try no further closes or configuration restores: stop only the runner's own office. A terminate
 request held for 30 seconds also fails and forces shutdown. The runner must produce failed results
