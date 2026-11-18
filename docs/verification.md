@@ -223,7 +223,7 @@ not limits:
   sample selection or timing threshold. Results are retained under `large_workbook.menu_build`
   in the integration session's JSON, alongside lane artifacts identifying the office and Python
   versions and the tested environment.
-  Property-driven rebuild cost remains tracked in
+  Property-driven rebuild cost, and the decision to keep the rebuild, are recorded in
   [#22](https://github.com/viell-dev/slop-calc-sheet-manager/issues/22).
 
 All inputs are synthetic. Workbooks stay in memory unless the contributor explicitly runs the
