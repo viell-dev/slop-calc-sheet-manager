@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.integration import office_process
 from tests.integration.office_process import (
     assert_clean_shutdown,
     end_office,
@@ -132,6 +133,11 @@ class Desktop:
         self.terminate_requests += 1
 
 
+def no_releases(limit: float) -> None:
+    """The release wait of a session whose office has nothing left to run."""
+    return None
+
+
 def test_a_stalled_session_stops_its_office_without_asking_it(tmp_path: Path) -> None:
     # After a stalled main-thread callback a UNO terminate request could block for good (#50).
     log_path, desktop = tmp_path / "soffice.log", Desktop()
@@ -140,7 +146,9 @@ def test_a_stalled_session_stops_its_office_without_asking_it(tmp_path: Path) ->
             [sys.executable, "-c", "import time; time.sleep(60)"], stdout=log, text=True
         )
         started = time.monotonic()
-        result = end_office(desktop, process, log_path, stalled=["a close timed out"])
+        result = end_office(
+            desktop, process, log_path, stalled=["a close timed out"], settle=no_releases
+        )
     assert desktop.terminate_requests == 0
     assert process.poll() is not None and time.monotonic() - started < 30
     assert result["office_forced_shutdown"] is True
@@ -153,10 +161,11 @@ def test_a_session_without_stalls_asks_its_office_to_terminate(tmp_path: Path) -
     log_path, desktop = tmp_path / "soffice.log", Desktop()
     with log_path.open("w", encoding="utf-8") as log:
         process = subprocess.Popen([sys.executable, "-c", "pass"], stdout=log, text=True)
-        result = end_office(desktop, process, log_path, stalled=[])
+        result = end_office(desktop, process, log_path, stalled=[], settle=no_releases)
     assert desktop.terminate_requests == 1
     assert result["office_stalled_callbacks"] == []
     assert result["office_terminate_returned"] is True
+    assert isinstance(result["office_shutdown_seconds"], float)
     assert_clean_shutdown(result)
 
 
@@ -172,7 +181,9 @@ def test_queued_releases_settle_before_the_office_is_asked(tmp_path: Path) -> No
     with log_path.open("w", encoding="utf-8") as log:
         process = subprocess.Popen([sys.executable, "-c", "pass"], stdout=log, text=True)
         result = end_office(desktop, process, log_path, stalled=[], grace=7, settle=settle)
-    assert calls == [(7, 0)], "Settle once, within the grace period, before asking"
+    assert len(calls) == 1, "Settle once"
+    limit, requests = calls[0]
+    assert 6.5 < limit <= 7 and requests == 0, "Settle within the grace period, before asking"
     assert desktop.terminate_requests == 1
     assert result["office_unsettled_releases"] is None
     assert isinstance(result["office_release_wait_seconds"], float)
@@ -264,10 +275,75 @@ def test_a_terminate_request_held_by_a_dialog_stops_the_office(tmp_path: Path) -
             [sys.executable, "-c", "import time; time.sleep(60)"], stdout=log, text=True
         )
         started = time.monotonic()
-        result = end_office(desktop, process, log_path, stalled=[], grace=0.5)
+        result = end_office(desktop, process, log_path, stalled=[], grace=0.5, settle=no_releases)
     assert desktop.terminate_requests == 1
     assert process.poll() is not None and time.monotonic() - started < 30
     assert result["office_terminate_returned"] is False
     assert result["office_forced_shutdown"] is True
     with pytest.raises(AssertionError):
         assert_clean_shutdown(result)
+
+
+def test_a_long_release_wait_leaves_the_terminate_request_only_the_remainder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Graceful shutdown has one deadline: a wait that uses most of it leaves a held terminate
+    # request only what is left, rather than a fresh grace period of its own.
+    log_path, desktop = tmp_path / "soffice.log", BlockedDesktop()
+    limits: list[float] = []
+    request = office_process.request_termination
+
+    def recorded(desktop: object, timeout: float) -> bool:
+        limits.append(timeout)
+        return request(desktop, timeout)
+
+    def settle(limit: float) -> None:
+        time.sleep(1.6)
+
+    monkeypatch.setattr(office_process, "request_termination", recorded)
+    with log_path.open("w", encoding="utf-8") as log:
+        process = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(60)"], stdout=log, text=True
+        )
+        started = time.monotonic()
+        result = end_office(desktop, process, log_path, stalled=[], grace=2, settle=settle)
+        elapsed = time.monotonic() - started
+    assert len(limits) == 1 and limits[0] <= 0.45, limits
+    assert elapsed < 3, "Graceful shutdown must end within its one grace period"
+    assert desktop.terminate_requests == 1
+    assert result["office_unsettled_releases"] is None, "The wait itself finished in time"
+    assert result["office_terminate_returned"] is False
+    assert result["office_forced_shutdown"] is True
+    with pytest.raises(AssertionError):
+        assert_clean_shutdown(result)
+
+
+def test_a_long_release_wait_leaves_the_exit_only_the_remainder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    log_path, desktop = tmp_path / "soffice.log", Desktop()
+    timeouts: list[float] = []
+    finish = office_process.finish_process
+
+    def recorded(
+        process: subprocess.Popen[str],
+        log_path: Path,
+        *,
+        timeout: float = 30,
+        backtrace_path: Path | None = None,
+    ) -> dict[str, object]:
+        timeouts.append(timeout)
+        return finish(process, log_path, timeout=timeout, backtrace_path=backtrace_path)
+
+    def settle(limit: float) -> None:
+        time.sleep(1.6)
+
+    monkeypatch.setattr(office_process, "finish_process", recorded)
+    with log_path.open("w", encoding="utf-8") as log:
+        process = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(60)"], stdout=log, text=True
+        )
+        result = end_office(desktop, process, log_path, stalled=[], grace=2, settle=settle)
+    assert len(timeouts) == 1 and timeouts[0] <= 0.45, timeouts
+    assert result["office_terminate_returned"] is True
+    assert result["office_forced_shutdown"] is True
