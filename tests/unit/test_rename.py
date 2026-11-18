@@ -10,6 +10,8 @@ from sheet_manager.rename import (
     Batch,
     Plan,
     conflict,
+    field_refusal,
+    first_row_refusal,
     plan_renames,
     problem,
     problems,
@@ -17,6 +19,30 @@ from sheet_manager.rename import (
     shown,
     summary,
 )
+
+
+def test_field_refusal_prefers_selected_then_first_other_row():
+    batch = Batch(("Overview", "Alpha", "Bravo", "Charlie", "Delta"), ("Alpha", "Charlie", "Delta"))
+    batch.set(0, "Alpha?")
+    batch.set(2, "Overview")
+    found = batch.problems()
+    assert first_row_refusal(batch, found) == f"“Alpha”: {found[0]}"
+    assert field_refusal(batch, 2, found) == "Another sheet is already named “Overview”."
+    assert field_refusal(batch, 1, found) == f"“Alpha”: {found[0]}"
+
+
+def test_field_refusal_keeps_empty_proposal_quiet_even_when_another_row_is_refused():
+    batch = Batch(("Alpha", "Bravo", "Charlie"), ("Bravo", "Charlie"))
+    assert not first_row_refusal(batch, batch.problems())
+    assert not field_refusal(batch, 1, batch.problems())
+    batch.set(0, "Alpha")
+    batch.set(1, "")
+    found = batch.problems()
+    assert found[0] and found[1]
+    assert not field_refusal(batch, 1, found)
+    batch.set(1, "Delta")
+    assert field_refusal(batch, 1, batch.problems()) == f"“Bravo”: {found[0]}"
+
 
 # Measured with official LibreOffice 26.2.1.2 (Linux) and 26.8.1.1 (Windows), English locales, in
 # both directions (#102): "refused" means Calc's rename refused the second name beside the first;

@@ -270,6 +270,26 @@ def row_label(old: str, new: str, reason: str = "") -> str:
     return f"{label}   ⚠ {reason}" if reason else label
 
 
+def first_row_refusal(batch: Batch, found: Sequence[str]) -> str:
+    """The first refused sheet and its reason, in document order."""
+    # Localizing the sheet and reason together may need a translatable template (#170).
+    return next(
+        (
+            f"{quoted(sheet)}: {reason}"
+            for sheet, reason in zip(batch.targets, found, strict=True)
+            if reason
+        ),
+        "",
+    )
+
+
+def field_refusal(batch: Batch, row: int, found: Sequence[str]) -> str:
+    """The selected proposal's reason, or the first other row's reason while editing."""
+    if not batch.proposals[row]:
+        return ""
+    return found[row] or first_row_refusal(batch, found)
+
+
 def summary(batch: Batch, found: Sequence[str]) -> str:
     """The dialog's status line for the whole batch."""
     wrong = sum(bool(reason) for reason in found)
