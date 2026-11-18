@@ -37,6 +37,37 @@ Maintainers label each issue with one `Type:` label, at most one `Status:` label
 or `Needs: Human` when a particular person has to act. The labels and their meanings are in
 [`.github/labels.json`](.github/labels.json).
 
+## Choose your checks
+
+| Your change | Start here |
+| --- | --- |
+| Documentation only | [Build the guide and check synthetic release history](#documentation). |
+| Pure Python | [Set up the development tools](#set-up), then run the [normal checks](#checks) or [a unit test](#tests) while iterating. |
+| Linux integration or real input | Run [integration in the Linux Docker lab](docs/development/native-testing.md#linux-docker-lab) or [real-input checks](docs/development/native-testing.md#linux-real-input). |
+| Hosted platform checks | Run the [visible Windows desktop](docs/development/hosted-checks.md#visible-windows-desktop) or [macOS packaged integration](docs/development/hosted-checks.md#macos-packaged-integration) workflow. For local headless checks on Windows, use [installed LibreOffice](docs/development/native-testing.md#installed-libreoffice). |
+
+## Documentation
+
+The user guide is in `docs/` and is built with VitePress, whose exact version `package.json` pins.
+It is published on [GitHub Pages](https://viell-dev.github.io/slop-calc-sheet-manager/) together
+with the update feeds. To work on it, select the Node.js version in `.nvmrc` (`nvm use` or
+`fnm use`), then run:
+
+```sh
+npm ci
+npm run docs:build
+python tools/check_release_page.py
+```
+
+Use `npm run docs:dev` for live editing. The build checks links between pages. The Python helper
+builds empty and synthetic release histories to verify the channels, version order, rendered
+OXT/checksum links, and markers for unpublished behaviour.
+
+If Windows blocks VitePress's native module, use the
+[documentation container build](docs/development/index.md#building-the-guide).
+For user-facing changes, follow the guide's
+[version and availability rules](docs/development/index.md#which-version-it-describes).
+
 ## Set up
 
 Use Python 3.12–3.14, Git, and Node.js for Pyright, at the version in `.nvmrc` that CI also
@@ -109,10 +140,6 @@ generated help databases are shipped. For reviewing shipped text and the online 
 
 ## Tests
 
-[docs/verification.md](docs/verification.md) maps each promise the extension makes to the checks
-that verify it, where they run, and what they do not show. Update it in the same pull request as a
-change to a promise or to its checks.
-
 Unit tests need no LibreOffice and run as part of the checks. To run them alone:
 
 ```powershell
@@ -123,374 +150,26 @@ Unit tests need no LibreOffice and run as part of the checks. To run them alone:
 .venv/bin/python -m pytest
 ```
 
-### Integration suites
+Append a path such as `tests/unit/test_consistency.py` to run a single test file.
 
-The integration runner installs the built OXT into a fresh temporary profile and connects over a
-unique local UNO pipe. It never attaches to an existing office or uses the normal LibreOffice
-profile. Every workbook is synthetic and loaded visibly, even in a headless office. Logs, actual
-versions, package inventories, performance measurements and results go into `test-results/` and
-CI artifacts.
+The [verification map](docs/verification.md) owns coverage and evidence limits. Update it when a
+promise or its checks change.
 
-Feature suites are `tests/integration/test_*.py` modules with an
-`exercise(context, desktop, directory, output)` entry point; the runner passes `headless=` when
-accepted. They run in filename order, except suites with session-wide native state run last
-(`LAST_SUITES` in `run.py`). They import the built OXT through zipimport, so a missing packaged
-module fails integration. Keep suites additive and failure injection in test-only forwarding
-adapters, never in the shipped extension.
+- <a name="integration-suites"></a>[Integration suites](docs/development/native-testing.md#integration-suites)
+  covers private profiles, suite conventions, and fixture rules.
+- <a name="failures-and-shutdown"></a>[Failures and shutdown](docs/development/native-testing.md#failures-and-shutdown)
+  explains logs, timeouts and crash evidence.
+- <a name="soak-painted-sessions"></a>[Soak painted sessions](docs/development/native-testing.md#soak-painted-sessions)
+  covers local and hosted gtk3 soak runs.
+- <a name="routine-ci-and-release-sweeps"></a>[Hosted checks](docs/development/hosted-checks.md)
+  explains routine CI, the release sweep, and where to find artifacts.
+- <a name="visible-windows-desktop"></a>[Visible Windows desktop](docs/development/hosted-checks.md#visible-windows-desktop)
+  covers the focused workflow and desktop restrictions.
+- <a name="macos-packaged-integration"></a>[macOS packaged integration](docs/development/hosted-checks.md#macos-packaged-integration)
+  covers the focused Intel workflow and its diagnostics.
 
-The [verification map](docs/verification.md) owns current coverage and evidence limits, including
-identity, recovery, performance, accessibility and real input. The
-[reordering contract](docs/reordering.md) describes the panel/adapter boundary.
-[RELEASING.md](RELEASING.md#verification-boundary) explains update testing and the live checks that
-publication still requires.
-
-When adding or changing fixtures:
-
-- Close documents through `main_thread.close_document`, on LibreOffice's main thread. Release
-  unrelated workbooks between cases while retaining the simultaneous windows a case needs.
-- After Reload, wait for the replacement's `OnLoad`, drain queued native events and idles on the
-  main thread, then reacquire the panel and establish a fresh baseline before input. Correct rows
-  alone do not establish readiness; later native timers can still conservatively clear picks.
-  Never weaken the identity checks to make an initialization race pass
-  ([#88](https://github.com/viell-dev/slop-calc-sheet-manager/issues/88)).
-- Use `Workbook.hold` for a held-press precondition: the tree's native selection precedes the
-  list's mouse listener. Wait for the listener and its main-thread round trip before changing the
-  workbook ([#134](https://github.com/viell-dev/slop-calc-sheet-manager/issues/134)).
-- Keep profile and configuration changes isolated to the runner. Only startup is retried, up to
-  three times; assertions and shutdown are never retried.
-
-On Windows, build and test the installed LibreOffice with its bundled Python:
-
-```powershell
-$lo = 'C:\Program Files\LibreOffice\program'
-& "$lo\python.exe" tools/build.py
-& "$lo\python.exe" tests/integration/run.py --program $lo --oxt dist/sheet-manager-0.0.10.oxt
-```
-
-On Linux, when using an official TDF installation at `/opt/libreoffice26.8`:
-
-```sh
-python3 tools/build.py
-/opt/libreoffice26.8/program/python tests/integration/run.py \
-  --program /opt/libreoffice26.8/program --oxt dist/sheet-manager-0.0.10.oxt
-```
-
-Run the complete Linux matrix in Docker with these commands (PowerShell 7 and POSIX shells both
-accept them; substitute the path to a working Python if `python` is unavailable):
-
-```text
-python tools/linux_integration.py minimum --sessions both
-python tools/linux_integration.py current-26.2 --sessions both
-python tools/linux_integration.py current-26.8 --sessions both
-python tools/linux_integration.py unsupported
-```
-
-The helper builds `ci/Dockerfile`, verifies the repository-pinned TDF archive checksum, builds the
-extension, and runs the container unprivileged with networking disabled. Source and the OXT are
-mounted read-only; only `test-results/<lane>/` is writable on the host. On Linux, run as a non-root
-user against a rootful Docker daemon without `userns-remap`: the helper maps the host user's
-UID/GID directly into the container so artifacts remain writable. For a rootless or remapped
-daemon, select a compatible context with `docker context ls` and `docker context use`. Docker
-Desktop on Windows is supported. The container has a temporary home directory. It uses Xvfb
-and Openbox inside the container and
-never mounts a host display socket. `--skip-build` reuses only an image matching the Dockerfile,
-lane pin and host UID/GID; a missing or outdated image is rebuilt. `--sessions headless` (the
-default), `--sessions gtk3`, and `--sessions both` select independent office sessions. Painted
-gtk3 sessions save `deck.png`; `--screenshot` remains an alias for running both sessions when
-`--sessions` is omitted. The `unsupported` lane asserts that
-26.2.0 refuses installation for a dependency error and leaves the extension uninstalled.
-
-The Linux helper needs curl 7.71 or newer and Docker with BuildKit. It keeps each verified
-archive under `.cache/libreoffice-packages/<sha256>/` and supplies it to the build in a read-only
-context. On a miss, curl tries TDF's stable mirror network when the archive pin names a versioned
-build, then falls back to the archive if that route cannot supply the exact bytes. Both routes
-require HTTPS with certificate verification and share the download budget. The archive route
-allows at most three retries, including after a redirected mirror's certificate failure. An
-exhausted download or checksum mismatch on the final source fails setup. Remove the affected
-cache file before retrying a corrupt local entry.
-
-GitHub Actions restores the exact digest for the Linux archive, Windows MSI or macOS DMG and
-checks its SHA-256 before use. Only runs on `main` populate the shared cache, and the cache
-contains only public installer files. A changed pin or an evicted entry takes the same bounded
-download path.
-
-Image changes retain older `sheet-manager-ci:<version>-<fingerprint>` tags locally; list them with
-`docker image ls sheet-manager-ci` and remove obsolete tags explicitly with `docker image rm <tag>`
-(including old unfingerprinted `sheet-manager-ci:<version>` tags, which are no longer reused).
-
-Real mouse, wheel, and keyboard input needs a display, so the UI tests run only in Docker, with
-separate gtk3 and gen sessions under Xvfb, driving XTEST:
-
-```text
-python tools/linux_integration.py minimum --ui
-python tools/linux_integration.py current-26.8 --ui
-```
-
-These private UI profiles enable LibreOffice's built-in Light theme, including the native
-disabled-button rendering path behind [#166](https://github.com/viell-dev/slop-calc-sheet-manager/issues/166).
-
-The input helper disables keyboard repeat on its private Xvfb display. Otherwise, a client
-descheduled between a flushed key press and release can turn an intended tap into several keys.
-A real-input regression pauses for one second with Down pressed and still expects one cursor
-step. These tests exercise explicit key events, not the operating system's timed repeat behavior.
-
-Inside the container, `tests/ui/run_ui.py --check NAME` (repeatable) selects checks.
-`run_ui.py` lists the checks in order; they live in `tests/ui/*_checks.py` by subject, with the
-shared workbook fixture and its rules in `workbook.py`.
-Results and screenshots are in `test-results/<lane>/ui-gtk3/` and `ui-gen/`.
-Windows synthetic input bypasses key handlers and cannot start a native drag; use the
-[visible Windows desktop](#visible-windows-desktop) workflow for those paths. Human usability
-and additional platform observations follow [docs/manual-tests.md](docs/manual-tests.md).
-
-To retain the synthetic performance workbooks for inspection, run the generator with the tested
-office's bundled Python (set `$lo` to its `program` directory as above):
-
-```powershell
-& "$lo\python.exe" tests/integration/generate_workbooks.py --program $lo `
-  --oxt dist/sheet-manager-0.0.10.oxt --output test-results/workbooks --sheets 200 1000
-```
-
-It uses a separate private profile and saves only the synthetic workbooks it creates.
-
-### Failures and shutdown
-
-Logs, actual office/Python versions, package inventory, and results are in `test-results/` and in
-CI artifacts. The runner records the exit status of each office session and rejects nonzero exits,
-forced shutdowns after a 30-second grace period, fatal-error messages, and LibreOffice's own crash
-dumps, including during termination. It copies those dumps into the results as `crash-*.dmp`,
-with the `dump.ini` that names the version and the last commands; on Windows a crashed office
-exits with status 0, so the dump is the sign there
-([#48](https://github.com/viell-dev/slop-calc-sheet-manager/issues/48)). Dumps from a startup
-attempt that is retried are kept and listed as `office_startup_crash_dumps` without failing the
-session. GitHub's Windows runners have CDB, though not on `PATH`. With `$dump` set to a dump's
-path and `$cache` to a local symbol cache directory, this prints every thread's stack with TDF's
-symbols:
-
-```powershell
-$cdb = 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe'
-$symbols = "srv*$cache*https://dev-downloads.libreoffice.org/symstore/symbols;srv*$cache*https://msdl.microsoft.com/download/symbols"
-& $cdb -z $dump -y $symbols -c '.ecxr; !analyze -v; ~* kp; q'
-```
-
-A document close that takes more than 60 seconds fails the session. After a stalled callback,
-try no further closes or configuration restores: stop only the runner's own office. A terminate
-request held for 30 seconds also fails and forces shutdown. The runner must produce failed results
-instead of hanging or reporting success. The safeguards and investigations are in
-[#47](https://github.com/viell-dev/slop-calc-sheet-manager/issues/47),
-[#50](https://github.com/viell-dev/slop-calc-sheet-manager/issues/50), and
-[#40](https://github.com/viell-dev/slop-calc-sheet-manager/issues/40).
-
-The painted resize check repeats the initial request if a late maximize changes its geometry;
-`resize-initial-*.json` retains requests and measurements
-([#9](https://github.com/viell-dev/slop-calc-sheet-manager/issues/9)). Keep the one-second delay
-between opening and closing the Writer fixture to avoid its native teardown race
-([#30](https://github.com/viell-dev/slop-calc-sheet-manager/issues/30)).
-The release sweep's Windows jobs and the Windows desktop workflow verify a pinned MSI before
-silently installing it; this installation script is for disposable CI runners, not a contributor's
-existing installation.
-
-### Routine CI and release sweeps
-
-Every PR and push to `main` runs the two Python check versions, Documentation, and **Linux current**:
-headless integration on the newest tested Linux build followed by GTK3/gen real-input tests under
-Xvfb. The required **Routine CI** aggregate runs even after a dependency fails and refuses missing,
-failed, cancelled or skipped work. Every checkout uses the exact event revision.
-
-The Linux job captures each phase's combined console output in `test-results/ci/`, preserving
-the runner's failure status through `tee`. It uploads `linux-current-headless` before input
-starts, even when headless checks fail; input requires successful headless checks. The final
-`linux-current` artifact also includes input output when available. The job retains its
-45-minute limit. A hard timeout can prevent the final upload, so inspect the earlier artifact
-as well as the job log and check annotations; missing evidence is not a pass.
-
-**Release sweep** (`.github/workflows/release-sweep.yml`) is manual release-preparation evidence.
-It retains all three pinned Linux builds, headless and painted integration, GTK3/gen input, the
-unsupported-version refusal, Windows headless integration, the complete Windows desktop suite,
-and Intel macOS headless packaged integration and lifecycle.
-Its **Full release sweep** aggregate requires every lane. Any test or shutdown failure fails the
-job; artifacts are required, and no error message is an allowed crash.
-
-Batch cross-platform sweeps to at most once per week, on demand rather than on every PR. Check the
-recent Actions history and record the chosen revision and last platform run in the release issue
-before dispatch. If that revision changes, its sweep cannot authorize another revision: finish
-independent work and wait for the next planned sweep before releasing. A focused Windows or macOS
-dispatch is investigation evidence, not a substitute for the complete sweep.
-
-The full sweep must run on the exact release revision before a manual release dry run or
-publication. A PR's release-planning preview needs routine CI only and is labelled as a preview;
-it cannot authorize publication. See [RELEASING.md](RELEASING.md#prepare-and-dry-run).
-The macOS lane covers only the headless boundary below; a separate successful macOS run cannot
-replace the combined sweep or supply another revision's release evidence.
-
-### Visible Windows desktop
-
-The **Windows desktop** workflow (`.github/workflows/windows-desktop.yml`) runs real-input checks
-in a visible Calc window on a GitHub-hosted `windows-2025` runner. The runner's job runs in the
-active console session, where input reaches a visible LibreOffice, unlike an agent shell in
-Windows session 0. The workflow installs the MSI pinned in `ci/libreoffice.json` with
-`ci/install-windows.ps1`, builds the OXT with LibreOffice's Python, and runs
-`tests/ui/run_windows_ui.py`: one private office with the `win` interface, a fresh profile with
-Tip of the Day and the first-start dialog turned off, and the synthetic 80-sheet workbook
-maximised to the desktop with the Sheet Manager deck shown. `tests/ui/winput.py` sends keys and
-pointer input through Windows' `SendInput` with the same interface as the X11 helper, so the suite
-runs the shared checks of `tests/ui/*_checks.py` and `rename_dialog.py` themselves rather than
-copies, with `workbook.py`'s fixture and `check_loop.py`'s loop, and reads the results back
-through public UNO as on Linux. Window and screen geometry are read from the live desktop;
-nothing assumes the runner's present 1024×768 screen at 96 DPI.
-
-The [verification map](docs/verification.md#the-visible-windows-desktop) identifies the shared
-checks this workflow runs and the paths it does not cover. Its artifacts establish functional
-behaviour on that desktop; they do not satisfy human usability testing.
-
-It runs by manual dispatch for focused investigation; the full release sweep runs all its checks
-for release evidence. The manual `checks` input names checks to run, separated by spaces. Dispatch
-it for a branch with
-`gh workflow run windows-desktop.yml --ref <branch> -f checks="keys_stay_in_list wheel"`.
-
-The `windows-desktop` artifact holds `ui-results.json`, with the desktop the run saw (session,
-screen, DPI, keyboard layout), each check's result, and the office's exit status, forced shutdown
-and crash dumps; `ui-win/checks.json`, with each check's evidence or traceback and its duration;
-screenshots taken at menus, dialogs and drags; and the office log and the built OXT. A failed
-check also leaves `failed-<check>.png`, and its entry in `checks.json` records the foreground
-window, the pointer position and the office's visible top-level windows. On both platforms that
-entry is written before the screenshot and desktop evidence are taken and held input is
-released; a step that fails adds its traceback under `diagnostic_errors`, keeping the check's
-own error and the remaining steps
-([#190](https://github.com/viell-dev/slop-calc-sheet-manager/issues/190)). The job fails on a
-failed check, an extension error in the office log, a nonzero exit, a forced shutdown, a fatal
-message or a crash dump, as the integration runner does; only startup is retried.
-
-Never run the suite on your own computer: its input goes to whatever has the focus.
-`winput.WinInput` refuses to start unless `SHEET_MANAGER_REAL_DESKTOP=1` is set, which only the
-workflow does, and the runner refuses session 0, a desktop it cannot open for input, and a
-keyboard layout other than en-US.
-
-Desktop evidence is required by the full release sweep. It is limited to Windows Server 2025, not
-Windows 11; one 1024×768 desktop at 96 DPI with the en-US layout; the `win` interface; the
-Windows pin of `ci/libreoffice.json`; and no screen reader or input method. Neither a focused
-manual run nor a full automated sweep satisfies the separate human usability gate.
-
-### macOS packaged integration
-
-The full release sweep requires **macOS Intel packaged integration**, using `macos-15-intel`
-and the macOS pin. The manual **macOS integration** workflow (`.github/workflows/macos.yml`)
-runs the same helper for focused investigation. Its first native result and limits are recorded
-in [#145](https://github.com/viell-dev/slop-calc-sheet-manager/issues/145).
-
-The helper requires a disposable GitHub macOS runner. It verifies the pinned official DMG,
-mounts it read-only, copies the app into the job's temporary directory, and uses its own
-`Contents/Resources/python` wrapper for PyUNO. It never installs in `/Applications` or changes
-a contributor's existing installation. The existing integration runner supplies private profiles,
-synthetic fixtures, lifecycle checks and shutdown assertions. The artifact includes interpreter,
-version, installer and integration logs, plus new user diagnostic reports identifying that
-private app. System-wide or delayed crash reports are not established by this collection.
-
-Dispatch focused checks with `gh workflow run macos.yml --ref <branch>`, respecting the platform
-cadence above. Coverage is Intel macOS 15 headless packaged integration and lifecycle, with the
-runner requesting `svp`. Aqua rendering, real OS keyboard/mouse input, screen readers, Apple
-Silicon, GUI installation/update and upgrades from published builds on macOS are not established.
-
-For the unresolved initial theme pick in #160, `-f theme_pick_probe=true` instead runs eight
-fixed cases in fresh office profiles: original, observed, observed, original, repeated once.
-Each repeats the normal panel/accessibility/adapter prefix. Every outcome is retained; an
-initial-pick failure allows the remaining measurements but fails the command after all eight.
-Unexpected failures and unclean shutdowns stop it. This investigation is marked explicitly in
-the host/probe receipts and cannot replace integration, lifecycle or a full release sweep.
-
-### Soak painted sessions
-
-Run the **Painted gtk3 soak** workflow manually with `sessions` between 1 and 100 (default 20).
-Each lane runs that many fresh gtk3 profiles with the extension and that many without it, retaining
-per-session runner logs, office logs, results and debugger traces, plus a job summary. A failed
-session, including unreadable or missing results, fails the job after all measurements finish.
-The soak passes `--suites none` to skip feature suites and their performance workbooks within its
-180-second per-session limit; ordinary integration runs keep all feature suites enabled. Feature
-suites never run in the absent-extension control. The soak disables startup retries too, so
-every attempted session contributes to the measurement. The absent-extension control repeats the
-Calc/save/reopen-read-only/Writer lifecycle and frame requests, but cannot exercise the panel or
-its disposal. It is a control, not equivalent extension coverage.
-
-Dispatch the soak on the branch to measure:
-
-```text
-gh workflow run gtk3-soak.yml --ref <branch> -f sessions=20
-```
-
-Locally, use `python tools/linux_integration.py minimum --sessions gtk3 --soak 20 --backtrace`.
-The test image includes `gdb`; `--backtrace` starts LibreOffice's own debugger wrapper and preserves
-its `gdbtrace.log` under each session's output directory. The recorded process exit is the wrapper's
-exit in this mode, so the runner also rejects debugger signal/nonzero-inferior-exit markers,
-missing traces and incomplete exits. Debugging can change timing, and a clean soak does not rule
-out an intermittent crash. No host ptrace capability or relaxed container security is required.
-Before UNO is exposed, the debugger path handles one normal profile-initialization restart
-(LibreOffice exit 81), as the normal launcher does, and preserves its trace separately. A signal,
-fatal marker or different nonzero exit never qualifies; test assertions and shutdown are not retried.
-
-`ci/libreoffice.json` pins the minimum 26.2.1 build, the newest tested 26.2 and 26.8 builds, the
-unsupported 26.2.0 build, Windows and Intel macOS. When updating a lane, verify the current TDF
-catalogue and published SHA-256, update the version, URL and digest together, and run that lane.
-Always use `https://downloadarchive.documentfoundation.org/libreoffice/old/<full version>/`
-and the full four-part version in filenames: `stable/` downloads disappear when the offered
-releases change.
-The lab download allows 30 seconds to connect and four minutes per transfer, with retry starts
-confined to the first minute. This bounds download setup to about five minutes so a slow mirror
-cannot consume the routine job's 45-minute native testing budget. Its effective mirror and
-transfer measurements are logged; TLS and the pinned SHA-256 remain required.
-These pins do not discover newer releases automatically. Dependabot checks development tools,
-GitHub-owned actions and Docker base images weekly after a seven-day cooldown. Action references
-remain full commit SHAs, with their versions in comments. The checks image's two base images are
-held on purpose. Python stays on 3.12, the oldest supported version, so Dependabot proposes only
-3.12 patch releases and digest refreshes for it. Node stays on its current major version, so
-Dependabot proposes newer Node 24 releases and digest refreshes but not Node 26. The workflows
-install Node separately from `.nvmrc`, which Dependabot cannot change: a pull request that moves
-the Node image to a new version must also change `.nvmrc`, so that local and CI checks use the
-same Node, and a unit test fails until they match. That test accepts setup-node steps only as
-`actions/setup-node@<commit SHA>`, with the action's lowercase input names and no expressions in
-keys or `uses`. Moving to a new major version of Python or Node is a deliberate change made by
-hand.
-
-## Documentation
-
-The user guide is in `docs/` and is built with VitePress, whose exact version `package.json` pins.
-It is published on [GitHub Pages](https://viell-dev.github.io/slop-calc-sheet-manager/) together
-with the update feeds. To work on it, select the Node.js version in `.nvmrc` (`nvm use` or
-`fnm use`), then run:
-
-```sh
-npm ci
-npm run docs:dev
-```
-
-`npm run docs:build` builds it as CI does; a broken link between pages fails the build.
-`python tools/check_release_page.py` also builds empty and synthetic release histories, checking
-channel separation, version order, rendered OXT/checksum links, and markers beside instructions
-that are not published yet. It covers preparation with old history, publication, and an older
-stable release alongside a newer test build, in the required docs job.
-Its disposable build output uses the operating system's temporary directory; it never publishes
-a build.
-Some Windows security policies block the native module that VitePress's bundler loads. Then build in a
-container, from the repository root in PowerShell 7, and find the site in `test-results/docs/`:
-
-```powershell
-New-Item -ItemType Directory -Force test-results/docs | Out-Null
-docker run --rm --env "SHEET_MANAGER_DOCS_COMMIT=$(git rev-parse HEAD)" `
-  --mount "type=bind,source=${PWD},target=/src,readonly" `
-  --mount "type=bind,source=${PWD}/test-results/docs,target=/out" node:24.22.2-bookworm-slim `
-  bash -c 'cp -r /src /build && cd /build && rm -rf node_modules && npm ci && npm run docs:build && cp -r docs/.vitepress/dist/. /out/'
-```
-
-Write for users of the extension. A user-visible change updates the guide in the same pull
-request. Mark new behaviour where it appears with an inline `<Unreleased />` inside its paragraph
-(for example, `Move buttons: <Unreleased /> ...`). When preparing its release, set
-`<Unreleased since="VERSION" />` to the first numeric version containing it; keep that marker
-in the source. The site shows **Unreleased** until published history reaches that version in the
-latest stable release, or the newest test build before any stable release. A source version,
-tag, or draft does not establish availability. An abandoned preparation keeps its markers.
-Documentation-only corrections use the same build and synthetic-history checks and deploy from
-`main` without changing a software version or tag; verify the deployed notice's source commit.
-Every page is listed in the sidebar in `docs/.vitepress/config.mts`, and
-`tests/unit/test_consistency.py` checks the sidebar and the facts that the README, the guide,
-and the extension's metadata share.
+Follow [RELEASING.md](RELEASING.md#prepare-and-dry-run) for release readiness and the
+[human usability gate](RELEASING.md#human-release-testing).
 
 ## Pull requests
 

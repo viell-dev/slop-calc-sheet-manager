@@ -26,7 +26,9 @@ together with the extension's update feeds.
 ## For contributors
 
 - [CONTRIBUTING.md](https://github.com/viell-dev/slop-calc-sheet-manager/blob/main/CONTRIBUTING.md):
-  setup, checks, tests, and pull requests.
+  reporting, setup, checks by task, and pull requests.
+- [Native LibreOffice testing](./native-testing.md) and [Hosted checks](./hosted-checks.md):
+  procedures for the repository's current test tools and workflows.
 - [AGENTS.md](https://github.com/viell-dev/slop-calc-sheet-manager/blob/main/AGENTS.md): the rules
   that the maintaining agents follow, including the safety rules for changing documents.
 - [RELEASING.md](https://github.com/viell-dev/slop-calc-sheet-manager/blob/main/RELEASING.md):
@@ -66,3 +68,26 @@ together with the extension's update feeds.
 Follow the [documentation setup and checks](https://github.com/viell-dev/slop-calc-sheet-manager/blob/main/CONTRIBUTING.md#documentation)
 for Node selection, development, builds and synthetic-history verification. VitePress 2 is still a
 prerelease; `package.json` pins the exact version and CI builds every pull request with it.
+
+The required Documentation job uses synthetic histories to check preparation with old releases,
+publication, and an older stable release alongside a newer test build. The helper builds in the
+operating system's temporary directory and leaves publication state alone.
+
+If Windows security policy blocks VitePress's native module, build in a container. Run this
+from the repository root in PowerShell 7 and find the site in `test-results/docs/`.
+
+```powershell
+New-Item -ItemType Directory -Force test-results/docs | Out-Null
+docker run --rm --env "SHEET_MANAGER_DOCS_COMMIT=$(git rev-parse HEAD)" `
+  --mount "type=bind,source=${PWD},target=/src,readonly" `
+  --mount "type=bind,source=${PWD}/test-results/docs,target=/out" node:24.22.2-bookworm-slim `
+  bash -c 'cp -r /src /build && cd /build && rm -rf node_modules && npm ci && npm run docs:build && cp -r docs/.vitepress/dist/. /out/'
+```
+
+Update the user guide in the same pull request as a user-visible change. Place its
+[availability marker](#which-version-it-describes) inline in the paragraph that describes the
+behaviour. Development procedures describe the current repository.
+
+List every guide page in the sidebar in `docs/.vitepress/config.mts`. The consistency tests in
+`tests/unit/test_consistency.py` check the sidebar and facts shared across the README, guide,
+and extension metadata.
