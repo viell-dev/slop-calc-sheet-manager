@@ -53,9 +53,13 @@ the supported toolkit and controller interfaces offer no sidebar pre-release hoo
 never takes that late row: native cursor events are ignored while a press is held, and owned
 keys move the list's own cursor. Refusing the gesture therefore writes back the list's cursor
 while it is still its sheet, also outside the picks, and keeps newer picks (#71). Only when that
-cursor is gone does a surviving pick take it, preferring the pressed sheet. Never let a native
-cursor event during a held press reach the cursor: #70's first observer did, and the late
-release then moved the cursor and the next toggle onto the wrong row.
+cursor is gone does a surviving pick take it, preferring the pressed sheet, also when a refresh
+during the press drops it. Never let a native cursor event during a held press reach the
+cursor: #70's first observer did, and the late release then moved the cursor and the next
+toggle onto the wrong row. A release names only the button released, so only the left button's
+ends the press. A refused release whose structure check finds a generation the list has not
+proved writes nothing: a retained handle may report its name for another sheet, and the queued
+write refreshes first.
 
 Activation. A double click or Enter makes the sheet Calc's only selected tab and reads that back,
 because `setActiveSheet` keeps an existing group when the sheet belongs to it. Activation reads
@@ -916,13 +920,20 @@ class SheetList:
         self._selection.anchor = self._selection.cursor
         self._apply_selection()
 
+    def _fallback_cursor(self, pressed: str | None) -> Ref | None:
+        """A surviving pick for a lost cursor: the pressed sheet's, if picked, or the first."""
+        picks = self._selection.picked
+        return next((ref for ref in picks if ref.name == pressed), picks[0] if picks else None)
+
     def _apply_selection(self) -> None:
         """Write the list's own picks and cursor to the tree; the cursor falls back to a pick."""
         names = self.names()
         cursor = self._selection.cursor
         if cursor is None or cursor.name not in names:
-            cursor = self._selection.picked[0] if self._selection.picked else None
-            self._selection.cursor = cursor
+            # During a held press, as on its refused release, the pressed sheet comes first: a
+            # refresh that drops the cursor meanwhile must not hand the release another pick.
+            pressed = self._press.name if self._press is not None else None
+            cursor = self._selection.cursor = self._fallback_cursor(pressed)
         wanted = {ref.name for ref in self._selection.picked}
         indices = [index for index, name in enumerate(names) if name in wanted]
         self._shown = tuple(names[index] for index in indices)
@@ -1749,16 +1760,30 @@ class SheetList:
             x, y, seen = event.X, event.Y, self._context_input
             self.post(lambda: self._open_menu(x, y, seen=seen), "the sheet tab menu")
             return
-        press, self._press = self._press, None
-        if not event.Buttons & LEFT or press is None or press.name is None:
+        if not event.Buttons & LEFT:
+            # A release names only the button released: another button's leaves a held left
+            # press, and the gate on native cursor events, in place.
             return
-        moved = press.generation != self._monitor.check()
+        press, self._press = self._press, None
+        if press is None or press.name is None:
+            return
+        generation = self._monitor.check()
+        moved = press.generation != generation
         if press.voided or moved or not self._pressed_sheet_in_place(press):
             # A refresh during the press moved the pressed sheet away or showed another sheet
             # under its name. The gesture then has no effect at all (#28): no activation, and
-            # whatever the tree selected on release is undone. The list's own picks come back,
-            # each still the sheet it was picked as, including any newer pick made meanwhile,
-            # by following Calc or by keyboard.
+            # whatever the tree selected on release is undone.
+            if generation != self._proven:
+                # No refresh has proved the list's refs since a sheet may have been inserted or
+                # deleted, so a retained handle may report its name for another sheet: write
+                # none of them. The queued write refreshes first (`_flush_selection`), and that
+                # refresh decides what survives, while its pending flag keeps the release's
+                # native selection and cursor from being taken meanwhile.
+                self._queue_selection()
+                return
+            # The list's own picks come back, each still the sheet it was picked as, including
+            # any newer pick made meanwhile, by following Calc or by keyboard, also after a
+            # refresh during the hold that proved the newer generation.
             self._selection.revalidate()
             # The native selected-row release moved the tree's cursor to the row under the
             # pointer before this callback; `cursor_changed` ignored it while the press was
@@ -1767,10 +1792,7 @@ class SheetList:
             # pick takes it, preferring the pressed sheet, never that late row.
             cursor = self._selection.cursor
             if cursor is None or cursor.name not in self.names():
-                picks = self._selection.picked
-                self._selection.cursor = next(
-                    (ref for ref in picks if ref.name == press.name), picks[0] if picks else None
-                )
+                self._selection.cursor = self._fallback_cursor(press.name)
             self._apply_selection()
             return
         row = press.row

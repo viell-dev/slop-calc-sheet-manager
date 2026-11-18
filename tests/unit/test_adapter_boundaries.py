@@ -1,5 +1,6 @@
 """Deterministic races and display guards; real UNO behaviour is checked in integration."""
 
+from collections.abc import Mapping
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import Mock
@@ -7,6 +8,7 @@ from unittest.mock import Mock
 import pytest
 
 from sheet_manager.selection import Ref, Selection
+from sheet_manager.sheet_list import SheetRow
 from tests.unit.source_methods import method
 
 
@@ -437,10 +439,33 @@ def test_stale_accessible_rows_preserve_cursor_without_hiding_other_errors(
 
 
 ROWS = ["Alfa", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Bravo", "Hotel"]
+LIST = "src/sheet_manager/uno_list.py"
+MIDDLE = 4  # com.sun.star.awt.MouseButton.MIDDLE
 
 
-def refused_press_owner(names: tuple[str, ...], cursor: str | None, stale: str | None = None):
-    """A list holding a press on Bravo, which a refresh moved away from the pressed row."""
+def bind(owner: Any, name: str, namespace: dict[str, Any] | None = None) -> None:
+    """Give `owner` the list's own method `name`, read from the source."""
+    function = method(LIST, "SheetList", name, {"Ref": Ref, "_Press": Any, **(namespace or {})})
+
+    def bound(*arguments: Any) -> Any:
+        return function(owner, *arguments)
+
+    setattr(owner, name, bound)
+
+
+def refused_press_owner(
+    names: tuple[str, ...],
+    cursor: str | None,
+    stale: str | None = None,
+    *,
+    generation: int = 0,
+    proven: int = 0,
+):
+    """A list holding a press on Bravo, which a refresh moved away from the pressed row.
+
+    The press went down at structure generation 0; `generation` is the monitor's now and
+    `proven` the one at which the list last proved its refs.
+    """
     handles = {name: object() for name in ROWS}
     selection = Selection(lambda ref: ref.name != stale)
     selection.picked = [Ref(name, handles[name]) for name in names]
@@ -454,22 +479,36 @@ def refused_press_owner(names: tuple[str, ...], cursor: str | None, stale: str |
         _context_target=None,
         _menu_context=False,
         _press=SimpleNamespace(row=1, name="Bravo", generation=0, voided=False),
-        _monitor=SimpleNamespace(check=lambda: 0),
+        _monitor=SimpleNamespace(check=lambda: generation),
+        _proven=proven,
         _pressed_sheet_in_place=Mock(return_value=False),
         _selection=selection,
         _handles=handles,
         rows=[SimpleNamespace(name=name) for name in ROWS],
         names=lambda: list(ROWS),
+        _queue_selection=Mock(),
         _apply_selection=lambda: applied.append(selection.cursor),
     )
+    bind(owner, "_fallback_cursor")
     return owner, applied
 
 
+def release(owner: Any, buttons: int = 1) -> None:
+    released = method(LIST, "SheetList", "mouse_released", {"LEFT": 1, "RIGHT": 2})
+    released(owner, SimpleNamespace(Buttons=buttons))
+
+
 def release_refused(owner: Any) -> None:
-    released = method(
-        "src/sheet_manager/uno_list.py", "SheetList", "mouse_released", {"LEFT": 1, "RIGHT": 2}
+    release(owner)
+
+
+def native_cursor_on(owner: Any, row: int) -> None:
+    """The tree reports its native cursor on `row`, as its accessibility events do."""
+    changed = method(
+        LIST, "SheetList", "cursor_changed", {"Any": Any, "Ref": Ref, "DisposedException": OSError}
     )
-    released(owner, SimpleNamespace(Buttons=1))
+    context = SimpleNamespace(getAccessibleIndexInParent=lambda: row)
+    changed(owner, SimpleNamespace(getAccessibleContext=lambda: context))
 
 
 @pytest.mark.parametrize(
@@ -508,22 +547,126 @@ def test_refused_release_keeps_the_lists_cursor_while_it_is_its_sheet(
 def test_a_late_native_release_cannot_become_the_refused_gestures_cursor() -> None:
     """The native release moves the tree's cursor to the row under the pointer first (#71)."""
     owner, applied = refused_press_owner(("Bravo",), "Hotel")
-    changed = method(
-        "src/sheet_manager/uno_list.py",
-        "SheetList",
-        "cursor_changed",
-        {"Any": Any, "Ref": Ref, "DisposedException": RuntimeError},
-    )
     # Charlie now shows in the pressed row; the press is still held when the tree says so.
-    changed(
-        owner,
-        SimpleNamespace(
-            getAccessibleContext=lambda: SimpleNamespace(getAccessibleIndexInParent=lambda: 1)
-        ),
-    )
+    native_cursor_on(owner, 1)
     assert owner._selection.cursor.name == "Hotel"
     release_refused(owner)
     assert [ref.name if ref is not None else None for ref in applied] == ["Hotel"]
+
+
+@pytest.mark.parametrize("proven", [0, 1])
+def test_a_refused_release_writes_only_refs_proved_at_the_current_generation(proven: int) -> None:
+    """Hotel was replaced under its name after Ctrl+Down reached it: the monitor is at 1.
+
+    Its old handle can report "Hotel" for the replacement, so before any refresh (`proven` 0)
+    the release writes nothing and leaves the queued write's refresh to decide. A refresh
+    during the hold that proved generation 1 already kept Hotel's newer ref; that stays.
+    """
+    owner, applied = refused_press_owner(("Bravo",), "Hotel", generation=1, proven=proven)
+    release_refused(owner)
+    assert owner._press is None
+    if proven == 0:
+        assert applied == []
+        owner._queue_selection.assert_called_once_with()
+    else:
+        assert [ref.name if ref is not None else None for ref in applied] == ["Hotel"]
+
+
+def test_another_buttons_release_leaves_the_held_left_press_and_its_gate() -> None:
+    """A middle release names only that button, while the left one stays down."""
+    owner, applied = refused_press_owner(("Bravo",), "Hotel")
+    press = owner._press
+    release(owner, MIDDLE)
+    assert owner._press is press and applied == []
+    native_cursor_on(owner, 1)  # Still ignored: the left button is down.
+    assert owner._selection.cursor.name == "Hotel"
+    release_refused(owner)
+    assert [ref.name if ref is not None else None for ref in applied] == ["Hotel"]
+
+
+class Sheet:
+    """A retained sheet handle, reporting whatever name its sheet has now."""
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+    def getName(self) -> str:
+        return self.name
+
+
+@pytest.mark.parametrize(
+    "picks,expected", [(("Alfa", "Bravo"), "Bravo"), (("Alfa", "Delta"), "Alfa")]
+)
+def test_a_refresh_during_the_hold_gives_a_lost_cursor_to_the_pressed_pick(
+    picks: tuple[str, ...], expected: str
+) -> None:
+    """Bravo, picked with others, is held and moved; Ctrl+Down takes the cursor to Hotel, and
+    Hotel is renamed before the release. The refresh drops Hotel's ref while Bravo is still
+    held, and the refused release then keeps whatever cursor that refresh wrote (#71).
+    """
+    sheets = {name: Sheet(name) for name in ROWS}
+    selection = Selection(lambda ref: ref.token.getName() == ref.name)
+    selection.picked = [Ref(name, sheets[name]) for name in ROWS if name in picks]
+    selection.cursor = Ref("Hotel", sheets["Hotel"])
+    tree = SimpleNamespace(clearSelection=Mock(), addSelection=Mock())
+    owner = SimpleNamespace(
+        _press=SimpleNamespace(
+            row=1, name="Bravo", handle=sheets["Bravo"], generation=0, voided=False
+        ),
+        _observed=SimpleNamespace(sheets=[SimpleNamespace(name=name) for name in ROWS]),
+        _proven=0,
+        _generation=0,
+        _nodes=[object() for _ in ROWS],
+        rows=[SheetRow(name) for name in ROWS],
+        _shown=tuple(picks),
+        _view_generation=0,
+        _view_names=frozenset(ROWS),
+        _view_stopped=True,
+        _view_state=None,
+        _input=0,
+        _monitor=SimpleNamespace(check=lambda: 0),
+        _identities_kept=Mock(return_value=True),  # One rename by others keeps them.
+        _selection=selection,
+        _handles={},
+        tree=tree,
+        peer=SimpleNamespace(invalidate=Mock()),
+        _move_tree_cursor=Mock(),
+        _name_viewed=Mock(),
+        _update_moves=Mock(),
+    )
+    owner.names = lambda: [row.name for row in owner.rows]
+
+    def rebuild(rows: list[SheetRow]) -> None:
+        owner.rows, owner._nodes = rows, [object() for _ in rows]
+        owner._apply_selection()
+
+    owner._rebuild = rebuild
+    for name in ("_fallback_cursor", "_apply_selection", "_pressed_sheet_in_place"):
+        bind(owner, name)
+    sheets["Hotel"].name = "Hotel 2"
+    renamed = [sheet.name for sheet in sheets.values()]
+    observed = SimpleNamespace(
+        sheets=[SimpleNamespace(name=name) for name in renamed], handles=list(sheets.values())
+    )
+
+    def read_rows(controller: object, picture: Any) -> list[SheetRow]:
+        return [SheetRow(sheet.name) for sheet in picture.sheets]
+
+    refresh = method(
+        LIST,
+        "SheetList",
+        "_refresh",
+        {"snapshot": Mock(return_value=observed), "read_rows": read_rows, "Mapping": Mapping},
+    )
+    owner.document = owner.controller = None
+    refresh(owner, {})
+    assert selection.cursor.name == expected
+    kept = selection.cursor
+    release(owner)
+    assert owner._press is None
+    assert [ref.name for ref in selection.picked] == [name for name in renamed if name in picks]
+    assert selection.cursor is kept
+    owner._move_tree_cursor.assert_called_with(renamed.index(expected), scroll=False)
 
 
 @pytest.mark.parametrize(

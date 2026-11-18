@@ -74,7 +74,8 @@ If Sheet Manager does not work in an environment where it is expected to, please
   and, when any survive, the keyboard cursor returns to one of them. An unpicked position made
   during that hold is not preserved
   ([#71](https://github.com/viell-dev/slop-calc-sheet-manager/issues/71)). <Unreleased /> The
-  keyboard cursor now stays where your keys moved it during the hold, also outside the picks.
+  keyboard cursor now stays where your keys moved it during the hold, also outside the picks,
+  while the list can still identify that sheet.
 - **Rename Sheets.** <Unreleased since="0.0.6" /> Sheet names written as text are not changed: after
   a rename, a formula such as `INDIRECT("'WIP North'.A1")` refers to no sheet, or to whichever sheet
   then has that name. Calc's own formula references, named ranges, and charts follow the new names.

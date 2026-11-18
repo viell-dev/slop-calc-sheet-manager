@@ -7,6 +7,7 @@ refused held press (#71). A second document's list works independently of the fi
 """
 
 import time
+from typing import Any
 
 import sheet_list_view as view
 import uno
@@ -323,28 +324,35 @@ def check_native_cursor_positions(book):
     return evidence
 
 
-REFUSED_HOLDS = ("pressed", "typed", "unpicked", "other_pick", "repeat")
+REFUSED_HOLDS = ("pressed", "typed", "unpicked", "other_pick", "repeat", "renamed")
+RENAMED = f"{NAMES[7]} 2"  # Hotel's name in the `renamed` case, until the case puts it back.
 
 
-def _refused_hold(book, case, probe, press, marks):
+def _refused_hold(book, case, probe, press, marks) -> dict[str, Any]:
     """Hold Bravo while a refresh moves it away, give the case's input, and release over its row.
 
-    Returns the order after the move, the picks the release must restore, and the cursor rows
-    `probe` heard from the hold's input on, split at the moment `press` heard the release.
+    Returns what `_verdict` judges: the picks before the hold, the order after the case's
+    changes, the picks the release must restore, the cursor row `probe` last heard before the
+    button went up, and the rows it heard after that, split at the moment `press` heard the
+    release.
 
     The list starts at its top. An earlier check can leave it scrolled down by a row; the
     rebuild then keeps Bravo at the top, under the pointer, and the release lands on the
     pressed sheet's new row instead of Charlie, so no case observes the late release (measured
     in the full suite after `native_cursor_positions`, 26.2.1.2 gtk3). Each step waits for the
     event it follows, never for a count of events taken earlier, so that nothing heard before
-    the release can stand for the list's answer to it. `marks` receives when the moved rows
-    were read.
+    the button went up can stand for the release or the list's answer to it. `marks` receives
+    when the moved rows were read and when the button went up.
     """
     book.tree.makeNodeVisible(book.nodes()[0])
     wait_until(lambda: book.first_visible() == 0, "the list at its top")
-    book.click(1)
-    if case == "other_pick":
-        book.click(3, modifiers=("Control_L",))
+    if case == "renamed":
+        book.click(0)
+        book.click(1, modifiers=("Control_L",))
+    else:
+        book.click(1)
+        if case == "other_pick":
+            book.click(3, modifiers=("Control_L",))
     picked = book.selection()
     book.hold(1, press)
     try:
@@ -357,7 +365,7 @@ def _refused_hold(book, case, probe, press, marks):
         # that, so that nothing from before the hold's own input counts.
         view.on_main_thread(book.lab.context, lambda: None)
         wait_until(lambda: probe.rows()[-1:] == [bravo], "the cursor on the moved sheet")
-        held, wanted = len(probe.heard), [name for name in order if name in picked]
+        wanted = [name for name in order if name in picked]
         if case == "typed":
             book.lab.input.tap("d", pause=0.5)
             wanted = [NAMES[3]]
@@ -370,9 +378,22 @@ def _refused_hold(book, case, probe, press, marks):
             time.sleep(0.3)
         elif case == "repeat":
             book.lab.input.repeat("Down", ("Control_L",))
-        heard = len(press.heard)
+        elif case == "renamed":
+            # Ctrl+Down takes the cursor to Hotel, and Hotel's rename then drops that cursor
+            # in a refresh while Bravo is still held.
+            book.lab.input.tap("Down", ("Control_L",), pause=0.5)
+            book.document.getSheets().getByName(NAMES[7]).setName(RENAMED)
+            wait_until(lambda: view.names(book.tree) == book.order(), "the renamed list")
+            order = book.order()
+        # Whatever the input queued has run; the cursor heard last is the one the button-up
+        # finds, and everything heard from here on comes after it.
+        view.on_main_thread(book.lab.context, lambda: None)
+        heard, rows = len(press.heard), len(probe.heard)
+        held = probe.rows()[-1] if rows else None
+        injected = time.monotonic()
     finally:
         book.pointer.release()
+    marks.append((injected, "button up"))
     wait_until(
         lambda: "released" in [kind for kind, _ in press.heard[heard:]],
         "the tree's listeners to hear the release",
@@ -380,20 +401,78 @@ def _refused_hold(book, case, probe, press, marks):
     # The list's listener runs after the probe's, in the same posted callback.
     view.on_main_thread(book.lab.context, lambda: None)
     released = next(when for kind, when in press.heard[heard:] if kind == "released")
-    hold = [row for when, row in probe.heard[held:] if when < released]
-    after = [row for when, row in probe.heard[held:] if when >= released]
-    return order, wanted, hold, after
+    later = [(when, row) for when, row in probe.heard[rows:] if when >= injected]
+    return {
+        "setup": picked,
+        "order": order,
+        "wanted": wanted,
+        "held": held,
+        "between": [row for when, row in later if when < released],
+        "after": [row for when, row in later if when >= released],
+    }
 
 
-def _timeline(probe, press, marks, started, order):
-    """Cursor rows, the tree's mouse listeners and `marks` in time order, from `started`."""
+def _verdict(case, seen):
+    """The cursor a refused hold must keep, and every way `seen` fails to show the case.
+
+    `seen` is `_refused_hold`'s record with the picks after the release (`restored`) and after
+    Ctrl+Space (`toggled`). A case shows something only if it set up the picks it names, the
+    keys left the cursor on the case's row before the button went up, and the native release
+    moved the tree's cursor to the pressed row, Charlie's now, after the button went up and
+    before the tree's mouse listeners heard it. The server's timed repeat is judged by where
+    the cursor was when the button went up, never by how often it repeated.
+    """
+    order, held = seen["order"], seen["held"]
+    bravo = order.index(NAMES[1])
+    cursor = {
+        "pressed": NAMES[1],
+        "typed": NAMES[3],
+        "unpicked": order[bravo + 1],
+        "other_pick": NAMES[3],
+        "repeat": order[held] if held is not None and 0 <= held < len(order) else None,
+        "renamed": NAMES[1],  # Hotel's ref is gone: the pressed pick takes the cursor.
+    }[case]
+    setup = {"other_pick": [NAMES[1], NAMES[3]], "renamed": [NAMES[0], NAMES[1]]}
+    row = order.index(cursor) if cursor in order else None
+    problems = []
+    if seen["setup"] != setup.get(case, [NAMES[1]]):
+        problems.append("the picks before the hold were not the case's")
+    if row is None or held != row:
+        problems.append("the cursor was not on the case's row when the button went up")
+    if seen["between"][-1:] != [1]:
+        problems.append("the release did not reach the pressed row after the button went up")
+    if case == "repeat" and (row is None or row <= bravo + 2):
+        problems.append("the server did not repeat Down")
+    if seen["restored"] != seen["wanted"]:
+        problems.append("the picks were not restored")
+    if seen["after"][-1:] != [row]:
+        problems.append("the tree's cursor was not put back on the list's")
+    if seen["toggled"] != [name for name in order if name in set(seen["wanted"]) ^ {cursor}]:
+        problems.append("Ctrl+Space toggled another row")
+    return cursor, problems
+
+
+def _undo_rename(book):
+    """Give Hotel its name back after the `renamed` case, so that `reset` finds every sheet."""
+    sheets = book.document.getSheets()
+    if sheets.hasByName(RENAMED):
+        sheets.getByName(RENAMED).setName(NAMES[7])
+
+
+def _timeline(probe, press, marks, started):
+    """Cursor rows, the tree's mouse listeners and `marks` in time order, from `started`.
+
+    Cursor events name row indices, not sheets: the rows show the original order until the
+    move is read, and the case's `order` after it.
+    """
     events = [
-        (when, order[row] if row is not None and row < len(order) else row)
+        (when, f"row {row}" if row is not None else "row of a replaced model")
         for when, row in list(probe.heard)
     ]
     events += [(when, f"heard {kind}") for kind, when in list(press.heard)]
     events += marks
-    return [[round(when - started, 3), what] for when, what in sorted(events) if when >= started]
+    events.sort(key=lambda event: event[0])
+    return [[round(when - started, 3), what] for when, what in events if when >= started]
 
 
 def check_selected_press_cursor(book):
@@ -402,9 +481,11 @@ def check_selected_press_cursor(book):
     Bravo is picked, pressed again and held while a refresh moves it away, and the button is
     released over the row it left, which then shows Charlie. The tree's native release moves
     its cursor to that row before the tree's mouse listeners hear the release; each case must
-    hear that order, or it proves nothing. The list then puts back its own cursor: Bravo's, a
-    newer typed pick's, or wherever the keyboard took it during the hold, also outside the
-    picks and with the X server's own timed repeat (#71). Ctrl+Space then toggles exactly the
+    hear that move after the button went up, from a cursor its own input left elsewhere, or it
+    proves nothing (`_verdict`). The list then puts back its own cursor: Bravo's, a newer typed
+    pick's, or wherever the keyboard took it during the hold, also outside the picks and with
+    the X server's own timed repeat (#71). When a refresh during the hold drops that cursor, as
+    a rename of its sheet does, the pressed sheet takes it. Ctrl+Space then toggles exactly the
     row the cursor is on. Every case runs before the check fails, so that one run shows which
     of them a change breaks; a gesture that cannot be made fails at once.
     """
@@ -418,41 +499,27 @@ def check_selected_press_cursor(book):
             reset(book)
             started = time.monotonic()
             try:
-                order, wanted, hold, after = _refused_hold(book, case, probe, press, marks)
-            except AssertionError as error:
-                evidence[case] = {"timeline": _timeline(probe, press, marks, started, book.order())}
-                raise AssertionError({case: str(error), "evidence": evidence}) from error
-            bravo = order.index(NAMES[1])
-            cursor = {
-                "pressed": NAMES[1],
-                "typed": NAMES[3],
-                "unpicked": order[bravo + 1],
-                "other_pick": NAMES[3],
-                # Wherever the server's repeated Down left the cursor before the release.
-                "repeat": order[hold[-2]] if len(hold) > 1 and hold[-2] is not None else None,
-            }[case]
-            row = order.index(cursor) if cursor in order else None
-            restored = book.selection()
-            book.lab.input.tap("space", ("Control_L",), pause=0.4)
-            toggled = [name for name in order if name in set(wanted) ^ {cursor}]
-            record = evidence[case] = {
+                try:
+                    seen = _refused_hold(book, case, probe, press, marks)
+                except AssertionError as error:
+                    evidence[case] = {"timeline": _timeline(probe, press, marks, started)}
+                    raise AssertionError({case: str(error), "evidence": evidence}) from error
+                seen["restored"] = book.selection()
+                book.lab.input.tap("space", ("Control_L",), pause=0.4)
+                seen["toggled"] = book.selection()
+            finally:
+                _undo_rename(book)
+            cursor, problems = _verdict(case, seen)
+            evidence[case] = {
                 "cursor": cursor,
-                "picks": wanted,
-                "restored": restored,
-                "after_toggle": book.selection(),
-                "timeline": _timeline(probe, press, marks, started, order),
+                "picks_before_hold": seen["setup"],
+                "picks": seen["wanted"],
+                "row_at_button_up": seen["held"],
+                "restored": seen["restored"],
+                "after_toggle": seen["toggled"],
+                "rows_after_move": seen["order"][:12],
+                "timeline": _timeline(probe, press, marks, started),
             }
-            problems = []
-            if hold[-1:] != [1]:
-                problems.append("the native release did not reach the pressed row first")
-            if case == "repeat" and (row is None or row <= bravo + 2):
-                problems.append("the server did not repeat Down")
-            if restored != wanted:
-                problems.append("the picks were not restored")
-            if after[-1:] != [row]:
-                problems.append("the tree's cursor was not put back on the list's")
-            if record["after_toggle"] != toggled:
-                problems.append("Ctrl+Space toggled another row")
             if problems:
                 failed[case] = problems
     finally:

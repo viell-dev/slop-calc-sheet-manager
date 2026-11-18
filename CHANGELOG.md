@@ -11,8 +11,10 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   timeout on a busy computer from a normal installation
   ([#235](https://github.com/viell-dev/slop-calc-sheet-manager/issues/235)).
 - Keep the keyboard cursor where the keys moved it while a click was held, when the list then
-  refuses that click because the sheets changed. It returned to a picked sheet even after
-  Ctrl+arrow keys had moved it elsewhere; the picks were already kept
+  refuses that click because the sheets changed, as long as the list can still identify that
+  sheet. It returned to a picked sheet even after Ctrl+arrow keys had moved it elsewhere; the
+  picks were already kept. Releasing another mouse button while the left one is held no longer
+  ends the held click
   ([#71](https://github.com/viell-dev/slop-calc-sheet-manager/issues/71)).
 - Calibrate the rename dialog's real-input clicks from two reports that follow the pointer's two
   moves, rather than the first report after a fixed 0.15 seconds, which a busy office could send
