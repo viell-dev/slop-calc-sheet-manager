@@ -5,6 +5,11 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- The stall watch now waits for LibreOffice's gdb wrapper after an interrupt because its stack
+  collector reports that it sent one, rather than by reading the start of its own receipt text,
+  so rewording that text can no longer drop the wait and the wrapper's recorded exit status. This
+  changes the test runner, not the extension
+  ([#267](https://github.com/viell-dev/slop-calc-sheet-manager/issues/267)).
 - On Windows, a test document close that was posted to LibreOffice's main thread before the
   stall watch recorded a stall no longer starts when that thread reaches it, so it cannot change
   the office while its stacks are being taken; the close helper then fails as after any stall.
