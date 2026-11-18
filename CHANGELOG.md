@@ -49,6 +49,9 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   and check modules by subject, so that the Windows and update-dialog runners no longer import
   the Linux runner; the checks, their order and their evidence are unchanged
   ([#195](https://github.com/viell-dev/slop-calc-sheet-manager/issues/195)).
+- Wait for the sheet list's own report of the lab's pointer calibration move instead of a fixed
+  0.2 seconds. A late report had shifted a workbook's calibrated origin by two pixels and failed
+  the painted-row check ([#209](https://github.com/viell-dev/slop-calc-sheet-manager/issues/209)).
 
 - Put installation and a worked example first in the README, and align the guide's Hide
   summary and security policy with published behaviour

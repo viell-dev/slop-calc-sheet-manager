@@ -228,7 +228,10 @@ key-handler-removal experiment are recorded in
 `test_office_process.py`, `test_teardown.py`, `test_stalled_cleanup.py` and UI-runner unit tests
 ensure that failed checks cannot pass through cleanup. `test_ui_failure_records.py` fails each
 real-input failure diagnostic and clean-up step in turn and checks that the failed check's record
-is already on disk and keeps its own error (#190). Sessions fail on nonzero exits, forced
+is already on disk and keeps its own error (#190). `test_lab_calibration.py` checks that the
+Xvfb lab's pointer calibration waits for the tree's own report of its move, so a busy office
+cannot shift a workbook's calibrated positions and pixel coordinates by two pixels (#209).
+Sessions fail on nonzero exits, forced
 shutdowns, fatal messages, crash dumps, stalled main-thread callbacks or held terminate requests.
 Windows crash dumps matter even when the office exits with status zero. Only startup is retried;
 its dumps are retained separately. Debugger runs also reject signals, incomplete exits and missing

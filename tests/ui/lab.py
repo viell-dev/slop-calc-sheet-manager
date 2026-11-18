@@ -68,7 +68,15 @@ class Lab:
         )
 
     def calibrate(self, tree, window):
-        """Find the tree's screen offset: move the pointer and ask the tree where it is."""
+        """Find the tree's screen offset: move the pointer and ask the tree where it is.
+
+        The tree's first report shows that the pointer has reached it; the offset comes from its
+        report of a second move, 2 pixels further on both axes. The tree hears a move only when
+        LibreOffice's main thread gets to it, which a busy office delays, so `settled_report`
+        waits for that report rather than a fixed time. Reading it after a fixed 0.2 seconds
+        once took the first position for the second and gave an offset 2 pixels too large on
+        both axes, which the painted-row check then saw as misplaced dividers (#209).
+        """
         tracker = Tracker()
         tree.addMouseMotionListener(tracker)
         try:
@@ -90,10 +98,42 @@ class Lab:
                 while tracker.last is None and time.monotonic() < deadline:
                     time.sleep(0.02)
                 if tracker.last is not None:
+                    first = tracker.last
                     self.input.move(x + 2, y + 2)
-                    time.sleep(0.2)
-                    local = tracker.last
+                    local = settled_report(tracker, first, (x + 2, y + 2))
                     return (x + 2 - local[0], y + 2 - local[1])
             raise AssertionError("The pointer never reached the sheet list")
         finally:
             tree.removeMouseMotionListener(tracker)
+
+
+def settled_report(tracker, first, target, quiet=0.3, timeout=10):
+    """Where the tree says the pointer is, now that it has stopped at `target` after `first`.
+
+    The tree's reports arrive in the order of the moves, so its last report, once it has
+    reported something other than `first` and then nothing new for `quiet` seconds, is the
+    position at `target`. Waiting for a newer report rather than a fixed time keeps a late report
+    from being missed; waiting for quiet keeps a further report of the earlier position, such as
+    a corrected landing, from being taken for it. Fails, with both positions, if no newer report
+    arrives within `timeout` seconds, and if reports then keep changing for `timeout` seconds.
+    """
+    deadline = time.monotonic() + timeout
+    latest = tracker.last
+    while latest is None or latest == first:
+        if time.monotonic() > deadline:
+            raise AssertionError(
+                f"The tree did not report the pointer's move to {target}; "
+                f"its last report was {first}"
+            )
+        time.sleep(0.02)
+        latest = tracker.last
+    changed = time.monotonic()
+    deadline = changed + timeout
+    while time.monotonic() - changed < quiet:
+        if time.monotonic() > deadline:
+            raise AssertionError(f"The tree kept reporting new positions after a move to {target}")
+        time.sleep(0.02)
+        report = tracker.last
+        if report is not None and report != latest:
+            latest, changed = report, time.monotonic()
+    return latest
