@@ -21,8 +21,10 @@ the result or its recovery. docs/reordering.md is the contract the panel relies 
   the view also activates the sheet by index.
 - `moveByName` is the only sheet move the API offers, and it uses that lookup: measured with
   26.8.1.1, it moved `ﬁ` when asked to move `fi`. `preflight` therefore asks Calc's lookup for
-  the moved names and refuses a plan in which a move's name would find another sheet when it
-  runs (`reorder.lookup_conflict`), and each call checks the name again just before it moves.
+  the moved names. When a move's name would find another sheet when it runs
+  (`reorder.lookup_conflict`), `apply_order` applies the planner's equally short mirror image
+  instead if Calc can address all of its calls, and `preflight` refuses otherwise
+  (`reorder.addressable_plan`, #125). Each call checks the name again just before it moves.
 - Own-move markers (#91). With room for them (an undo capacity of two or more), a move group
   holds a `_Marker` before its first move and one after its last, inside the balanced contexts
   like the moves. `structure` states what they prove and when. Their `undo` and `redo` run inside
@@ -52,7 +54,15 @@ from com.sun.star.document import XUndoAction
 
 from sheet_manager.i18n import tr
 from sheet_manager.rename import quoted
-from sheet_manager.reorder import Move, Plan, Sheet, lookup_conflict, ordered_blocks, plan_order
+from sheet_manager.reorder import (
+    Move,
+    Plan,
+    Sheet,
+    addressable_plan,
+    lookup_conflict,
+    ordered_blocks,
+    plan_order,
+)
 from sheet_manager.structure import OwnMove
 from sheet_manager.uno_calc import MainThread, report, selected_tabs_method
 from sheet_manager.uno_structure import StructureMonitor, monitor_for
@@ -156,33 +166,48 @@ def preflight(context: Any, document: Any, observed: Snapshot, plan: Plan) -> Av
     Treat an unreadable safety condition as a refusal. A plan is tied to the whole
     observed order and retained sheet handles, not just the selected names.
     """
+    return _preflight(context, document, observed, plan)[0]
+
+
+def _preflight(
+    context: Any, document: Any, observed: Snapshot, plan: Plan
+) -> tuple[Availability, Plan]:
+    """`preflight`, and the plan to apply: `plan`, or an equally short plan to its target whose
+    calls Calc's lookup addresses (#125)."""
     try:
         if plan.before != observed.sheets or not is_current(document, observed):
-            return Availability(False, tr("The sheet list has changed. Refresh it and try again."))
+            return Availability(
+                False, tr("The sheet list has changed. Refresh it and try again.")
+            ), plan
         # Validate against the canonical (cached) plan, including indices and scenario blocks.
         if plan_order(observed.sheets, plan.target) != plan:
-            return Availability(False, tr("The move plan is invalid. Refresh it and try again."))
+            return Availability(
+                False, tr("The move plan is invalid. Refresh it and try again.")
+            ), plan
         permission = plan_availability(move_availability(context, document), plan)
         if not permission.allowed:
-            return permission
+            return permission, plan
         # Calc's undo of the moves needs this document's view as its current one (#108).
         controller = document.getCurrentController()
         if controller is None or not controller.getFrame().isActive():
-            return Availability(False, tr("Activate this document's window before moving sheets."))
-        conflict = _lookup_conflict(document, plan)
-        if conflict is not None:
+            return Availability(
+                False, tr("Activate this document's window before moving sheets.")
+            ), plan
+        addressable = _addressable(document, plan)
+        if not isinstance(addressable, Plan):
+            name, other = addressable
             return Availability(
                 False,
                 tr(
                     "Calc cannot move {name} by its name, because it takes the name for {other}. "
                     "Rename one of them first."
-                ).format(name=quoted(conflict[0]), other=quoted(conflict[1])),
-            )
-        return permission
+                ).format(name=quoted(name), other=quoted(other)),
+            ), plan
+        return permission, addressable
     except Exception as error:
         return Availability(
             False, tr("Sheet Manager could not verify that this move is safe."), str(error)
-        )
+        ), plan
 
 
 def move_availability(context: Any, document: Any) -> Availability:
@@ -227,19 +252,27 @@ def plan_availability(permission: Availability, plan: Plan) -> Availability:
     return permission
 
 
-def _lookup_conflict(document: Any, plan: Plan) -> tuple[str, str] | None:
-    """A move whose name Calc's lookup would give another sheet, and that sheet's name.
+def _addressable(document: Any, plan: Plan) -> Plan | tuple[str, str]:
+    """The plan to apply, whose every call Calc's lookup addresses; otherwise the name of the
+    plan's first move that the lookup would give another sheet, and that sheet's name.
 
     When every moved name finds its own sheet, each moved sheet comes first among the sheets
     Calc cannot tell apart from it, and no other moved sheet is among them. The sheets that stay
     keep their order relative to it, so it is still first when it moves; a plan moves each sheet
-    once. Only otherwise are all names looked up and the plan simulated.
+    once. Only otherwise are all names looked up, and the plan and its equally short alternative
+    simulated (`reorder.addressable_plan`).
     """
     sheets = document.getSheets()
     if all(sheets.getByName(move.name).getName() == move.name for move in plan.moves):
-        return None
+        return plan
     finds = {sheet.name: str(sheets.getByName(sheet.name).getName()) for sheet in plan.before}
-    return lookup_conflict(plan, finds)
+    addressable = addressable_plan(plan, finds)
+    if addressable is not None:
+        return addressable
+    conflict = lookup_conflict(plan, finds)
+    if conflict is None:
+        raise RuntimeError("A plan without a lookup conflict was not addressable")
+    return conflict
 
 
 def _selected_names(context: Any, controller: Any, names: tuple[str, ...]) -> tuple[str, ...]:
@@ -405,7 +438,8 @@ def apply_order(context: Any, document: Any, observed: Snapshot, plan: Plan) -> 
     inside the undo context is private to this operation. Never dispatch Calc's
     multi-sheet Move, copy/delete sheets, save, or clear/lock the user's undo stack.
     """
-    permission = preflight(context, document, observed, plan)
+    # The plan to apply can differ from the one asked for: never longer, to the same target.
+    permission, plan = _preflight(context, document, observed, plan)
     if not permission.allowed:
         return Result("refused", permission.reason, detail=permission.detail)
     # All callers get the own-move exception, including callers without a sheet-list view.

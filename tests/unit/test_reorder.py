@@ -7,10 +7,13 @@ from time import perf_counter, process_time
 import pytest
 
 from sheet_manager.reorder import (
+    Move,
     Plan,
     Sheet,
+    addressable_plan,
     blocks,
     lookup_conflict,
+    mirror_plan,
     plan_move,
     plan_order,
     target_order,
@@ -46,9 +49,9 @@ def list_moves(
     return moves
 
 
-def assert_plan(sheets: tuple[Sheet, ...], target: tuple[str, ...]) -> None:
-    plan = plan_order(sheets, target)
-    before = tuple(sheet.name for sheet in sheets)
+def assert_replay(plan: Plan, calls: int) -> None:
+    """The plan reaches its target in `calls` moves, each of which changes the order."""
+    before = tuple(sheet.name for sheet in plan.before)
     work = list(before)
     for move in plan.moves:
         assert 0 <= move.index < len(work)
@@ -57,11 +60,22 @@ def assert_plan(sheets: tuple[Sheet, ...], target: tuple[str, ...]) -> None:
         work.insert(move.index, work.pop(source))
         # Rollback ownership relies on every nonempty plan prefix changing order.
         assert tuple(work) != before
-    assert tuple(work) == target
-    assert len(plan.moves) == len(before) - lcs_length(before, target)
+    assert tuple(work) == plan.target
+    assert len(plan.moves) == calls
+
+
+def assert_plan(sheets: tuple[Sheet, ...], target: tuple[str, ...]) -> None:
+    plan = plan_order(sheets, target)
+    before = tuple(sheet.name for sheet in sheets)
+    calls = len(before) - lcs_length(before, target)
+    assert_replay(plan, calls)
     moved = {move.name for move in plan.moves}
     keep = {name for name in before if name not in moved}
     assert [(move.name, move.index) for move in plan.moves] == list_moves(before, target, keep)
+    # The alternative for names Calc confuses is as short, also with scenario blocks (#125).
+    mirror = mirror_plan(plan)
+    assert (mirror.before, mirror.target) == (plan.before, plan.target)
+    assert_replay(mirror, calls)
 
 
 def test_every_permutation_through_seven_sheets_is_optimal() -> None:
@@ -250,6 +264,40 @@ def test_lookup_conflict_matches_a_replay_of_calcs_lookup() -> None:
                 # uno_reorder looks up only the moved names when they all find their own sheets.
                 if all(finds[move.name] == move.name for move in plan.moves):
                     assert conflict is None, (before, target)
+                chosen = addressable_plan(plan, finds)
+                if conflict is None:
+                    assert chosen is plan
+                    continue
+                # The mirror image, computed independently: the planner on the reversed orders.
+                reversed_plan = plan_order(sheets[::-1], target[::-1])
+                count = len(before)
+                mirror = Plan(
+                    sheets,
+                    target,
+                    tuple(Move(move.name, count - 1 - move.index) for move in reversed_plan.moves),
+                )
+                if oracle_conflict(mirror) is None:
+                    assert chosen is not None and chosen == mirror, (before, target)
+                    assert_replay(chosen, len(plan.moves))
+                else:
+                    assert chosen is None, (before, target)
+
+
+def test_a_refused_move_uses_the_mirror_image_when_calc_can_address_it() -> None:
+    sheets = (Sheet("ﬁ"), Sheet("fi"), Sheet("Last"))
+    finds = {"ﬁ": "ﬁ", "fi": "ﬁ", "Last": "Last"}
+    plan = plan_move(sheets, ["fi"], "bottom")
+    assert [(move.name, move.index) for move in plan.moves] == [("fi", 2)]
+    chosen = addressable_plan(plan, finds)
+    # Last moves in front of fi instead, so that fi reaches the bottom without using its name.
+    assert chosen is not None and [(move.name, move.index) for move in chosen.moves] == [
+        ("Last", 1)
+    ]
+    # With Last between them, fi can reach the top only by its own name, which finds ﬁ.
+    sheets = (Sheet("ﬁ"), Sheet("Last"), Sheet("fi"))
+    plan = plan_move(sheets, ["fi"], "top")
+    assert addressable_plan(plan, finds) is None
+    assert lookup_conflict(plan, finds) == ("fi", "ﬁ")
 
 
 def test_lookup_conflict_names_the_sheet_calc_would_move() -> None:
