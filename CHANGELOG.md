@@ -60,6 +60,9 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   summary and security policy with published behaviour
   ([#197](https://github.com/viell-dev/slop-calc-sheet-manager/issues/197),
   [#199](https://github.com/viell-dev/slop-calc-sheet-manager/issues/199)).
+- Audit former macOS test process groups for a bounded time after each command exits, give
+  timed-out groups a bounded TERM drain before KILL, and detach the disk image when a failed
+  attach left it mounted ([#163](https://github.com/viell-dev/slop-calc-sheet-manager/issues/163)).
 
 ## 0.0.10 - 2026-11-03
 

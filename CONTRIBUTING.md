@@ -385,6 +385,16 @@ synthetic fixtures, lifecycle checks and shutdown assertions. The artifact inclu
 version, installer and integration logs, plus new user diagnostic reports identifying that
 private app. System-wide or delayed crash reports are not established by this collection.
 
+Each native command runs in its own process group. After an ordinary exit, including a nonzero
+one, the helper watches the former group for up to three seconds without sending signals. A
+member still alive after that, or a failed or interrupted observation, fails the command, retains
+the private application and leaves a `*.group.json` receipt where possible; a member that exits
+within the bound is recorded in the same receipt without failing. A descendant that starts its
+own session or process group is outside this audit. A command timeout still fails: its
+`*.timeout.json` receipt records a three-second TERM drain and any escalation to KILL, and the
+leader is reaped only after its group has stopped. A failed attach that left the image mounted
+is still detached.
+
 Dispatch focused checks with `gh workflow run macos.yml --ref <branch>`, respecting the platform
 cadence above. Coverage is Intel macOS 15 headless packaged integration and lifecycle, with the
 runner requesting `svp`. Aqua rendering, real OS keyboard/mouse input, screen readers, Apple
