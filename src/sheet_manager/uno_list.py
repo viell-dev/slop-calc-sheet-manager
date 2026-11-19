@@ -115,18 +115,19 @@ listener then picked, toggled, activated or targeted a menu at a sheet the user 
 the queue order that toggles rely on (above), such a rebuild holds presses (`_hold_presses`) from
 before it shows its model, and posts the end of the hold as it returns (`_release_presses`):
 every listener whose press was handled before then runs held, and so may one that VCL runs early.
-The hold keeps a row's name if every row list shown since the hold began had it there, and no
-name at all if the top row changed its index, after which the restored scroll position can
-differ, or could not be read. A held press without Shift on a row whose name the hold keeps acts
-as usual: on whichever of those lists the user pressed, the row showed that name. A Shift press
-extends a range through rows that may have changed. Any other held press counts as one outside
-the rows: a left press picks nothing and drops the picks, which its native effect
-superseded in the tree, with the notice, its release does nothing, and a right press opens no
-menu. Names compared row by row cannot tell a rename in place from another sheet moved into the
-row, so a press on a renamed row is refused too. A refresh that keeps every row's name holds
-nothing new, even when it loses the identity proof: the press acts on the sheet under that name,
-as a press after the refresh would, and a drop of picks there holds toggles (above). The hold
-adds no native call; its end is one post.
+The hold keeps a row's name if every row list shown since the hold began had it there. It keeps
+no name when the restored scroll position can differ: the restore shows the old top row at the
+top, so the top row must keep its name and its index, and the position must be read and restored.
+A held press without Shift on a row whose name the hold keeps acts as usual: on whichever of
+those lists the user pressed, the row showed that name. A Shift press extends a range through
+rows that may have changed. Any other held press counts as one outside the rows: a left press
+picks nothing and drops the picks, which its native effect superseded in the tree, with the
+notice, so its release does nothing, and a right press opens no menu. Names compared row by row
+cannot tell a rename in place from another sheet moved into the row, so a press on a renamed row
+is refused too. A refresh that keeps every row's name holds nothing new, even when it loses the
+identity proof: the press acts on the sheet under that name, as a press after the refresh would,
+and a drop of picks there holds toggles (above). The hold adds no native call; its end is one
+post.
 
 Activation. A double click or Enter makes the sheet Calc's only selected tab and reads that back,
 because `setActiveSheet` keeps an existing group when the sheet belongs to it. Activation reads
