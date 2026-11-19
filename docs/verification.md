@@ -257,9 +257,10 @@ lab's pointer calibration of the sheet list, which the Windows desktop shares, t
 offset only from the tree's reports of one point and of that point's own second move. A busy
 office therefore cannot shift a workbook's calibrated positions and pixel coordinates by two
 pixels (#209). The check covers late reports of an earlier point, an office whose every report
-comes after each wait, and points on the tree's edges. It also covers a second move made before
-gtk3 has finished with the first report, which gtk3 drops; the lab then tries another point
-rather than failing. Reports that never follow the moves fail with the points tried (#298).
+comes after each wait, and points on the tree's edges. gtk3 drops a move made before it has
+finished with the previous report, so the check also covers the wait for the first reports to
+stop before the second move, and trying another point when a second move goes unreported.
+Reports that never follow the moves fail with the points tried (#298).
 `test_rename_dialog_calibration.py` checks that the rename dialog's calibration takes its offset
 only from two reports that follow its two moves, so a late report of another point cannot move
 the dialog's clicks off their controls (#232). When every report comes later than the quiet time,

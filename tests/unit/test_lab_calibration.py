@@ -211,11 +211,11 @@ def test_a_late_report_of_an_earlier_point_moves_on_to_the_next_point(office: Of
 
 
 def test_reports_later_than_every_wait_still_give_the_true_offset(office: Office) -> None:
-    # Every report comes 0.6 s after its move, after the first wait and after the quiet
+    # Every report comes 0.45 s after its move, after the first wait and after the quiet
     # time, so the report first heard at each point belongs to the point before. The old
     # method took the second point's report for its second move's and came out (+2, +2), the
-    # offset #209 found in CI.
-    real_input = Input(office, slow=0.6)
+    # offset #209 found in CI. Each report comes 0.15 s from the wait that it must miss or hit.
+    real_input = Input(office, slow=0.45)
     assert calibrate(office, real_input, frame=GEN_ROWS) == GEN.origin
     assert real_input.moves == [at(GEN, FIRST), (1420, 160), (1422, 162)]
 
@@ -238,7 +238,7 @@ def test_a_late_pair_counts_for_its_own_point(office: Office) -> None:
     # second point's report in the third's first wait, and its second move's while the third
     # point's reports settle, so the third point is given a second move too. The pair is the
     # second point's, and gives its offset, not the third point's.
-    real_input = Input(office, busy={1: 0.4, 2: 0.95, 3: 0.1, 4: 0.6})
+    real_input = Input(office, busy={1: 0.45, 2: 1.0, 3: 0.1, 4: 0.6})
     assert calibrate(office, real_input, frame=GEN_ROWS, confirm=0.5) == GEN.origin
     assert real_input.moves == [
         at(GEN, FIRST),
