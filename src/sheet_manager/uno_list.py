@@ -565,10 +565,10 @@ class SheetList:
     Closing the queue does not revoke work already queued, which runs after `dispose` or, if a
     native release dispatches events, during it; so each part checks its own disposal when such
     work runs. The list's own work then returns before it touches the document or a control, a
-    menu command chosen before the close included (#282, #285). A shortcut forwarded from the list is the user's
-    input to the window rather than the list's work: it still runs while the frame shows the
-    list's view, and is dropped once the document has closed or reloaded (`_forward`). A failed
-    construction disposes what it had created.
+    menu command chosen before the close included (#282, #285). A shortcut forwarded from the
+    list is the user's input to the window rather than the list's work: it still runs while the
+    frame shows the list's view, and is dropped once the document has closed or reloaded
+    (`_forward`). A failed construction disposes what it had created.
     """
 
     def __init__(self, context, frame, parent_window):
