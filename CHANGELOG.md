@@ -5,6 +5,15 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- A click's or a selection key's queued list update, and a sheet tab menu command chosen just
+  before the document or the sidebar closes, now do nothing once the list is closed. Before, they
+  reported a failure on stderr, and after only the sidebar closed the chosen command or Help still
+  ran, although the list could no longer show why it refused or what failed
+  ([#285](https://github.com/viell-dev/slop-calc-sheet-manager/issues/285)).
+- A shortcut typed in the list just before the sidebar closes still reaches the document, now
+  Save and Save As too, and one typed just before the document closes or reloads is dropped, as
+  LibreOffice drops its own, instead of reporting a failure or running on the reloaded document
+  ([#285](https://github.com/viell-dev/slop-calc-sheet-manager/issues/285)).
 - Enter, type-ahead and the keyboard menu key no longer report a failure on stderr when the
   document or the sidebar closes between the key and its queued work, which now does nothing
   once the list is closed ([#282](https://github.com/viell-dev/slop-calc-sheet-manager/issues/282)).

@@ -8,7 +8,7 @@ how the list pauses observation and follows Calc.
 import contextlib
 import time
 import uuid
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from types import SimpleNamespace
 from typing import Any
@@ -963,6 +963,47 @@ class ClosedControl:
         return call
 
 
+def bind_source(owner: Any, name: str, namespace: dict[str, Any]) -> None:
+    """Give `owner` the shipped `SheetList` method `name`, with its globals in `namespace`."""
+    loaded = method(SOURCE, "SheetList", name, namespace)
+
+    def bound(*arguments: object, **keywords: object) -> Any:
+        return loaded(owner, *arguments, **keywords)
+
+    setattr(owner, name, bound)
+
+
+def run_posted(work: Any, where: str) -> None:
+    """Run posted work as `MainThread` does, through `uno_calc`'s shipped callback.
+
+    Its `report` is the test's `_report`, so a failure that the extension would log on stderr
+    fails the test.
+    """
+    callback = source_class(
+        "src/sheet_manager/uno_calc.py",
+        "_Callback",
+        {
+            "unohelper": SimpleNamespace(Base=type("Base", (), {})),
+            "XCallback": type("XCallback", (), {}),
+            "report": _report,
+        },
+    )
+    callback(work, where).notify(None)
+
+
+def close_list(owner: Any, closed: str, checked: Mock | None = None) -> None:
+    """Dispose the list through the shipped `dispose`, as closing the document or sidebar does.
+
+    Closing the document also detaches its structure monitor, whose check then raises.
+    """
+    owner._refreshes, owner._notice_timer, owner._notice_token = Mock(), None, None
+    owner._scroll, owner._cleanup = 0, contextlib.ExitStack()
+    bind_source(owner, "dispose", {})
+    owner.dispose()
+    if closed == "document" and checked is not None:
+        checked.side_effect = RuntimeError("The sheet structure monitor has been disposed")
+
+
 @pytest.mark.parametrize("closed", ["document", "sidebar"])
 @pytest.mark.parametrize("key", ["Return", "Menu", "type-ahead"])
 def test_a_keys_queued_work_does_nothing_once_the_list_is_disposed(key: str, closed: str) -> None:
@@ -996,15 +1037,6 @@ def test_a_keys_queued_work_does_nothing_once_the_list_is_disposed(key: str, clo
     owner.owns_keys = owner.owns_tree_keys = lambda: True
     checked = Mock(side_effect=owner._monitor.check)
     owner._monitor.check = checked
-
-    def bind(name: str, namespace: dict[str, Any]) -> None:
-        loaded = method(SOURCE, "SheetList", name, namespace)
-
-        def bound(*arguments: object) -> Any:
-            return loaded(owner, *arguments)
-
-        setattr(owner, name, bound)
-
     for name, namespace in (
         ("note_input", {}),
         ("queue_input", {}),
@@ -1018,7 +1050,7 @@ def test_a_keys_queued_work_does_nothing_once_the_list_is_disposed(key: str, clo
         ("open_menu_for_keyboard", {}),
         ("type_ahead", {"time": time, "find_prefix": find_prefix}),
     ):
-        bind(name, namespace)
+        bind_source(owner, name, namespace)
     owner.names = lambda: list(live.shown)
     pressed = method(
         "src/sheet_manager/uno_keys.py",
@@ -1042,23 +1074,226 @@ def test_a_keys_queued_work_does_nothing_once_the_list_is_disposed(key: str, clo
     owner._disposed = True
     if closed == "document":
         checked.side_effect = RuntimeError("The sheet structure monitor has been disposed")
-    callback = source_class(
-        "src/sheet_manager/uno_calc.py",
-        "_Callback",
-        {
-            "unohelper": SimpleNamespace(Base=type("Base", (), {})),
-            "XCallback": type("XCallback", (), {}),
-            "report": _report,
-        },
-    )
     where = {"Return": "activating a sheet", "Menu": "the sheet tab menu"}.get(key, key)
-    callback(work, where).notify(None)
+    run_posted(work, where)
     checked.assert_not_called()
     assert owner.tree.calls == owner.peer.calls == []
     owner._open_menu.assert_not_called()
     live.invoke.assert_not_called()
     owner.controller.setActiveSheet.assert_not_called()
     assert live.active == "Alfa" and not queued
+
+
+@pytest.mark.parametrize("closed", ["document", "sidebar"])
+def test_a_queued_selection_write_does_nothing_once_the_list_is_disposed(closed: str) -> None:
+    """#285: the tree write that clicks and selection keys queue can run after `dispose`.
+
+    `_queue_selection` posts `_flush_selection`, which checks the structure monitor and writes
+    the tree. Closing the document or the sidebar in between disposes the list. The write runs
+    through the shipped posting callback, so a check of the monitor or a call on the closed tree
+    is reported as a failure of "showing the selection".
+    """
+    owner, live, _, queued = click_list()
+    owner.tree, owner.peer = ClosedControl(), ClosedControl()
+    owner._nodes = [object() for _ in live.shown]
+    owner._shown, owner._selection_write_pending, owner._selection_scroll = ("Alfa",), False, False
+    checked = Mock(side_effect=owner._monitor.check)
+    owner._monitor.check = checked
+    for name, namespace in (
+        ("_queue_selection", {}),
+        ("_flush_selection", {}),
+        ("_show_selection", {}),
+        ("_write_outside_refresh", {"Callable": Callable}),
+        ("_apply_selection", {}),
+        ("_move_tree_cursor", {"SINGLE": 0, "MULTI": 2}),
+    ):
+        bind_source(owner, name, namespace)
+    owner._queue_selection(scroll=True)  # As a mouse listener or a selection key leaves it.
+    assert len(queued) == 1
+    close_list(owner, closed, checked)
+    run_posted(queued.pop(), "showing the selection")
+    checked.assert_not_called()
+    assert owner.tree.calls == owner.peer.calls == []
+    owner.refresh.assert_not_called()
+    assert not queued
+
+
+MENU_CHOICES = {"Delete": 3, "Show": 1, "Rename Sheets": 6, "Move to top": 20001, "Help": 20006}
+
+
+@pytest.mark.parametrize("closed", ["document", "sidebar"])
+@pytest.mark.parametrize("chosen", list(MENU_CHOICES))
+def test_a_menu_command_chosen_just_before_the_list_closes_does_not_run(
+    chosen: str, closed: str
+) -> None:
+    """#285: the menu posts its completion as the popup closes; it can run after `dispose`.
+
+    If the list closes during the popup, `post` refuses the completion (#63). If it closes after
+    the popup and before the completion, the command chosen for the list's targets does not run
+    either: the document is gone, or the closed list could not show its refusal or failure. The
+    completion still ends the menu's state. The keyboard menu opens it through the shipped
+    `_open_menu`; the stand-in for `SheetMenu.run` checks `unchanged()` first, as it does.
+    """
+    owner, live, _, queued = click_list()
+    owner.tree, owner.peer = ClosedControl(), ClosedControl()
+    checked = Mock(side_effect=owner._monitor.check)
+    owner._monitor.check = checked
+    observed = SimpleNamespace(
+        sheets=[SimpleNamespace(name=name) for name in live.names], handles=live.handles
+    )
+    ran: list[str] = []
+
+    def run(item: int, observed: object, picked: list[str], unchanged: Any) -> str:
+        if not unchanged():
+            return "stale"
+        ran.append(f"command {item} on {picked}")
+        return ""
+
+    def snapshot(document: object) -> Any:
+        return observed
+
+    owner._menu = SimpleNamespace(
+        is_open=False, show=Mock(return_value=MENU_CHOICES[chosen]), run=Mock(side_effect=run)
+    )
+    shell = Mock()
+    owner.context = SimpleNamespace(
+        ServiceManager=SimpleNamespace(createInstanceWithContext=Mock(return_value=shell))
+    )
+    owner.frame = SimpleNamespace(getContainerWindow=Mock())
+    owner._observed, owner._busy, owner._menu_context = observed, False, False
+    owner._context_target, owner._generation = None, 0
+    current = function(SOURCE, "_current", {"Ref": Ref})
+    show_sheets, rename_dialog, apply_order = Mock(), Mock(), Mock()
+    for name, namespace in (
+        (
+            "_open_menu",
+            {
+                "Ref": Ref,
+                "snapshot": snapshot,
+                "_current": current,
+                "DisposedException": LookupError,
+            },
+        ),
+        (
+            "_menu_action",
+            {
+                "MOVE_IDS": {20001: "top", 20002: "up", 20003: "down", 20004: "bottom"},
+                "HELP": 20006,
+                "RENAME_SHEETS": 6,
+                "SHOW": 1,
+                "COMMANDS": {2: ".uno:Insert", 3: ".uno:Remove", 4: ".uno:RenameTable"},
+                "show_sheets": show_sheets,
+                "show_error": owner.show_error,
+                "tr": str,
+            },
+        ),
+        (
+            "_rename",
+            {
+                "Batch": Mock(),
+                "RenameDialog": rename_dialog,
+                "apply_renames": Mock(),
+                "is_current": Mock(return_value=True),
+                "preflight": Mock(return_value=""),
+                "show_error": owner.show_error,
+                "tr": str,
+            },
+        ),
+        ("_command_refused", {"show_error": owner.show_error, "tr": str}),
+        (
+            "_move_selection",
+            {
+                "_current": current,
+                "plan_move": Mock(),
+                "apply_order": apply_order,
+                "show_error": owner.show_error,
+                "tr": str,
+            },
+        ),
+        ("_finish_menu", {}),
+    ):
+        bind_source(owner, name, namespace)
+    owner._open_menu(10, 20, list(owner._selection.picked))  # As the menu key's work does.
+    assert len(queued) == 1 and owner._menu_context and owner._activating
+    close_list(owner, closed, checked)
+    checked.reset_mock()
+    run_posted(queued.pop(), "completing the sheet menu")
+    checked.assert_not_called()
+    assert ran == []
+    show_sheets.assert_not_called()
+    rename_dialog.assert_not_called()
+    apply_order.assert_not_called()
+    shell.execute.assert_not_called()
+    owner.show_error.assert_not_called()
+    assert owner.tree.calls == owner.peer.calls == []
+    assert not owner._menu_context and not owner._activating and owner._context_target is None
+    assert not queued
+
+
+class FrameClosed(Exception):
+    """Stands in for the `DisposedException` that a closed frame's `queryDispatch` raises."""
+
+
+@pytest.mark.parametrize("closed", ["nothing", "sidebar", "document", "closing", "reload"])
+@pytest.mark.parametrize("command", [".uno:Undo", ".uno:Save"])
+def test_a_forwarded_shortcut_reaches_only_the_view_it_was_typed_in(
+    command: str, closed: str
+) -> None:
+    """#285: a shortcut typed in the list is dispatched by posted work, after a close maybe.
+
+    It still runs after only the sidebar closed: the user typed it into this window. Once the
+    document has closed or reloaded it is dropped, as LibreOffice drops a shortcut it queued for
+    a frame that closed meanwhile (`svt::AcceleratorExecute`). Measured with 26.8.1.1: a closed
+    frame has no controller and its `queryDispatch` raises; a reloaded one has a new controller
+    and resolves the command against the new document. A frame that is still closing can have
+    its controller and raise. After a save, only an open list takes the focus back (#23).
+    """
+    from sheet_manager.keys import keeps_focus
+
+    owner, _, _, queued = click_list()
+    dispatcher = Mock()
+    view = {"document": None, "reload": SimpleNamespace()}.get(closed, owner.controller)
+
+    def query(url: Any, target: str, flags: int) -> Any:
+        if closed in ("document", "closing"):
+            raise FrameClosed("Frame disposed")
+        return dispatcher
+
+    def command_url(context: object, text: str) -> Any:
+        return SimpleNamespace(Complete=text)
+
+    def prop(name: str, value: object) -> tuple[str, object]:
+        return name, value
+
+    frame = SimpleNamespace(getController=lambda: view, queryDispatch=Mock(side_effect=query))
+    owner.frame, owner.context, owner.tree = frame, object(), object()
+    owner.owns_tree_keys = lambda: True
+    query_command = function(
+        "src/sheet_manager/uno_calc.py", "query_command", {"command_url": command_url}
+    )
+    for name, namespace in (
+        ("run_command", {"keeps_focus": keeps_focus}),
+        (
+            "_forward",
+            {"Any": Any, "query_command": query_command, "DisposedException": FrameClosed},
+        ),
+        ("_save_keeping_focus", {"prop": prop}),
+    ):
+        bind_source(owner, name, namespace)
+    save = keeps_focus(command)
+    owner.run_command(command)  # From the key handler, while the list is open.
+    assert len(queued) == 1
+    if closed != "nothing":
+        close_list(owner, closed)
+    run_posted(queued.pop(), "a save shortcut" if save else "a shortcut")
+    runs = closed in ("nothing", "sidebar")
+    if runs:
+        arguments = (("SynchronMode", True),) if save else ()
+        dispatcher.dispatch.assert_called_once_with(SimpleNamespace(Complete=command), arguments)
+    else:
+        dispatcher.dispatch.assert_not_called()
+    assert frame.queryDispatch.called == (closed in ("nothing", "sidebar", "closing"))
+    assert len(queued) == (1 if save and closed == "nothing" else 0)  # The focus restoration.
 
 
 def test_a_double_clicks_posted_activation_refuses_after_a_refresh_at_a_newer_generation() -> None:
