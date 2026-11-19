@@ -273,6 +273,23 @@ def ctrl_click_delta(owner: Any) -> None:
     owner.run_queue()
 
 
+def failed_key_write(owner: Any) -> None:
+    """Ctrl+Down moves the cursor from Charlie to Delta; its write fails."""
+    key(owner, DOWN, MOD1)
+    owner.faults.fail("clearSelection")
+    key(owner, DOWN, MOD1)
+
+
+def failed_rebuild_write(owner: Any) -> None:
+    """The cursor is moved to Delta; a colour change's rebuild writes Bravo, and fails."""
+    key(owner, DOWN, MOD1)
+    key(owner, DOWN, MOD1)
+    owner.faults.fail("clearSelection")
+    owner.book.sheet("Golf").color = 0x336699
+    changed(owner)
+    owner.retry(limit=1)
+
+
 @pytest.mark.parametrize(
     "toggle",
     [
@@ -280,22 +297,30 @@ def ctrl_click_delta(owner: Any) -> None:
         pytest.param(ctrl_click_delta, id="Ctrl+click"),
     ],
 )
+@pytest.mark.parametrize(
+    "failure",
+    [
+        pytest.param(failed_key_write, id="key write"),
+        pytest.param(failed_rebuild_write, id="refresh"),
+    ],
+)
 def test_a_toggle_after_a_failed_write_does_not_pick_the_row_it_left_selected(
-    toggle: Callable[[Any], None],
+    failure: Callable[[Any], None], toggle: Callable[[Any], None]
 ) -> None:
-    """Bravo picked, the cursor on Charlie; Ctrl+Down moves it to Delta, and that write selects
-    Delta and then fails at `clearSelection`. The tree shows Delta alone, which the list does not
-    hold, and the record is unknown. Ctrl+Space with the cursor there, or a Ctrl+click on Delta,
-    meant to deselect it, toggled it on against the picks, and Move to Top moved Bravo and Delta.
-    The rule for Space before this held only while nothing was picked. The toggle now picks
-    nothing and drops Bravo, which the user did not see selected, with the notice."""
+    """Bravo picked, the cursor moved to the unpicked Delta; the write that follows, a key's or a
+    refresh's, selects Delta and then fails at `clearSelection`. The tree shows Delta alone,
+    which the list does not hold, and the record is unknown. Ctrl+Space with the cursor there, or
+    a Ctrl+click on Delta, meant to deselect it, toggled it on against the picks, and Move to Top
+    moved Bravo and Delta. The rule for Space before this held only while nothing was picked.
+    The toggle now picks nothing and drops Bravo, which the user did not see selected, with the
+    notice."""
     owner = picked("Bravo")
-    key(owner, DOWN, MOD1)
-    owner.faults.fail("clearSelection")
-    key(owner, DOWN, MOD1)
+    failure(owner)
+    assert owner.faults.failed == ["clearSelection"]
     assert owner._shown is None and owner.tree.shown() == ["Delta"] and cursor(owner) == "Delta"
     notices = len(owner.notices)
     toggle(owner)
+    assert "Delta" not in picks(owner), "Delta, which the user deselected, was picked"
     assert len(owner.notices) == notices + 1 and cursor(owner) == "Delta"
     deselected_nothing_picked(owner, "Delta")
 
@@ -312,6 +337,26 @@ def test_a_toggle_that_deselects_a_pick_after_a_failed_write_does_not_keep_it() 
     queued_click(owner, row("Bravo"))
     owner.run_queue()
     assert cursor(owner) == "Bravo"
+    deselected_nothing_picked(owner, "Bravo")
+
+
+def test_a_held_toggles_drop_holds_toggles_behind_a_release_already_posted() -> None:
+    """Alfa and Bravo picked; Ctrl+Up's write fails, so toggles are held. A Ctrl+click adds
+    Charlie in the tree behind a queued write, which then shows Alfa and Bravo again and posts
+    the hold's release behind that click's listener. A Ctrl+click on Bravo, which the tree now
+    shows selected, queues behind the release. The first listener, still held, drops Alfa and
+    Bravo. Unless that drop holds toggles anew, the release then ends the hold, and the second
+    listener toggled Bravo against the empty picks: the row the user had just deselected."""
+    owner = picked("Alfa", "Bravo")
+    owner.faults.fail("select")
+    key(owner, UP, MOD1)
+    assert owner._shown is None and owner.tree.shown() == ["Alfa", "Bravo"]
+    owner._queue_selection()
+    queued_click(owner, row("Charlie"))
+    run_next(owner)  # The write: Alfa and Bravo shown, the release posted behind the click.
+    assert owner.tree.shown() == ["Alfa", "Bravo"]
+    queued_click(owner, row("Bravo"))
+    owner.run_queue()
     deselected_nothing_picked(owner, "Bravo")
 
 
