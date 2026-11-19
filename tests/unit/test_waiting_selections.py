@@ -481,6 +481,29 @@ def test_a_ctrl_click_after_a_ctrl_cursor_key_on_a_deferred_selection_picks_noth
     assert move_to_top(owner) is None
 
 
+@pytest.mark.parametrize(
+    "code",
+    [pytest.param(SPACE, id="Ctrl+Space"), pytest.param(DOWN, id="Ctrl+Down")],
+)
+def test_a_ctrl_key_between_a_ctrl_clicks_toggle_and_its_listener_picks_nothing(code: int) -> None:
+    """The cost of holding those keys: Bravo picked, a Ctrl+click adds Delta natively, the tab
+    sample defers the intake before the click's listener, as #85 recorded, and Ctrl+Space or
+    Ctrl+Down is typed before that listener runs. After Ctrl+Down, `main` picks Bravo and Delta,
+    as the user saw them. The key cannot tell the click's toggle from an accessibility
+    selection, so it drops the picks, with the notice, and the click's listener is held: the
+    user selects again."""
+    owner = sheet_list(Book(list(NAMES)))
+    click(owner, row("Bravo"))
+    queued_click(owner, row("Delta"))
+    sample(owner)
+    notices = len(owner.notices)
+    owner.tree_key(code, MOD1)
+    owner.run_queue()
+    assert picks(owner) == [] and owner.tree.shown() == []
+    assert len(owner.notices) == notices + 1
+    assert move_to_top(owner) is None
+
+
 def test_three_ctrl_clicks_around_a_sample_do_not_pick_the_row_deselected_last() -> None:
     """Several presses in flight, no assistive technology, nothing picked: Ctrl+clicks on Alfa
     and on Delta select them natively, the tab sample defers the intake, and a Ctrl+click on
