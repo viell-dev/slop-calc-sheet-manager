@@ -609,6 +609,11 @@ class SheetList:
         # Owned pointer and keyboard gestures share a retained range anchor.
         self._selection = Selection(_current)
         self._shown: tuple[str, ...] | None = ()
+        # While set, toggles change no pick: the tree may not have shown the picks when the
+        # user toggled a row (#288; `_hold_toggles`). `_toggles_release` is the hold whose end
+        # is posted.
+        self._toggles_held: object | None = None
+        self._toggles_release: object | None = None
         # A sheet that may have been inserted or deleted since the picks were proved makes
         # every retained handle suspect (selection.py, structure.py), and the list then drops
         # its picks; `_generation` counts the drops, so that a drag or an open menu started
@@ -827,7 +832,7 @@ class SheetList:
             # The same sheets as before: a retry after a failed rebuild starts from these names.
             self._observed = observed
         else:
-            dropped = self._drop_all_picks(native=bool(pending))
+            dropped = self._drop_all_picks(pending)
             if pending is not None or self._press is not None:
                 # The tree's native selection was made against rows whose handles no longer
                 # prove their sheets: no one's pick now, though the rows may read the same (#265).
@@ -879,6 +884,8 @@ class SheetList:
                 self._drop_picks(native=bool(pending))
                 self._shown = None
                 self._queue_selection()
+            if self._shown is None:
+                self._hold_toggles()  # The tree may show part of a write (#288).
             raise
 
     def _identities_kept(
@@ -914,13 +921,17 @@ class SheetList:
             zip((sheet.name for sheet in observed.sheets), observed.handles, strict=True)
         )
 
-    def _drop_all_picks(self, native: bool = False) -> bool:
+    def _drop_all_picks(self, pending: tuple[str, ...] | None = None) -> bool:
         """Drop every pick, the cursor, the anchor, and a held press: none can be proved now.
 
-        `native` is a selection the user made in the tree, such as through accessibility, that
-        the intake had not taken yet: it is cleared too, so the notice tells of it.
+        `pending` is the tree's selection when it differed from the record and the intake had
+        not taken it yet: one the user made in the tree, such as through accessibility, or a
+        press's native toggle whose listener is still queued. Rows it shows are cleared too, so
+        the notice tells of them. Toggles are held while picks or such a selection go (#288).
         """
-        self._tell_dropped(native)
+        if self._selection.picked or pending is not None:
+            self._hold_toggles()
+        self._tell_dropped(bool(pending))
         had = self._selection.clear()
         self._user_picks = False
         self._generation += 1
@@ -933,8 +944,9 @@ class SheetList:
 
         The cursor still proves its sheet and stays, as an intake leaves it, and a range now
         starts there. `native` is a selection the tree shows that the next write clears; the
-        notice tells of it, as of dropped picks the user made.
+        notice tells of it, as of dropped picks the user made. Toggles are held (#288).
         """
+        self._hold_toggles()
         self._tell_dropped(native)
         self._selection.picked = []
         self._selection.anchor = self._selection.cursor
@@ -949,6 +961,36 @@ class SheetList:
         """
         if (self._user_picks and self._selection.picked) or native:
             self.post(self._show_cleared_notice, "telling that the selection was cleared")
+
+    def _hold_toggles(self) -> None:
+        """Hold toggles until work posted once the tree shows the picks again has run (#288).
+
+        A Ctrl+click toggles its row in the tree at once, and its listener toggles the same row
+        in the picks later, from VCL's queue (#269); Space toggles the cursor's row the user
+        sees. Each is right only if the tree showed the picks when the user toggled. After a
+        drop or a write that left `_shown` None, the tree may not have: a listener queued then
+        would pick a row the user had just deselected. The list cannot see when a press was
+        handled natively, but the queue orders it: a listener runs before work posted after
+        its press. So the hold ends only in work posted once the tree shows exactly the picks
+        (`_toggles_shown`); until then `mouse_pressed` and `tree_key` change no pick for a
+        toggle and only ask for the write. Each hold is a new token: a release posted for an
+        earlier one does not end it.
+        """
+        self._toggles_held = object()
+
+    def _toggles_shown(self) -> None:
+        """The tree shows exactly the picks, as the list just wrote or confirmed them: post the
+        end of a toggle hold, to run after every listener already queued (`_hold_toggles`)."""
+        held = self._toggles_held
+        if held is None or self._toggles_release is held:
+            return
+        self._toggles_release = held
+
+        def release() -> None:
+            if self._toggles_held is held:
+                self._toggles_held = None
+
+        self.post(release, "accepting toggles again")
 
     def _show_cleared_notice(self) -> None:
         """Explain clearing briefly in the panel, without Calc's focus-changing infobar."""
@@ -1068,12 +1110,14 @@ class SheetList:
         """Run a selection write outside a refresh, retrying one that may have stopped partway.
 
         A failed write that left `_shown` None is retried as a failed refresh is, so that the
-        tree does not wait for the next input to be written again (#257).
+        tree does not wait for the next input to be written again (#257), and holds toggles
+        until a write shows the picks (#288).
         """
         try:
             write()
         except BaseException:
             if self._shown is None:
+                self._hold_toggles()
                 self._refreshes.failed()
             raise
 
@@ -1100,6 +1144,7 @@ class SheetList:
                 self._shown = None  # A failed clear can leave rows that are no picks now.
             self.tree.clearSelection()
             self._shown = ()
+            self._toggles_shown()
             return
         only = shown == (cursor.name,)  # Selecting the cursor's row then shows every pick.
         self._move_tree_cursor(
@@ -1111,6 +1156,7 @@ class SheetList:
             if names[index] != cursor.name:
                 self.tree.addSelection(self._nodes[index])
         self._shown = shown
+        self._toggles_shown()
         self.peer.invalidate(0)  # A failed repaint leaves a complete write: the next one paints.
 
     def _take_tree_selection(self, paint: bool = True, *, defer: bool = False) -> bool:
@@ -1181,6 +1227,7 @@ class SheetList:
                 self._queue_selection()
                 return
         self._shown = tuple(names)
+        self._toggles_shown()
 
     def _current_picks(self) -> list[Ref]:
         """The list's picks as they stand now, each still the sheet it was picked as.
@@ -1257,6 +1304,7 @@ class SheetList:
             self.tree.select(self._nodes[index])
             if shown is not None:
                 self._shown = shown
+                self._toggles_shown()
         finally:
             model.SelectionType = MULTI
         if scroll:
@@ -1276,12 +1324,12 @@ class SheetList:
             self._selection.take(names, self._handles, names)
             self._selection.cursor = cursor or self._ref(names[0])
         elif code == SPACE:
-            if self._shown is None and not self._selection.picked:
-                # The list holds no picks, but the tree may still show rows until a queued write
-                # clears them, as after a drop (`_settle_shown`, `_refresh`). The user toggles what
-                # the tree shows, which the list cannot tell: toggling the cursor's row on could
-                # pick a row the user saw selected and meant to deselect (#257). The key only
-                # asks for the write, and the next toggle acts on the tree it leaves.
+            if self._toggles_held is not None:
+                # The tree may not show the picks, as after a drop until its write, or after a
+                # failed write. The user toggles what the tree shows, which the list cannot
+                # tell: toggling the cursor's row on could pick a row the user saw selected and
+                # meant to deselect (#257, #288). The key only asks for the write, and a toggle
+                # after it acts on the tree that write leaves.
                 self._queue_selection(scroll=True)
                 return
             self._selection.choose(names[current], self._handles, names, toggle=True)
@@ -1850,15 +1898,24 @@ class SheetList:
                 clicks=event.ClickCount,
             )
             if name is not None:
-                self._selection.choose(
-                    name,
-                    self._handles,
-                    self.names(),
-                    extend=bool(event.Modifiers & SHIFT),
-                    toggle=bool(event.Modifiers & MOD1),
-                    preserve=not event.Modifiers & (SHIFT | MOD1),
-                )
-                self._user_picks = True
+                if self._toggles_held is not None and event.Modifiers & (SHIFT | MOD1) == MOD1:
+                    # The tree toggled this row when the press happened, maybe against picks
+                    # the list has dropped since, so the list cannot tell which way (#288).
+                    # Change no pick; the cursor and the anchor move here, as a toggle's do,
+                    # and the write shows the picks.
+                    target = self._ref(name)
+                    if target is not None:
+                        self._selection.cursor = self._selection.anchor = target
+                else:
+                    self._selection.choose(
+                        name,
+                        self._handles,
+                        self.names(),
+                        extend=bool(event.Modifiers & SHIFT),
+                        toggle=bool(event.Modifiers & MOD1),
+                        preserve=not event.Modifiers & (SHIFT | MOD1),
+                    )
+                    self._user_picks = True
                 self._queue_selection()
 
     def mouse_released(self, event) -> None:

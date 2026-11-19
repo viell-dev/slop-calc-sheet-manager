@@ -39,6 +39,7 @@ def native_picks() -> tuple[Any, Any, list[Callable[[], None]]]:
         _selection=selection,
         _handles=handles,
         _shown=("Bravo",),
+        _toggles_held=None,
         _user_picks=True,
         selected_names=lambda: live.picks,
         names=lambda: live.order,

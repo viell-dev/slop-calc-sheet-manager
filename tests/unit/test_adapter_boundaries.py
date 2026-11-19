@@ -272,7 +272,8 @@ def test_owned_navigation_accumulates_while_the_ui_queue_is_paused() -> None:
         _proven=0,
         _monitor=SimpleNamespace(generation=0),
         _selection=selection,
-        _shown=("Bravo",),  # The tree shows the pick.
+        _shown=("Bravo",),  # The tree shows the pick,
+        _toggles_held=None,  # and toggles act on it.
         _handles=handles,
         _page_rows=3,
         _selection_write_pending=False,
