@@ -144,7 +144,7 @@ def confirmed_offset(real_input, tracker, points, size):
     dropped the second move, the second move left the window, or the first report belonged to
     an earlier point, is set aside and the next point is tried; a late pair still counts when
     it arrives. Fails, with each point given a second move and every report, once every step
-    has been used, and when the window reports none of the points.
+    has been used or the points have run out, and when the window reports none of the points.
     """
     moves = []
     for x, y in points:
