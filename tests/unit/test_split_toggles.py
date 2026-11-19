@@ -134,16 +134,18 @@ def test_space_after_a_lost_proof_and_before_its_release_picks_nothing() -> None
 
 
 @pytest.mark.parametrize(
-    "names, renamed, toggled",
+    "names, renamed, toggled, after",
     [
-        pytest.param(("Bravo",), "Bravo", "Bravo", id="the only pick"),
-        pytest.param(("Bravo", "Delta"), "Bravo", "Bravo", id="a pick off the cursor"),
-        pytest.param(("Bravo", "Delta"), "Delta", "Bravo", id="the other pick"),
-        pytest.param(("Bravo", "Delta"), "Bravo", "Delta", id="the other pick, on the cursor"),
+        pytest.param(("Bravo",), "Bravo", "Bravo", None, id="the only pick"),
+        pytest.param(("Bravo", "Delta"), "Bravo", "Bravo", "Delta", id="a pick off the cursor"),
+        pytest.param(("Bravo", "Delta"), "Delta", "Bravo", "Bravo", id="the other pick"),
+        pytest.param(
+            ("Bravo", "Delta"), "Bravo", "Delta", "Delta", id="the other pick, on the cursor"
+        ),
     ],
 )
 def test_a_rename_elsewhere_before_a_toggles_listener_picks_nothing(
-    names: tuple[str, ...], renamed: str, toggled: str
+    names: tuple[str, ...], renamed: str, toggled: str, after: str | None
 ) -> None:
     """No failure. `names` picked, the cursor on the last; another view renames `renamed` to
     Zulu, and the refresh is queued; a Ctrl+click deselects `toggled` in the tree before it runs.
@@ -152,14 +154,16 @@ def test_a_rename_elsewhere_before_a_toggles_listener_picks_nothing(
     the click's listener toggled it, now Zulu, against the picks left: Move to Top moved the sheet
     the user had just deselected, with Delta when that stayed picked. When the user toggled the
     other pick, the listener toggled it off, as it should; held, it drops that pick with the
-    notice, and the result is the same."""
+    notice, and the result is the same. The rebuild changed a row's name, which also holds
+    presses (#293): the listener cannot tell a rename from another sheet moved into the row, so
+    it moves no cursor, which stays where the refresh's write put it, `after`."""
     owner = picked(*names)
     owner.book.rename(renamed, "Zulu")
     post_refresh(owner)
     queued_click(owner, row(toggled))
     owner.run_queue()
     shown = "Zulu" if toggled == renamed else toggled
-    assert cursor(owner) == shown
+    assert cursor(owner) == after
     deselected_nothing_picked(owner, shown)
 
 

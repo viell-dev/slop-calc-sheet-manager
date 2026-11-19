@@ -374,6 +374,8 @@ def test_failed_rebuild_releases_the_cursor_restoration_guard() -> None:
         names=names,
         _selection=SimpleNamespace(picked=[]),
         _toggles_shown=Mock(),  # The new model shows the empty picks.
+        _nodes=[],  # No rows were shown, so presses are not held (#293).
+        _release_presses=Mock(),
     )
 
     def fail_restore() -> None:

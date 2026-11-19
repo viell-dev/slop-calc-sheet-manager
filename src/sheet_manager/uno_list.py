@@ -107,6 +107,23 @@ preferring its original sheet, and keeps newer picks. An unpicked cursor moved d
 held gesture is deliberately not kept, and the known-issues guide records that limit (#71): the
 supported toolkit and controller interfaces offer no sidebar pre-release hook.
 
+Rows under the pointer (#293). The tree handles a press on the rows it shows then, but the mouse
+listener, which VCL runs later from its queue (#269), maps the event's position to a row as the
+list shows it when the listener runs. A rebuild in between that changes a row's name, as a move,
+an insertion, a deletion or a rename elsewhere does, or that may not keep the scroll position,
+can put another sheet at that position: the listener then picked, toggled, activated or targeted
+a menu at a sheet the user never pressed. By the queue order that toggles rely on (above), such a
+rebuild holds presses (`_hold_presses`) from before it shows its model, and posts the end of the
+hold as it returns (`_release_presses`): every listener whose press was handled before then runs
+held, and so may one that VCL runs early, which costs that press. A held press counts as one
+outside the rows: it reads no geometry, a left press picks nothing and drops the picks, which its
+native effect superseded in the tree, with the notice, its release does nothing, and a right
+press opens no menu. The list cannot tell a rename in place from another sheet moved into the row
+without reading the handles again, so a rename holds presses too. A refresh that keeps each row's
+name moves nothing under the pointer, even when it loses the identity proof: the press then acts
+on the sheet under that name, as a press after the refresh would, and a drop of picks there holds
+toggles (above).
+
 Activation. A double click or Enter makes the sheet Calc's only selected tab and reads that back,
 because `setActiveSheet` keeps an existing group when the sheet belongs to it. Activation reads
 the handle's current name and visibility first, because Calc sends the activation of a hidden
@@ -586,6 +603,10 @@ class SheetList:
       `_shown` None, until work posted once the tree shows exactly the picks has run, a Ctrl
       press's listener (`mouse_pressed`) and Ctrl+Space (`tree_key`) pick nothing, drop any
       picks left (`_toggle_held_off`) and ask for the write.
+    - Presses (`_presses_held`, #293): from a rebuild that may show another sheet in a shown row
+      until work posted as it returns has run, `mouse_pressed` maps no event to a row. A left
+      press picks nothing and drops the picks, so its release does nothing, and a right press
+      targets no menu.
     - Tab observation (`observation_paused`) waits while `_busy` (a move or rename runs),
       `_pointer_depth`, `_restoring_cursor`, `_press`, `_drag`, the menu's popup or
       `_menu_context` holds; the observer adds the document's locks and an own replay's view. A
@@ -657,6 +678,11 @@ class SheetList:
         # posted.
         self._toggles_held: object | None = None
         self._toggles_release: object | None = None
+        # While set, a mouse listener does not map its event to a row: a rebuild may have put
+        # another sheet there since the tree handled the press (#293; `_hold_presses`).
+        # `_presses_release` is the hold whose end is posted.
+        self._presses_held: object | None = None
+        self._presses_release: object | None = None
         # A sheet that may have been inserted or deleted since the picks were proved makes
         # every retained handle suspect (selection.py, structure.py), and the list then drops
         # its picks; `_generation` counts the drops, so that a drag or an open menu started
@@ -1034,6 +1060,29 @@ class SheetList:
 
         self.post(release, "accepting toggles again")
 
+    def _hold_presses(self) -> None:
+        """Hold presses: a rebuild may show another sheet in a row the user pressed (#293).
+
+        The module docstring's Pointer input section gives the rule. Until the release that
+        `_release_presses` posts has run, `mouse_pressed` maps no event to a row. Each hold is a
+        new token, so that the release of an earlier one does not end it.
+        """
+        self._presses_held = object()
+
+    def _release_presses(self) -> None:
+        """The rebuild is done: post the end of a press hold, to run after every listener whose
+        press LibreOffice handled before now (`_hold_presses`)."""
+        held = self._presses_held
+        if held is None or self._presses_release is held:
+            return
+        self._presses_release = held
+
+        def release() -> None:
+            if self._presses_held is held:
+                self._presses_held = None
+
+        self.post(release, "accepting presses again")
+
     def _toggle_held_off(self) -> None:
         """A toggle while toggles are held: drop the picks, if any, with the notice (#288).
 
@@ -1085,12 +1134,17 @@ class SheetList:
         refused model leaves the old rows with what they were read with (#257). A setter can
         also show the new model and then fail, leaving cached nodes that LibreOffice's
         `getNodeRect` rejects; the retry then rebuilds without keeping the scroll position.
+
+        Unless every sheet keeps its row and the scroll position is kept, presses are held from
+        before the new model is shown until work posted when this returns has run (#293).
         """
         try:
             top = self._first_visible_name()
         except Exception:
             report("reading the sheet list's scroll position")
             top = None
+        # A shown row may show another sheet once this model is.
+        remapped = bool(self._nodes) and (top is None or [r.name for r in rows] != self.names())
         model = self.context.ServiceManager.createInstanceWithContext(
             "com.sun.star.awt.tree.MutableTreeDataModel", self.context
         )
@@ -1105,6 +1159,8 @@ class SheetList:
         restoring = self._restoring_cursor
         self._restoring_cursor = True
         try:
+            if remapped:
+                self._hold_presses()
             # Replacing the model focuses intermediate rows before the old cursor comes back.
             self.tree.getModel().DataModel = model
             self._nodes, self.rows = nodes, rows
@@ -1119,12 +1175,17 @@ class SheetList:
                 self._toggles_shown()
             names = self.names()
             if top in names and nodes:
-                # Scroll to the end first, so that showing the old top row puts it at the top.
-                self.tree.makeNodeVisible(nodes[-1])
-                self.tree.makeNodeVisible(nodes[names.index(top)])
+                try:
+                    # Scroll to the end first, so that showing the old top row puts it at the top.
+                    self.tree.makeNodeVisible(nodes[-1])
+                    self.tree.makeNodeVisible(nodes[names.index(top)])
+                except BaseException:
+                    self._hold_presses()  # The rows may now show at another scroll position.
+                    raise
             self._apply_selection()
         finally:
             self._restoring_cursor = restoring
+            self._release_presses()
 
     def _show_native(self, names: tuple[str, ...]) -> None:
         """Show a native selection that awaits intake again over rebuilt rows, keeping the cursor.
@@ -1974,7 +2035,11 @@ class SheetList:
         self._input += 1
         self._tabs.note_input()
         self.claim_window()
-        row = self.geometry().row_at(event.Y)
+        # The tree handled this press before this listener runs (#269). While presses are held,
+        # a rebuild since then may show another sheet at the event's position: the press is
+        # taken as one outside the rows, which picks nothing and targets no menu (#293).
+        held = self._presses_held is not None
+        row = None if held else self.geometry().row_at(event.Y)
         if event.Buttons & RIGHT:
             self._press = None
             self._context_target = self._ref(self.rows[row].name) if row is not None else None
@@ -1983,6 +2048,12 @@ class SheetList:
             self._queue_selection()
         elif event.Buttons & LEFT:
             self._context_target = None
+            if held and self._selection.picked:
+                # The press selected, toggled or extended rows of the tree as it showed them
+                # then, which the list cannot read now. Keeping the picks could keep a row the
+                # user deselected, as a held toggle could (#288): they go, with the notice.
+                self._drop_picks(native=False)
+                self._queue_selection()
             name = self.rows[row].name if row is not None else None
             handle = self._handles.get(name) if name is not None else None
             self._press = _Press(

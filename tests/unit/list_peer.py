@@ -76,6 +76,8 @@ METHODS = (
     "_hold_toggles",
     "_toggles_shown",
     "_toggle_held_off",
+    "_hold_presses",
+    "_release_presses",
     "_rebuild",
     "_show_native",
     "_name_viewed",
@@ -611,6 +613,8 @@ def sheet_list(book: Book, source: str = SOURCE) -> Any:
         _shown=(),
         _toggles_held=None,
         _toggles_release=None,
+        _presses_held=None,
+        _presses_release=None,
         _selection=Selection(_current),
         _user_picks=False,
         _press=None,
@@ -729,7 +733,9 @@ def toggle_natively(owner: Any, row: int) -> None:
     owner.tree.cursor = node
 
 
-def queued_click(owner: Any, row: int, modifiers: int = MOD1) -> None:
+def queued_click(
+    owner: Any, row: int, modifiers: int = MOD1, clicks: int = 1, button: int = LEFT
+) -> None:
     """A click as LibreOffice delivers it (#85, #269, #288): the tree handles the press at once,
     and the press's and the release's listeners are queued behind all the work already posted,
     which `run_queue` then runs in order. That is the latest place VCL gives them. VCL can also
@@ -737,14 +743,15 @@ def queued_click(owner: Any, row: int, modifiers: int = MOD1) -> None:
     them to that event (`VCLXWindowImpl::callBackAsync`); this does not model that. With Ctrl
     alone the tree toggles the row, and the release changes no native selection. Otherwise the
     row is selected alone, as a plain or Shift press on an unselected row selects it in the
-    tree."""
-    if modifiers == MOD1:
+    tree. `clicks` is the native click count, 2 for a double click's second click. A right click
+    changes no native selection here."""
+    if button == LEFT and modifiers == MOD1:
         toggle_natively(owner, row)
-    else:
+    elif button == LEFT:
         node = owner.tree._installed()[row]
         owner.tree.selected, owner.tree.cursor = [node], node
-    pressed = SimpleNamespace(Buttons=LEFT, X=0, Y=row, Modifiers=modifiers, ClickCount=1)
-    released = SimpleNamespace(Buttons=LEFT, X=0, Y=row, Modifiers=modifiers, ClickCount=1)
+    pressed = SimpleNamespace(Buttons=button, X=0, Y=row, Modifiers=modifiers, ClickCount=clicks)
+    released = SimpleNamespace(Buttons=button, X=0, Y=row, Modifiers=modifiers, ClickCount=clicks)
     owner.post(lambda: _listen(owner, owner.mouse_pressed, pressed), "a mouse press")
     owner.post(lambda: _listen(owner, owner.mouse_released, released), "a mouse release")
 
