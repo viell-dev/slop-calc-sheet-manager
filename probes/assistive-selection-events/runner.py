@@ -150,6 +150,16 @@ def run_phases(lab, directory):
           prepare=lambda: pick(["Alfa", "Charlie"]))
     phase("ctrl_shift_click_delta", click(3, CTRL_SHIFT), prepare=lambda: pick(["Bravo"]))
 
+    # A plain click on a picked row keeps the picks for a drag, and its release narrows them;
+    # a press below the rows deselects natively, and the list's listener finds no row.
+    phase("plain_click_on_picked_bravo_of_two", click(1), prepare=lambda: pick(["Alfa", "Bravo"]))
+
+    def below_rows():
+        rect = book.tree.getNodeRect(book.nodes()[-1])
+        book.pointer.click(rect.X + 12, rect.Y + rect.Height + 40)
+
+    phase("plain_click_below_rows", below_rows, prepare=lambda: pick(["Alfa"]))
+
     # 5. The list's own writes: a key's coalesced write, and a refresh that rebuilds the rows.
     phase("key_down_write", lambda: book.lab.input.tap("Down"), prepare=lambda: pick(["Bravo"]))
     phase("key_ctrl_space_write", lambda: book.lab.input.tap("space", modifiers=CTRL))
@@ -209,6 +219,13 @@ def run_phases(lab, directory):
 
     for attempt in range(2):
         phase(
+            f"issue294_deselect_bravo_then_ctrl_click_bravo_{attempt + 1}",
+            assistive_then("deselect", 1, book.point(1), CTRL),
+            prepare=lambda: pick(["Alfa", "Bravo"]),
+            solar=False,
+        )
+    for attempt in range(2):
+        phase(
             f"issue294_bridge_select_bravo_then_ctrl_click_bravo_{attempt + 1}",
             assistive_then("select", 1, book.point(1), CTRL, where="here"),
             prepare=lambda: pick(["Alfa"]),
@@ -262,12 +279,28 @@ def run_phases(lab, directory):
     return {"installed": installed, "phases": phases}
 
 
+def run_perf(lab, directory, sheets, repeats):
+    """The cost of a counting selection listener on the list's own writes, at `sheets` rows."""
+    names = [f"Sheet {number}" for number in range(1, sheets + 1)]
+    book = Workbook(lab, "perf", names, stored=False)
+    probe = Probe(lab, directory)
+    rounds = []
+    for attached in (False, True, False, True):
+        probe("perf_counter", attached)
+        rounds.append({"attached": attached, **probe("perf_writes", repeats)})
+    probe("perf_counter", False)
+    book.close()
+    return {"perf": rounds}
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--program", type=Path, required=True)
     parser.add_argument("--oxt", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--vcl", action="append", choices=["gtk3", "gen"])
+    parser.add_argument("--perf", type=int, metavar="SHEETS", help="Only time the writes")
+    parser.add_argument("--repeats", type=int, default=5)
     arguments = parser.parse_args()
     summary = {}
     failed = False
@@ -286,7 +319,11 @@ def main():
                 vcl=vcl,
                 settings=SETTINGS,
             ) as (context, desktop, directory):
-                result.update(run_phases(Lab(context, desktop, directory, output), directory))
+                lab = Lab(context, desktop, directory, output)
+                if arguments.perf:
+                    result.update(run_perf(lab, directory, arguments.perf, arguments.repeats))
+                else:
+                    result.update(run_phases(lab, directory))
         except Exception:
             result["error"] = traceback.format_exc()
             failed = True

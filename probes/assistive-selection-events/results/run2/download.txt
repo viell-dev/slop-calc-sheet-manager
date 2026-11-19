@@ -1,0 +1,3 @@
+26.8.2.2
+https://downloadarchive.documentfoundation.org/libreoffice/old/26.8.2.2/deb/x86_64/LibreOffice_26.8.2.2_Linux_x86-64_deb.tar.gz
+8290c8f46cb33d6df8f681cb796e0697461ea070f86ec55b63c94d7eb9d9a476

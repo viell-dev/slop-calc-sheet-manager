@@ -75,11 +75,24 @@ def counts(events):
     return found
 
 
+def load_results(directory):
+    """Each backend's records: `probe-<vcl>/probe-results.json` from a run, or the committed
+    `probe-<vcl>.json.gz` under `results/`."""
+    import gzip
+
+    directory = Path(directory)
+    found = []
+    for path in sorted(directory.glob("probe-*/probe-results.json")):
+        found.append(json.loads(path.read_text("utf-8")))
+    for path in sorted(directory.glob("probe-*.json.gz")):
+        found.append(json.loads(gzip.decompress(path.read_bytes()).decode("utf-8")))
+    return found
+
+
 def main():
     directory = Path(sys.argv[1])
     wanted = sys.argv[2:]
-    for path in sorted(directory.glob("probe-*/probe-results.json")):
-        result = json.loads(path.read_text("utf-8"))
+    for result in load_results(directory):
         print(f"===== {result['vcl']} (extension errors: {result.get('extension_errors')})")
         if "error" in result:
             print(result["error"])

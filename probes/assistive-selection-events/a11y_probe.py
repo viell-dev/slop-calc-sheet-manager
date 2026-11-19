@@ -571,6 +571,72 @@ def assistive_then_refresh(index, sheet):
     return json.dumps({"done": done.acquire(True, 10), **box})
 
 
+class _Counter(unohelper.Base, XSelectionChangeListener):
+    """The smallest selection listener a fix would add: it only counts."""
+
+    def __init__(self):
+        self.count = 0
+
+    def selectionChanged(self, event):
+        self.count += 1
+
+    def disposing(self, source):
+        pass
+
+
+PERF = {"counter": None}
+
+
+def perf_counter(attached):
+    """Attach or detach a counting selection listener to the live list's tree peer."""
+    sheet_list = _find_list() if STATE["list"] is None else STATE["list"]
+    attached = bool(attached)
+    if attached and PERF["counter"] is None:
+        PERF["counter"] = _Counter()
+        sheet_list.peer.addSelectionChangeListener(PERF["counter"])
+    elif not attached and PERF["counter"] is not None:
+        sheet_list.peer.removeSelectionChangeListener(PERF["counter"])
+        PERF["counter"] = None
+    return json.dumps({"attached": PERF["counter"] is not None})
+
+
+def perf_writes(repeats):
+    """Time the list's own write of every row picked, then of one, on the main thread.
+
+    Each repeat picks every row and runs `_apply_selection`, which selects the cursor's row and
+    adds each other pick, then picks the first row alone and writes again. Returns the times
+    in milliseconds and how many notifications the counting listener received, if attached.
+    """
+    sheet_list = _find_list() if STATE["list"] is None else STATE["list"]
+    done = _thread.allocate_lock()
+    done.acquire()
+    box = {"all": [], "one": []}
+
+    def work():
+        try:
+            names = [row.name for row in sheet_list.rows]
+            for _ in range(int(repeats)):
+                sheet_list._selection.take(names, sheet_list._handles, names)
+                sheet_list._selection.cursor = sheet_list._selection.picked[0]
+                start = time.perf_counter()
+                sheet_list._apply_selection()
+                box["all"].append(round((time.perf_counter() - start) * 1000, 2))
+                sheet_list._selection.take(names[:1], sheet_list._handles, names)
+                start = time.perf_counter()
+                sheet_list._apply_selection()
+                box["one"].append(round((time.perf_counter() - start) * 1000, 2))
+            box["rows"] = len(names)
+            box["notified"] = PERF["counter"].count if PERF["counter"] is not None else None
+        except Exception:
+            box["error"] = traceback.format_exc()
+        finally:
+            done.release()
+
+    _post(work)
+    box["done"] = done.acquire(True, 300)
+    return json.dumps(box)
+
+
 def save_handles():
     """Keep the tree, its peer, its accessible context and a node, for calls after disposal."""
     sheet_list = STATE["list"]
@@ -624,6 +690,8 @@ g_exportedScripts = (
     assistive_then_refresh,
     save_handles,
     stale_calls,
+    perf_counter,
+    perf_writes,
     state,
     report,
 )

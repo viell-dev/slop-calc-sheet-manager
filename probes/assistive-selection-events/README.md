@@ -16,7 +16,15 @@ posted work.
   sheets, Alfa to Hotel, with the repository's UI fixture and runs each phase once per VCL plugin.
 - `session.sh` is the container entry point, as `ci/linux-session.sh` and
   `ci/desktop-session.sh` are for the UI suite.
-- `summarize.py` prints the records as timelines, with the host's Python.
+- `summarize.py` prints the records as timelines, and `replay_rule.py` replays them through the
+  counting rule proposed on #294, both with the host's Python.
+- `results/` holds the records the comment on #294 cites: `run1` (the probe at `9c6c90e`) and
+  `run2` (with the release, below-rows and assistive-deselect phases), gtk3 and gen each, and
+  `perf1000`, the cost of a counting selection listener on the list's writes at 1,000 rows.
+
+The container has no AT-SPI bus, so no ATK bridge runs: the assistive selections are made
+through UNO's `XAccessibleSelection`, on the main thread or a UNO bridge thread, which is the
+interface a bridge calls.
 
 ## Run it
 
@@ -36,4 +44,6 @@ docker run --rm --init --network none --shm-size 512m \
 python probes/assistive-selection-events/summarize.py test-results/probe-294 [phase ...]
 ```
 
-`test-results/probe-294/probe-<vcl>/probe-results.json` holds every phase's records.
+`test-results/probe-294/probe-<vcl>/probe-results.json` holds every phase's records. Add
+`--perf 1000 --repeats 5` (with `--vcl gtk3`) to time the list's writes at 1,000 rows instead.
+Both readers also take a `results/<run>` directory.
