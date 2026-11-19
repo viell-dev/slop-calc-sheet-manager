@@ -11,6 +11,17 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 - A double click in the list now activates its sheet after the mouse listener returns, as Enter
   already did: LibreOffice runs that listener without the global lock that reading Calc's
   selected tabs needs ([#269](https://github.com/viell-dev/slop-calc-sheet-manager/issues/269)).
+- A sheet list write that LibreOffice fails partway no longer leaves part of it to be taken as
+  the picks. Afterwards the list keeps its picks only if it shows exactly them. Otherwise it
+  cannot tell part of its write from a selection made since, such as through assistive
+  technology, so it clears the picks with the selection notice and commands act on no sheets
+  until you pick again; a selection made that way in between is cleared too. A selection made
+  through assistive technology just before the list lost track of which sheet is which, as when a
+  sheet is replaced under its own name, or before a refresh that then failed, is cleared the same
+  way rather than taken for another sheet or replaced by older picks. LibreOffice's tree has been
+  seen to fail such a call only while a panel closes
+  ([#257](https://github.com/viell-dev/slop-calc-sheet-manager/issues/257),
+  [#265](https://github.com/viell-dev/slop-calc-sheet-manager/issues/265)).
 - On Linux, a test session's forced stop now also stops a LibreOffice `soffice.bin` that outlives
   its launcher: one whose `oosplash` launcher was killed, or that `oosplash` had started but not
   yet taken over when it was told to stop, as at its first-start restart. Both were measured with

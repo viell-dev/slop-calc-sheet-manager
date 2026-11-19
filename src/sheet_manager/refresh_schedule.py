@@ -20,9 +20,11 @@ which, unless a timer is already pending or the schedule is closed, creates the 
 `later` (`uno_calc.MainThread.later`): its worker waits on a thread of its own and then posts to
 the main thread, as listeners may. No UNO call and no refresh runs on the notifying thread. The
 timer's work (`_fire`, then the owner's `due`, which may call `measure`) and the remaining
-methods run on LibreOffice's main thread. The class takes no lock: it relies on LibreOffice's
-main lock, which listeners and the main thread hold (`uno_calc.start_thread`), to order `changed`
-against that work.
+methods run on LibreOffice's main thread. `failed` is also the owner's call, outside `measure`,
+for a selection write that may have stopped partway; like `changed`, it only records and
+schedules, so a mouse listener may make it (#257). The class takes no lock: it relies on
+LibreOffice's main lock, which listeners and the main thread hold (`uno_calc.start_thread`), to
+order `changed` and `failed` against that work.
 
 It owns the refresh timer and the timing state. At most one timer is pending; `close` cancels it
 and refuses new ones, so a timer already queued when the list is disposed does nothing, and
@@ -91,7 +93,7 @@ class RefreshSchedule:
         try:
             refresh()
         except BaseException:
-            self._failed()
+            self.failed()
             raise
         else:
             self.stale_since = None
@@ -150,11 +152,14 @@ class RefreshSchedule:
         if not self._closed and self.stale_since is not None:
             self._due()
 
-    def _failed(self) -> None:
+    def failed(self) -> None:
         """Keep the changes the failed refresh did not show pending, and retry them (#186).
 
         Retries back off and stop after `REFRESH_RETRIES` failures in a row, rather than report
-        an error in a loop; a later document change or sheet switch then refreshes again.
+        an error in a loop; a later document change or sheet switch then refreshes again. The
+        owner also calls this, outside `measure`, for a selection write that may have stopped
+        partway: the retried refresh settles what the tree shows and writes the list's
+        selection (`uno_list`, #257).
         """
         self._mark_stale(self._clock())
         self.failures += 1
