@@ -136,21 +136,23 @@ def test_space_after_a_lost_proof_and_before_its_release_picks_nothing() -> None
 @pytest.mark.parametrize(
     "names, renamed, toggled",
     [
-        pytest.param(("Bravo",), "Bravo", "Bravo", id="the toggled pick"),
+        pytest.param(("Bravo",), "Bravo", "Bravo", id="the only pick"),
+        pytest.param(("Bravo", "Delta"), "Bravo", "Bravo", id="a pick off the cursor"),
         pytest.param(("Bravo", "Delta"), "Delta", "Bravo", id="the other pick"),
-        pytest.param(("Bravo", "Delta"), "Bravo", "Delta", id="the first pick, toggling the other"),
+        pytest.param(("Bravo", "Delta"), "Bravo", "Delta", id="the other pick, on the cursor"),
     ],
 )
 def test_a_rename_elsewhere_before_a_toggles_listener_picks_nothing(
     names: tuple[str, ...], renamed: str, toggled: str
 ) -> None:
-    """No failure. `names` picked; another view renames `renamed` to Zulu, and the refresh is
-    queued; a Ctrl+click deselects `toggled` in the tree before it runs. The refresh keeps the
-    identity proof but drops the renamed pick, whose sheet no longer has the name it was picked
-    under, and writes the picks left. With Bravo alone, the click's listener toggled the row, now
-    Zulu, against the empty picks: Move to Top moved the sheet the user had just deselected. With
-    two picks the listener toggled the other pick off, as it should; held, it drops that pick
-    with the notice, and the result is the same."""
+    """No failure. `names` picked, the cursor on the last; another view renames `renamed` to
+    Zulu, and the refresh is queued; a Ctrl+click deselects `toggled` in the tree before it runs.
+    The refresh keeps the identity proof but drops the renamed pick, whose sheet no longer has the
+    name it was picked under, and writes the picks left. When the user toggled the renamed row,
+    the click's listener toggled it, now Zulu, against the picks left: Move to Top moved the sheet
+    the user had just deselected, with Delta when that stayed picked. When the user toggled the
+    other pick, the listener toggled it off, as it should; held, it drops that pick with the
+    notice, and the result is the same."""
     owner = picked(*names)
     owner.book.rename(renamed, "Zulu")
     post_refresh(owner)
