@@ -1308,6 +1308,39 @@ def test_another_programs_edit_during_a_drag_gesture_leaves_its_later_edits_visi
     assert monitor.check() != seen
 
 
+def test_a_change_reported_while_the_gesture_reads_an_unpicked_handle_refuses_the_drag() -> None:
+    """#284: `is_current_as_reported` compares the reported generation after its reads too.
+
+    A change that another program reports while the gesture reads an unpicked sheet's retained
+    handle name, after the picks were read, must refuse the drag and post a refresh, as a change
+    reported before the reads does.
+    """
+    owner, _, live, queued = drag_list()
+    book = Workbook(live.names)
+    monitor = MONITOR(book)
+    owner._monitor, owner._proven = monitor, monitor.generation
+    owner._observed.monitor, owner._observed.generation = monitor, monitor.generation
+    other = live.handles[1]
+    other.getName = lambda: book.read("name", other.name)
+    book.edit_at = "name"
+    book.edit = lambda: book.change("Insert Sheet", lambda names: names.append("Delta"))
+    owner.start_drag(object())
+    assert book.edit is None, "the gesture did not read the unpicked handle's name"
+    assert owner._drag is None and len(queued) == 1
+
+
+def test_a_drag_on_a_snapshot_whose_monitor_was_detached_is_refused() -> None:
+    """#284: a snapshot whose structure monitor was detached from its document is not current."""
+    owner, _, live, queued = drag_list()
+    book = Workbook(live.names)
+    monitor = MONITOR(book)
+    owner._monitor, owner._proven = monitor, monitor.generation
+    owner._observed.monitor, owner._observed.generation = monitor, monitor.generation
+    monitor._document = None
+    owner.start_drag(object())
+    assert owner._drag is None and len(queued) == 1
+
+
 @pytest.mark.parametrize("lock", ["held", "released"])
 def test_a_single_click_under_another_programs_lock_stands_only_if_nothing_changed(
     lock: str,
