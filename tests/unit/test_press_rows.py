@@ -87,7 +87,11 @@ def unchanged(owner: Any) -> None:
 def record_activations(owner: Any) -> list[str]:
     """The sheets a double click's posted activation is asked to activate (`_activate_pressed`)."""
     activated: list[str] = []
-    owner._activate_pressed = lambda name, handle, generation: activated.append(handle.getName())
+
+    def activate_pressed(name: str, handle: Any, generation: int) -> None:
+        activated.append(handle.getName())
+
+    owner._activate_pressed = activate_pressed
     return activated
 
 
@@ -280,6 +284,25 @@ def test_the_end_of_an_earlier_reorder_does_not_end_a_later_one() -> None:
     assert move_to_top(owner) is None
 
 
+def test_a_second_rebuild_keeps_holding_the_rows_the_first_one_changed() -> None:
+    """Delta picked; another window moves Charlie below Echo, and two refreshes are queued; the
+    user clicks Delta's row before either runs. After the first refresh, another window renames
+    Hotel, so the second rebuilds again but leaves Echo where the first put it, in the clicked
+    row. Comparing only the second rebuild's rows, the hold kept that row, and the listener picked
+    Echo, which the user never pressed."""
+    owner = picked("Delta")
+    notices = len(owner.notices)
+    reorder(owner)
+    post_refresh(owner)
+    queued_click(owner, PRESSED, 0)
+    work, _ = owner.queue.pop(0)
+    work()  # The first refresh: Echo is shown in Delta's old row.
+    owner.book.rename("Hotel", "Zulu")
+    owner.run_queue()
+    assert owner.names()[PRESSED] == "Echo" and owner.names()[-1] == "Zulu"
+    refused(owner, notices)
+
+
 def test_a_listener_run_ahead_of_the_refreshs_release_is_held() -> None:
     """The cost of the rule. The refresh has run, and the user clicks Echo, now in Delta's old
     row. VCL can run that click's listener ahead of work posted before the press, in a callback
@@ -341,13 +364,19 @@ def test_a_hold_whose_end_could_not_be_posted_ends_with_the_next_rebuild() -> No
     assert picks(owner) == ["Echo"] and move_to_top(owner) == ["Echo"]
 
 
+def click_golf(owner: Any) -> None:
+    queued_click(owner, row("Golf"), 0)
+
+
+def ctrl_click_bravo(owner: Any) -> None:
+    queued_click(owner, row("Bravo"))
+
+
 @pytest.mark.parametrize(
     "gesture, wanted",
     [
-        pytest.param(lambda owner: queued_click(owner, row("Golf"), 0), ["Golf"], id="plain click"),
-        pytest.param(
-            lambda owner: queued_click(owner, row("Bravo")), ["Bravo", "Delta"], id="Ctrl+click"
-        ),
+        pytest.param(click_golf, ["Golf"], id="plain click"),
+        pytest.param(ctrl_click_bravo, ["Bravo", "Delta"], id="Ctrl+click"),
     ],
 )
 def test_a_press_on_a_row_the_reorder_left_alone_acts(
