@@ -1,12 +1,13 @@
 """Toggles that the tree applies at once and the list's listener applies later (#288).
 
 A Ctrl+click toggles its row in the tree as soon as LibreOffice handles the press. The list's mouse
-listener runs later, queued behind the work already posted (#85, #269), and toggles the same row
-in the list's picks. When work queued ahead of it drops the picks, as a refresh that loses the
-identity proof does without any failure, or as a failed refresh or the intake's settling does
-after one, the listener toggled against the empty picks and picked the row the user had just
-deselected; Move to Top then moved it. Space toggles the cursor's row as the tree shows it, which
-a drop or a failed write can leave other than the picks.
+listener runs later, queued at the latest behind the work already posted (#85, #269), and toggles
+the same row in the list's picks. When work queued ahead of it drops the picks, as a refresh that
+loses the identity proof or finds a picked sheet renamed by another window does without any
+failure, or as a failed refresh or the intake's settling does after one, the listener toggled
+against the dropped picks and picked the row the user had just deselected; Move to Top then moved
+it. Space toggles the cursor's row as the tree shows it, which a drop or a failed write can leave
+other than the picks.
 
 The real list runs over the simulated peer of `list_peer`, whose `queued_click` queues the
 listeners as VCL does. The invariant: a toggle never picks a row the tree showed selected when
@@ -130,6 +131,34 @@ def test_space_after_a_lost_proof_and_before_its_release_picks_nothing() -> None
     owner.tree_key(SPACE, MOD1)
     owner.run_queue()
     deselected_nothing_picked(owner, "Alfa")
+
+
+@pytest.mark.parametrize(
+    "names, renamed, toggled",
+    [
+        pytest.param(("Bravo",), "Bravo", "Bravo", id="the toggled pick"),
+        pytest.param(("Bravo", "Delta"), "Delta", "Bravo", id="the other pick"),
+        pytest.param(("Bravo", "Delta"), "Bravo", "Delta", id="the first pick, toggling the other"),
+    ],
+)
+def test_a_rename_elsewhere_before_a_toggles_listener_picks_nothing(
+    names: tuple[str, ...], renamed: str, toggled: str
+) -> None:
+    """No failure. `names` picked; another view renames `renamed` to Zulu, and the refresh is
+    queued; a Ctrl+click deselects `toggled` in the tree before it runs. The refresh keeps the
+    identity proof but drops the renamed pick, whose sheet no longer has the name it was picked
+    under, and writes the picks left. With Bravo alone, the click's listener toggled the row, now
+    Zulu, against the empty picks: Move to Top moved the sheet the user had just deselected. With
+    two picks the listener toggled the other pick off, as it should; held, it drops that pick
+    with the notice, and the result is the same."""
+    owner = picked(*names)
+    owner.book.rename(renamed, "Zulu")
+    post_refresh(owner)
+    queued_click(owner, row(toggled))
+    owner.run_queue()
+    shown = "Zulu" if toggled == renamed else toggled
+    assert cursor(owner) == shown
+    deselected_nothing_picked(owner, shown)
 
 
 @pytest.mark.parametrize(
@@ -340,6 +369,25 @@ def test_a_toggle_that_deselects_a_pick_after_a_failed_write_does_not_keep_it() 
     deselected_nothing_picked(owner, "Bravo")
 
 
+def test_a_held_toggle_moves_the_range_anchor_with_the_cursor() -> None:
+    """Alfa and Bravo picked, the anchor on Bravo; Ctrl+Up moves the cursor to Alfa, and its
+    write fails at `select`. A Ctrl+click on Delta, held, drops the picks and moves the cursor
+    and the anchor to Delta, as the tree's toggle moves its own; a Shift+click on Foxtrot then
+    picks the range from Delta. With the anchor left where the drop put it, on Alfa, the range
+    ran from Alfa and picked sheets the user never chose."""
+    owner = picked("Alfa", "Bravo")
+    owner.faults.fail("select")
+    key(owner, UP, MOD1)
+    assert owner._shown is None and cursor(owner) == "Alfa"
+    queued_click(owner, row("Delta"))
+    owner.run_queue()
+    assert picks(owner) == [] and cursor(owner) == "Delta"
+    queued_click(owner, row("Foxtrot"), SHIFT)
+    owner.run_queue()
+    assert picks(owner) == ["Delta", "Echo", "Foxtrot"]
+    assert owner.tree.shown() == ["Delta", "Echo", "Foxtrot"]
+
+
 def test_a_held_toggles_drop_holds_toggles_behind_a_release_already_posted() -> None:
     """Alfa and Bravo picked; Ctrl+Up's write fails, so toggles are held. A Ctrl+click adds
     Charlie in the tree behind a queued write, which then shows Alfa and Bravo again and posts
@@ -408,6 +456,74 @@ def test_an_intake_that_finds_the_picks_shown_ends_the_hold() -> None:
     queued_click(owner, row("Charlie"))
     owner.run_queue()
     assert picks(owner) == ["Alfa", "Bravo", "Charlie"]
+
+
+def failed_rebuild_after_showing_no_picks(call: str) -> Any:
+    """Bravo picked; another view replaces Echo and recolours Alfa. The refresh loses the proof,
+    drops Bravo, and rebuilds: its new model shows nothing selected, which is exactly the picks,
+    and the rebuild then fails at `call`. Its retry finds nothing left to write."""
+    owner = picked("Bravo")
+    owner.book.replace("Echo")
+    owner.book.sheet("Alfa").color = 0x336699
+    owner.faults.fail(call)
+    changed(owner)
+    owner.retry()
+    assert owner.faults.failed == [call]
+    assert picks(owner) == [] and owner.tree.shown() == [] and owner._shown == ()
+    return owner
+
+
+@pytest.mark.parametrize("call", ["makeNodeVisible", "clearSelection"])
+def test_a_rebuild_that_fails_after_showing_no_picks_ends_the_hold(call: str) -> None:
+    """A Ctrl+click on Charlie after that failed rebuild picks Charlie. The hold ended in the
+    rebuild, once its new model showed exactly the picks. Before, no write ended it, since the
+    retries had nothing to write, so the click picked nothing and the user had to click again."""
+    owner = failed_rebuild_after_showing_no_picks(call)
+    queued_click(owner, row("Charlie"))
+    owner.run_queue()
+    assert picks(owner) == ["Charlie"] and owner.tree.shown() == ["Charlie"]
+    assert move_to_top(owner) == ["Charlie"]
+
+
+def test_an_accessibility_selection_after_a_failed_rebuild_keeps_its_picks_on_a_toggle() -> None:
+    """After that failed rebuild, Delta is selected through accessibility and the tab sample's
+    intake takes it; a Ctrl+click on Foxtrot then adds Foxtrot. Before, the hold outlasted the
+    rebuild and the intake, and the click dropped Delta with the notice."""
+    owner = failed_rebuild_after_showing_no_picks("makeNodeVisible")
+    owner.tree.assistive_only("Delta")
+    post_sample(owner)
+    owner.run_queue()
+    assert picks(owner) == ["Delta"]
+    notices = len(owner.notices)
+    queued_click(owner, row("Foxtrot"))
+    owner.run_queue()
+    assert picks(owner) == ["Delta", "Foxtrot"] and len(owner.notices) == notices
+    assert move_to_top(owner) == ["Delta", "Foxtrot"]
+
+
+def test_an_intake_that_takes_a_native_selection_ends_the_hold() -> None:
+    """Bravo and Delta picked; another view renames Delta, and the refresh drops that pick, which
+    holds toggles, but LibreOffice refuses its rebuild's data model, so the tree still shows the
+    old rows and nothing ends the hold. Charlie is then selected through accessibility, and the
+    tab sample's intake takes it: the tree shows exactly the picks. A Ctrl+click on Echo then adds
+    Echo, where the hold would drop Charlie with the notice."""
+    owner = picked("Bravo", "Delta")
+    owner.book.rename("Delta", "Zulu")
+    owner.faults.fail("DataModel")
+    post_refresh(owner)
+    owner.run_queue()
+    assert owner.faults.failed == ["DataModel"] and picks(owner) == ["Bravo"]
+    owner.tree.assistive_only("Charlie")
+    post_sample(owner)
+    owner.run_queue()
+    assert picks(owner) == ["Charlie"]
+    notices = len(owner.notices)
+    queued_click(owner, row("Echo"))
+    owner.run_queue()
+    assert picks(owner) == ["Charlie", "Echo"] and len(owner.notices) == notices
+    owner.retry()
+    assert owner.tree.shown() == ["Charlie", "Echo"]
+    assert move_to_top(owner) == ["Charlie", "Echo"]
 
 
 @pytest.mark.parametrize(

@@ -373,6 +373,7 @@ def test_failed_rebuild_releases_the_cursor_restoration_guard() -> None:
         tree=SimpleNamespace(getModel=lambda: SimpleNamespace()),
         names=names,
         _selection=SimpleNamespace(picked=[]),
+        _toggles_shown=Mock(),  # The new model shows the empty picks.
     )
 
     def fail_restore() -> None:

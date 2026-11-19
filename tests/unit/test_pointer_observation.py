@@ -40,6 +40,7 @@ def native_picks() -> tuple[Any, Any, list[Callable[[], None]]]:
         _handles=handles,
         _shown=("Bravo",),
         _toggles_held=None,
+        _toggles_shown=Mock(),  # A take shows exactly the picks it gives.
         _user_picks=True,
         selected_names=lambda: live.picks,
         names=lambda: live.order,

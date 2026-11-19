@@ -237,7 +237,7 @@ def test_refresh_seeds_the_new_proof_before_a_subsequent_tab_change(kept: bool) 
     def carry(renamed: Any) -> bool:
         return False
 
-    owner._selection = SimpleNamespace(carry=carry, names=selected_names)
+    owner._selection = SimpleNamespace(carry=carry, names=selected_names, picked=[])
     owner._shown = ()
     owner._apply_selection = Mock()
     owner._generation = 0
