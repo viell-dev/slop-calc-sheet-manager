@@ -272,7 +272,8 @@ def test_owned_navigation_accumulates_while_the_ui_queue_is_paused() -> None:
         _proven=0,
         _monitor=SimpleNamespace(generation=0),
         _selection=selection,
-        _shown=("Bravo",),  # The tree shows the pick.
+        _shown=("Bravo",),  # The tree shows the pick,
+        _toggles_held=None,  # and toggles act on it.
         _handles=handles,
         _page_rows=3,
         _selection_write_pending=False,
@@ -372,6 +373,7 @@ def test_failed_rebuild_releases_the_cursor_restoration_guard() -> None:
         tree=SimpleNamespace(getModel=lambda: SimpleNamespace()),
         names=names,
         _selection=SimpleNamespace(picked=[]),
+        _toggles_shown=Mock(),  # The new model shows the empty picks.
     )
 
     def fail_restore() -> None:

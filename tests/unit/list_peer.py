@@ -21,10 +21,14 @@ relies on from Calc and the tree control:
   they test the list's own state, not LibreOffice's behaviour.
 
 Posted work runs on `run_queue`, and a failure there ends only that work and is recorded, as
-LibreOffice's callback reports it. The refresh schedule's timers run on `retry`, which advances
-the fake clock. Move to Top runs through `queue_move` and `_move_selection`; the reorder layer's
-`apply_order` is replaced by `Book.apply`, which refuses a stale snapshot as `is_current` does
-and otherwise moves the planned sheets.
+LibreOffice's callback reports it. `queued_click` posts a click's mouse listeners there too, after
+the tree has handled the press and behind all the work already posted, the latest place VCL gives
+them (#269), so that work posted earlier, such as a refresh or the tab sample, runs between the
+native press and the list's listener (#85, #288).
+The refresh schedule's timers run on `retry`, which advances the fake clock. Move to Top runs
+through `queue_move` and `_move_selection`; the reorder layer's `apply_order` is replaced by
+`Book.apply`, which refuses a stale snapshot as `is_current` does and otherwise moves the planned
+sheets.
 
 The native checks are in `tests/integration` and `tests/ui`.
 """
@@ -69,6 +73,9 @@ METHODS = (
     "_drop_all_picks",
     "_drop_picks",
     "_tell_dropped",
+    "_hold_toggles",
+    "_toggles_shown",
+    "_toggle_held_off",
     "_rebuild",
     "_show_native",
     "_name_viewed",
@@ -602,6 +609,8 @@ def sheet_list(book: Book, source: str = SOURCE) -> Any:
         _nodes=[],
         rows=[],
         _shown=(),
+        _toggles_held=None,
+        _toggles_release=None,
         _selection=Selection(_current),
         _user_picks=False,
         _press=None,
@@ -684,16 +693,21 @@ def key(owner: Any, code: int, modifiers: int = 0) -> None:
     owner.run_queue()
 
 
-def press(owner: Any, row: int, button: int = LEFT, modifiers: int = 0) -> None:
-    """A press as the list's mouse listener runs it (`_Mouse._handle`)."""
-    event = SimpleNamespace(Buttons=button, X=0, Y=row, Modifiers=modifiers, ClickCount=1)
+def _listen(owner: Any, handler: Callable[[Any], None], event: Any) -> None:
+    """Run a mouse handler as the list's mouse listener does (`_Mouse._handle`)."""
     owner._pointer_depth += 1
     try:
-        owner.mouse_pressed(event)
+        handler(event)
     finally:
         owner._pointer_depth -= 1
         if not owner._pointer_depth:
             owner._queue_selection()
+
+
+def press(owner: Any, row: int, button: int = LEFT, modifiers: int = 0) -> None:
+    """A press as the list's mouse listener runs it (`_Mouse._handle`)."""
+    event = SimpleNamespace(Buttons=button, X=0, Y=row, Modifiers=modifiers, ClickCount=1)
+    _listen(owner, owner.mouse_pressed, event)
 
 
 def release(owner: Any, row: int, button: int = LEFT) -> None:
@@ -702,13 +716,37 @@ def release(owner: Any, row: int, button: int = LEFT) -> None:
         node = owner.tree._installed()[row]
         owner.tree.selected, owner.tree.cursor = [node], node
     event = SimpleNamespace(Buttons=button, X=0, Y=row, Modifiers=0, ClickCount=1)
-    owner._pointer_depth += 1
-    try:
-        owner.mouse_released(event)
-    finally:
-        owner._pointer_depth -= 1
-        if not owner._pointer_depth:
-            owner._queue_selection()
+    _listen(owner, owner.mouse_released, event)
+
+
+def toggle_natively(owner: Any, row: int) -> None:
+    """A Ctrl+press as the tree handles it: the row's selection is toggled and the cursor moved."""
+    node = owner.tree._installed()[row]
+    if node in owner.tree.selected:
+        owner.tree.selected = [item for item in owner.tree.selected if item is not node]
+    else:
+        owner.tree.selected = [*owner.tree.selected, node]
+    owner.tree.cursor = node
+
+
+def queued_click(owner: Any, row: int, modifiers: int = MOD1) -> None:
+    """A click as LibreOffice delivers it (#85, #269, #288): the tree handles the press at once,
+    and the press's and the release's listeners are queued behind all the work already posted,
+    which `run_queue` then runs in order. That is the latest place VCL gives them. VCL can also
+    run them earlier, in the place of a callback event of the window still queued, since it adds
+    them to that event (`VCLXWindowImpl::callBackAsync`); this does not model that. With Ctrl
+    alone the tree toggles the row, and the release changes no native selection. Otherwise the
+    row is selected alone, as a plain or Shift press on an unselected row selects it in the
+    tree."""
+    if modifiers == MOD1:
+        toggle_natively(owner, row)
+    else:
+        node = owner.tree._installed()[row]
+        owner.tree.selected, owner.tree.cursor = [node], node
+    pressed = SimpleNamespace(Buttons=LEFT, X=0, Y=row, Modifiers=modifiers, ClickCount=1)
+    released = SimpleNamespace(Buttons=LEFT, X=0, Y=row, Modifiers=modifiers, ClickCount=1)
+    owner.post(lambda: _listen(owner, owner.mouse_pressed, pressed), "a mouse press")
+    owner.post(lambda: _listen(owner, owner.mouse_released, released), "a mouse release")
 
 
 def click(owner: Any, row: int) -> None:
