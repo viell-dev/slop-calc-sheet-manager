@@ -73,6 +73,10 @@ If Sheet Manager does not work in an environment where it is expected to, please
   The speech probes cover Orca on gtk3/X11 and NVDA on Windows in English. Braille, other
   configurations, and other backends remain unverified
   ([#254](https://github.com/viell-dev/slop-calc-sheet-manager/issues/254)).
+  A Ctrl+click or Ctrl+Shift+click made within about a quarter of a second of selecting rows
+  through assistive technology, before the list has looked at that selection, acts on the list's
+  earlier picks rather than on the rows the list showed selected
+  ([#294](https://github.com/viell-dev/slop-calc-sheet-manager/issues/294)).
 - **Large lists.** The list rebuilds after changes. During rapid sheet switches the active-sheet
   marker, and <Unreleased since="0.0.9" /> the list's accessible name, can lag. LibreOffice's tree
   control cannot update a single row in place, so the rebuild stays; the measurements and that

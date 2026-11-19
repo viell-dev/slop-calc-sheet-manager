@@ -285,6 +285,12 @@ picked sheet that another window renamed, picks nothing, and the next toggle act
 shows its selection again after such a failure, a toggle also clears the selection, with the
 notice
 ([#288](https://github.com/viell-dev/slop-calc-sheet-manager/issues/288)).
+<Unreleased /> A selection made through assistive technology that the list has not taken yet is
+also cleared, with the picks it replaced, when another window renames or moves a sheet first
+([#280](https://github.com/viell-dev/slop-calc-sheet-manager/issues/280)). A Ctrl+click made
+just after a selection key, before the list shows that key's change, or on such a selection
+once the list has seen it, picks nothing, and the next toggle acts
+([#291](https://github.com/viell-dev/slop-calc-sheet-manager/issues/291)).
 
 **Undo and Redo of the list's moves.** <Unreleased since="0.0.8" /> Undo and Redo of a move the list
 made itself, by dragging, a move button, the menu or a shortcut, keep the picks and the view. The
