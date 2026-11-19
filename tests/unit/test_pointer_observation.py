@@ -57,7 +57,11 @@ def native_picks() -> tuple[Any, Any, list[Callable[[], None]]]:
 
     owner._take_tree_selection = take_native
     held = method(SOURCE, "SheetList", "_toggle_held", {})
-    owner._toggle_held = lambda name: held(owner, name)
+
+    def toggle_held(name: str) -> bool:
+        return bool(held(owner, name))
+
+    owner._toggle_held = toggle_held
     return owner, live, queued
 
 
