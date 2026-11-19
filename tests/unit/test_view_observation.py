@@ -636,14 +636,21 @@ class Handle:
 def drag_list() -> tuple[Any, Any, Any, list[Any]]:
     """A list showing Alfa, Bravo and Charlie with Alfa picked, wired for the real drag start.
 
-    `start_drag`, `refresh`, `_refresh`, `_current_picks`, the identity checks, the refresh
-    schedule, the picks and `uno_reorder.is_current` are the shipped code; Calc's sheets, the tree
-    and the drag source are fakes. Work the list posts waits in the returned queue, so a test
-    can tell what ran inside the gesture listener from what ran when the posted work arrived.
+    `start_drag`, `refresh`, `_refresh`, `_current_picks`, `_picks_at`, the identity checks, the
+    refresh schedule, the picks and `uno_reorder.is_current_as_reported` are the shipped code;
+    Calc's sheets, the tree and the drag source are fakes. Work the list posts waits in the
+    returned queue, so a test can tell what ran inside the gesture listener from what ran when
+    the posted work arrived. VCL fires the gesture with the solar mutex released, so the fake
+    structure monitor fails the test if `start_drag` calls its `check()` (#284).
     """
     owner, tabs, live = observer()
     queued: list[Any] = []
     live.handles = [Handle(name) for name in live.names]
+    gesture = [False]
+
+    def check() -> int:
+        assert not gesture[0], "check() in the drag gesture, without the solar mutex (#284)"
+        return owner._monitor.generation
 
     def snapshot(document: Any) -> Any:
         handles = tuple(live.handles)
@@ -678,7 +685,7 @@ def drag_list() -> tuple[Any, Any, Any, list[Any]]:
     owner.rows = [SheetRow(name, active=name == live.active) for name in live.names]
     owner._nodes = [object() for _ in owner.rows]
     owner.names = lambda: [row.name for row in owner.rows]
-    owner._monitor.check = lambda: owner._monitor.generation
+    owner._monitor.check, owner._monitor.document = check, owner.document
     owner._refreshes = RefreshSchedule(Mock(), Mock())
     owner._main = SimpleNamespace(post=post)
     owner._generation, owner._user_picks = 0, False
@@ -693,10 +700,23 @@ def drag_list() -> tuple[Any, Any, Any, list[Any]]:
     owner._listeners = {"source": object()}
     owner.document.RuntimeUID = "synthetic"
     owner.document.isReadonly = owner.document.isProtected = lambda: False
+
+    def sheet_at(index: int) -> Handle:
+        return live.handles[index]
+
+    owner.document.getSheets = lambda: SimpleNamespace(
+        getElementNames=lambda: live.names, getByIndex=sheet_at
+    )
+    reorder = "src/sheet_manager/uno_reorder.py"
     current = function(
-        "src/sheet_manager/uno_reorder.py",
-        "is_current",
-        {"Any": Any, "Snapshot": Any, "snapshot": snapshot},
+        reorder,
+        "is_current_as_reported",
+        {
+            "Any": Any,
+            "Snapshot": Any,
+            "_read_sheets": function(reorder, "_read_sheets", {"Any": Any, "Sheet": Sheet}),
+            "_shows": function(reorder, "_shows", {"Snapshot": Any, "Sheet": Sheet}),
+        },
     )
     drag_type = source_class(SOURCE, "_Drag", {"dataclass": dataclass, "Snapshot": Any})
     bind("post", {})
@@ -714,16 +734,27 @@ def drag_list() -> tuple[Any, Any, Any, list[Any]]:
     )
     bind("_drop_all_picks", {"replace": replace})
     bind("_current_picks", {"Ref": Ref})
+    bind("_picks_at", {"Ref": Ref})
     bind(
         "start_drag",
         {
-            "is_current": current,
+            "is_current_as_reported": current,
             "_Transferable": transferable,
             "_Drag": drag_type,
             "uuid": uuid,
             "ACTION_MOVE": 2,
         },
     )
+    start = owner.start_drag
+
+    def start_drag(event: object) -> None:
+        gesture[0] = True
+        try:
+            start(event)
+        finally:
+            gesture[0] = False
+
+    owner.start_drag = start_drag
     owner._observed = snapshot(owner.document)
     return owner, tabs, live, queued
 
@@ -734,8 +765,9 @@ def test_a_drag_on_stale_rows_is_refused_and_samples_tabs_only_in_its_posted_ref
 ) -> None:
     """#264: the gesture listener never runs the selected-tabs getter.
 
-    A rename of an unpicked sheet keeps the structure generation, so only `is_current` sees
-    that the rows are stale; an insertion moves the generation, which `_current_picks` sees.
+    A rename of an unpicked sheet keeps the structure generation, so only
+    `is_current_as_reported` sees that the rows are stale; an insertion moves the generation,
+    which `_picks_at` sees.
     Either way the refresh, and the new tab baseline it samples, wait for the posted work.
     """
     owner, tabs, live, queued = drag_list()
@@ -1003,6 +1035,7 @@ def test_a_keys_queued_work_does_nothing_once_the_list_is_disposed(key: str, clo
         ("selected_names", {"ordered": ordered}),
         ("_take_tree_selection", {}),
         ("_current_picks", {"Ref": Ref}),
+        ("_picks_at", {"Ref": Ref}),
         ("_ref", {"Ref": Ref}),
         ("_focus_row", {}),
         ("_move_tree_cursor", {"SINGLE": 0, "MULTI": 2}),
@@ -1132,6 +1165,7 @@ class Workbook:
 
     def __init__(self, names: tuple[str, ...]) -> None:
         self.names = list(names)
+        self.locked = False  # Another program holds the undo manager's lock.
         self.titles: list[str] = []
         self.listener: Any = None
         self.edit: Callable[[], None] | None = None
@@ -1168,7 +1202,7 @@ class Workbook:
         return self.read("history", tuple(self.titles))
 
     def isLocked(self) -> bool:
-        return self.read("quiet", False)
+        return self.read("quiet", self.locked)
 
     def hasControllersLocked(self) -> bool:
         return False
@@ -1240,3 +1274,80 @@ def test_another_programs_edit_during_a_release_leaves_its_later_edits_visible(d
     book.edit = lambda: book.change("Delete Sheet", lambda names: names.remove("Delta"))
     book.run_edit()
     assert monitor.check() != seen
+
+
+@pytest.mark.parametrize("during", ["count", "history", "quiet", "name"])
+def test_another_programs_edit_during_a_drag_gesture_leaves_its_later_edits_visible(
+    during: str,
+) -> None:
+    """#284: VCL fires the drag gesture with the solar mutex released, as it runs the release.
+
+    Another thread inserts a sheet during one of the gesture's reads: the structure monitor's
+    sheet count, undo history or quiet state, or the picked sheet's retained handle name. If the
+    gesture makes no such read, the edit follows it. A monitor check whose count read came
+    before the insertion, but whose update came after its report, would keep the old count, and
+    so take the deletion of that sheet, which the other program makes before the list's posted
+    work runs, for no change at all. A press's generation read meanwhile would then still prove
+    its handle across the deletion. The monitor must see the deletion.
+    """
+    owner, _, live, _ = drag_list()
+    book = Workbook(live.names)
+    monitor = MONITOR(book)
+    owner._monitor, owner._proven = monitor, monitor.generation
+    owner._observed.monitor, owner._observed.generation = monitor, monitor.generation
+    picked = live.handles[0]
+    picked.getName = lambda: book.read("name", picked.name)
+    book.edit_at = during
+    book.edit = lambda: book.change("Insert Sheet", lambda names: names.append("Delta"))
+    owner.start_drag(object())
+    if book.edit is not None:
+        book.run_edit()  # The gesture made no read of this kind.
+    seen = monitor.generation  # As the next press captures it (`mouse_pressed`).
+    book.edit = lambda: book.change("Delete Sheet", lambda names: names.remove("Delta"))
+    book.run_edit()
+    assert monitor.check() != seen
+
+
+@pytest.mark.parametrize("lock", ["held", "released"])
+def test_a_single_click_under_another_programs_lock_stands_only_if_nothing_changed(
+    lock: str,
+) -> None:
+    """#284: the release reads the generation, so it does not see a lock that another program
+    holds at a single click, and narrows the picks to the clicked sheet at once.
+
+    The selection flush it posts checks the monitor. While the lock is still held, the check
+    moves the generation, and the flush refreshes instead of showing the picks, so the refresh
+    decides what can still be proved. Once the lock is released with nothing changed or
+    reported, the check finds nothing and the click stands.
+    """
+    owner, live, listener, queued = click_list()
+    book = Workbook(live.names)
+    monitor = MONITOR(book)
+    owner._monitor, owner._proven = monitor, monitor.generation
+    owner._apply_selection = Mock()
+    owner._selection_scroll = owner._selection_write_pending = False
+
+    def bind(name: str) -> None:
+        loaded = method(SOURCE, "SheetList", name, {})
+
+        def bound(*arguments: object) -> Any:
+            return loaded(owner, *arguments)
+
+        setattr(owner, name, bound)
+
+    bind("_queue_selection")
+    bind("_flush_selection")
+    book.locked = True
+    release_on(owner, live, listener, "Bravo", clicks=1)
+    assert owner._selection.names() == ["Bravo"]
+    assert monitor.generation == owner._proven  # The release saw nothing.
+    book.locked = lock == "held"
+    assert len(queued) == 1
+    queued.pop()()  # The selection flush.
+    if lock == "held":
+        owner.refresh.assert_called_once_with()
+        owner._apply_selection.assert_not_called()
+    else:
+        owner.refresh.assert_not_called()
+        owner._apply_selection.assert_called_once_with()
+    assert owner._selection.names() == ["Bravo"] and not queued

@@ -5,10 +5,12 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
-- A click's release in the list no longer checks the document's sheet structure itself, which
-  could leave the structure monitor comparing later changes with an outdated sheet count when
-  another program changed the sheets at that moment. The work the release posts checks it
-  instead ([#284](https://github.com/viell-dev/slop-calc-sheet-manager/issues/284)).
+- A click's release in the list and the start of a drag no longer check the document's sheet
+  structure themselves. They run while LibreOffice lets other programs change the document, and
+  such a check could then keep an outdated sheet count, so that a later deletion went unnoticed.
+  They now rely on the changes the document has reported, and the activation, selection update
+  or move that follows checks the structure before it acts
+  ([#284](https://github.com/viell-dev/slop-calc-sheet-manager/issues/284)).
 - Enter, type-ahead and the keyboard menu key no longer report a failure on stderr when the
   document or the sidebar closes between the key and its queued work, which now does nothing
   once the list is closed ([#282](https://github.com/viell-dev/slop-calc-sheet-manager/issues/282)).

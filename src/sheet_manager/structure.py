@@ -43,11 +43,12 @@ LibreOffice does not record for undo move the generation too, and so clear the l
 
 Threads (#284). `StructureEvents` has no lock. Its methods compare what they are given with the
 state the previous one stored, so each method's inputs must be read, and the method run, with
-no other method in between. The adapter's callers ensure that with LibreOffice's solar mutex
-(`uno_structure`). A check whose count was read before another thread's insertion, but which
-ran after that insertion's report, would store the older count. The deletion of the inserted
-sheet would then show the count it expects and move nothing, so a generation read between the
-two would wrongly prove a handle across the deletion.
+no other method in between. The adapter ensures that with LibreOffice's solar mutex: every
+method runs with it held, and code without it, such as the list's mouse and drag gesture
+listeners, only reads `generation` (`uno_structure`). A check whose count was read before
+another thread's insertion, but which ran after that insertion's report, would store the older
+count. The deletion of the inserted sheet would then show the count it expects and move
+nothing, so a generation read between the two would wrongly prove a handle across the deletion.
 
 The extension's own moves (#91). Undo and Redo report one action whatever it contained, so the
 generation cannot tell an undone move from an undone insertion. The extension's own move group

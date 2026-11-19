@@ -83,9 +83,13 @@ selection captured for the user's request; its full preflight remains authoritat
 Enablement compares the monitor's reported `generation` without calling `check()`: a full check
 consumes undo evidence that an edit's pending modify notification may still need.
 `check()` runs only where LibreOffice's solar mutex is held, as the change reports do, so that
-no report can arrive between its reads and its update. Code without the mutex, such as the
-list's mouse listeners, compares `generation` and leaves the check to the work it posts
-([#284](https://github.com/viell-dev/slop-calc-sheet-manager/issues/284)).
+no report can arrive between its reads and its update. Code without the mutex, the list's mouse
+listeners and its drag gesture, compares `generation` and leaves the check to the work it posts
+([#284](https://github.com/viell-dev/slop-calc-sheet-manager/issues/284)). The gesture uses
+`is_current_as_reported`, which reads the sheets and retained handle names as `is_current` does
+but compares the monitor's reported generation. It misses what only a check finds, such as a
+lock held at that moment, so it can only refuse a drag; the drop checks the monitor and
+`apply_order` repeats the full preflight.
 
 `plan_move(sheets, selected, action, gap=None)` accepts `"drop"`, `"top"`, `"up"`, `"down"`, and
 `"bottom"`. `target_order` computes just the target; `plan_order(sheets, target)` supports arbitrary

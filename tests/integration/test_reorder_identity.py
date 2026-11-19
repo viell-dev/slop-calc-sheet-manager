@@ -29,7 +29,13 @@ from sheet_manager.uno_calc import read_rows, select_tabs, selected_tabs
 from sheet_manager.uno_list import SheetList
 from sheet_manager.uno_menu import DELETE, HIDE, SheetMenu
 from sheet_manager.uno_rename import apply_renames
-from sheet_manager.uno_reorder import apply_order, is_current, preflight, snapshot
+from sheet_manager.uno_reorder import (
+    apply_order,
+    is_current,
+    is_current_as_reported,
+    preflight,
+    snapshot,
+)
 from sheet_manager.uno_show import show_sheets
 from sheet_manager.uno_structure import monitor_for
 
@@ -70,11 +76,15 @@ def check_replacement(context, desktop, wrapper):
             )
             history = tuple(document.UndoManager.AllUndoActionTitles)
             try:
+                # Code without the solar mutex, such as the drag gesture, sees what the reports
+                # moved, but not a lock still held: only preflight's check finds that (#284).
+                reported = is_current_as_reported(document, observed)
                 permission = preflight(context, document, observed, plan)
                 result = apply_order(context, document, observed, plan)
             finally:
                 if wrapper.startswith("held "):
                     release(document, wrapper.removeprefix("held "))
+            assert reported == wrapper.startswith("held "), (wrapper, reported)
             assert not permission.allowed and result.status == "refused", (
                 wrapper,
                 permission,
@@ -249,6 +259,7 @@ def check_confusable_names(context, desktop, first, second):
         observed = snapshot(document)
         assert [handle.Name for handle in observed.handles] == list(names)
         assert is_current(document, observed), "A confusable pair must not make the list stale"
+        assert is_current_as_reported(document, observed)
         rows = [
             (row.name, row.visible, row.protected, row.active, row.color)
             for row in read_rows(controller, observed)

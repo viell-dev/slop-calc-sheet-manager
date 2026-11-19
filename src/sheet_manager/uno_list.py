@@ -20,8 +20,8 @@ of them from other threads, without its solar mutex (#269), or in the middle of 
 exceptions here are the drag gesture's own checks (#264) and the mouse handlers, which read the
 tree, the sheet handles and the document, and write a refused release's picks back, through
 calls that lock for themselves, so that a gesture is decided and shown at once (`SheetList`,
-#269). Those handlers read the structure monitor's generation but never check the monitor,
-whose update needs the solar mutex (#284).
+#269). Both run without the solar mutex, so they read the structure monitor's generation but
+never check the monitor, whose update needs that mutex (#284).
 
 The tree. The list is a borderless `TreeControl`, so that it is a direct child of the panel
 window, with a hidden root. With a hidden root, the tree peer mishandles every data-model change
@@ -194,6 +194,7 @@ from sheet_manager.uno_reorder import (
     Snapshot,
     apply_order,
     is_current,
+    is_current_as_reported,
     move_availability,
     plan_availability,
     snapshot,
@@ -474,12 +475,17 @@ class SheetList:
     checks the monitor before anything acts on a handle.
 
     The drag gesture is the other exception: VCL calls its listener within its own mouse-move
-    handling, rather than queued as the mouse listeners are, and `start_drag` starts the drag
-    there, with the gesture's event as `startDrag`'s trigger. Before that it checks
-    `_current_picks`, which can write the list's own tree and buttons as the mouse handlers do,
-    the document's read-only and protection flags, and `is_current`, which reads the sheets and
-    the retained handles. None of these reads Calc's view or tabs. A drag on stale rows is
-    refused and posts its refresh, whose tab sample must not run in the listener (#264).
+    handling, rather than queued as the mouse listeners are, but also with the solar mutex
+    released (`ImplHandleMouseEvent`'s `SolarMutexReleaser`, in the 26.2.1.2 and 26.8.2.2
+    sources). `start_drag` starts the drag there, with the gesture's event as `startDrag`'s
+    trigger. Before that it checks the picks (`_picks_at`), which can write the list's own tree
+    and buttons as the mouse handlers do, the document's read-only and protection flags, and
+    `uno_reorder.is_current_as_reported`, which reads the sheets and the retained handles. None
+    of these reads Calc's view or tabs, and none checks the structure monitor: they compare its
+    `generation` with the list's proof, as the release does (#284). What only a check finds,
+    such as a lock held at that moment, the drop's posted `_move` finds before anything moves:
+    it checks the monitor, and `apply_order` repeats the whole preflight. A drag on stale rows
+    is refused and posts its refresh, whose tab sample must not run in the listener (#264).
 
     Collaborators, each owning its own state: `_refreshes` decides when to refresh
     (`refresh_schedule`), `_tabs` follows Calc's tabs and the sidebar (`uno_tabs`, for which this
@@ -1003,7 +1009,15 @@ class SheetList:
         None while a sheet insertion or deletion has not been through a refresh yet: the
         refresh this asks for decides what can still be proved.
         """
-        if self._monitor.check() != self._proven:
+        return self._picks_at(self._monitor.check())
+
+    def _picks_at(self, generation: int) -> list[Ref]:
+        """`_current_picks`, with the structure generation its caller read.
+
+        Posted work passes the monitor's `check()`. The drag gesture runs without the solar
+        mutex that the check needs, so it passes the reported `generation` (#284).
+        """
+        if generation != self._proven:
             self.post(self.refresh, "refreshing the sheet list")
             return []
         if self._press is None:
@@ -1887,15 +1901,18 @@ class SheetList:
         self._press = None  # A drag is not a click.
         if self._busy or self._drag is not None or self._observed is None:
             return
-        picked = [ref.name for ref in self._current_picks()]
+        # Not `check()`: VCL fires the gesture without the solar mutex, which the check's update
+        # needs. The drop's posted `_move` checks before anything moves (#284).
+        proof = self._proven
+        picked = [ref.name for ref in self._picks_at(self._monitor.generation)]
         if not picked or self.document.isReadonly() or self.document.isProtected():
             return
-        if not is_current(self.document, self._observed):
+        if not is_current_as_reported(self.document, self._observed):
             # Refused. The refresh samples Calc's tabs, which never runs in a listener (#264).
             self.post(self.refresh, "refreshing the sheet list")
             return
         transferable = _Transferable(uuid.uuid4().hex)
-        self._drag = _Drag(picked, self._observed, transferable, self._monitor.generation)
+        self._drag = _Drag(picked, self._observed, transferable, proof)
         try:
             self._drag_source.startDrag(
                 event, ACTION_MOVE, 0, 0, transferable, self._listeners["source"]

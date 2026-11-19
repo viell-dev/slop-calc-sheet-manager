@@ -24,14 +24,15 @@ Threads (#284). Neither this monitor nor `StructureEvents` has a lock: LibreOffi
 keeps their updates apart. A notifying thread holds it while it reports a change, and
 everything else that updates the state runs with it held too. That covers `check()`,
 `own_move()`, the own move's markers and the replay queries, which run in posted work, in the
-panel's construction, during an Undo or Redo, in Calc's report of a sheet switch, or within
-VCL's own drag handling. A caller
-without the mutex, such as the toolkit's mouse listeners (#269), reads only `generation`, which
-the notifications keep current, and leaves `check()` to the work it posts. `check()` reads the
-count, the history and the state with three calls that each take the mutex for themselves, then
-stores them. Without the mutex held across all of that, another thread could insert a sheet
-after the count read and report it before the store. The monitor would then keep the older
-count, and the deletion of that sheet would match it and move nothing.
+panel's construction, during an Undo or Redo, or in Calc's report of a sheet switch. A caller
+without the mutex reads only `generation`, which the notifications keep current, and leaves
+`check()` to the work it posts. Such callers are the toolkit's mouse listeners (#269) and the
+drag gesture's listener, which VCL calls within its mouse-move handling with the mutex released
+(`uno_list.SheetList`, `uno_reorder.is_current_as_reported`). `check()` reads the count, the
+history and the state with three calls that each take the mutex for themselves, then stores
+them. Without the mutex held across all of that, another thread could insert a sheet after the
+count read and report it before the store. The monitor would then keep the older count, and the
+deletion of that sheet would match it and move nothing.
 """
 
 import contextlib
