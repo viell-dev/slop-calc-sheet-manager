@@ -26,6 +26,7 @@ from tests.unit.list_peer import (
     DOWN,
     MOD1,
     SPACE,
+    UP,
     Book,
     changed,
     click,
@@ -213,6 +214,27 @@ def test_keys_typed_before_their_write_still_act_on_the_picks_they_changed() -> 
     owner.tree_key(SPACE, MOD1)
     owner.run_queue()
     assert picks(owner) == ["Charlie"] and move_to_top(owner) == ["Charlie"]
+
+
+def test_cursor_keys_after_a_failed_write_keep_space_held() -> None:
+    """A key while the record is unknown keeps the hold its failure made, which holds Space too
+    (#288). Bravo picked, the cursor moved to the unpicked Delta, and that write fails at its
+    `clearSelection`, so the tree shows Delta alone, which the list does not hold. Ctrl+Up and
+    Ctrl+Down, typed before their write, move the cursor away and back; Ctrl+Space with the cursor
+    on Delta, meant to deselect it, would pick Delta if a key's hold replaced the failure's."""
+    owner = sheet_list(Book(list(NAMES)))
+    click(owner, row("Bravo"))
+    key(owner, DOWN, MOD1)
+    owner.faults.fail("clearSelection")
+    key(owner, DOWN, MOD1)
+    assert owner._shown is None and owner.tree.shown() == ["Delta"] and cursor(owner) == "Delta"
+    owner.tree_key(UP, MOD1)
+    owner.tree_key(DOWN, MOD1)
+    owner.tree_key(SPACE, MOD1)
+    owner.run_queue()
+    assert "Delta" not in picks(owner), "Delta, which the user deselected, was picked"
+    assert picks(owner) == [] and owner.tree.shown() == []
+    assert move_to_top(owner) is None
 
 
 @pytest.mark.parametrize(
