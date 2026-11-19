@@ -117,7 +117,12 @@ before it shows its model, and posts the end of the hold as it returns (`_releas
 every listener whose press was handled before then runs held, and so may one that VCL runs early.
 The hold keeps a row's name if every row list shown since the hold began had it there. It keeps
 no name when the restored scroll position can differ: the restore shows the old top row at the
-top, so the top row must keep its name and its index, and the position must be read and restored.
+top where it can, so the top row must keep its name and its index, and the position must be read
+and restored. It cannot where that would leave lines empty below the last row, as on a list that
+got shorter near its end, or that shows more rows once a long name and its horizontal scrollbar
+went: the last rows then fill the view, and the rows end further up (`SvImpLBox::MakeVisible`,
+`FillView`). So once the new model is shown, the rebuild reads the position again and holds
+every row if it moved or cannot be read.
 A held press without Shift on a row whose name the hold keeps acts as usual: on whichever of
 those lists the user pressed, the row showed that name. A Shift press extends a range through
 rows that may have changed. Any other held press counts as one outside the rows: a left press
@@ -126,8 +131,11 @@ notice, so its release does nothing, and a right press opens no menu. Names comp
 cannot tell a rename in place from another sheet moved into the row, so a press on a renamed row
 is refused too. A refresh that keeps every row's name holds nothing new, even when it loses the
 identity proof: the press acts on the sheet under that name, as a press after the refresh would,
-and a drop of picks there holds toggles (above). The hold adds no native call; its end is one
-post.
+and a drop of picks there holds toggles (above). A refresh that keeps the rows also posts the end
+of a hold whose post failed. The listener makes no native call that `main` does not; a rebuild
+makes one more, the second read of the position, and the end of a hold is one post. The list
+also scrolls without a rebuild, by a key's queued write or the wheel, between a press and its
+listener, which then maps the position on the scrolled rows (#299).
 
 Activation. A double click or Enter makes the sheet Calc's only selected tab and reads that back,
 because `setActiveSheet` keeps an existing group when the sheet belongs to it. Activation reads
@@ -621,9 +629,11 @@ class SheetList:
       press's listener (`mouse_pressed`) and Ctrl+Space (`tree_key`) pick nothing, drop any
       picks left (`_toggle_held_off`) and ask for the write.
     - Presses (`_presses_held`, #293): from a rebuild that may show another sheet in a shown row
-      until work posted as it returns has run, `mouse_pressed` maps an event without Shift only
-      to a row whose name every row list since the hold began had. Any other left press picks
-      nothing and drops the picks, so its release does nothing, and a right press targets no menu.
+      until work posted as it returns, or by a later refresh if that post failed, has run,
+      `mouse_pressed` maps an event without Shift only to a row whose name every row list since
+      the hold began had, and to none once the rebuild found its rows at another position. Any
+      other left press picks nothing and drops the picks, so its release does nothing, and a
+      right press targets no menu.
     - Tab observation (`observation_paused`) waits while `_busy` (a move or rename runs),
       `_pointer_depth`, `_restoring_cursor`, `_press`, `_drag`, the menu's popup or
       `_menu_context` holds; the observer adds the document's locks and an own replay's view. A
@@ -936,6 +946,9 @@ class SheetList:
                 self._rebuild(rows, observed, generation)
             else:
                 self._prove(observed, generation)
+                # If a rebuild could not post the end of its press hold, this posts it: the
+                # retry after that failure finds the rows the rebuild showed (#293).
+                self._release_presses()
             self._name_viewed()
             self._update_moves()
             self._tabs.refreshed(generation)
@@ -1089,8 +1102,8 @@ class SheetList:
         self._presses_held = _PressHold(names)
 
     def _release_presses(self) -> None:
-        """The rebuild is done: post the end of a press hold, to run after every listener whose
-        press LibreOffice handled before now (`_hold_presses`)."""
+        """A rebuild, or a refresh that keeps the rows, is done: post the end of a press hold, to
+        run after every listener whose press LibreOffice handled before now (`_hold_presses`)."""
         held = self._presses_held
         if held is None or self._presses_release is held:
             return
@@ -1100,7 +1113,7 @@ class SheetList:
                 self._presses_held = None
 
         self.post(release, "accepting presses again")
-        self._presses_release = held  # Once posted: a failed post is tried again by the next.
+        self._presses_release = held  # Once posted: the next refresh retries a failed post.
 
     def _toggle_held_off(self) -> None:
         """A toggle while toggles are held: drop the picks, if any, with the notice (#288).
@@ -1157,15 +1170,17 @@ class SheetList:
         Unless every row keeps its name and the scroll position is kept, presses are held from
         before the new model is shown until work posted when this returns has run, for the rows
         whose name changed, or for every row if the scroll position may have changed (#293).
+        Whether it changed is read again once the new model is shown (`_hold_if_scrolled`).
         """
         try:
-            top = self._first_visible_name()
+            before = self.geometry() if self._nodes else None
+            top = self.rows[before.first_visible()].name if before is not None else None
         except Exception:
             report("reading the sheet list's scroll position")
-            top = None
+            before = top = None
         # Each row's name if every row list shown since presses were held had it there (#293).
         # None elsewhere, and everywhere if the restore below may scroll: it keeps the scroll
-        # position only if the top row keeps its index.
+        # position only if the top row keeps its index, and not always then.
         old, new = self.names(), tuple(row.name for row in rows)
         scrolled = top is None or top not in new or old.index(top) != new.index(top)
         held = self._presses_held
@@ -1215,7 +1230,28 @@ class SheetList:
             self._apply_selection()
         finally:
             self._restoring_cursor = restoring
+            if before is not None and not scrolled and self._nodes is nodes:
+                self._hold_if_scrolled(before, len(rows))  # Also after a failure since shown.
             self._release_presses()
+
+    def _hold_if_scrolled(self, before: RowGeometry, count: int) -> None:
+        """Hold every row if the new model shows its rows at another position than `before`.
+
+        The restore cannot always show the old top row at the top (#293). Showing a row makes
+        it the first in view, but the last rows then fill the view (`SvImpLBox::MakeVisible`,
+        `FillView`, read in 26.8.2.2), so the rows end further up on a list that got shorter
+        near its end, or that shows more rows because a long name and its horizontal scrollbar
+        went. This read, one more `getNodeRect`, finds where the rows ended; a failed one holds
+        them all. A press's listener maps a position to a row through the same two values.
+        """
+        try:
+            after = self.geometry()
+            moved = (after.first_top, after.row_height) != (before.first_top, before.row_height)
+        except Exception:
+            report("reading the sheet list's restored scroll position")
+            moved = True
+        if moved:
+            self._hold_presses((None,) * count)
 
     def _show_native(self, names: tuple[str, ...]) -> None:
         """Show a native selection that awaits intake again over rebuilt rows, keeping the cursor.
@@ -1419,11 +1455,6 @@ class SheetList:
 
     def _height(self) -> int:
         return self.peer.getOutputSize().Height
-
-    def _first_visible_name(self) -> str | None:
-        if not self._nodes:
-            return None
-        return self.rows[self.geometry().first_visible()].name
 
     # Selection, keyboard cursor, and activation
 

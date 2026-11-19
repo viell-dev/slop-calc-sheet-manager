@@ -11,9 +11,13 @@ opened the sheet tab menu for it. No failure is needed.
 The real list runs over the simulated peer of `list_peer`, whose `queued_click` queues a click's
 listeners as VCL does. The invariant: a press, its release and a double click act only on the
 sheet the tree showed under the pointer when the user pressed, or refuse. A press on a row that
-showed the same name in every row list since then acts; a refused left press picks nothing and
-drops the picks, which its native effect superseded in the tree, with the notice; a refused right
-press opens no menu and keeps the picks.
+showed the same name in every row list since then acts, unless the list may show its rows at
+another position; a refused left press picks nothing and drops the picks, which its native effect
+superseded in the tree, with the notice; a refused right press opens no menu and keeps the picks.
+
+The scroll tests let only four rows fit (`scrolled`), so that the peer's tree scrolls as
+LibreOffice's does: its restore cannot always show the old top row at the top, and a press's
+position then maps to another row.
 """
 
 from collections.abc import Callable
@@ -319,28 +323,15 @@ def test_a_listener_run_ahead_of_the_refreshs_release_is_held() -> None:
     refused(owner, notices)
 
 
-@pytest.mark.parametrize("call", ["getNodeRect", "makeNodeVisible"])
-def test_a_rebuild_that_may_not_keep_the_scroll_position_holds_presses(call: str) -> None:
-    """Nothing picked; another window colours Golf, and the refresh's rebuild cannot read the
-    tree's scroll position (`getNodeRect`) or restore it (`makeNodeVisible`). The new model may
-    then show its rows at another position than the old ones, so a press made before is refused,
-    as after a reorder. The simulated tree does not scroll; this pins the rule."""
-    owner = sheet_list(Book(list(NAMES)))
-    owner.book.sheet("Golf").color = 0x336699
-    owner.faults.fail(call)
-    post_refresh(owner)
-    queued_click(owner, PRESSED, 0)
-    owner.run_queue()
-    assert owner.faults.failed == [call]
-    assert picks(owner) == [] and cursor(owner) is None
-
-
-def test_a_hold_whose_end_could_not_be_posted_ends_with_the_next_rebuild() -> None:
-    """Delta picked; the reordering refresh's post of the hold's end fails, so presses stay held.
-    The next rebuild, after another window colours Golf, holds nothing new, but posts that end:
-    a click there picks the sheet its row shows. Had the list recorded the end as posted before
-    posting it, nothing would post it again, and every press would be refused until another
-    reorder."""
+@pytest.mark.parametrize("ending", ["retried refresh", "next rebuild"])
+def test_a_hold_whose_end_could_not_be_posted_ends_with_the_next_refresh(ending: str) -> None:
+    """Delta picked; the reordering refresh's post of the hold's end fails, which fails the
+    refresh, so presses stay held. The refresh's retry finds the rows as the failed refresh left
+    them and does not rebuild; it, or a later rebuild after another window colours Golf, posts
+    that end. A click on Echo, now in Delta's old row, then picks Echo, and a Shift+click on Golf
+    extends the range. The end used to be posted only by a rebuild, so after the retry every
+    Shift+click and every click on a row the reorder changed stayed refused until one ran. Had
+    the list recorded the end as posted before posting it, nothing would post it again."""
     owner = picked("Delta")
     post = owner.post
 
@@ -354,14 +345,22 @@ def test_a_hold_whose_end_could_not_be_posted_ends_with_the_next_rebuild() -> No
     reorder(owner)
     owner.run_queue()
     assert owner.faults.failed == ["accepting presses again"]
+    assert owner.failures == ["refreshing the sheet list"]
     queued_click(owner, PRESSED, 0)
     owner.run_queue()
     assert picks(owner) == []
-    recolour(owner)
-    owner.run_queue()
+    if ending == "retried refresh":
+        assert owner.retry() == 1
+    else:
+        recolour(owner)
+        owner.run_queue()
     queued_click(owner, PRESSED, 0)
     owner.run_queue()
-    assert picks(owner) == ["Echo"] and move_to_top(owner) == ["Echo"]
+    assert picks(owner) == ["Echo"]
+    queued_click(owner, row("Golf"), SHIFT)
+    owner.run_queue()
+    extended = ["Echo", "Charlie", "Foxtrot", "Golf"]
+    assert picks(owner) == extended and move_to_top(owner) == extended
 
 
 def click_golf(owner: Any) -> None:
@@ -430,13 +429,215 @@ def test_a_shift_click_on_a_row_the_reorder_left_alone_is_refused() -> None:
 
 def test_a_reorder_that_moves_the_top_row_holds_every_row() -> None:
     """Another window moves Alfa, the top row, below Bravo, and the user clicks Foxtrot, whose row
-    keeps its sheet, before the refresh runs. Restoring the scroll position puts Alfa back at the
-    top, which would scroll a scrolled list by a row, so no row is known to show what it showed
-    and the click is refused. The simulated tree does not scroll; this pins the rule."""
+    keeps its sheet, before the refresh runs. Every row fits, so the restore leaves the list where
+    it was, as the rebuild's second read of the position finds. A top row that moved can scroll a
+    scrolled list (`test_a_change_of_the_top_row_of_a_scrolled_list_holds_every_row`), and the
+    rule holds every row from before the new rows show, so the click is refused. This pins the
+    rule where it costs a click."""
     owner = picked("Delta")
     owner.book.move("Alfa", 1)
     post_refresh(owner)
     queued_click(owner, row("Foxtrot"), 0)
     owner.run_queue()
     assert owner.names()[row("Foxtrot")] == "Foxtrot"
+    assert picks(owner) == [] and move_to_top(owner) is None
+
+
+def scrolled(names: list[str] = NAMES, wide: int | None = None) -> Any:
+    """A list where four rows fit, which the user has scrolled to its end; a label longer than
+    `wide` characters shows a horizontal scrollbar, which takes one of those rows."""
+    owner = sheet_list(Book(list(names)))
+    owner.tree.visible, owner.tree.wide = 4, wide
+    owner.tree.scroll_to(len(names))
+    return owner
+
+
+def in_view(owner: Any) -> list[str]:
+    """The rows the tree shows now, from the top of the view."""
+    fit = owner.tree._in_view()
+    return owner.names()[owner.tree.start : owner.tree.start + fit]
+
+
+def delete(owner: Any, name: str) -> None:
+    """Another window deletes `name`, and the list's refresh for it is queued."""
+    owner.book.delete(name)
+    post_refresh(owner)
+
+
+def acted_on(owner: Any, gesture: str) -> list[str]:
+    """The user clicks Foxtrot's row, as `gesture`, before the queued refresh runs: the sheets
+    the press picked, activated or targeted a menu at."""
+    activated, targets = record_activations(owner), record_menus(owner)
+    if gesture == "plain":
+        queued_click(owner, row("Foxtrot"), 0)
+    elif gesture == "double":
+        queued_click(owner, row("Foxtrot"), 0, clicks=2)
+    else:
+        queued_click(owner, row("Foxtrot"), 0, button=RIGHT)
+    owner.run_queue()
+    return [*picks(owner), *activated, *(target for target in targets if target is not None)]
+
+
+@pytest.mark.parametrize("gesture", ["plain", "double", "right"])
+@pytest.mark.parametrize("deleted", ["Hotel", "Golf"])
+def test_a_deletion_that_shortens_a_list_scrolled_to_its_end_holds_every_row(
+    deleted: str, gesture: str
+) -> None:
+    """The user has scrolled to the end, where Echo, Foxtrot, Golf and Hotel show. Another window
+    deletes Hotel, the last sheet, or Golf, and the user clicks Foxtrot before the refresh runs.
+    Seven rows cannot show Echo at the top of four: the restore's last rows fill the view from
+    Delta, which puts Echo on Foxtrot's line. Echo kept its row, and so did every row once the
+    last sheet went, so no row was held: the plain click picked Echo, which Move to Top then
+    moved, the double click activated Echo, and the right click opened the menu for Echo. The
+    rebuild reads the position again after the restore and holds every row."""
+    owner = scrolled()
+    assert in_view(owner) == ["Echo", "Foxtrot", "Golf", "Hotel"]
+    delete(owner, deleted)
+    assert acted_on(owner, gesture) == []
+    assert in_view(owner)[:2] == ["Delta", "Echo"]
+    assert picks(owner) == [] and move_to_top(owner) is None
+
+
+def test_a_ctrl_click_after_such_a_deletion_picks_nothing() -> None:
+    """As above, Hotel deleted, with a Ctrl+click on Foxtrot. The deletion makes the list drop
+    its picks, which holds toggles (#288), so the Ctrl+click picked nothing before either."""
+    owner = scrolled()
+    delete(owner, "Hotel")
+    queued_click(owner, row("Foxtrot"))
+    owner.run_queue()
+    assert picks(owner) == [] and move_to_top(owner) is None
+
+
+def recolour_bravo(owner: Any) -> None:
+    owner.book.sheet("Bravo").color = 0x336699
+    post_refresh(owner)
+
+
+def rename_bravo(owner: Any) -> None:
+    owner.book.rename("Bravo", "Zulu")
+    post_refresh(owner)
+
+
+def scroll_to_top_and_delete_hotel(owner: Any) -> None:
+    owner.tree.scroll_to(0)
+    delete(owner, "Hotel")
+
+
+@pytest.mark.parametrize(
+    "change, pressed",
+    [
+        pytest.param(recolour_bravo, "Foxtrot", id="Bravo recoloured"),
+        pytest.param(rename_bravo, "Foxtrot", id="Bravo renamed above the view"),
+        pytest.param(scroll_to_top_and_delete_hotel, "Bravo", id="Hotel deleted, top in view"),
+    ],
+)
+def test_a_rebuild_that_keeps_a_scrolled_lists_position_leaves_the_press_alone(
+    change: Callable[[Any], None], pressed: str
+) -> None:
+    """Controls. Scrolled to the end, another window colours Bravo or renames it, above the view;
+    or, scrolled to the top, deletes Hotel, which the restore can show without moving the top
+    row. The user clicks a row that keeps its sheet before the refresh runs, and the click picks
+    it. Counting every shorter list as scrolled would refuse the last."""
+    owner = scrolled()
+    change(owner)
+    queued_click(owner, row(pressed), 0)
+    owner.run_queue()
+    assert picks(owner) == [pressed] and owner.tree.shown() == [pressed]
+    assert move_to_top(owner) == [pressed]
+
+
+def test_a_rename_that_removes_the_horizontal_scrollbar_holds_every_row() -> None:
+    """Alfa's name is too long for the list, so a horizontal scrollbar takes a row's height and
+    three rows fit; the user has scrolled to the end, where Foxtrot, Golf and Hotel show. Another
+    window renames that sheet Alfa, and the user clicks Golf before the refresh runs. With the
+    scrollbar gone four rows fit, and the restore's last rows fill the view from Echo, which puts
+    Foxtrot on Golf's line. The list keeps its length and Foxtrot its row, so neither the top-row
+    rule nor counting a shorter list as scrolled holds it, and the click picked Foxtrot, which
+    the user never pressed. The rebuild's second read of the position holds every row."""
+    names = ["Alfa, the quarterly summary", *NAMES[1:]]
+    owner = scrolled(names, wide=12)
+    assert in_view(owner) == ["Foxtrot", "Golf", "Hotel"]
+    owner.book.rename(names[0], "Alfa")
+    post_refresh(owner)
+    queued_click(owner, row("Golf"), 0)
+    owner.run_queue()
+    assert in_view(owner) == ["Echo", "Foxtrot", "Golf", "Hotel"]
+    assert picks(owner) == [] and move_to_top(owner) is None
+
+
+def move_echo_above_delta(owner: Any) -> None:
+    owner.book.move("Echo", row("Delta"))
+    post_refresh(owner)
+
+
+def rename_echo(owner: Any) -> None:
+    owner.book.rename("Echo", "Zulu")
+    post_refresh(owner)
+
+
+@pytest.mark.parametrize(
+    "change, shown",
+    [
+        pytest.param(move_echo_above_delta, "Foxtrot", id="moved up a row"),
+        pytest.param(rename_echo, "Charlie", id="renamed"),
+    ],
+)
+def test_a_change_of_the_top_row_of_a_scrolled_list_holds_every_row(
+    change: Callable[[Any], None], shown: str
+) -> None:
+    """Scrolled to the end, Echo at the top. Another window moves Echo above Delta, or renames it,
+    and the user clicks Golf before the refresh runs. The restore shows Echo at the top from
+    Delta's old row, or, with no Echo to show, the new rows from the first. Golf's line then
+    shows Foxtrot or Charlie, whose rows kept their sheets, and the click picked it. A top row
+    that moved or went holds every row."""
+    owner = scrolled()
+    change(owner)
+    queued_click(owner, row("Golf"), 0)
+    owner.run_queue()
+    assert in_view(owner)[2] == shown
+    assert picks(owner) == [] and move_to_top(owner) is None
+
+
+@pytest.mark.parametrize("call", ["getNodeRect", "makeNodeVisible"])
+def test_a_rebuild_that_cannot_keep_the_scroll_position_holds_every_row(call: str) -> None:
+    """Scrolled to the end; another window colours Bravo, and the refresh's rebuild cannot read
+    the tree's scroll position (`getNodeRect`) or restore it (`makeNodeVisible`), so the new rows
+    show from the first. The user's click on Foxtrot, made before, lands on Bravo's line, and it
+    picked Bravo. It is refused."""
+    owner = scrolled()
+    owner.faults.fail(call)
+    recolour_bravo(owner)
+    queued_click(owner, row("Foxtrot"), 0)
+    owner.run_queue()
+    assert owner.faults.failed == [call]
+    assert in_view(owner)[1] == "Bravo"
+    assert picks(owner) == [] and cursor(owner) is None
+
+
+def test_a_restored_position_that_cannot_be_read_holds_every_row() -> None:
+    """As after Hotel's deletion above, but the rebuild's second read of the position fails: it
+    cannot tell where the restore left the rows, so every row is held. (Without that read, the
+    failure is the listener's own read, which refuses the click too.)"""
+    owner = scrolled()
+    owner.faults.fail("getNodeRect", after=1)
+    delete(owner, "Hotel")
+    queued_click(owner, row("Foxtrot"), 0)
+    owner.run_queue()
+    assert owner.faults.failed == ["getNodeRect"]
+    assert picks(owner) == [] and move_to_top(owner) is None
+
+
+def test_a_rebuild_that_fails_after_its_restore_still_holds_the_rows_it_moved() -> None:
+    """As after Hotel's deletion above, but the rebuild's write of the selection fails after the
+    restore left the rows further up, which fails the refresh. The second read of the position
+    follows any failure once the new rows show, so the click on Foxtrot is refused rather than
+    taken for Echo."""
+    owner = scrolled()
+    owner.faults.fail("clearSelection")
+    delete(owner, "Hotel")
+    queued_click(owner, row("Foxtrot"), 0)
+    owner.run_queue()
+    assert owner.faults.failed == ["clearSelection"]
+    assert "refreshing the sheet list" in owner.failures
+    assert in_view(owner)[:2] == ["Delta", "Echo"]
     assert picks(owner) == [] and move_to_top(owner) is None
