@@ -196,6 +196,7 @@ from sheet_manager.uno_calc import (
     MainThread,
     dispatch,
     prop,
+    query_command,
     read_rows,
     report,
     select_tabs,
@@ -573,7 +574,11 @@ class SheetList:
     first, then `_cleanup` releases the listeners and controls in reverse creation order.
     Closing the queue does not revoke work already queued, which runs after `dispose` or, if a
     native release dispatches events, during it; so each part checks its own disposal when such
-    work runs. A failed construction disposes what it had created.
+    work runs. The list's own work then returns before it touches the document or a control, a
+    menu command chosen before the close included (#282, #285). A shortcut forwarded from the
+    list is the user's input to the window rather than the list's work: it still runs while the
+    frame shows the list's view, and is dropped once the document has closed or reloaded
+    (`_forward`). A failed construction disposes what it had created.
     """
 
     def __init__(self, context, frame, parent_window):
@@ -1335,6 +1340,8 @@ class SheetList:
             self.post(self._flush_selection, "showing the selection")
 
     def _flush_selection(self) -> None:
+        if self._disposed:
+            return  # Queued by a click or key; the tree is closed, the monitor maybe too (#285).
         if self._pointer_depth:
             self._selection_write_pending = False  # The listener posts again after its work.
             return
@@ -1798,12 +1805,34 @@ class SheetList:
 
     def run_command(self, command: str) -> None:
         if not keeps_focus(command):
-            self.post(lambda: dispatch(self.context, self.frame, command), "a shortcut")
+            self.post(lambda: self._forward(command), "a shortcut")
             return
         # Called from the key handler: only note which control has the focus now.
         control = self.tree if self.owns_tree_keys() else self._focused_button()
         seen = self._input
         self.post(lambda: self._save_keeping_focus(command, control, seen), "a save shortcut")
+
+    def _forward(self, command: str, arguments: tuple[Any, ...] = ()) -> bool:
+        """Dispatch a shortcut typed in the list to the view it was typed in; True if it ran.
+
+        The list may have closed since the key, and the shortcut still runs: it is the user's
+        input to this window, which the list consumed. Once the frame shows another view or
+        none, after the document closed or reloaded, it is dropped, as LibreOffice drops a
+        shortcut it queued for a frame that closed meanwhile (`svt::AcceleratorExecute`,
+        26.8.2.2). A closed frame has no controller and its `queryDispatch` raises
+        `DisposedException`; a reloaded one resolves the command against the new document
+        (measured with 26.8.1.1, #285).
+        """
+        try:
+            if self.frame.getController() != self.controller:
+                return False
+            url, dispatcher = query_command(self.context, self.frame, command)
+        except DisposedException:
+            return False  # The frame is closing.
+        if dispatcher is None:
+            return False
+        dispatcher.dispatch(url, arguments)
+        return True
 
     def _focused_button(self):
         if self._moves is None:
@@ -1818,11 +1847,12 @@ class SheetList:
 
         Synchronous mode returns only when the save has finished, after any Save As, file
         format, or error dialog has closed. With the gtk3 interface, the save moves the focus
-        from the panel to the sheet while it stores, as it does from Calc's own panels.
+        from the panel to the sheet while it stores, as it does from Calc's own panels. The save
+        runs as other forwarded shortcuts do, also after the list closed (`_forward`, #285);
+        giving the focus back is the list's own work, which `post` refuses then.
         """
-        if self._disposed:
+        if not self._forward(command, (prop("SynchronMode", True),)):
             return
-        dispatch(self.context, self.frame, command, (prop("SynchronMode", True),))
         if control is not None:
             self.post(lambda: self._restore_focus(control, seen), "restoring focus after a save")
 
@@ -2013,7 +2043,10 @@ class SheetList:
 
         def complete() -> None:
             try:
-                self._menu_action(chosen, observed, refs, structure, unchanged)
+                # A list that closed after the popup runs no command, as one that closed during
+                # it does (`uno_menu`, #63, #285); the menu's state still ends below.
+                if not self._disposed:
+                    self._menu_action(chosen, observed, refs, structure, unchanged)
             except DisposedException:
                 self._tabs.stop()  # The view closed while its command ran.
             finally:

@@ -54,7 +54,9 @@ This module owns context targeting, native tab grouping and restoration, and mov
   fresh indices; activation/selection callbacks may change the document. No timer or dialog
   lifetime heuristic is used, and a dispatch exception never restores a potentially live dialog.
 - Panel disposal can close the list's queue inside the popup's nested loop (#63): the completion
-  is then dropped, and nothing else outlives the popup.
+  is then dropped, and nothing else outlives the popup. A completion already queued when the list
+  closes runs no command either, Help and moves included (#285): its targets were the closed
+  list's, the document may be gone, and the list could no longer show a refusal or failure.
 - A move captures the observed snapshot, refs and proof before it is posted, and uses the common
   permission and plan checks and the full `apply_order` preflight.
 - The native sidebar header uses the generated SIDEBAR_SHEETMANAGERDECK ID, registered by the
