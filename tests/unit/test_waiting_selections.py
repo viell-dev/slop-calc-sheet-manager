@@ -283,6 +283,33 @@ def test_a_ctrl_click_on_an_assistive_selection_a_refresh_showed_again_picks_not
     assert move_to_top(owner) is None
 
 
+def test_a_deferred_intake_that_runs_inside_the_press_listener_does_not_free_the_toggle() -> None:
+    """Posting or reading UNO can let queued work run inside a mouse listener (`_Mouse._handle`).
+    Alfa picked, Echo then selected alone through accessibility, and a Ctrl+click deselects Echo
+    natively before the tab sample defers the intake. If that intake runs while the press's
+    listener posts its window claim, it clears its record and, finding the press's input, takes
+    nothing; a listener that read the record after that call toggled Echo against Alfa, and Move
+    to Top moved Alfa and Echo. The listener reads the record once, before any UNO call."""
+    owner = sheet_list(Book(list(NAMES)))
+    click(owner, row("Alfa"))
+    select_through_accessibility(owner, ["Echo"])
+    queued_click(owner, row("Echo"))
+    sample(owner)
+
+    def claim_window() -> None:
+        for index, (work, where) in enumerate(owner.queue):
+            if where == "taking native list selection after queued input":
+                del owner.queue[index]
+                work()
+                return
+
+    owner.claim_window = claim_window
+    owner.run_queue()
+    assert "Echo" not in picks(owner), "Echo, which the user deselected, was picked"
+    assert picks(owner) == [] and owner.tree.shown() == [] and cursor(owner) == "Echo"
+    assert move_to_top(owner) is None
+
+
 def test_a_listener_after_a_deferred_assistive_selection_picks_nothing() -> None:
     """#291 with the order #85 recorded: Bravo and Delta selected through accessibility; a
     Ctrl+click deselects Bravo natively, and the tab sample runs before its listener, deferring
@@ -301,20 +328,25 @@ def test_a_listener_after_a_deferred_assistive_selection_picks_nothing() -> None
 
 
 @pytest.mark.parametrize(
-    "toggled, expected",
+    "start, toggled, expected",
     [
-        pytest.param("Bravo", [], id="deselects"),
-        pytest.param("Delta", ["Bravo", "Delta"], id="selects"),
+        pytest.param(["Bravo"], "Bravo", [], id="deselects"),
+        pytest.param(["Bravo"], "Delta", ["Bravo", "Delta"], id="selects"),
+        pytest.param(["Bravo", "Delta"], "Bravo", ["Delta"], id="deselects one of two"),
     ],
 )
 def test_a_ctrl_click_whose_own_toggle_the_deferred_intake_saw_still_toggles(
-    toggled: str, expected: list[str]
+    start: list[str], toggled: str, expected: list[str]
 ) -> None:
-    """The control: Bravo picked; a Ctrl+click toggles `toggled` natively, and the tab sample
-    runs before its listener, as #85 recorded, and defers the intake. The tree differs from the
-    picks only by that toggle, so the listener toggles as on `main`."""
+    """The control: Bravo, or Bravo and Delta, picked; a Ctrl+click toggles `toggled` natively,
+    and the tab sample runs before its listener, as #85 recorded, and defers the intake. The
+    tree differs from the picks only by that toggle, so the listener toggles as on `main`."""
     owner = sheet_list(Book(list(NAMES)))
-    click(owner, row("Bravo"))
+    click(owner, row(start[0]))
+    for name in start[1:]:
+        queued_click(owner, row(name))
+        owner.run_queue()
+    assert picks(owner) == start
     queued_click(owner, row(toggled))
     sample(owner)
     owner.run_queue()
@@ -350,6 +382,165 @@ def test_ctrl_space_on_an_assistive_selection_whose_intake_was_deferred_picks_no
     assert "Bravo" not in picks(owner), "Bravo, which the user deselected, was picked"
     assert picks(owner) == [] and owner.tree.shown() == []
     assert move_to_top(owner) is None
+
+
+def test_ctrl_space_on_a_deferred_assistive_selection_drops_the_picks() -> None:
+    """The same with Alfa picked: the cursor moved to Bravo, Bravo added through accessibility,
+    and the tab sample defers the intake. Ctrl+Space, meant to deselect Bravo, toggled it on
+    against the picks, and Move to Top moved Alfa and Bravo. It picks nothing and drops Alfa,
+    with the notice, as a held toggle does (#288)."""
+    owner = sheet_list(Book(list(NAMES)))
+    click(owner, row("Alfa"))
+    key(owner, DOWN, MOD1)
+    assert cursor(owner) == "Bravo" and picks(owner) == ["Alfa"]
+    owner.tree.assistive_select("Bravo")
+    sample(owner)
+    notices = len(owner.notices)
+    key(owner, SPACE, MOD1)
+    assert "Bravo" not in picks(owner), "Bravo, which the user deselected, was picked"
+    assert picks(owner) == [] and owner.tree.shown() == [] and cursor(owner) == "Bravo"
+    assert len(owner.notices) > notices
+    assert move_to_top(owner) is None
+
+
+def test_three_ctrl_clicks_around_a_sample_do_not_pick_the_row_deselected_last() -> None:
+    """Several presses in flight, no assistive technology, nothing picked: Ctrl+clicks on Alfa
+    and on Delta select them natively, the tab sample defers the intake, and a Ctrl+click on
+    Alfa deselects it again, all before the first listener runs, so the tree shows Delta. The
+    first two listeners cannot account for the rows the intake found and pick nothing, and the
+    intake, which finds input since its deferral, takes nothing. Those refusals found no picks
+    to drop and held nothing, so the third listener toggled Alfa into the empty picks: Move to
+    Top moved Alfa, the sheet the user deselected last. A refused toggle holds toggles until its
+    write shows the picks, as a drop does, and the notice tells of the rows that write clears."""
+    owner = sheet_list(Book(list(NAMES)))
+    queued_click(owner, row("Alfa"))
+    queued_click(owner, row("Delta"))
+    sample(owner)
+    queued_click(owner, row("Alfa"))
+    assert owner.tree.shown() == ["Delta"]
+    owner.run_queue()
+    assert "Alfa" not in picks(owner), "Alfa, which the user deselected last, was picked"
+    assert picks(owner) == [] and owner.tree.shown() == [] and cursor(owner) == "Alfa"
+    assert len(owner.notices) == 1, "Delta, which the tree showed selected, went without the notice"
+    assert move_to_top(owner) is None
+
+
+def test_a_second_ctrl_click_on_a_row_added_to_an_assistive_selection_does_not_pick_it() -> None:
+    """Nothing picked: Charlie selected through accessibility, a Ctrl+click adds Echo, the tab
+    sample defers the intake, and a second Ctrl+click on Echo deselects it, so the tree shows
+    Charlie. The first listener picks nothing, which held nothing, and the second toggled Echo
+    into the empty picks: Move to Top moved Echo, which the user had deselected."""
+    owner = sheet_list(Book(list(NAMES)))
+    select_through_accessibility(owner, ["Charlie"])
+    queued_click(owner, row("Echo"))
+    sample(owner)
+    queued_click(owner, row("Echo"))
+    assert owner.tree.shown() == ["Charlie"]
+    owner.run_queue()
+    assert "Echo" not in picks(owner), "Echo, which the user deselected, was picked"
+    assert picks(owner) == [] and owner.tree.shown() == [] and cursor(owner) == "Echo"
+    assert len(owner.notices) == 1, (
+        "Charlie, which the tree showed selected, went without the notice"
+    )
+    assert move_to_top(owner) is None
+
+
+def test_a_third_ctrl_click_is_not_picked_alone_after_two_refused_ones() -> None:
+    """Nothing picked: Ctrl+clicks on Alfa and on Delta, the tab sample, and a Ctrl+click on
+    Golf, so the tree shows Alfa, Delta and Golf. The first two listeners pick nothing, and the
+    third picked Golf alone, silently: Move to Top moved a set the user did not see."""
+    owner = sheet_list(Book(list(NAMES)))
+    queued_click(owner, row("Alfa"))
+    queued_click(owner, row("Delta"))
+    sample(owner)
+    queued_click(owner, row("Golf"))
+    assert owner.tree.shown() == ["Alfa", "Delta", "Golf"]
+    owner.run_queue()
+    assert picks(owner) == [] and owner.tree.shown() == [] and cursor(owner) == "Golf"
+    assert len(owner.notices) == 1, "The rows the user selected went without the notice"
+    assert move_to_top(owner) is None
+
+
+def test_a_ctrl_click_before_the_write_of_a_refused_ctrl_space_picks_nothing() -> None:
+    """Nothing picked: Bravo and Delta selected through accessibility, and the tab sample
+    defers the intake. Ctrl+Space picks nothing, and the intake, which finds the key since its
+    deferral, takes nothing; a Ctrl+click on Delta, shown selected, deselects it natively
+    before the key's write, so the tree shows Bravo. The refused key held nothing, and the
+    listener toggled Delta into the empty picks: Move to Top moved Delta."""
+    owner = sheet_list(Book(list(NAMES)))
+    select_through_accessibility(owner, ["Bravo", "Delta"])
+    sample(owner)
+    owner.tree_key(SPACE, MOD1)
+    work, where = owner.queue.pop(0)
+    assert where == "taking native list selection after queued input"
+    work()
+    queued_click(owner, row("Delta"))
+    assert owner.tree.shown() == ["Bravo"]
+    owner.run_queue()
+    assert "Delta" not in picks(owner), "Delta, which the user deselected, was picked"
+    assert picks(owner) == [] and owner.tree.shown() == []
+    assert move_to_top(owner) is None
+
+
+def in_flight() -> list[Any]:
+    """Ctrl+clicks in flight: each start, click sequence and place of the tab sample among the
+    clicks, leaving out an accessibility selection that the clicks before the sample undo, so
+    that the sample finds the tree showing exactly the picks, none: no intake has then read
+    that selection, which is #294's case and acts as on `main`."""
+    starts = [
+        ("nothing picked", [], []),
+        ("Bravo picked", ["Bravo"], []),
+        ("Bravo and Delta through accessibility", [], ["Bravo", "Delta"]),
+    ]
+    sequences = [
+        ("Bravo", "Delta"),
+        ("Alfa", "Delta", "Alfa"),
+        ("Alfa", "Delta", "Golf"),
+        ("Bravo", "Delta", "Bravo"),
+        ("Delta", "Delta", "Delta"),
+        ("Alfa", "Bravo", "Alfa", "Delta"),
+    ]
+    cases = []
+    for start, picked, assistive in starts:
+        for clicks in sequences:
+            for sampled in range(len(clicks) + 1):
+                tree = set(assistive)
+                for name in clicks[:sampled]:
+                    tree ^= {name}
+                if assistive and not tree:
+                    continue
+                label = f"{start}, {', '.join(clicks)}, sample after {sampled}"
+                cases.append(pytest.param(picked, assistive, clicks, sampled, id=label))
+    return cases
+
+
+@pytest.mark.parametrize("picked, assistive, clicks, sampled", in_flight())
+def test_ctrl_clicks_in_flight_around_a_sample_end_with_what_the_tree_showed_or_nothing(
+    picked: list[str], assistive: list[str], clicks: tuple[str, ...], sampled: int
+) -> None:
+    """Several Ctrl+clicks handled natively before any of their listeners runs, with the tab
+    sample after `sampled` of them, so that an intake has read the tree before the listeners
+    act. The list then picks the rows the tree showed when the user stopped, or nothing, with
+    the notice if the tree showed rows, never a set the user did not see."""
+    owner = sheet_list(Book(list(NAMES)))
+    for name in picked:
+        click(owner, row(name))
+    if assistive:
+        select_through_accessibility(owner, assistive)
+    for index, name in enumerate(clicks):
+        if index == sampled:
+            sample(owner)
+        queued_click(owner, row(name))
+    if sampled == len(clicks):
+        sample(owner)
+    seen = owner.tree.shown()
+    notices = len(owner.notices)
+    owner.run_queue()
+    assert picks(owner) in ([], seen), f"The tree showed {seen}"
+    assert owner.tree.shown() == picks(owner)
+    if seen and not picks(owner):
+        assert len(owner.notices) > notices, "The rows the user saw went without the notice"
+    assert move_to_top(owner) == (picks(owner) or None)
 
 
 def test_an_assistive_selection_the_intake_takes_leaves_toggles_free() -> None:
