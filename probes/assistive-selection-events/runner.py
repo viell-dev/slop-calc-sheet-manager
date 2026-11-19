@@ -29,6 +29,7 @@ EIGHT = NAMES[:8]
 CTRL = ("Control_L",)
 CTRL_SHIFT = ("Control_L", "Shift_L")
 SETTLE = 1.5
+ONLY: list[str] = []  # Phase name substrings from --phase; empty runs every phase.
 SETTLE_LIMIT = 8.0
 QUIET = 900.0
 ROUTINE = {"observing Calc's selected tabs", "finishing sheet row borders"}
@@ -100,6 +101,8 @@ def run_phases(lab, directory):
         return probe("report")["events"]
 
     def phase(name, action, prepare=None, solar=True):
+        if ONLY and not any(item in name for item in ONLY):
+            return None
         if prepare is not None:
             prepare()
         started = probe("reset", name, solar)
@@ -159,6 +162,18 @@ def run_phases(lab, directory):
         book.pointer.click(rect.X + 12, rect.Y + rect.Height + 40)
 
     phase("plain_click_below_rows", below_rows, prepare=lambda: pick(["Alfa"]))
+
+    def double(index, modifiers=()):
+        point = book.point(index)
+
+        def act():
+            book.pointer.click(*point, modifiers=modifiers, pause=0.02)
+            book.pointer.click(*point, modifiers=modifiers)
+
+        return act
+
+    phase("ctrl_double_click_charlie", double(2, CTRL), prepare=lambda: pick(["Alfa"]))
+    phase("ctrl_double_click_alfa_picked", double(0, CTRL), prepare=lambda: pick(["Alfa", "Bravo"]))
 
     # 5. The list's own writes: a key's coalesced write, and a refresh that rebuilds the rows.
     phase("key_down_write", lambda: book.lab.input.tap("Down"), prepare=lambda: pick(["Bravo"]))
@@ -301,7 +316,9 @@ def main():
     parser.add_argument("--vcl", action="append", choices=["gtk3", "gen"])
     parser.add_argument("--perf", type=int, metavar="SHEETS", help="Only time the writes")
     parser.add_argument("--repeats", type=int, default=5)
+    parser.add_argument("--phase", action="append", default=[], help="Run only matching phases")
     arguments = parser.parse_args()
+    ONLY.extend(arguments.phase)
     summary = {}
     failed = False
     for vcl in arguments.vcl or ["gtk3", "gen"]:

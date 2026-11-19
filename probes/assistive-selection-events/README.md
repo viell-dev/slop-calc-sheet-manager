@@ -20,6 +20,7 @@ posted work.
   counting rule proposed on #294, both with the host's Python.
 - `results/` holds the records the comment on #294 cites: `run1` (the probe at `9c6c90e`) and
   `run2` (with the release, below-rows and assistive-deselect phases), gtk3 and gen each, and
+  `run3` (Ctrl+double-clicks, run with `--phase double_click --phase plain_click_alfa`), and
   `perf1000`, the cost of a counting selection listener on the list's writes at 1,000 rows.
 
 The container has no AT-SPI bus, so no ATK bridge runs: the assistive selections are made
