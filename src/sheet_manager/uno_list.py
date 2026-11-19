@@ -117,12 +117,12 @@ before it shows its model, and posts the end of the hold as it returns (`_releas
 every listener whose press was handled before then runs held, and so may one that VCL runs early.
 The hold keeps a row's name if every row list shown since the hold began had it there. It keeps
 no name when the restored scroll position can differ: the restore shows the old top row at the
-top where it can, so the top row must keep its name and its index, and the position must be read
-and restored. It cannot where that would leave lines empty below the last row, as on a list that
-got shorter near its end, or that shows more rows once a long name and its horizontal scrollbar
-went: the last rows then fill the view, and the rows end further up (`SvImpLBox::MakeVisible`,
-`FillView`). So once the new model is shown, the rebuild reads the position again and holds
-every row if it moved or cannot be read.
+top where it can, so the top row must keep its name and its index, and the position must be
+read. It cannot where that would leave lines empty below the last row, as on a list that got
+shorter near its end, or that shows more rows once a long name and its horizontal scrollbar went:
+the last rows then fill the view, and the rows end further up (`SvImpLBox::MakeVisible`,
+`FillView`). So once the new model is shown, also when the restore or a later call fails, the
+rebuild reads the position again and holds every row if it moved or cannot be read.
 A held press without Shift on a row whose name the hold keeps acts as usual: on whichever of
 those lists the user pressed, the row showed that name. A Shift press extends a range through
 rows that may have changed. Any other held press counts as one outside the rows: a left press
@@ -1220,18 +1220,15 @@ class SheetList:
                 self._toggles_shown()
             names = self.names()
             if top in names and nodes:
-                try:
-                    # Scroll to the end first, so that showing the old top row puts it at the top.
-                    self.tree.makeNodeVisible(nodes[-1])
-                    self.tree.makeNodeVisible(nodes[names.index(top)])
-                except BaseException:
-                    self._hold_presses((None,) * len(rows))  # They may show scrolled.
-                    raise
+                # Scroll to the end first, so that showing the old top row puts it at the top.
+                self.tree.makeNodeVisible(nodes[-1])
+                self.tree.makeNodeVisible(nodes[names.index(top)])
             self._apply_selection()
         finally:
             self._restoring_cursor = restoring
             if before is not None and not scrolled and self._nodes is nodes:
-                self._hold_if_scrolled(before, len(rows))  # Also after a failure since shown.
+                # Also when a call failed once the new rows showed, the restore's included.
+                self._hold_if_scrolled(before, len(rows))
             self._release_presses()
 
     def _hold_if_scrolled(self, before: RowGeometry, count: int) -> None:
@@ -1241,8 +1238,9 @@ class SheetList:
         it the first in view, but the last rows then fill the view (`SvImpLBox::MakeVisible`,
         `FillView`, read in 26.8.2.2), so the rows end further up on a list that got shorter
         near its end, or that shows more rows because a long name and its horizontal scrollbar
-        went. This read, one more `getNodeRect`, finds where the rows ended; a failed one holds
-        them all. A press's listener maps a position to a row through the same two values.
+        went. This read, one more `getNodeRect`, finds where the rows ended, also when the restore
+        failed partway; a failed read holds them all. A press's listener maps a position to a row
+        through the same two values.
         """
         try:
             after = self.geometry()
