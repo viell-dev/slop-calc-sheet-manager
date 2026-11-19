@@ -83,8 +83,8 @@ event while one is queued (`VCLXWindowImpl::callBackAsync`). So each such change
 intake's take, or a settled record. The listener of every press handled before then runs held,
 and so may one that runs early, which costs a toggle but cannot invert one. While the hold
 lasts, a Ctrl press without Shift and Space pick nothing and drop any picks left, with the
-notice: those a failed write left, or that a plain or Shift press or a key picked after the
-drop. Keeping them could keep a row the user saw selected and toggled off. They ask for the
+notice: those a failed write left, or that a press that does not toggle, or a key, picked after
+the drop. Keeping them could keep a row the user saw selected and toggled off. They ask for the
 write, and a press moves the cursor and the anchor to its row, as a toggle does. Rules on state
 cannot do this: a refresh between the native toggle and its listener can drop the picks and
 write the empty tree, leaving the record known before the listener runs, and settling over a
@@ -874,7 +874,8 @@ class SheetList:
             had = len(self._selection.picked)
             dropped = self._selection.carry(renamed)
             if len(self._selection.picked) != had:
-                # A pick whose sheet another window renamed goes, as every drop does (#288).
+                # A pick whose sheet no longer has its name went, as after another window
+                # renamed it: toggles are held, as at every drop (#288).
                 self._hold_toggles()
             # The same sheets as before: a retry after a failed rebuild starts from these names.
             self._observed = observed
@@ -1039,7 +1040,7 @@ class SheetList:
         The user toggled a row of a tree that may not have shown the picks. Toggling the row
         could pick one the user saw selected and deselected; keeping the picks could keep one
         the user saw and deselected. Picks are left after a failed write, and after a drop when
-        the listener of a plain or Shift press, or a key, picked rows before this toggle's
+        the listener of a press that does not toggle, or a key, picked rows before this toggle's
         listener ran. The list drops them, as settling does for a tree it cannot read
         (`_settle_shown`), so that a command refuses rather than acting on a set the user may
         not have seen.
