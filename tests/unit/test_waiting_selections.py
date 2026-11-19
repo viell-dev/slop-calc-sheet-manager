@@ -25,6 +25,7 @@ import pytest
 from tests.unit.list_peer import (
     DOWN,
     MOD1,
+    SHIFT,
     SPACE,
     UP,
     Book,
@@ -400,6 +401,45 @@ def test_ctrl_space_on_a_deferred_assistive_selection_drops_the_picks() -> None:
     assert "Bravo" not in picks(owner), "Bravo, which the user deselected, was picked"
     assert picks(owner) == [] and owner.tree.shown() == [] and cursor(owner) == "Bravo"
     assert len(owner.notices) > notices
+    assert move_to_top(owner) is None
+
+
+@pytest.mark.parametrize(
+    "modifiers",
+    [pytest.param(MOD1, id="Ctrl+Down"), pytest.param(MOD1 | SHIFT, id="Ctrl+Shift+Down")],
+)
+def test_a_ctrl_cursor_key_on_a_deferred_assistive_selection_does_not_keep_older_picks(
+    modifiers: int,
+) -> None:
+    """Alfa picked, then Echo selected alone through accessibility, and the tab sample defers the
+    intake. Ctrl+Down keeps the picks and Ctrl+Shift+Down adds a range to them: the key's write
+    showed Alfa again over Echo, or Alfa and Bravo, and Move to Top moved them, though the user
+    had replaced Alfa. As Ctrl+Space does, the key picks nothing and drops Alfa, with the
+    notice, and the cursor moves."""
+    owner = alfa_then(["Echo"])
+    sample(owner)
+    notices = len(owner.notices)
+    key(owner, DOWN, modifiers)
+    assert "Alfa" not in picks(owner), "Alfa, which the user replaced, was kept"
+    assert picks(owner) == [] and owner.tree.shown() == [] and cursor(owner) == "Bravo"
+    assert len(owner.notices) == notices + 1
+    assert move_to_top(owner) is None
+
+
+def test_a_ctrl_click_after_a_ctrl_cursor_key_on_a_deferred_selection_picks_nothing() -> None:
+    """Nothing picked: Bravo selected through accessibility, the tab sample defers the intake,
+    Ctrl+Down moves the cursor, and a Ctrl+click on Bravo deselects it natively before the key's
+    write. The intake, finding the key since its deferral, took nothing, and the listener
+    toggled Bravo into the empty picks: Move to Top moved Bravo, which the user had deselected.
+    The key holds toggles, as Ctrl+Space does, so the listener picks nothing."""
+    owner = sheet_list(Book(list(NAMES)))
+    select_through_accessibility(owner, ["Bravo"])
+    sample(owner)
+    owner.tree_key(DOWN, MOD1)
+    queued_click(owner, row("Bravo"))
+    owner.run_queue()
+    assert "Bravo" not in picks(owner), "Bravo, which the user deselected, was picked"
+    assert picks(owner) == [] and owner.tree.shown() == [] and cursor(owner) == "Bravo"
     assert move_to_top(owner) is None
 
 

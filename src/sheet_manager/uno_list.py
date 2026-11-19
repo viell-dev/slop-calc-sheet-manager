@@ -87,7 +87,10 @@ lasts, a Ctrl press without Shift, and Space unless the hold holds presses alone
 nothing and drop any picks left, with the notice: those a failed write left, or that a press
 that does not toggle, or a key, picked after the drop. Keeping them could keep a row the user
 saw selected and toggled off. They ask for the write, and a press moves the cursor and the
-anchor to its row, as a toggle does. Rules on state cannot do this: a refresh between the
+anchor to its row, as a toggle does. Each such refusal holds toggles again until that write
+has shown the picks, also when it found no picks to drop: the tree then shows the refused
+toggle, and another press handled before the write would toggle against picks that lack it
+(#291). Rules on state cannot do this: a refresh between the
 native toggle and its listener can drop the picks and write the empty tree, leaving the record
 known before the listener runs, and settling over a tree the toggle emptied knows it at once. A
 plain or Shift press sets the picks rather than toggling a row, so a drop cannot invert it.
@@ -101,20 +104,28 @@ no owned handler sees, such as one made through accessibility, until the queued 
 it. A key that changes the picks holds presses alone (`_hold_toggles(keys=False)`): a Ctrl+click
 handled before the write toggled a row of the tree as it was, while keys typed ahead act on the
 picks they changed. The intake that the tab sample or a refresh defers records the rows it
-found (`_deferred`) until it runs. A Ctrl press's listener that runs before it was pressed
-before it looked, so it toggles only if toggling its row against the picks gives exactly those
-rows, as when the sample came between that press's own native toggle and its listener (#85);
-otherwise the user toggled a row of a selection the list has not taken, and the press is held
-(`_toggle_held`). Space does not toggle while such an intake waits. An intake that finds the
-tree changed since it was deferred holds presses alone: a press handled in between toggled a
-row of the tree it is about to take, and the listener, queued behind it, would toggle that row
-again. A listener that VCL runs ahead of the intake although it was pressed after the intake
-looked is judged as pressed before. A refresh that renames or reorders the rows cannot show a
-waiting selection again, and the intake refuses it, so the refresh drops the picks it
-superseded, with the notice, rather than write them over it (#280); the rebuild then writes the
-empty picks with its own write. Before any intake has seen a waiting selection, the list cannot
-tell it from the picks without reading the tree in the listener, so a toggle or a Ctrl+Shift
-range then acts against the picks (#294).
+found (`_deferred`) until it runs; a drop or a refused toggle ends the record sooner, since
+the intake then takes nothing, and their hold covers what the record held. The press listener
+and the key handler read the record once, before any UNO call, through which queued work,
+that intake included, can run inside them. A Ctrl press's listener that runs before it was
+pressed before it looked, so it toggles only if toggling its row against the picks gives
+exactly those rows, as when the sample came between that press's own native toggle and its
+listener (#85); otherwise the user toggled a row of a selection the list has not taken, and the
+press is held (`_toggle_held`), with the notice if the intake found rows, which the press's
+write clears. While such an intake waits, Space does not toggle, and a Ctrl+Up, Ctrl+Down or
+other cursor key with Ctrl, which keeps the picks, or with Shift too adds a range to them, is
+held as Space is: its write would show the older picks over the waiting selection. An intake
+that finds the tree changed since it was deferred holds presses alone: a press handled in
+between toggled a row of the tree it is about to take, and the listener, queued behind it,
+would toggle that row again. A listener that VCL runs ahead of the intake although it was
+pressed after the intake looked is judged as pressed before. A refresh that renames or reorders
+the rows cannot show a waiting selection again, and the intake refuses it, so the refresh drops
+the picks it superseded, with the notice, rather than write them over it (#280); the rebuild
+then writes the empty picks with its own write. Before any intake has seen a waiting selection,
+the list cannot tell it from the picks without reading the tree in the listener, so a toggle or
+a Ctrl+Shift range then acts against the picks, and a key's write shows the picks over that
+selection. A Ctrl+Shift press, whose range is not a toggle, and a right press, whose write the
+menu targets, do so after an intake has seen it too (#294).
 
 Pointer input. A left press picks at once and keeps the pressed sheet's handle. A plain press
 on a picked row keeps the other picks, so that they can be dragged together; its release in the
@@ -610,11 +621,12 @@ class SheetList:
     - Toggles (`_toggles_held`, #288): from a drop of picks, or a failed write that leaves
       `_shown` None, until work posted once the tree shows exactly the picks has run, a Ctrl
       press's listener (`mouse_pressed`) and Ctrl+Space (`tree_key`) pick nothing, drop any
-      picks left (`_toggle_held_off`) and ask for the write. A key's change of the picks, and
-      an intake that finds the tree changed since it was deferred, hold the listener alone
-      (`_toggles_keys` False). While a deferred intake waits (`_deferred`, #291), the listener
-      is held unless its toggle accounts for the rows that intake found (`_toggle_held`), and
-      Ctrl+Space is held.
+      picks left (`_toggle_held_off`), hold toggles until that write, and ask for it. A key's
+      change of the picks, and an intake that finds the tree changed since it was deferred,
+      hold the listener alone (`_toggles_keys` False). While a deferred intake waits
+      (`_deferred`, #291, read once per listener or key), the listener is held unless its
+      toggle accounts for the rows that intake found (`_toggle_held`), and Ctrl+Space and the
+      cursor keys with Ctrl are held.
     - Tab observation (`observation_paused`) waits while `_busy` (a move or rename runs),
       `_pointer_depth`, `_restoring_cursor`, `_press`, `_drag`, the menu's popup or
       `_menu_context` holds; the observer adds the document's locks and an own replay's view. A
@@ -1486,6 +1498,7 @@ class SheetList:
 
     def tree_key(self, code: int, modifiers: int) -> None:
         """Record owned selection keys synchronously, so held keys accumulate before painting."""
+        deferred = self._deferred  # Read once, before posting, as `mouse_pressed` does.
         self._input += 1
         self._tabs.note_input()
         names = self.names()
@@ -1498,7 +1511,6 @@ class SheetList:
             self._selection.take(names, self._handles, names)
             self._selection.cursor = cursor or self._ref(names[0])
         elif code == SPACE:
-            deferred = self._deferred
             if (self._toggles_held is not None and self._toggles_keys) or deferred is not None:
                 # The tree may not show the picks, as after a drop until its write, or after a
                 # failed write, or it showed a selection a queued intake has not taken yet. The
@@ -1523,6 +1535,16 @@ class SheetList:
             if target is None:
                 return
             name = names[max(0, min(len(names) - 1, target))]
+            if modifiers & MOD1 and deferred is not None:
+                # With Ctrl the key keeps the picks, and with Shift too it adds a range to
+                # them, while the tree showed a selection a queued intake has not taken: its
+                # write would show the older picks over that selection, or add to them, for a
+                # command to act on (#291). As Ctrl+Space does, it drops any picks, holds
+                # toggles and asks for the write; the cursor moves.
+                self._toggle_held_off(deferred)
+                self._selection.cursor = self._ref(name)
+                self._queue_selection(scroll=True)
+                return
             if modifiers & MOD1 and not modifiers & SHIFT:
                 self._selection.cursor = self._ref(name)
             else:
