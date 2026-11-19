@@ -40,6 +40,8 @@ def native_picks() -> tuple[Any, Any, list[Callable[[], None]]]:
         _handles=handles,
         _shown=("Bravo",),
         _toggles_held=None,
+        _deferred=None,
+        _hold_toggles=Mock(),
         _toggles_shown=Mock(),  # A take shows exactly the picks it gives.
         _user_picks=True,
         selected_names=lambda: live.picks,
@@ -54,6 +56,8 @@ def native_picks() -> tuple[Any, Any, list[Callable[[], None]]]:
         return bool(take(owner, **kwargs))
 
     owner._take_tree_selection = take_native
+    held = method(SOURCE, "SheetList", "_toggle_held", {})
+    owner._toggle_held = lambda name: held(owner, name)
     return owner, live, queued
 
 
