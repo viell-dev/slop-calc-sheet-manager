@@ -23,10 +23,11 @@ relies on from Calc and the tree control:
 Posted work runs on `run_queue`, and a failure there ends only that work and is recorded, as
 LibreOffice's callback reports it. `queued_click` posts a click's mouse listeners there too, after
 the tree has handled the press, as VCL queues them (#269), so that work posted earlier, such as a
-refresh or the tab sample, runs between the native press and the list's listener (#85, #288). The refresh schedule's timers run on `retry`, which advances
-the fake clock. Move to Top runs through `queue_move` and `_move_selection`; the reorder layer's
-`apply_order` is replaced by `Book.apply`, which refuses a stale snapshot as `is_current` does
-and otherwise moves the planned sheets.
+refresh or the tab sample, runs between the native press and the list's listener (#85, #288).
+The refresh schedule's timers run on `retry`, which advances the fake clock. Move to Top runs
+through `queue_move` and `_move_selection`; the reorder layer's `apply_order` is replaced by
+`Book.apply`, which refuses a stale snapshot as `is_current` does and otherwise moves the planned
+sheets.
 
 The native checks are in `tests/integration` and `tests/ui`.
 """
