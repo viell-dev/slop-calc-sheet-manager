@@ -71,6 +71,7 @@ METHODS = (
     "_tell_dropped",
     "_hold_toggles",
     "_toggles_shown",
+    "_toggle_held_off",
     "_rebuild",
     "_show_native",
     "_name_viewed",

@@ -10,8 +10,9 @@ a drop or a failed write can leave other than the picks.
 
 The real list runs over the simulated peer of `list_peer`, whose `queued_click` queues the
 listeners as VCL does. The invariant: a toggle never picks a row the tree showed selected when
-the user toggled it. While the tree may not show the picks, a toggle changes no pick and asks for
-the write, and toggles act again once posted work runs after the tree shows the picks.
+the user toggled it, nor keeps one the user toggled off. While the tree may not show the picks, a
+toggle picks nothing, drops any picks left with the notice, and asks for the write; toggles act
+again once posted work runs after the tree shows the picks.
 """
 
 from collections.abc import Callable
@@ -24,6 +25,7 @@ from tests.unit.list_peer import (
     MOD1,
     SHIFT,
     SPACE,
+    UP,
     A,
     Book,
     changed,
@@ -97,6 +99,23 @@ def test_a_lost_proof_before_a_toggles_listener_picks_nothing() -> None:
     deselected_nothing_picked(owner, "Bravo")
     key(owner, SPACE, MOD1)
     assert picks(owner) == ["Bravo"] and owner.tree.shown() == ["Bravo"]
+
+
+def test_a_lost_proof_before_a_toggles_listener_also_holds_a_waiting_native_selection() -> None:
+    """No failure, no picks: Bravo and Delta are selected through accessibility, waiting for
+    the intake, and a Ctrl+click deselects Bravo in the tree. A refresh queued ahead of the
+    click's listener loses the proof and clears the selection the intake had not taken, with
+    the notice (#265). The listener toggled Bravo against the empty picks and picked it."""
+    owner = sheet_list(Book(list(NAMES)))
+    owner.tree.assistive_only("Bravo")
+    owner.tree.assistive_select("Delta")
+    owner.book.replace("Echo")
+    post_refresh(owner)
+    queued_click(owner, row("Bravo"))
+    notices = len(owner.notices)
+    owner.run_queue()
+    assert len(owner.notices) == notices + 1
+    deselected_nothing_picked(owner, "Bravo")
 
 
 def test_space_after_a_lost_proof_and_before_its_release_picks_nothing() -> None:
@@ -262,16 +281,32 @@ def test_a_toggle_after_a_failed_write_does_not_pick_the_row_it_left_selected(
     Delta and then fails at `clearSelection`. The tree shows Delta alone, which the list does not
     hold, and the record is unknown. Ctrl+Space with the cursor there, or a Ctrl+click on Delta,
     meant to deselect it, toggled it on against the picks, and Move to Top moved Bravo and Delta.
-    The rule for Space before this held only while nothing was picked. The toggle now changes no
-    pick, and its write shows Bravo again, which Move to Top moves."""
+    The rule for Space before this held only while nothing was picked. The toggle now picks
+    nothing and drops Bravo, which the user did not see selected, with the notice."""
     owner = picked("Bravo")
     key(owner, DOWN, MOD1)
     owner.faults.fail("clearSelection")
     key(owner, DOWN, MOD1)
     assert owner._shown is None and owner.tree.shown() == ["Delta"] and cursor(owner) == "Delta"
+    notices = len(owner.notices)
     toggle(owner)
-    assert picks(owner) == ["Bravo"] and owner.tree.shown() == ["Bravo"]
-    assert move_to_top(owner) == ["Bravo"]
+    assert len(owner.notices) == notices + 1 and cursor(owner) == "Delta"
+    deselected_nothing_picked(owner, "Delta")
+
+
+def test_a_toggle_that_deselects_a_pick_after_a_failed_write_does_not_keep_it() -> None:
+    """Alfa and Bravo picked and shown; Ctrl+Up's write fails at `select` with no effect, so the
+    tree still shows both but the record is unknown. A Ctrl+click deselects Bravo. Changing no
+    pick would keep Bravo, which the next write shows again and Move to Top moves: the row the
+    user had just deselected. The toggle drops the picks instead, with the notice."""
+    owner = picked("Alfa", "Bravo")
+    owner.faults.fail("select")
+    key(owner, UP, MOD1)
+    assert owner._shown is None and owner.tree.shown() == ["Alfa", "Bravo"]
+    queued_click(owner, row("Bravo"))
+    owner.run_queue()
+    assert cursor(owner) == "Bravo"
+    deselected_nothing_picked(owner, "Bravo")
 
 
 def test_toggles_act_again_once_a_write_shows_the_picks() -> None:
@@ -325,11 +360,17 @@ def test_an_intake_that_finds_the_picks_shown_ends_the_hold() -> None:
 
 
 @pytest.mark.parametrize(
-    "modifiers", [pytest.param(0, id="plain"), pytest.param(SHIFT, id="Shift")]
+    "modifiers",
+    [
+        pytest.param(0, id="plain"),
+        pytest.param(SHIFT, id="Shift"),
+        pytest.param(SHIFT | MOD1, id="Ctrl+Shift"),
+    ],
 )
 def test_a_press_that_does_not_toggle_still_picks_while_toggles_are_held(modifiers: int) -> None:
-    """A plain or Shift press sets the picks rather than toggling a row, so a drop before its
-    listener cannot invert it: after a lost proof, a press on Delta still picks Delta."""
+    """A plain or Shift press sets the picks, and Ctrl+Shift adds a range to them, rather than
+    toggling a row, so a drop before the listener cannot invert it: after a lost proof, a press on
+    Delta still picks Delta."""
     owner = picked("Bravo")
     owner.book.replace("Echo")
     post_refresh(owner)

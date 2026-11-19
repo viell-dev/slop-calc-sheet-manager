@@ -280,6 +280,9 @@ A notice explains conservative clearing of a user-made selection. Pick the sheet
 cleared the same way ([#265](https://github.com/viell-dev/slop-calc-sheet-manager/issues/265)), and
 so is the selection when LibreOffice fails to show it in the list
 ([#257](https://github.com/viell-dev/slop-calc-sheet-manager/issues/257)).
+<Unreleased /> A Ctrl+click or Ctrl+Space made as the list clears its selection, or before the
+list shows it again after such a failure, changes nothing: the list shows its selection, and the
+next toggle acts ([#288](https://github.com/viell-dev/slop-calc-sheet-manager/issues/288)).
 
 **Undo and Redo of the list's moves.** <Unreleased since="0.0.8" /> Undo and Redo of a move the list
 made itself, by dragging, a move button, the menu or a shortcut, keep the picks and the view. The

@@ -5,6 +5,13 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- A Ctrl+click or Ctrl+Space that deselects a sheet in the list no longer picks that sheet
+  instead when the list clears its picks at the same moment, as it does when another window
+  inserts or deletes a sheet; Move to Top then moved the sheet you had just deselected. Until the
+  list shows its picks again, such a toggle changes no pick and the list redraws its selection:
+  toggle again to pick or deselect a sheet. The same applies after LibreOffice fails a write to
+  the list's tree, and also when other sheets are still picked
+  ([#288](https://github.com/viell-dev/slop-calc-sheet-manager/issues/288)).
 - Enter, type-ahead and the keyboard menu key no longer report a failure on stderr when the
   document or the sidebar closes between the key and its queued work, which now does nothing
   once the list is closed ([#282](https://github.com/viell-dev/slop-calc-sheet-manager/issues/282)).
