@@ -264,14 +264,20 @@ def test_the_release_of_an_earlier_hold_does_not_end_a_later_one() -> None:
     deselected_nothing_picked(owner, "Bravo")
 
 
+def ctrl_space(owner: Any) -> None:
+    key(owner, SPACE, MOD1)
+
+
+def ctrl_click_delta(owner: Any) -> None:
+    queued_click(owner, row("Delta"))
+    owner.run_queue()
+
+
 @pytest.mark.parametrize(
     "toggle",
     [
-        pytest.param(lambda owner: key(owner, SPACE, MOD1), id="Ctrl+Space"),
-        pytest.param(
-            lambda owner: (queued_click(owner, row("Delta")), owner.run_queue()),
-            id="Ctrl+click",
-        ),
+        pytest.param(ctrl_space, id="Ctrl+Space"),
+        pytest.param(ctrl_click_delta, id="Ctrl+click"),
     ],
 )
 def test_a_toggle_after_a_failed_write_does_not_pick_the_row_it_left_selected(

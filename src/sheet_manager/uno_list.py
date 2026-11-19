@@ -632,9 +632,9 @@ class SheetList:
         # Owned pointer and keyboard gestures share a retained range anchor.
         self._selection = Selection(_current)
         self._shown: tuple[str, ...] | None = ()
-        # While set, toggles change no pick: the tree may not have shown the picks when the
-        # user toggled a row (#288; `_hold_toggles`). `_toggles_release` is the hold whose end
-        # is posted.
+        # While set, toggles pick nothing: the tree may not have shown the picks when the user
+        # toggled a row (#288; `_hold_toggles`). `_toggles_release` is the hold whose end is
+        # posted.
         self._toggles_held: object | None = None
         self._toggles_release: object | None = None
         # A sheet that may have been inserted or deleted since the picks were proved makes
