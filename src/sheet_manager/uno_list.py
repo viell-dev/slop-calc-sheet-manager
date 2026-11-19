@@ -564,8 +564,8 @@ class SheetList:
     first, then `_cleanup` releases the listeners and controls in reverse creation order.
     Closing the queue does not revoke work already queued, which runs after `dispose` or, if a
     native release dispatches events, during it; so each part checks its own disposal when such
-    work runs. The list's own work then returns before it reads anything, a menu command chosen
-    before the close included (#282, #285). A shortcut forwarded from the list is the user's
+    work runs. The list's own work then returns before it touches the document or a control, a
+    menu command chosen before the close included (#282, #285). A shortcut forwarded from the list is the user's
     input to the window rather than the list's work: it still runs while the frame shows the
     list's view, and is dropped once the document has closed or reloaded (`_forward`). A failed
     construction disposes what it had created.
@@ -1323,7 +1323,7 @@ class SheetList:
 
     def _flush_selection(self) -> None:
         if self._disposed:
-            return  # Queued by a click or key; the monitor may be detached, the tree is (#285).
+            return  # Queued by a click or key; the tree is closed, the monitor maybe too (#285).
         if self._pointer_depth:
             self._selection_write_pending = False  # The listener posts again after its work.
             return
