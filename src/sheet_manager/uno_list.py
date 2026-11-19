@@ -1075,13 +1075,13 @@ class SheetList:
         held = self._presses_held
         if held is None or self._presses_release is held:
             return
-        self._presses_release = held
 
         def release() -> None:
             if self._presses_held is held:
                 self._presses_held = None
 
         self.post(release, "accepting presses again")
+        self._presses_release = held  # Once posted: a failed post is tried again by the next.
 
     def _toggle_held_off(self) -> None:
         """A toggle while toggles are held: drop the picks, if any, with the notice (#288).

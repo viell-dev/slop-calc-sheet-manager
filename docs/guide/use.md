@@ -285,6 +285,11 @@ picked sheet that another window renamed, picks nothing, and the next toggle act
 shows its selection again after such a failure, a toggle also clears the selection, with the
 notice
 ([#288](https://github.com/viell-dev/slop-calc-sheet-manager/issues/288)).
+<Unreleased /> A click in the list just as the list redraws its rows, as it does when another window
+moves, inserts, deletes or renames a sheet, does nothing rather than act on the sheet that the
+redraw put under the pointer. A right click then opens no menu, and any other click also clears
+the selection, with the notice when you had made it. Click again
+([#293](https://github.com/viell-dev/slop-calc-sheet-manager/issues/293)).
 
 **Undo and Redo of the list's moves.** <Unreleased since="0.0.8" /> Undo and Redo of a move the list
 made itself, by dragging, a move button, the menu or a shortcut, keep the picks and the view. The

@@ -23,6 +23,7 @@ import pytest
 from tests.unit.list_peer import (
     MOD1,
     RIGHT,
+    NativeFailure,
     SHIFT,
     Book,
     click,
@@ -308,3 +309,32 @@ def test_a_rebuild_that_may_not_keep_the_scroll_position_holds_presses(call: str
     owner.run_queue()
     assert owner.faults.failed == [call]
     assert picks(owner) == [] and cursor(owner) is None
+
+
+def test_a_hold_whose_end_could_not_be_posted_ends_with_the_next_rebuild() -> None:
+    """Delta picked; the reordering refresh's post of the hold's end fails, so presses stay held.
+    The next rebuild, after another window colours Golf, holds nothing new, but posts that end:
+    a click there picks the sheet its row shows. Had the list recorded the end as posted before
+    posting it, nothing would post it again, and every press would be refused until another
+    reorder."""
+    owner = picked("Delta")
+    post = owner.post
+
+    def failing(work: Callable[[], None], where: str) -> None:
+        if where == "accepting presses again" and not owner.faults.failed:
+            owner.faults.failed.append(where)
+            raise NativeFailure(where)
+        post(work, where)
+
+    owner.post = failing
+    reorder(owner)
+    owner.run_queue()
+    assert owner.faults.failed == ["accepting presses again"]
+    queued_click(owner, PRESSED, 0)
+    owner.run_queue()
+    assert picks(owner) == []
+    recolour(owner)
+    owner.run_queue()
+    queued_click(owner, PRESSED, 0)
+    owner.run_queue()
+    assert picks(owner) == ["Echo"] and move_to_top(owner) == ["Echo"]
