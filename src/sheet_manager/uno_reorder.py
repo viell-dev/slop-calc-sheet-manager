@@ -14,7 +14,9 @@ the result or its recovery. docs/reordering.md is the contract the panel relies 
 - Snapshots carry the shared `uno_structure` monitor's identity and generation, and
   `is_current`, `preflight` and `apply_order` check both. Undo and Redo invalidate a held
   snapshot even when they restore the original order, so recovery tests take fresh ones. The
-  one exception is a proved Undo or Redo of a move made here (#91, below).
+  one exception is a proved Undo or Redo of a move made here (#91, below). Code without the
+  solar mutex, such as the list's drag gesture, calls `is_current_as_reported` instead, which
+  compares both without checking the monitor and only refuses (#284).
 - Read sheet handles by index, never by name. Calc accepts names that its own lookup cannot tell
   apart, such as `ﬁ` (U+FB01) beside `fi`, or `ı` beside `I` in English locales, and the lookup
   then finds the first of them for both (#113); measured with 26.2.1.2 and 26.8.1.1. Restoring
@@ -129,14 +131,34 @@ def is_current(document: Any, observed: Snapshot) -> bool:
     return (
         fresh.monitor is observed.monitor
         and fresh.generation == observed.generation
-        and (
-            fresh.sheets == observed.sheets
-            and all(
-                handle.getName() == sheet.name
-                for handle, sheet in zip(observed.handles, observed.sheets, strict=True)
-            )
-            and observed.monitor.check() == observed.generation
-        )
+        and _shows(observed, fresh.sheets)
+        and observed.monitor.check() == observed.generation
+    )
+
+
+def is_current_as_reported(document: Any, observed: Snapshot) -> bool:
+    """`is_current` without the monitor's `check()`, for code without the solar mutex (#284).
+
+    It compares the generation that the monitor's change reports keep current, so it misses
+    what only a check finds, such as a lock held at that moment or a history change nobody
+    reported. It can only refuse early: whatever then acts on the sheets calls `is_current`.
+    """
+    monitor = observed.monitor
+    if (
+        str(document.RuntimeUID) != observed.document_id
+        or monitor.document is None  # Detached: `monitor_for` would no longer return it.
+        or monitor.generation != observed.generation
+    ):
+        return False
+    sheets, _ = _read_sheets(document)
+    return _shows(observed, sheets) and monitor.generation == observed.generation
+
+
+def _shows(observed: Snapshot, sheets: tuple[Sheet, ...]) -> bool:
+    """Whether freshly read sheets are the snapshot's, each retained handle still so named."""
+    return sheets == observed.sheets and all(
+        handle.getName() == sheet.name
+        for handle, sheet in zip(observed.handles, observed.sheets, strict=True)
     )
 
 
