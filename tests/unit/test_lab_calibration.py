@@ -234,9 +234,10 @@ def test_a_late_pair_ends_calibration_before_another_second_move(office: Office)
 
 def test_a_late_pair_counts_for_its_own_point(office: Office) -> None:
     # The first point's report comes at the second point, which is given a second move and
-    # set aside before its own reports come. They come at the third point, the second's report
-    # in its first wait and the second move's while its reports settle, after which it is given
-    # a second move too. The pair is the second point's, and gives its offset, not the third's.
+    # set aside before its own reports come. They come while the third point is tried: the
+    # second point's report in the third's first wait, and its second move's while the third
+    # point's reports settle, so the third point is given a second move too. The pair is the
+    # second point's, and gives its offset, not the third point's.
     real_input = Input(office, busy={1: 0.4, 2: 0.95, 3: 0.1, 4: 0.6})
     assert calibrate(office, real_input, frame=GEN_ROWS, confirm=0.5) == GEN.origin
     assert real_input.moves == [
