@@ -255,6 +255,12 @@ def test_refresh_seeds_the_new_proof_before_a_subsequent_tab_change(kept: bool) 
         "_refresh",
         {"snapshot": snapshot, "read_rows": read_rows, "Mapping": Mapping},
     )
+    prove = method(SOURCE, "SheetList", "_prove", {"Snapshot": Any})
+
+    def prove_rows(observed: Any, generation: int) -> None:
+        prove(owner, observed, generation)
+
+    owner._prove = prove_rows
     refresh(owner, {})
     assert owner._take_tree_selection.call_args_list[0].kwargs == {"defer": True}
     assert owner._proven == tabs._generation == 1
@@ -665,14 +671,15 @@ def drag_list() -> tuple[Any, Any, Any, list[Any]]:
     def read_rows(controller: Any, picture: Any) -> list[SheetRow]:
         return [SheetRow(sheet.name, active=sheet.name == live.active) for sheet in picture.sheets]
 
-    def rebuild(rows: list[SheetRow]) -> None:
+    def rebuild(rows: list[SheetRow], observed: Any, generation: int) -> None:
         owner.rows, owner._nodes = rows, [object() for _ in rows]
+        owner._prove(observed, generation)
 
     def bind(name: str, namespace: dict[str, Any]) -> None:
         loaded = method(SOURCE, "SheetList", name, namespace)
 
-        def bound(*arguments: object) -> Any:
-            return loaded(owner, *arguments)
+        def bound(*arguments: object, **keywords: object) -> Any:
+            return loaded(owner, *arguments, **keywords)
 
         setattr(owner, name, bound)
 
@@ -722,6 +729,7 @@ def drag_list() -> tuple[Any, Any, Any, list[Any]]:
     bind("post", {})
     bind("refresh", {"Mapping": Mapping})
     bind("_refresh", {"snapshot": snapshot, "read_rows": read_rows, "Mapping": Mapping})
+    bind("_prove", {"Snapshot": Any})
     name_or_none = function(SOURCE, "_name_or_none", {"Any": Any})
     bind(
         "_identities_kept",
@@ -733,6 +741,7 @@ def drag_list() -> tuple[Any, Any, Any, list[Any]]:
         },
     )
     bind("_drop_all_picks", {"replace": replace})
+    bind("_tell_dropped", {})
     bind("_current_picks", {"Ref": Ref})
     bind("_picks_at", {"Ref": Ref})
     bind(

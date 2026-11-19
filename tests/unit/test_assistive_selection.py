@@ -57,6 +57,7 @@ class Tree:
 def shower(selected: list[str]) -> Any:
     owner = SimpleNamespace(
         _restoring_cursor=False,
+        _shown=("Alfa",),
         _nodes=list(NAMES),
         names=lambda: list(NAMES),
         peer=SimpleNamespace(invalidate=Mock()),
@@ -77,6 +78,7 @@ def test_showing_native_picks_again_marks_the_writes_as_restoration() -> None:
     assert owner.tree.selected == ["Bravo", "Delta"]
     assert owner.tree.restoring == [True, True, True]  # Cursor events are not user input.
     assert owner._restoring_cursor is False
+    assert owner._shown == ("Alfa",), "The list's own picks stay what the intake compares with"
     owner.peer.invalidate.assert_called_once_with(0)
 
 
@@ -119,13 +121,13 @@ def refresher(change: str) -> Any:
     )
     owner.names = lambda: [row.name for row in owner.rows]
 
-    def drop() -> bool:
+    def drop(native: bool = False) -> bool:
         owner._generation += 1
         return True
 
     owner._drop_all_picks = drop
 
-    def rebuild(rows: list[SheetRow]) -> None:
+    def rebuild(rows: list[SheetRow], observed: Any, generation: int) -> None:
         owner.rows = rows
 
     owner._rebuild.side_effect = rebuild
@@ -139,6 +141,12 @@ def refresher(change: str) -> Any:
         "_refresh",
         {"snapshot": Mock(return_value=observed), "read_rows": read_rows, "Mapping": Mapping},
     )
+    prove = method(SOURCE, "SheetList", "_prove", {"Snapshot": Any})
+
+    def prove_rows(observed: Any, generation: int) -> None:
+        prove(owner, observed, generation)
+
+    owner._prove = prove_rows
     owner.document = owner.controller = None
     return owner, lambda: refresh(owner, {})
 
