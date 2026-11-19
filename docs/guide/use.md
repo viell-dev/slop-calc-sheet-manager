@@ -286,10 +286,12 @@ shows its selection again after such a failure, a toggle also clears the selecti
 notice
 ([#288](https://github.com/viell-dev/slop-calc-sheet-manager/issues/288)).
 <Unreleased /> A selection made through assistive technology that the list has not taken yet is
-also cleared, with the picks it replaced, when another window renames or moves a sheet first
+also cleared, with the picks it replaced, when a sheet is renamed or moved first
 ([#280](https://github.com/viell-dev/slop-calc-sheet-manager/issues/280)). A Ctrl+click made
-just after a selection key, before the list shows that key's change, or on such a selection
-once the list has seen it, picks nothing, and the next toggle acts
+just after a selection key, before the list shows that key's change, picks nothing and clears
+the selection, with the notice. So do a Ctrl+click, Ctrl+Space, and Ctrl with an arrow, Home,
+End, Page Up or Page Down key on such a selection once the list has seen it, also when several
+Ctrl+clicks come at once. Select again; the next toggle acts
 ([#291](https://github.com/viell-dev/slop-calc-sheet-manager/issues/291)).
 
 **Undo and Redo of the list's moves.** <Unreleased since="0.0.8" /> Undo and Redo of a move the list

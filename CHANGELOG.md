@@ -11,10 +11,12 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   you select again ([#280](https://github.com/viell-dev/slop-calc-sheet-manager/issues/280)).
 - A Ctrl+click that deselects a sheet no longer picks it when it comes just after a selection key
   whose change the list has not drawn yet, or on a selection made through assistive technology
-  that the list has seen but not taken yet; Ctrl+Space on such a selection no longer picks the
-  row you meant to deselect. Such a toggle now picks nothing and the list redraws its selection:
-  toggle again. A Ctrl+click within about a quarter of a second of an assistive selection, before
-  the list has looked at it, still acts against the earlier picks
+  that the list has seen but not taken yet, also when several clicks come at once; Ctrl+Space
+  on such a selection no longer picks the row you meant to deselect, and Ctrl with an arrow,
+  Home, End, Page Up or Page Down key no longer brings back the earlier picks over it. Such a
+  toggle or key now picks nothing and clears the selection, with the selection notice: select
+  again. Within about a quarter of a second of an assistive selection, before the list has
+  looked at it, a Ctrl+click, a Ctrl+Shift+click or a key still acts against the earlier picks
   ([#291](https://github.com/viell-dev/slop-calc-sheet-manager/issues/291),
   [#294](https://github.com/viell-dev/slop-calc-sheet-manager/issues/294)).
 - A Ctrl+click or Ctrl+Space that deselects a sheet in the list no longer picks that sheet

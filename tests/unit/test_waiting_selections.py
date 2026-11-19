@@ -61,6 +61,15 @@ def sample(owner: Any) -> None:
     owner._take_tree_selection(paint=False, defer=True)
 
 
+def run_the_deferred_intake(owner: Any) -> None:
+    """Run the queued intake now, as posting or reading UNO inside a handler can let it run."""
+    for index, (work, where) in enumerate(owner.queue):
+        if where == "taking native list selection after queued input":
+            del owner.queue[index]
+            work()
+            return
+
+
 def refresh_after_others_change(owner: Any) -> None:
     """Another view's change, as the modify listener reports it, and the refresh it schedules."""
     changed(owner)
@@ -296,18 +305,47 @@ def test_a_deferred_intake_that_runs_inside_the_press_listener_does_not_free_the
     select_through_accessibility(owner, ["Echo"])
     queued_click(owner, row("Echo"))
     sample(owner)
-
-    def claim_window() -> None:
-        for index, (work, where) in enumerate(owner.queue):
-            if where == "taking native list selection after queued input":
-                del owner.queue[index]
-                work()
-                return
-
-    owner.claim_window = claim_window
+    owner.claim_window = lambda: run_the_deferred_intake(owner)
     owner.run_queue()
     assert "Echo" not in picks(owner), "Echo, which the user deselected, was picked"
     assert picks(owner) == [] and owner.tree.shown() == [] and cursor(owner) == "Echo"
+    assert move_to_top(owner) is None
+
+
+def test_a_deferred_intake_that_runs_inside_the_key_handler_does_not_free_ctrl_space() -> None:
+    """The key handler's counterpart: nothing picked, the cursor on Bravo, Bravo selected through
+    accessibility, and the tab sample defers the intake. If that intake runs while Ctrl+Space's
+    handler posts its input's acknowledgement, it clears its record and takes nothing; a handler
+    that read the record after that call toggled Bravo on, and Move to Top moved the sheet the
+    user meant to deselect. The handler reads the record once, before posting."""
+    owner = sheet_list(Book(list(NAMES)))
+    key(owner, DOWN, MOD1)
+    select_through_accessibility(owner, ["Bravo"])
+    sample(owner)
+    owner._tabs.note_input = lambda: run_the_deferred_intake(owner)
+    key(owner, SPACE, MOD1)
+    assert "Bravo" not in picks(owner), "Bravo, which the user deselected, was picked"
+    assert picks(owner) == [] and owner.tree.shown() == [] and cursor(owner) == "Bravo"
+    assert move_to_top(owner) is None
+
+
+def test_a_refused_ctrl_click_tells_of_the_waiting_selection_with_picks_that_follow_calc() -> None:
+    """The picks follow Calc's tabs, Bravo and Charlie, rather than the user, so dropping them
+    alone is silent; Echo is then added through accessibility, a Ctrl+click adds Delta natively,
+    and the tab sample defers the intake before the click's listener. The listener cannot account
+    for Echo and picks nothing, and its write clears the four rows the tree showed, Echo the
+    user's own: the notice tells of them."""
+    owner = sheet_list(Book(list(NAMES)))
+    owner.follow_tabs(["Bravo", "Charlie"], "Bravo")
+    owner.run_queue()
+    assert picks(owner) == ["Bravo", "Charlie"] and not owner._user_picks
+    owner.tree.assistive_select("Echo")
+    queued_click(owner, row("Delta"))
+    sample(owner)
+    notices = len(owner.notices)
+    owner.run_queue()
+    assert picks(owner) == [] and owner.tree.shown() == [] and cursor(owner) == "Delta"
+    assert len(owner.notices) == notices + 1, "The rows the tree showed went without the notice"
     assert move_to_top(owner) is None
 
 
@@ -527,12 +565,12 @@ def in_flight() -> list[Any]:
     clicks, leaving out an accessibility selection that the clicks before the sample undo, so
     that the sample finds the tree showing exactly the picks, none: no intake has then read
     that selection, which is #294's case and acts as on `main`."""
-    starts = [
+    starts: list[tuple[str, list[str], list[str]]] = [
         ("nothing picked", [], []),
         ("Bravo picked", ["Bravo"], []),
         ("Bravo and Delta through accessibility", [], ["Bravo", "Delta"]),
     ]
-    sequences = [
+    sequences: list[tuple[str, ...]] = [
         ("Bravo", "Delta"),
         ("Alfa", "Delta", "Alfa"),
         ("Alfa", "Delta", "Golf"),
@@ -540,7 +578,7 @@ def in_flight() -> list[Any]:
         ("Delta", "Delta", "Delta"),
         ("Alfa", "Bravo", "Alfa", "Delta"),
     ]
-    cases = []
+    cases: list[Any] = []
     for start, picked, assistive in starts:
         for clicks in sequences:
             for sampled in range(len(clicks) + 1):
