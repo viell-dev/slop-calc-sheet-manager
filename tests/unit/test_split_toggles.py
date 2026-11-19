@@ -154,9 +154,11 @@ def test_a_rename_elsewhere_before_a_toggles_listener_picks_nothing(
     the click's listener toggled it, now Zulu, against the picks left: Move to Top moved the sheet
     the user had just deselected, with Delta when that stayed picked. When the user toggled the
     other pick, the listener toggled it off, as it should; held, it drops that pick with the
-    notice, and the result is the same. The rebuild changed a row's name, which also holds
-    presses (#293): the listener cannot tell a rename from another sheet moved into the row, so
-    it moves no cursor, which stays where the refresh's write put it, `after`."""
+    notice, and the result is the same. The rebuild changed the renamed row's name, which holds
+    presses on that row (#293): a press there cannot be told from one on another sheet moved
+    into the row, so it moves no cursor, which stays where the refresh's write put it. A press on
+    the other pick's row, which kept its name, moves the cursor there, as a held toggle does.
+    `after` is where the cursor ends."""
     owner = picked(*names)
     owner.book.rename(renamed, "Zulu")
     post_refresh(owner)

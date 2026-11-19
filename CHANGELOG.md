@@ -10,8 +10,9 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   does when another window moves, inserts, deletes or renames a sheet. The list handled the
   click only after the redraw and took the sheet then in that row: Move to Top could move a sheet
   you never clicked, a double click could go to it, and the right-click menu could delete it.
-  Such a click now does nothing: a right click opens no menu, and any other click also clears
-  the list's selection, with the selection notice when you had made it. Click again
+  A click on a row that the redraw changed, and a Shift+click on any row, now does nothing at
+  such a moment: a right click opens no menu, and any other click also clears the list's
+  selection, with the selection notice when you had made it. Click again
   ([#293](https://github.com/viell-dev/slop-calc-sheet-manager/issues/293)).
 - A Ctrl+click or Ctrl+Space that deselects a sheet in the list no longer picks that sheet
   instead when the list drops picks at the same moment, as it does when another window inserts

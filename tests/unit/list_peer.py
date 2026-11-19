@@ -586,6 +586,8 @@ def sheet_list(book: Book, source: str = SOURCE) -> Any:
         "MOD1": MOD1,
     }
     namespace["_Press"] = _load(source, others["_Press"], {"dataclass": dataclass, "Any": Any})
+    if "_PressHold" in others:  # A revision before #293 has none.
+        namespace["_PressHold"] = _load(source, others["_PressHold"], {"dataclass": dataclass})
     tree, peer = Tree(faults), Peer(faults)
     owner = _Owner(
         book=book,

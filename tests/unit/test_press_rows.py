@@ -10,9 +10,10 @@ opened the sheet tab menu for it. No failure is needed.
 
 The real list runs over the simulated peer of `list_peer`, whose `queued_click` queues a click's
 listeners as VCL does. The invariant: a press, its release and a double click act only on the
-sheet the tree showed under the pointer when the user pressed, or refuse. A refused left press
-picks nothing and drops the picks, which its native effect superseded in the tree, with the
-notice; a refused right press opens no menu and keeps the picks.
+sheet the tree showed under the pointer when the user pressed, or refuse. A press on a row that
+showed the same name in every row list since then acts; a refused left press picks nothing and
+drops the picks, which its native effect superseded in the tree, with the notice; a refused right
+press opens no menu and keeps the picks.
 """
 
 from collections.abc import Callable
@@ -23,9 +24,9 @@ import pytest
 from tests.unit.list_peer import (
     MOD1,
     RIGHT,
-    NativeFailure,
     SHIFT,
     Book,
+    NativeFailure,
     click,
     cursor,
     move_to_top,
@@ -338,3 +339,75 @@ def test_a_hold_whose_end_could_not_be_posted_ends_with_the_next_rebuild() -> No
     queued_click(owner, PRESSED, 0)
     owner.run_queue()
     assert picks(owner) == ["Echo"] and move_to_top(owner) == ["Echo"]
+
+
+@pytest.mark.parametrize(
+    "gesture, wanted",
+    [
+        pytest.param(lambda owner: queued_click(owner, row("Golf"), 0), ["Golf"], id="plain click"),
+        pytest.param(
+            lambda owner: queued_click(owner, row("Bravo")), ["Bravo", "Delta"], id="Ctrl+click"
+        ),
+    ],
+)
+def test_a_press_on_a_row_the_reorder_left_alone_acts(
+    gesture: Callable[[Any], None], wanted: list[str]
+) -> None:
+    """Delta picked; another window moves Charlie below Echo, which leaves Alfa, Bravo, Foxtrot,
+    Golf and Hotel in their rows, and the user clicks Golf, or Ctrl+clicks Bravo, before the
+    refresh runs. Those rows showed the same sheets before and after, so the press acts."""
+    owner = picked("Delta")
+    notices = len(owner.notices)
+    reorder(owner)
+    gesture(owner)
+    owner.run_queue()
+    assert picks(owner) == wanted and owner.tree.shown() == wanted
+    assert len(owner.notices) == notices
+    assert move_to_top(owner) == wanted
+
+
+def test_a_double_or_right_click_on_a_row_the_reorder_left_alone_acts() -> None:
+    """As above, a double click on Golf activates Golf, and a right click on Hotel opens the menu
+    for Hotel and keeps Delta picked."""
+    owner = picked("Delta")
+    activated = record_activations(owner)
+    reorder(owner)
+    queued_click(owner, row("Golf"), 0, clicks=2)
+    owner.run_queue()
+    assert activated == ["Golf"] and picks(owner) == ["Golf"]
+    owner = picked("Delta")
+    targets = record_menus(owner)
+    reorder(owner)
+    queued_click(owner, row("Hotel"), 0, button=RIGHT)
+    owner.run_queue()
+    assert targets == ["Hotel"] and picks(owner) == ["Delta"]
+
+
+def test_a_shift_click_on_a_row_the_reorder_left_alone_is_refused() -> None:
+    """Delta picked, the range anchor on it; another window moves Charlie below Echo, and the user
+    Shift+clicks Golf before the refresh runs, on rows where that range holds Delta, Echo,
+    Foxtrot and Golf. The listener extended the range over the rows the refresh shows and also
+    picked Charlie, which the user's range never held. A range runs through rows that may have
+    changed, so a Shift press is refused while presses are held."""
+    owner = picked("Delta")
+    notices = len(owner.notices)
+    reorder(owner)
+    queued_click(owner, row("Golf"), SHIFT)
+    owner.run_queue()
+    assert "Charlie" not in picks(owner), "Charlie, outside the user's range, was picked"
+    assert picks(owner) == [] and len(owner.notices) == notices + 1
+    assert move_to_top(owner) is None
+
+
+def test_a_reorder_that_moves_the_top_row_holds_every_row() -> None:
+    """Another window moves Alfa, the top row, below Bravo, and the user clicks Foxtrot, whose row
+    keeps its sheet, before the refresh runs. Restoring the scroll position puts Alfa back at the
+    top, which would scroll a scrolled list by a row, so no row is known to show what it showed
+    and the click is refused. The simulated tree does not scroll; this pins the rule."""
+    owner = picked("Delta")
+    owner.book.move("Alfa", 1)
+    post_refresh(owner)
+    queued_click(owner, row("Foxtrot"), 0)
+    owner.run_queue()
+    assert owner.names()[row("Foxtrot")] == "Foxtrot"
+    assert picks(owner) == [] and move_to_top(owner) is None
