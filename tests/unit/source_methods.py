@@ -33,3 +33,15 @@ def function(path: str, name: str, namespace: dict[str, Any]) -> Any:
     )
     exec(compile(ast.Module(body=[node], type_ignores=[]), path, "exec"), namespace)
     return namespace[name]
+
+
+def constant(path: str, name: str) -> Any:
+    """The literal value of a module-level assignment, such as a calibration's time limits."""
+    tree = ast.parse((ROOT / path).read_text(encoding="utf-8"))
+    node = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == name for target in node.targets)
+    )
+    return ast.literal_eval(node.value)
