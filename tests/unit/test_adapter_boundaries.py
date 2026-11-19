@@ -460,7 +460,7 @@ def test_refused_release_restores_a_surviving_pick_instead_of_native_release_cur
     applied: list[Ref | None] = []
     owner = SimpleNamespace(
         _press=SimpleNamespace(row=1, name="Bravo", generation=0, voided=False),
-        _monitor=SimpleNamespace(check=lambda: 0),
+        _monitor=SimpleNamespace(generation=0),  # No `check()` in the listener (#284).
         _pressed_sheet_in_place=Mock(return_value=False),
         _selection=selection,
         _show_selection=lambda: applied.append(selection.cursor),

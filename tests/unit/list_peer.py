@@ -84,6 +84,7 @@ METHODS = (
     "_take_tree_selection",
     "_settle_shown",
     "_current_picks",
+    "_picks_at",
     "geometry",
     "_first_visible_name",
     "selected_names",

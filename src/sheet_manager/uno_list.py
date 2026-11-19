@@ -20,7 +20,8 @@ of them from other threads, without its solar mutex (#269), or in the middle of 
 exceptions here are the drag gesture's own checks (#264) and the mouse handlers, which read the
 tree, the sheet handles and the document, and write a refused release's picks back, through
 calls that lock for themselves, so that a gesture is decided and shown at once (`SheetList`,
-#269).
+#269). Both run without the solar mutex, so they read the structure monitor's generation but
+never check the monitor, whose update needs that mutex (#284).
 
 The tree. The list is a borderless `TreeControl`, so that it is a direct child of the panel
 window, with a hidden root. With a hidden root, the tree peer mishandles every data-model change
@@ -214,6 +215,7 @@ from sheet_manager.uno_calc import (
     MainThread,
     dispatch,
     prop,
+    query_command,
     read_rows,
     report,
     select_tabs,
@@ -242,6 +244,7 @@ from sheet_manager.uno_reorder import (
     Snapshot,
     apply_order,
     is_current,
+    is_current_as_reported,
     move_availability,
     plan_availability,
     snapshot,
@@ -510,21 +513,29 @@ class SheetList:
     tree's geometry, the retained handles and the document, so that a release decides at once
     whether its gesture stands, and a refused release writes the picks back to the tree and
     buttons before later work reads them. Each of these calls locks for itself (checked in the
-    26.8.2.2 sources). The tree's and buttons' toolkit methods, the handles' `getName`, the
-    structure monitor's `check()` (the getters `uno_structure` names) and, on a refused
-    release, the permission getters in `uno_reorder.move_availability` take the mutex; the
-    undo-steps setting that `move_availability` also reads is configuration, which has its own
-    lock. Calc's tab getter takes no lock, so a double click posts its activation, as Enter
+    26.8.2.2 sources). The tree's and buttons' toolkit methods, the handles' `getName` and, on a
+    refused release, the permission getters in `uno_reorder.move_availability` take the mutex;
+    the undo-steps setting that `move_availability` also reads is configuration, which has its
+    own lock. Calc's tab getter takes no lock, so a double click posts its activation, as Enter
     does, with the generation its release verified (`_activate_pressed`, #269). Each call locks
-    only itself: another thread can change the document between them (#284).
+    only itself, so another thread can change the document between them. The release therefore
+    compares the press's generation with the structure monitor's `generation`, which every
+    change's report moves, and never calls its `check()`, whose update relies on the mutex
+    (`uno_structure`, #284). The work it posts, the selection flush and `_activate_pressed`,
+    checks the monitor before anything acts on a handle.
 
     The drag gesture is the other exception: VCL calls its listener within its own mouse-move
-    handling, rather than queued as the mouse listeners are, and `start_drag` starts the drag
-    there, with the gesture's event as `startDrag`'s trigger. Before that it checks
-    `_current_picks`, which can write the list's own tree and buttons as the mouse handlers do,
-    the document's read-only and protection flags, and `is_current`, which reads the sheets and
-    the retained handles. None of these reads Calc's view or tabs. A drag on stale rows is
-    refused and posts its refresh, whose tab sample must not run in the listener (#264).
+    handling, rather than queued as the mouse listeners are, but also with the solar mutex
+    released (`ImplHandleMouseEvent`'s `SolarMutexReleaser`, in the 26.2.1.2 and 26.8.2.2
+    sources). `start_drag` starts the drag there, with the gesture's event as `startDrag`'s
+    trigger. Before that it checks the picks (`_picks_at`), which can write the list's own tree
+    and buttons as the mouse handlers do, the document's read-only and protection flags, and
+    `uno_reorder.is_current_as_reported`, which reads the sheets and the retained handles. None
+    of these reads Calc's view or tabs, and none checks the structure monitor: they compare its
+    `generation` with the list's proof, as the release does (#284). What only a check finds,
+    such as a lock held at that moment, the drop's posted `_move` finds before anything moves:
+    it checks the monitor, and `apply_order` repeats the whole preflight. A drag on stale rows
+    is refused and posts its refresh, whose tab sample must not run in the listener (#264).
 
     Collaborators, each owning its own state: `_refreshes` decides when to refresh
     (`refresh_schedule`), `_tabs` follows Calc's tabs and the sidebar (`uno_tabs`, for which this
@@ -586,7 +597,11 @@ class SheetList:
     first, then `_cleanup` releases the listeners and controls in reverse creation order.
     Closing the queue does not revoke work already queued, which runs after `dispose` or, if a
     native release dispatches events, during it; so each part checks its own disposal when such
-    work runs. A failed construction disposes what it had created.
+    work runs. The list's own work then returns before it touches the document or a control, a
+    menu command chosen before the close included (#282, #285). A shortcut forwarded from the
+    list is the user's input to the window rather than the list's work: it still runs while the
+    frame shows the list's view, and is dropped once the document has closed or reloaded
+    (`_forward`). A failed construction disposes what it had created.
     """
 
     def __init__(self, context, frame, parent_window):
@@ -1273,7 +1288,15 @@ class SheetList:
         press is held): the user saw that, so this writes the picks and leaves them to the next
         command (#257).
         """
-        if self._monitor.check() != self._proven:
+        return self._picks_at(self._monitor.check())
+
+    def _picks_at(self, generation: int) -> list[Ref]:
+        """`_current_picks`, with the structure generation its caller read.
+
+        Posted work passes the monitor's `check()`. The drag gesture runs without the solar
+        mutex that the check needs, so it passes the reported `generation` (#284).
+        """
+        if generation != self._proven:
             self.post(self.refresh, "refreshing the sheet list")
             return []
         if self._press is None:
@@ -1401,6 +1424,8 @@ class SheetList:
             self.post(self._flush_selection, "showing the selection")
 
     def _flush_selection(self) -> None:
+        if self._disposed:
+            return  # Queued by a click or key; the tree is closed, the monitor maybe too (#285).
         if self._pointer_depth:
             self._selection_write_pending = False  # The listener posts again after its work.
             return
@@ -1864,12 +1889,34 @@ class SheetList:
 
     def run_command(self, command: str) -> None:
         if not keeps_focus(command):
-            self.post(lambda: dispatch(self.context, self.frame, command), "a shortcut")
+            self.post(lambda: self._forward(command), "a shortcut")
             return
         # Called from the key handler: only note which control has the focus now.
         control = self.tree if self.owns_tree_keys() else self._focused_button()
         seen = self._input
         self.post(lambda: self._save_keeping_focus(command, control, seen), "a save shortcut")
+
+    def _forward(self, command: str, arguments: tuple[Any, ...] = ()) -> bool:
+        """Dispatch a shortcut typed in the list to the view it was typed in; True if it ran.
+
+        The list may have closed since the key, and the shortcut still runs: it is the user's
+        input to this window, which the list consumed. Once the frame shows another view or
+        none, after the document closed or reloaded, it is dropped, as LibreOffice drops a
+        shortcut it queued for a frame that closed meanwhile (`svt::AcceleratorExecute`,
+        26.8.2.2). A closed frame has no controller and its `queryDispatch` raises
+        `DisposedException`; a reloaded one resolves the command against the new document
+        (measured with 26.8.1.1, #285).
+        """
+        try:
+            if self.frame.getController() != self.controller:
+                return False
+            url, dispatcher = query_command(self.context, self.frame, command)
+        except DisposedException:
+            return False  # The frame is closing.
+        if dispatcher is None:
+            return False
+        dispatcher.dispatch(url, arguments)
+        return True
 
     def _focused_button(self):
         if self._moves is None:
@@ -1884,11 +1931,12 @@ class SheetList:
 
         Synchronous mode returns only when the save has finished, after any Save As, file
         format, or error dialog has closed. With the gtk3 interface, the save moves the focus
-        from the panel to the sheet while it stores, as it does from Calc's own panels.
+        from the panel to the sheet while it stores, as it does from Calc's own panels. The save
+        runs as other forwarded shortcuts do, also after the list closed (`_forward`, #285);
+        giving the focus back is the list's own work, which `post` refuses then.
         """
-        if self._disposed:
+        if not self._forward(command, (prop("SynchronMode", True),)):
             return
-        dispatch(self.context, self.frame, command, (prop("SynchronMode", True),))
         if control is not None:
             self.post(lambda: self._restore_focus(control, seen), "restoring focus after a save")
 
@@ -1965,7 +2013,9 @@ class SheetList:
         press, self._press = self._press, None
         if not event.Buttons & LEFT or press is None or press.name is None:
             return
-        moved = press.generation != self._monitor.check()
+        # Not `check()`: its update needs the solar mutex, which this listener runs without, and
+        # the work posted below checks before anything acts on the pressed handle (#284).
+        moved = press.generation != self._monitor.generation
         if press.voided or moved or not self._pressed_sheet_in_place(press):
             # A refresh during the press moved the pressed sheet away or showed another sheet
             # under its name. The gesture then has no effect at all (#28): no activation, and
@@ -2088,7 +2138,10 @@ class SheetList:
 
         def complete() -> None:
             try:
-                self._menu_action(chosen, observed, refs, structure, unchanged)
+                # A list that closed after the popup runs no command, as one that closed during
+                # it does (`uno_menu`, #63, #285); the menu's state still ends below.
+                if not self._disposed:
+                    self._menu_action(chosen, observed, refs, structure, unchanged)
             except DisposedException:
                 self._tabs.stop()  # The view closed while its command ran.
             finally:
@@ -2191,15 +2244,18 @@ class SheetList:
         self._press = None  # A drag is not a click.
         if self._busy or self._drag is not None or self._observed is None:
             return
-        picked = [ref.name for ref in self._current_picks()]
+        # Not `check()`: VCL fires the gesture without the solar mutex, which the check's update
+        # needs. The drop's posted `_move` checks before anything moves (#284).
+        proof = self._proven
+        picked = [ref.name for ref in self._picks_at(self._monitor.generation)]
         if not picked or self.document.isReadonly() or self.document.isProtected():
             return
-        if not is_current(self.document, self._observed):
+        if not is_current_as_reported(self.document, self._observed):
             # Refused. The refresh samples Calc's tabs, which never runs in a listener (#264).
             self.post(self.refresh, "refreshing the sheet list")
             return
         transferable = _Transferable(uuid.uuid4().hex)
-        self._drag = _Drag(picked, self._observed, transferable, self._monitor.generation)
+        self._drag = _Drag(picked, self._observed, transferable, proof)
         try:
             self._drag_source.startDrag(
                 event, ACTION_MOVE, 0, 0, transferable, self._listeners["source"]

@@ -282,13 +282,19 @@ Breaking one of these has hung or crashed LibreOffice, or let an action reach th
   by index: Calc's lookup by name can find another sheet (`uno_reorder.py`,
   [#113](https://github.com/viell-dev/slop-calc-sheet-manager/issues/113)).
 - **Listeners** can be called on other threads, without LibreOffice's solar mutex (the toolkit's
-  mouse listeners, [#269](https://github.com/viell-dev/slop-calc-sheet-manager/issues/269)), or in
-  the middle of a change. They only record state or post work to the main thread
+  mouse listeners, [#269](https://github.com/viell-dev/slop-calc-sheet-manager/issues/269), and
+  the drag gesture's, [#264](https://github.com/viell-dev/slop-calc-sheet-manager/issues/264)), or
+  in the middle of a change. They only record state or post work to the main thread
   (`uno_calc.MainThread`, an `AsyncCallback`, whose work holds that mutex). The documented
   exceptions are the structure monitor's state reads (`uno_structure.py`), the drag gesture's
   checks before it starts a drag, and the mouse handlers' reads of the tree, the handles and the
   document and their writes of a refused release's picks, which use calls that lock for
-  themselves so that a gesture is decided and shown at once (`uno_list.SheetList`).
+  themselves so that a gesture is decided and shown at once (`uno_list.SheetList`). Code that
+  runs without the mutex, the drag gesture's and the mouse handlers' checks included, reads the
+  structure monitor's `generation` and never calls its `check()`, which updates shared state
+  from separately locked reads and relies on the mutex to keep other threads' change reports out
+  between them ([#284](https://github.com/viell-dev/slop-calc-sheet-manager/issues/284)). The
+  gesture compares its snapshot with `uno_reorder.is_current_as_reported`.
 - **Threads** start only through `uno_calc.start_thread`, never with `threading`: Calc hung when
   `Thread.start` waited for a thread that was waiting for LibreOffice's main lock
   ([#55](https://github.com/viell-dev/slop-calc-sheet-manager/issues/55)).
