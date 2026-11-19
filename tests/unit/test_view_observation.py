@@ -1366,7 +1366,7 @@ def test_a_single_click_under_another_programs_lock_stands_only_if_nothing_chang
     book = Workbook(live.names)
     monitor = MONITOR(book)
     owner._monitor, owner._proven = monitor, monitor.generation
-    owner._apply_selection = Mock()
+    owner._show_selection = Mock()  # The flush shows the picks through it (#257).
     owner._selection_scroll = owner._selection_write_pending = False
 
     def bind(name: str) -> None:
@@ -1388,8 +1388,8 @@ def test_a_single_click_under_another_programs_lock_stands_only_if_nothing_chang
     queued.pop()()  # The selection flush.
     if lock == "held":
         owner.refresh.assert_called_once_with()
-        owner._apply_selection.assert_not_called()
+        owner._show_selection.assert_not_called()
     else:
         owner.refresh.assert_not_called()
-        owner._apply_selection.assert_called_once_with()
+        owner._show_selection.assert_called_once_with()
     assert owner._selection.names() == ["Bravo"] and not queued
