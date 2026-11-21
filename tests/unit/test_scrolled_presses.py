@@ -172,16 +172,24 @@ def test_a_type_ahead_that_scrolls_before_a_presss_listener_acts_on_no_other_she
     assert picks(owner) == [] and move_to_top(owner) is None
 
 
-def test_a_keys_write_that_cannot_read_its_scroll_holds_every_row() -> None:
-    """End, and the write's read of the position after scrolling fails, so it cannot tell where
-    the rows went: every row is held. The listener's own read would still refuse the click on
-    Charlie's line, but not a drag recognized before it, which dragged Hotel, the pick the write
-    showed instead of the row the user pressed (#295)."""
+@pytest.mark.parametrize(
+    "reads",
+    [
+        pytest.param(0, id="before the scroll"),
+        pytest.param(1, id="after the scroll"),
+    ],
+)
+def test_a_keys_write_that_cannot_read_its_scroll_holds_every_row(reads: int) -> None:
+    """End, and one of the write's reads of the position fails, before or after it scrolls, so it
+    cannot tell where the rows went: every row is held. The listener's own read would still refuse
+    the click on Charlie's line, but not a drag recognized before it, which dragged Hotel, the pick
+    the write showed instead of the row the user pressed (#295). A failed read after the scroll
+    holds by itself; one before it is followed by a read that finds the rows moved."""
     owner = top()
     dragged = bind_drag(owner)
     end(owner)
     native_press(owner, row("Charlie"))
-    owner.faults.fail("getNodeRect")
+    owner.faults.fail("getNodeRect", after=reads)
     work, _ = owner.queue.pop(0)
     work()  # The key's write.
     owner.start_drag(object())
