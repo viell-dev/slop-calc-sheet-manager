@@ -520,34 +520,8 @@ def check_click_hidden_before_refresh(book):
 
 
 def check_newer_selection_kept(book):
-    """Completed edits and queued real input precede repaint; newer picks survive it (#44).
-
-    With LibreOffice's main thread held, real input is queued: a double click on Bravo, which
-    activates it, then a Shift+click on Delta, then one recorded edit whose refresh rebuilds the
-    rows. The newer picks, Bravo to Delta, survive the activation's and the edit's refreshes.
-
-    The same with a Ctrl+click on Delta in place of the Shift+click: VCL handles all three
-    presses before the first listener runs, so when the Ctrl+click's listener runs the tree has
-    changed by more than its own toggle, which the list cannot tell from a selection made through
-    accessibility (#294). It either picks Bravo and Delta, as before #294, or picks nothing and
-    tells, with the notice; it never picks another set. Both outcomes are recorded.
-    """
+    """Completed edits and queued real input precede repaint; newer picks survive it (#44)."""
     wait_until(lambda: book.labels() == NAMES, "the preceding visibility change to repaint")
-    evidence = {
-        "shift": queue_input_before_repaint(book, ("Shift_L",)),
-        "ctrl": queue_input_before_repaint(book, ("Control_L",)),
-    }
-    shift, ctrl = evidence["shift"], evidence["ctrl"]
-    assert shift["after_refresh"] == NAMES[1:4], evidence
-    assert ctrl["after_refresh"] in ([NAMES[1], NAMES[3]], []), evidence
-    if not ctrl["after_refresh"]:
-        assert str(ctrl["notice"]).startswith("Selection cleared"), evidence
-    return evidence
-
-
-def queue_input_before_repaint(book, modifiers):
-    """Queue a double click on Bravo, a click on Delta with `modifiers` and a recorded edit, with
-    the main thread held, and return what the list shows once its refreshes have run."""
     # A completed activation repaint gives this gesture a fresh baseline, independent of
     # the previous check's queued colour/visibility changes and maximum-refresh deadline.
     for index in (4, 0):
@@ -569,7 +543,6 @@ def queue_input_before_repaint(book, modifiers):
     received = threading.Event()
     releases = [0]
     state = {"marker_not_yet_moved": False, "error": ""}
-    notice = view.footer_text(book.panel, "Why the sheet list")
 
     class ReleaseProbe(unohelper.Base, XMouseListener):
         def mouseReleased(self, event):
@@ -600,7 +573,7 @@ def queue_input_before_repaint(book, modifiers):
         # and no undo/modify pair is still in progress when the input is handled.
         book.pointer.click(*first, pause=0.02)
         book.pointer.click(*first, pause=0.05)
-        book.pointer.click(*second, modifiers=modifiers, pause=0)
+        book.pointer.click(*second, modifiers=("Control_L",), pause=0)
         sheet.TabColor = color
 
     probe = ReleaseProbe()
@@ -619,9 +592,9 @@ def queue_input_before_repaint(book, modifiers):
             "releases": releases[0],
             "after_refresh": book.selection(),
             "active": book.active(),
-            "notice": notice.getText(),
         }
         assert evidence["releases"] == 3, evidence
+        assert evidence["after_refresh"] == [NAMES[1], NAMES[3]], evidence
         assert evidence["active"] == NAMES[1], evidence
         return evidence
     finally:

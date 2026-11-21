@@ -541,6 +541,26 @@ def test_quiet_samples_do_not_account_for_a_queued_clicks_change() -> None:
     assert picks(owner) == [] and move_to_top(owner) is None
 
 
+def test_a_press_between_two_samples_keeps_them_from_accounting() -> None:
+    """Alfa and Bravo picked; the first sample finds the tree showing them. A Ctrl+click on Bravo
+    is then handled natively, Bravo is selected again through accessibility, and the next sample
+    runs before the click's listener, as when the click came just before that sample was posted:
+    it finds the tree showing the picks again, but with two more changes counted, so it accounts
+    for nothing. Golf is then selected through accessibility. Had the sample accounted, the
+    listener would have taken Golf's change for its own and toggled Bravo off, though the user
+    saw it selected again; it picks nothing."""
+    owner = picked("Alfa", "Bravo")
+    sample(owner)
+    queued_click(owner, row("Bravo"))
+    owner.tree.assistive_select("Bravo")
+    assert owner.tree.shown() == picks(owner)
+    sample(owner)
+    assert unaccounted(owner) == 2
+    owner.tree.assistive_select("Golf")
+    owner.run_queue()
+    assert picks(owner) == [] and move_to_top(owner) is None
+
+
 def test_an_assistive_change_after_quiet_samples_still_counts() -> None:
     owner = picked("Alfa", "Bravo")
     cancelled_out(owner, "Bravo")
@@ -762,20 +782,87 @@ def test_a_change_another_thread_makes_during_a_write_is_counted() -> None:
     assert picks(owner) == [] and move_to_top(owner) is None
 
 
-# Costs: refusals where `main` acts correctly, each within one pass of the main thread's queue.
+# A write of the list's between a Ctrl press and its listener (#44).
 
 
-def test_a_write_between_a_ctrl_click_and_its_listener_refuses_the_toggle() -> None:
+def test_a_write_between_a_ctrl_click_and_its_listener_toggles_as_before() -> None:
     """Alfa and Bravo picked; a Ctrl+click deselects Bravo, and the list's coalesced write runs
-    before its listener, which shows Bravo again: the listener finds nothing of its own left,
-    and cannot tell this from an intake that took its toggle already, so it picks nothing.
-    `main` toggles Bravo off, as the user meant."""
+    before its listener, which shows Bravo again. The listener found nothing of its own left and
+    picked nothing; the write overwrote that one change and nothing was counted since, so the
+    listener takes it for its own and toggles Bravo off, as on `main`."""
     owner = picked("Alfa", "Bravo")
     queued_click(owner, row("Bravo"))
     owner.queue.insert(0, (owner._show_selection, "showing the selection"))
     owner.run_queue()
-    assert picks(owner) == [] and owner.tree.shown() == []
-    assert move_to_top(owner) is None
+    assert picks(owner) == ["Alfa"] == owner.tree.shown()
+    assert move_to_top(owner) == ["Alfa"]
+
+
+def test_a_ctrl_click_after_a_plain_click_whose_listener_ran_first_toggles_as_before() -> None:
+    """#44's integration sequence as VCL ran it with 26.8.2.2, headless: Delta picked; a double
+    click on Bravo, whose first press's listener VCL ran at once, then a Ctrl+click on Delta,
+    handled before that listener's write, which then ran before the other listeners. The write
+    overwrote the Ctrl+click's change alone, so the Ctrl+click's listener toggles Delta, as on
+    `main`; it found nothing of its own left and picked nothing."""
+    owner = picked("Delta")
+
+    def activate(*_: object) -> None:
+        """The double click's activation, which the peer does not model."""
+
+    owner._activate_pressed = activate
+    queued_click(owner, row("Bravo"), 0)
+    (press, _), first_release = owner.queue.pop(0), owner.queue.pop(0)
+    press()  # It asks for the write, queued now.
+    queued_click(owner, row("Bravo"), 0, clicks=2)
+    queued_click(owner, row("Delta"))
+    owner.queue.insert(1, first_release)  # VCL handled that release after the press's listener.
+    assert [where for _, where in owner.queue[:2]] == ["showing the selection", "a mouse release"]
+    owner.run_queue()
+    assert picks(owner) == ["Bravo", "Delta"] == owner.tree.shown()
+    assert move_to_top(owner) == ["Bravo", "Delta"]
+
+
+def test_two_quick_ctrl_clicks_toggle_both_when_the_first_write_lands_between() -> None:
+    """Alfa picked; a Ctrl+click on Charlie, whose press's listener runs at once, and a Ctrl+click
+    on Echo handled before Charlie's write, which shows the picks over Echo's change: both are
+    picked, as on `main`."""
+    owner = picked("Alfa")
+    queued_click(owner, row("Charlie"))
+    work, _ = owner.queue.pop(0)
+    work()
+    queued_click(owner, row("Echo"))
+    owner.run_queue()
+    assert picks(owner) == ["Alfa", "Charlie", "Echo"] == owner.tree.shown()
+    assert move_to_top(owner) == ["Alfa", "Charlie", "Echo"]
+
+
+def test_a_take_between_a_ctrl_click_and_its_listener_still_refuses() -> None:
+    """Alfa and Bravo picked; a Ctrl+click deselects Bravo, and the list takes the tree's
+    selection before the listener runs, as a command's intake does. The take includes the
+    toggle, and toggling again would pick Bravo, which the user deselected, as on `main`: the
+    listener picks nothing."""
+    owner = picked("Alfa", "Bravo")
+    queued_click(owner, row("Bravo"))
+    owner._take_tree_selection()
+    assert picks(owner) == ["Alfa"] and unaccounted(owner) == 0
+    owner.run_queue()
+    assert "Bravo" not in picks(owner), "Bravo, which the user deselected, was picked"
+    assert picks(owner) == [] and move_to_top(owner) is None
+
+
+def test_a_write_that_also_overwrote_an_assistive_change_still_refuses() -> None:
+    """The write between the Ctrl+click and its listener also overwrote Golf, selected through
+    accessibility after the click: two changes, not the press's own alone, so the listener picks
+    nothing. `main` toggles Bravo off over the selection the user made last."""
+    owner = picked("Alfa", "Bravo")
+    queued_click(owner, row("Bravo"))
+    owner.tree.assistive_select("Golf")
+    owner.queue.insert(0, (owner._show_selection, "showing the selection"))
+    owner.run_queue()
+    assert picks(owner) == [] and move_to_top(owner) is None
+
+
+# Costs: refusals where `main` acts correctly.
 
 
 def test_a_ctrl_click_queued_behind_a_plain_click_toggles_as_before() -> None:

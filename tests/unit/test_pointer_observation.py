@@ -45,6 +45,7 @@ def native_picks() -> tuple[Any, Any, list[Callable[[], None]]]:
         _accounted=0,
         _shown_at=0,
         _quiet=None,
+        _erased=None,
         _add_mode=False,
         _hold_toggles=Mock(),
         _presses_held=None,
