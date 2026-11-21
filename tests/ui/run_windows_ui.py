@@ -66,6 +66,7 @@ from rename_dialog import check_stale as check_rename_stale  # noqa: E402
 from run import office_session, property_value  # noqa: E402
 from selection_checks import (  # noqa: E402
     check_assistive_selection_then_ctrl_input,
+    check_ctrl_clicks_after_a_ctrl_shift_range,
     check_click_activates,
     check_ctrl_shift_selection,
     check_margin_drag_keeps_sidebar_docked,
@@ -187,6 +188,10 @@ def checks_for(lab, book):
             lambda: check_margin_drag_keeps_sidebar_docked(book),
         ),
         ("ctrl_shift_selection", lambda: check_ctrl_shift_selection(book)),
+        (
+            "ctrl_clicks_after_a_ctrl_shift_range",
+            lambda: check_ctrl_clicks_after_a_ctrl_shift_range(book),
+        ),
         (
             "assistive_selection_then_ctrl_input",
             lambda: check_assistive_selection_then_ctrl_input(book),
