@@ -54,18 +54,19 @@ clears the tree: restoring the picks could replace the user's latest selection, 
 rows could act on a sheet nobody picked. A refresh writes after its tab baseline, and a write
 outside a refresh is retried as a failed refresh is (`RefreshSchedule.failed`). A write that can
 leave only the picks or an empty tree, a repeated write of the one pick the tree shows or a
-clear of a tree that shows nothing, keeps `_shown`. A refresh that loses the identity proof
-while the tree shows a native selection the intake has not taken treats it the same way, with
-the clearing notice: it was made against rows whose handles no longer prove their sheets. So
-does a refresh whose new model replaced such a selection and that fails before showing it again
-in full: the picks it superseded are dropped, and a queued write clears the rows the tree still
-shows, as settling does. Until a write shows the picks again, toggles are held (below). Rows,
-their handles and their proof change together once a new data model is shown, so a row of a
-refused model still maps to the handle it was read with; and a rebuild does not need the cached
-nodes, which LibreOffice rejects after a setter installed its model and then failed, for its
-scroll position. A failed `invalidate` after a complete write is not retried: the tree and
-`_shown` agree, and the next write repaints. No native trigger for these failures is known;
-LibreOffice's tree calls have failed only while the control was being disposed.
+clear of a tree that shows nothing, keeps `_shown`, except at a refused release, where the tree
+shows the native release's row (#315). A refresh that loses the identity proof while the tree shows
+a native selection the intake has not taken treats it the same way, with the clearing notice: it
+was made against rows whose handles no longer prove their sheets. So does a refresh whose new model
+replaced such a selection and that fails before showing it again in full: the picks it superseded
+are dropped, and a queued write clears the rows the tree still shows, as settling does. Until a
+write shows the picks again, toggles are held (below). Rows, their handles and their proof change
+together once a new data model is shown, so a row of a refused model still maps to the handle it
+was read with; and a rebuild does not need the cached nodes, which LibreOffice rejects after a
+setter installed its model and then failed, for its scroll position. A failed `invalidate` after a
+complete write is not retried: the tree and `_shown` agree, and the next write repaints. No native
+trigger for these failures is known; LibreOffice's tree calls have failed only while the control
+was being disposed.
 
 Toggles (#288). A Ctrl+click toggles its row in the tree as soon as LibreOffice handles the
 press, and the list's mouse listener, which VCL runs later from its queue (#269), toggles the
@@ -144,11 +145,25 @@ the press moved the sheet or showed another under its name, the release has no e
 the list writes its own refs back, whatever the tree selected on release, so a newer pick made
 meanwhile, by following Calc or by keyboard, stays.
 While a press is held, a refresh does not take the tree's selection as the user's; the press and
-release handlers do. A selected row's native release can move the tree's cursor before the
-queued mouse listener runs, so refusing that gesture also restores a surviving picked cursor,
-preferring its original sheet, and keeps newer picks. An unpicked cursor moved during an invalid
-held gesture is deliberately not kept, and the known-issues guide records that limit (#71): the
-supported toolkit and controller interfaces offer no sidebar pre-release hook.
+release handlers do. A selected row's native release moves the tree's cursor to the row under
+the pointer before the queued mouse listener runs (measured with 26.2.1.2 and 26.8.2.2, gtk3 and
+gen), and the supported toolkit and controller interfaces offer no sidebar pre-release hook. The
+list never takes that late row: native cursor events are ignored while a press is held, and
+owned keys move the list's own cursor. Never let a native cursor event during a held press reach
+the cursor: #70's first observer did, and the late release then moved the cursor and the next
+toggle onto the wrong row. Refusing the gesture therefore keeps the list's cursor while it is
+still its sheet, also outside the picks, and keeps newer picks (#71). Only when that sheet is
+gone does a surviving pick take the cursor. A refresh during the press that drops it prefers the
+pressed sheet while the press still identifies it, reading the press's handle: after a refresh
+that dropped every pick, a pick under the pressed name may be a replacement. A cursor lost after
+the last refresh goes to the pick under the pressed name unless such a refresh voided the press,
+or else to the first: the listener reads no handle for it. A release names only the button
+released, so only the left button's ends the press. The listener writes the picks back with the
+tree's cursor on a pick, making the native calls it made before; the write it queues shows an
+unpicked cursor, whose clear the listener does not make, and that write's failure leaves the
+record unknown (#257). The listener marks the record unknown before it writes, because the native
+release has selected the row under the pointer, which the record does not say (#315). It puts
+back only the cursor it set for its write: work that its calls let run may have moved it since.
 
 Rows under the pointer (#293). The tree handles a press on the rows it shows then, but the mouse
 listener, which VCL runs later from its queue (#269), maps the event's position to a row as the
@@ -1517,6 +1532,21 @@ class SheetList:
                 self._refreshes.failed()
             raise
 
+    def _fallback_cursor(self, press: _Press | None) -> Ref | None:
+        """A surviving pick for a lost cursor: the pressed sheet's, if picked, or the first.
+
+        The pressed sheet comes first only while the press still identifies it: no refresh has
+        dropped the picks since the button went down, and its retained handle still reports its
+        name. A pick under that name after a lost proof may be another sheet, a replacement.
+        """
+        picks = self._selection.picked
+        first = picks[0] if picks else None
+        if press is None or press.name is None or press.voided:
+            return first  # No press, one outside the rows, or one a refresh has voided.
+        if _name_or_none(press.handle) != press.name:
+            return first
+        return next((ref for ref in picks if ref.name == press.name), first)
+
     def _apply_selection(self) -> None:
         """Write the list's own picks and cursor to the tree; the cursor falls back to a pick.
 
@@ -1529,8 +1559,9 @@ class SheetList:
         names = self.names()
         cursor = self._selection.cursor
         if cursor is None or cursor.name not in names:
-            cursor = self._selection.picked[0] if self._selection.picked else None
-            self._selection.cursor = cursor
+            # During a held press the pressed sheet comes first, as on its refused release, which
+            # then keeps the cursor written here (#71).
+            cursor = self._selection.cursor = self._fallback_cursor(self._press)
         wanted = {ref.name for ref in self._selection.picked}
         indices = [index for index, name in enumerate(names) if name in wanted]
         shown = tuple(names[index] for index in indices)
@@ -2432,8 +2463,12 @@ class SheetList:
             x, y, seen = event.X, event.Y, self._context_input
             self.post(lambda: self._open_menu(x, y, seen=seen), "the sheet tab menu")
             return
+        if not event.Buttons & LEFT:
+            # A release names only the button released: another button's leaves a held left
+            # press, and its gate on native cursor events, in place (#71).
+            return
         press, self._press = self._press, None
-        if not event.Buttons & LEFT or press is None or press.name is None:
+        if press is None or press.name is None:
             return
         # Not `check()`: its update needs the solar mutex, which this listener runs without, and
         # the work posted below checks before anything acts on the pressed handle (#284).
@@ -2445,13 +2480,40 @@ class SheetList:
             # each still the sheet it was picked as, including any newer pick made meanwhile,
             # by following Calc or by keyboard.
             self._selection.revalidate()
-            # The native selected-row release can move its cursor before this callback.
-            # A refused gesture restores a surviving picked cursor, never that late row.
+            # The native release moved the tree's cursor to the row under the pointer before
+            # this callback, and `cursor_changed` ignored that while the press was held: only
+            # the list moved its cursor meanwhile, by its keys or by following Calc, each time to
+            # a shown row's ref, so after `revalidate` it is one or None. It stays, also outside
+            # the picks, never that late row (#71). A refresh that dropped it during the press
+            # already gave it to a pick (`_apply_selection`); one dropped since then goes to the
+            # pick under the pressed name, unless a refresh has dropped every pick since the
+            # press, or to the first, since this listener reads no handle for it.
             picks = self._selection.picked
-            self._selection.cursor = next(
-                (ref for ref in picks if ref.name == press.name), picks[0] if picks else None
-            )
-            self._show_selection()
+            first = picks[0] if picks else None
+            pressed = None
+            if not press.voided:
+                pressed = next((ref for ref in picks if ref.name == press.name), None)
+            kept = self._selection.cursor or pressed or first
+            # This listener writes the picks back as before #71, with the tree's cursor on a
+            # pick: showing an unpicked cursor's row takes a clear after its select, a native
+            # call the listener does not make. The write queued as the listener returns moves
+            # the tree's cursor to the list's; if that write stops partway, the record stays
+            # unknown, so no command acts on what the tree shows then (#257).
+            unpicked = kept is not None and kept.name not in self._selection.names()
+            written = (pressed or first) if unpicked else kept
+            self._selection.cursor = written
+            # The native release selected the row under the pointer, so the tree does not show
+            # the record: a write that keeps the record because a failure can leave only what it
+            # says, a clear of an empty tree or a repeat of its one pick, must not keep it here,
+            # or the intake would take that row as a pick after a failure (#315).
+            self._shown = None
+            try:
+                self._show_selection()
+            finally:
+                # Work that the write's calls let run may have moved the cursor since
+                # (`_Mouse._handle`): only the cursor set here for the write goes back.
+                if self._selection.cursor is written:
+                    self._selection.cursor = kept
             return
         row = press.row
         if row is None or press.modifiers & (SHIFT | MOD1):

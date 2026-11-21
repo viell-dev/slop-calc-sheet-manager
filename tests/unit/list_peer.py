@@ -96,6 +96,7 @@ METHODS = (
     "_show_native",
     "_name_viewed",
     "_select",
+    "_fallback_cursor",  # Only revisions that keep a refused hold's cursor (#71).
     "_apply_selection",
     "_show_selection",
     "_write_outside_refresh",
@@ -237,6 +238,15 @@ class Book:
             self.active = turned
         self.generation += 1
         return index
+
+    def insert(self, name: str, index: int) -> Sheet:
+        """Insert a new sheet at `index`; an insertion moves the structure generation."""
+        inserted = Sheet(name)
+        self.sheets.insert(index, inserted)
+        self._own[id(inserted)] = Handle(inserted)
+        self._retained.append(self._own[id(inserted)])
+        self.generation += 1
+        return inserted
 
     def replace(self, name: str) -> Sheet:
         """Delete the sheet and insert a different one under its name at the same place."""

@@ -3,7 +3,8 @@
 Only for the private Xvfb display of the Linux test image; never point DISPLAY at a desktop.
 Uses ctypes so that LibreOffice's bundled Python needs no extra packages. `winput.WinInput` is the
 Windows counterpart with the same interface: `move`, `button`, `key`, `tap` with these keysym
-names, `popup_windows` and `modal_dialog`. `Pointer` works with either.
+names, `popup_windows` and `modal_dialog`. `Pointer` works with either. Only `repeat`, the
+server's own timed key repeat, has no Windows counterpart.
 """
 
 import ctypes
@@ -21,6 +22,7 @@ def _libraries():
     x11.XOpenDisplay.argtypes = [ctypes.c_char_p]
     x11.XSync.argtypes = [ctypes.c_void_p, ctypes.c_int]
     x11.XAutoRepeatOff.argtypes = [ctypes.c_void_p]
+    x11.XAutoRepeatOn.argtypes = [ctypes.c_void_p]
     x11.XStringToKeysym.argtypes = [ctypes.c_char_p]
     x11.XStringToKeysym.restype = ctypes.c_ulong
     x11.XKeysymToKeycode.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
@@ -127,6 +129,28 @@ class XInput:
         self.key(keysym, False)
         for modifier in reversed(modifiers):
             self.key(modifier, False)
+        time.sleep(pause)
+
+    def repeat(self, keysym, modifiers=(), seconds=1.3, pause=0.5):
+        """Hold a key for `seconds` with the X server's own timed repeat, then release it.
+
+        Repeat stays off otherwise (see `__init__`). Xvfb's defaults start repeating after
+        660 ms at 25 keys a second; the count a check receives depends on scheduling, so a
+        check asserts where the repeated key left things, never how often it repeated.
+        """
+        self._x11.XAutoRepeatOn(self._display)
+        self._sync()
+        try:
+            for modifier in modifiers:
+                self.key(modifier, True)
+            self.key(keysym, True)
+            time.sleep(seconds)
+        finally:
+            self.key(keysym, False)
+            for modifier in reversed(modifiers):
+                self.key(modifier, False)
+            self._x11.XAutoRepeatOff(self._display)
+            self._sync()
         time.sleep(pause)
 
 

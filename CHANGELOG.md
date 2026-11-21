@@ -5,6 +5,18 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- When the list refuses a held click because the sheets changed during it, the keyboard cursor
+  now stays where your keys moved it during the hold, also outside the picks, as long as the list
+  can still identify that sheet. It returned to a picked sheet, so Ctrl+Space then toggled that
+  sheet instead; the picks were already kept. Releasing another mouse button while the left one
+  is held no longer ends the held click
+  ([#71](https://github.com/viell-dev/slop-calc-sheet-manager/issues/71)).
+- A sheet list write that LibreOffice fails right after the list refused a held click no longer
+  leaves the row the button went up over to be taken as a pick. Move to Top could then move that
+  sheet, or one that replaced the pressed sheet under its name, which nobody picked. The list now
+  clears the picks with the selection notice and commands act on no sheets until you pick again.
+  LibreOffice's tree has been seen to fail such a call only while a panel closes
+  ([#315](https://github.com/viell-dev/slop-calc-sheet-manager/issues/315)).
 - A click, double click or right click in the sheet list no longer acts on another sheet than the
   one you clicked when the list scrolls before it handles the click: by the mouse wheel or the
   scroll bar, or by a key such as End or Down that moved the selection out of view just before.
