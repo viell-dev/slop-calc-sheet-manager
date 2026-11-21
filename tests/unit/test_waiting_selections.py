@@ -430,19 +430,23 @@ def test_a_ctrl_click_whose_own_toggle_the_deferred_intake_saw_still_toggles(
     assert move_to_top(owner) == (expected or None)
 
 
-def test_two_ctrl_clicks_around_a_deferred_intake_both_toggle() -> None:
-    """The control with two clicks: Bravo picked; Ctrl+clicks on Delta and on Foxtrot, with the
-    tab sample between their native toggles, all before either listener. The first listener's
-    toggle accounts for the tree the intake saw, and the second click was made on that tree, so
-    both toggle, as on `main`."""
+def test_two_ctrl_clicks_handled_before_either_listener_pick_nothing() -> None:
+    """The cost of counting the tree's changes (#294), where `main` acts correctly: Bravo
+    picked; Ctrl+clicks on Delta and on Foxtrot, with the tab sample between their native
+    toggles, all before either listener. When the first listener runs, the tree has changed
+    twice since it showed the picks, and a second click cannot be told from a selection made
+    through accessibility, so the listener picks nothing and drops Bravo, with the notice, and
+    the second is held. `main` picks all three; the user selects again."""
     owner = sheet_list(Book(list(NAMES)))
     click(owner, row("Bravo"))
     queued_click(owner, row("Delta"))
     sample(owner)
     queued_click(owner, row("Foxtrot"))
+    notices = len(owner.notices)
     owner.run_queue()
-    assert picks(owner) == ["Bravo", "Delta", "Foxtrot"]
-    assert move_to_top(owner) == ["Bravo", "Delta", "Foxtrot"]
+    assert picks(owner) == [] and owner.tree.shown() == [] and cursor(owner) == "Foxtrot"
+    assert len(owner.notices) == notices + 1
+    assert move_to_top(owner) is None
 
 
 def test_ctrl_space_on_an_assistive_selection_whose_intake_was_deferred_picks_nothing() -> None:

@@ -41,6 +41,8 @@ def native_picks() -> tuple[Any, Any, list[Callable[[], None]]]:
         _shown=("Bravo",),
         _toggles_held=None,
         _deferred=None,
+        _unowned=0,  # Nothing but the list changed the tree yet (#294).
+        _accounted=0,
         _hold_toggles=Mock(),
         _presses_held=None,
         _toggles_shown=Mock(),  # A take shows exactly the picks it gives.
@@ -68,7 +70,9 @@ def native_picks() -> tuple[Any, Any, list[Callable[[], None]]]:
 
 def test_native_ctrl_toggle_waits_for_the_owned_pointer_listener() -> None:
     owner, live, queued = native_picks()
-    # Recorded native order: the tree has added Delta before the owned press arrives.
+    # Recorded native order: the tree has added Delta before the owned press arrives, and the
+    # toolkit's selection listener counted that change (#294).
+    owner._unowned += 1
     assert owner._take_tree_selection(paint=False, defer=True)
     assert owner._selection.names() == ["Bravo"]
     owner.geometry = lambda: SimpleNamespace(row_at=Mock(return_value=1))

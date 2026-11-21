@@ -1,5 +1,6 @@
 """Deterministic races and display guards; real UNO behaviour is checked in integration."""
 
+import _thread
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import Mock
@@ -7,7 +8,7 @@ from unittest.mock import Mock
 import pytest
 
 from sheet_manager.selection import Ref, Selection
-from tests.unit.source_methods import method
+from tests.unit.source_methods import method, source_class
 
 
 @pytest.mark.parametrize("changed", ["structure", "activation"])
@@ -274,7 +275,9 @@ def test_owned_navigation_accumulates_while_the_ui_queue_is_paused() -> None:
         _selection=selection,
         _shown=("Bravo",),  # The tree shows the pick,
         _toggles_held=None,  # and toggles act on it.
-        _deferred=None,  # No intake waits.
+        _deferred=None,  # No intake waits,
+        _unowned=0,  # and nothing but the list changed the tree (#294).
+        _accounted=0,
         _hold_toggles=Mock(),  # A key's change holds presses until its write (#291).
         _handles=handles,
         _page_rows=3,
@@ -378,6 +381,11 @@ def test_failed_rebuild_releases_the_cursor_restoration_guard() -> None:
         _nodes=[],  # No rows were shown: no scroll position to read, no presses held (#293).
         _presses_held=None,
         _release_presses=Mock(),
+        _unowned=0,  # The list's own writes count nothing (#294).
+        _accounted=0,
+        _writing=0,
+        _writer=None,
+        _write_start=0,
     )
 
     def fail_restore() -> None:
@@ -390,7 +398,14 @@ def test_failed_rebuild_releases_the_cursor_restoration_guard() -> None:
         "src/sheet_manager/uno_list.py",
         "SheetList",
         "_rebuild",
-        {"SheetRow": Any, "Snapshot": Any, "report": Mock()},
+        {
+            "SheetRow": Any,
+            "Snapshot": Any,
+            "report": Mock(),
+            "_OwnWrites": source_class(
+                "src/sheet_manager/uno_list.py", "_OwnWrites", {"_thread": _thread}
+            ),
+        },
     )
     with pytest.raises(RuntimeError, match="cursor restoration failure"):
         rebuild(owner, [], object(), 0)

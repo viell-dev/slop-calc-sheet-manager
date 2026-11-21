@@ -1,5 +1,6 @@
 """The viewed sheet's accessible name, and native picks awaiting intake across a rebuild (#83)."""
 
+import _thread
 from collections.abc import Mapping
 from types import SimpleNamespace
 from typing import Any
@@ -8,7 +9,7 @@ from unittest.mock import Mock
 import pytest
 
 from sheet_manager.sheet_list import SheetRow, list_name
-from tests.unit.source_methods import method
+from tests.unit.source_methods import method, source_class
 
 SOURCE = "src/sheet_manager/uno_list.py"
 NAMES = ["Alfa", "Bravo", "Charlie", "Delta"]
@@ -58,16 +59,22 @@ def shower(selected: list[str]) -> Any:
     owner = SimpleNamespace(
         _restoring_cursor=False,
         _shown=("Alfa",),
+        _unowned=2,  # The native selection's changes, which the rebuild accounted for
+        _accounted=2,  # (#294),
+        _writing=0,
+        _writer=None,
+        _write_start=0,
         _nodes=list(NAMES),
         names=lambda: list(NAMES),
         peer=SimpleNamespace(invalidate=Mock()),
     )
     owner.tree = Tree(owner, selected)
     owner.selected_names = lambda: [name for name in NAMES if name in owner.tree.selected]
-    show = method(SOURCE, "SheetList", "_show_native", {})
+    own_writes = source_class(SOURCE, "_OwnWrites", {"_thread": _thread})
+    show = method(SOURCE, "SheetList", "_show_native", {"_OwnWrites": own_writes})
 
     def run(names: tuple[str, ...]) -> None:
-        show(owner, names)
+        show(owner, names, 0)  # and the count before the refresh.
 
     return owner, run
 
@@ -106,6 +113,7 @@ def refresher(change: str) -> Any:
         _nodes=[object()],
         rows=[SheetRow(name) for name in NAMES],
         _shown=("Alfa",),
+        _accounted=0,
         _tabs=SimpleNamespace(refreshed=Mock()),
         _input=0,
         _monitor=SimpleNamespace(check=lambda: 1 if change == "generation" else 0),
@@ -159,7 +167,7 @@ def test_a_rebuild_shows_native_picks_awaiting_intake_again() -> None:
     refresh()
     owner._take_tree_selection.assert_called_once_with(defer=True)
     owner._rebuild.assert_called_once()
-    owner._show_native.assert_called_once_with(("Delta",))
+    owner._show_native.assert_called_once_with(("Delta",), 0)
     owner._name_viewed.assert_called_once_with()
 
 
