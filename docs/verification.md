@@ -260,14 +260,19 @@ pixels (#209). The check covers late reports of an earlier point, an office whos
 comes after each wait, and points on the tree's edges. gtk3 drops a move made before it has
 finished with the previous report, so the check also covers the wait for the first reports to
 stop before the second move, and trying another point when a second move goes unreported.
-Reports that never follow the moves fail with the points tried (#298).
-`test_rename_dialog_calibration.py` checks that the rename dialog's calibration takes its offset
-only from two reports that follow its two moves, so a late report of another point cannot move
-the dialog's clicks off their controls (#232). When every report comes later than the quiet time,
-though, it can still take another point's pair for the current point's (#300). It also checks
-that the points start on the dialog's own window, inside the measured Openbox and Windows frames
-that the dialog's accessible area includes, where the dialog reports nothing; from the Windows
-frame, each calibration took about a minute (#253).
+Reports that never follow the moves fail with the points tried (#298). The first points go down
+the tree's accessible area, so a new workbook is found within a few points when that area is 21
+pixels out, as in gtk3, or when the first point is the pointer entering the tree; before, the
+window's scan took 12 to 18 seconds (#301). Points closer than 14 pixels are refused, because
+their moves could pair falsely (#300).
+`test_rename_dialog_calibration.py` checks that the rename dialog's calibration, the same method
+over the dialog's own points, takes its offset only from two reports of one point's moves, so a
+late report of another point cannot move the dialog's clicks off their controls (#232). That
+holds when every report comes later than the quiet time too, where a pair 2 pixels apart had
+been credited to the point being tried (#300). It also checks that the points start on the
+dialog's own window, inside the measured Openbox and Windows frames that the dialog's accessible
+area includes, where the dialog reports nothing; from the Windows frame, each calibration took
+about a minute (#253).
 Before termination, every session waits until the office has run the UNO releases the test
 process sent before the wait, because an office that exits while it runs them can crash (#242).
 The integration suite `test_client_releases.py` drops 2,000 dialog models in a live office. When

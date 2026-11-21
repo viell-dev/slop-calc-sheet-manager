@@ -5,6 +5,19 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- The real-input lab's Rename Sheets dialog now calibrates with the sheet list's method, which
+  takes the offset only from two reports of one point's own moves. When every report came later
+  than the 0.3-second quiet time, the dialog could credit the previous point's pair of reports to
+  the point being tried, and click 551 pixels beside its controls. Its points' rows are now
+  15 pixels apart instead of 3, because the moves of points that close can pair falsely; the
+  method now refuses points closer than 14 pixels. This changes the test runner, not the
+  extension ([#300](https://github.com/viell-dev/slop-calc-sheet-manager/issues/300)).
+- The real-input lab now tries points down the sheet list's accessible area before scanning the
+  window, and a new workbook's calibration takes about a second. In gtk3, the area of a newly
+  opened workbook was 21 pixels above the list, and when the first point was the pointer entering
+  the list, it was not reported; either way the window's scan took 12 to 18 seconds per
+  workbook. Each session's results now record its calibrations. This changes the test runner,
+  not the extension ([#301](https://github.com/viell-dev/slop-calc-sheet-manager/issues/301)).
 - The real-input lab's calibration of the sheet list now lets the list's reports of a point stop
   before it moves the pointer a second time, moves it toward the list's middle, and tries another
   point when that move goes unreported. Before, it waited 10 seconds and failed the session. gtk3
