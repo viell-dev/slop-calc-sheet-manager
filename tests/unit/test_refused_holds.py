@@ -328,24 +328,52 @@ def test_a_refused_release_before_a_refresh_proves_the_change_picks_nothing() ->
     assert move_to_top(owner) is None
 
 
-def test_a_refused_release_after_a_second_lost_proof_clears_the_row_it_selected() -> None:
-    """Bravo, held, is replaced under its name, and the refresh drops every pick and voids the
-    press. Hotel is replaced too before the release, which the tree answers by selecting the
-    pressed row, the replacement Bravo's. The refresh the release asks for has no pick left to
-    drop, so the release's own write must have cleared that row, or the next command would take
-    the replacement Bravo from the tree."""
+@pytest.mark.parametrize("fails", [False, True], ids=["written", "its clear fails"])
+def test_a_refused_release_after_a_second_lost_proof_clears_the_row_it_selected(
+    fails: bool,
+) -> None:
+    """Bravo, held, is replaced under its name, and the refresh drops every pick and the cursor
+    and voids the press, so the record says the tree shows nothing. Hotel is replaced too before
+    the release, which the tree answers by selecting the pressed row, the replacement Bravo's.
+    The refresh the release asks for has no pick left to drop and rows that read the same, so it
+    writes nothing of its own. When the release's clear fails (#315), the record must not still say
+    that the tree shows nothing: the intake took the replacement Bravo, and Move to Top moved a
+    sheet nobody picked, on `main` too."""
     owner = sheet_list(Book(list(NAMES)))
     click(owner, PRESSED)
     press(owner, PRESSED)
     owner.run_queue()
-    owner.book.replace("Bravo")
+    replacement = owner.book.replace("Bravo")
     refresh_now(owner)
     assert owner._press.voided and picks(owner) == [] and owner.tree.shown() == []
+    assert owner._selection.cursor is None and owner._shown == ()
     owner.book.replace("Hotel")
+    if fails:
+        owner.faults.fail("clearSelection")
     late_release(owner)
+    assert owner.faults.failed == (["clearSelection"] if fails else [])
     assert owner._proven == owner.book.generation
-    assert owner.tree.shown() == [] and owner._current_picks() == []
     assert move_to_top(owner) is None
+    owner.retry()
+    assert move_to_top(owner) is None
+    assert owner.tree.shown() == [] and owner._current_picks() == []
+    assert owner.book.sheets[1] is replacement and owner.book.moved == []
+
+
+def test_a_refused_release_whose_two_writes_fail_leaves_the_released_row_to_no_one() -> None:
+    """The one-pick form (#315): Bravo alone is picked and held while it moves, so the release's
+    write and the one it queues both select Bravo's row again, writes that kept the record when
+    the tree showed that pick. But the native release has selected Charlie's row, and when both
+    selects fail, the intake took Charlie as a pick and Move to Top moved it, on `main` too."""
+    owner = held_bravo()
+    owner.faults.fail("select", times=2)
+    late_release(owner)
+    assert owner.faults.failed == ["select", "select"]
+    assert owner.tree.shown() == ["Charlie"]
+    assert move_to_top(owner) is None
+    owner.retry()
+    assert move_to_top(owner) is None
+    assert "Charlie" not in picks(owner) and owner.book.moved == []
 
 
 def test_a_pick_made_after_a_lost_proof_survives_a_refused_release() -> None:
@@ -363,6 +391,66 @@ def test_a_pick_made_after_a_lost_proof_survives_a_refused_release() -> None:
     assert [ref.name for ref in current] == ["Bravo"]
     assert current[0].token is owner.book.handle(replacement)
     assert owner.tree.shown() == ["Bravo"] and move_to_top(owner) == ["Bravo"]
+
+
+def test_a_failed_listener_write_still_keeps_the_cursor() -> None:
+    """The listener's write fails at its first call, after the native release selected Charlie's
+    row. The list's cursor is still the one the user left, Hotel, and the write the listener
+    queued shows it; the record stays unknown in between, so nothing takes Charlie."""
+    owner = held_bravo()
+    ctrl_down(owner)
+    owner.faults.fail("getModel")
+    late_release(owner)
+    assert owner.failures == ["a mouse release"]
+    assert cursor(owner) == "Hotel" and shown_cursor(owner) == "Hotel"
+    assert picks(owner) == ["Bravo"] and owner.tree.shown() == ["Bravo"]
+    assert move_to_top(owner) == ["Bravo"]
+
+
+def test_work_run_inside_the_listeners_write_keeps_its_cursor() -> None:
+    """A UNO call in a mouse listener can let queued work run inside it (`_Mouse._handle`). Here
+    type-ahead runs inside the refused release's `addSelection` and picks Echo, moving the cursor
+    there. The listener puts back only the cursor it set for its own write, so Echo stays the
+    cursor, as on `main`, rather than the older Hotel."""
+    owner = held_bravo("Delta")
+    ctrl_down(owner)
+    add = owner.tree.addSelection
+    ran: list[bool] = []
+
+    def add_running_type_ahead(node: Any) -> None:
+        add(node)
+        if owner._pointer_depth and not ran:
+            ran.append(True)
+            owner.type_ahead("e")
+
+    owner.tree.addSelection = add_running_type_ahead
+    late_release(owner)
+    assert ran and owner.failures == []
+    assert picks(owner) == ["Echo"] and cursor(owner) == "Echo"
+    assert shown_cursor(owner) == "Echo" and owner.tree.shown() == ["Echo"]
+
+
+def test_a_voided_press_gives_a_sheet_under_its_name_no_cursor_preference() -> None:
+    """Charlie, held, is deleted, so its handle turns to Bravo, which another window then renames
+    Charlie: the press's handle reports the pressed name again. The refresh drops every pick and
+    voids the press. Ctrl+A picks every sheet and Ctrl+End moves the cursor to Lima, which a
+    rename drops. The pick under the pressed name is the renamed Bravo, not the pressed sheet, so
+    the first pick takes the cursor, and the refusal keeps it."""
+    owner = sheet_list(Book(list(NAMES)))
+    click(owner, 2)
+    press(owner, 2)
+    owner.run_queue()
+    owner.book.delete("Charlie")
+    owner.book.rename("Bravo", "Charlie")
+    refresh_now(owner)
+    assert owner._press.voided and owner._press.handle.getName() == "Charlie"
+    key(owner, A, MOD1)
+    key(owner, END, MOD1)
+    owner.book.rename("Lima", "Lima 2")
+    refresh_now(owner)
+    assert cursor(owner) == "Alfa"
+    late_release(owner, 2)
+    assert cursor(owner) == "Alfa" and shown_cursor(owner) == "Alfa"
 
 
 def unpicked_bravo_held() -> Any:

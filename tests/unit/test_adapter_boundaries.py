@@ -453,30 +453,46 @@ def test_stale_accessible_rows_preserve_cursor_without_hiding_other_errors(
 
 
 @pytest.mark.parametrize(
-    "names,cursor,gone,written,kept",
+    "names,cursor,gone,voided,written,kept",
     [
-        (("Bravo",), "Bravo", False, "Bravo", "Bravo"),  # The press's own cursor.
-        (("Bravo",), "Hotel", False, "Bravo", "Hotel"),  # Moved outside the picks (#71).
-        (("Bravo", "Delta"), "Delta", False, "Delta", "Delta"),  # Moved to another pick.
-        (("Delta",), "Delta", False, "Delta", "Delta"),  # A newer typed pick.
-        ((), "Hotel", False, None, "Hotel"),  # No pick survives, the cursor does.
-        (("Alfa", "Bravo"), "Hotel", True, "Bravo", "Bravo"),  # Gone: the pressed pick takes it,
-        (("Alfa", "Delta"), "Hotel", True, "Alfa", "Alfa"),  # or else the first pick,
-        ((), "Hotel", True, None, None),  # or nothing.
-        (("Alfa", "Bravo"), None, False, "Bravo", "Bravo"),
-        ((), None, False, None, None),
+        (("Bravo",), "Bravo", False, False, "Bravo", "Bravo"),  # The press's own cursor.
+        (("Bravo",), "Hotel", False, False, "Bravo", "Hotel"),  # Moved outside the picks (#71).
+        (("Bravo", "Delta"), "Delta", False, False, "Delta", "Delta"),  # Moved to another pick.
+        (("Delta",), "Delta", False, False, "Delta", "Delta"),  # A newer typed pick.
+        ((), "Hotel", False, False, None, "Hotel"),  # No pick survives, the cursor does.
+        (
+            ("Alfa", "Bravo"),
+            "Hotel",
+            True,
+            False,
+            "Bravo",
+            "Bravo",
+        ),  # Gone: the pressed pick takes it,
+        (("Alfa", "Delta"), "Hotel", True, False, "Alfa", "Alfa"),  # or else the first pick,
+        ((), "Hotel", True, False, None, None),  # or nothing.
+        (("Alfa", "Bravo"), None, False, False, "Bravo", "Bravo"),
+        # After a refresh dropped every pick, one under the pressed name may be a replacement.
+        (("Alfa", "Bravo"), "Hotel", True, True, "Alfa", "Alfa"),
+        (("Alfa", "Bravo"), "Hotel", False, True, "Alfa", "Hotel"),
+        ((), None, False, False, None, None),
     ],
 )
 def test_a_refused_release_writes_a_picked_cursor_and_keeps_the_lists_own(
-    names: tuple[str, ...], cursor: str | None, gone: bool, written: str | None, kept: str | None
+    names: tuple[str, ...],
+    cursor: str | None,
+    gone: bool,
+    voided: bool,
+    written: str | None,
+    kept: str | None,
 ) -> None:
     """A press on Bravo, which a refresh moved away from the pressed row. The tree's native
     release has moved its cursor to that row, Charlie's now, but the list ignored that while the
     press was held, so its cursor is where its keys left it. The listener writes the picks back
     with the tree's cursor on a pick, as before #71, and then keeps the list's own cursor, which
-    the write it queues shows; a cursor whose sheet is gone (`gone`) falls back to a pick, as
-    before. The cursor is always a ref the list made at the user's input, never one from the
-    release, and the listener reads no handle for it: the press's would fail the test."""
+    the write it queues shows; a cursor whose sheet is gone (`gone`) falls back to a pick, the
+    pressed sheet's unless a refresh has dropped every pick since the press (`voided`). The
+    cursor is always a ref the list made at the user's input, never one from the release, and the
+    listener reads no handle for it: the press's would fail the test."""
     rows = ["Alfa", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Bravo", "Hotel"]
     handles = {name: SimpleNamespace(getName=lambda name=name: name) for name in rows}
     selection = Selection(lambda ref: not (gone and ref.name == cursor))
@@ -490,7 +506,7 @@ def test_a_refused_release_writes_a_picked_cursor_and_keeps_the_lists_own(
             name="Bravo",
             handle=SimpleNamespace(getName=Mock(side_effect=AssertionError("a handle read"))),
             generation=0,
-            voided=False,
+            voided=voided,
         ),
         _monitor=SimpleNamespace(generation=0),  # No `check()` in the listener (#284).
         _pressed_sheet_in_place=Mock(return_value=False),
