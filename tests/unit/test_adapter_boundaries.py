@@ -7,7 +7,7 @@ from unittest.mock import Mock
 import pytest
 
 from sheet_manager.selection import Ref, Selection
-from tests.unit.source_methods import function, method
+from tests.unit.source_methods import method
 
 
 @pytest.mark.parametrize("changed", ["structure", "activation"])
@@ -473,8 +473,9 @@ def test_a_refused_release_writes_a_picked_cursor_and_keeps_the_lists_own(
     release has moved its cursor to that row, Charlie's now, but the list ignored that while the
     press was held, so its cursor is where its keys left it. The listener writes the picks back
     with the tree's cursor on a pick, as before #71, and then keeps the list's own cursor, which
-    the write it queues shows; a cursor whose sheet is gone (`gone`) falls back to a pick. The
-    cursor is always a ref the list made at the user's input, never one from the release."""
+    the write it queues shows; a cursor whose sheet is gone (`gone`) falls back to a pick, as
+    before. The cursor is always a ref the list made at the user's input, never one from the
+    release, and the listener reads no handle for it: the press's would fail the test."""
     rows = ["Alfa", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Bravo", "Hotel"]
     handles = {name: SimpleNamespace(getName=lambda name=name: name) for name in rows}
     selection = Selection(lambda ref: not (gone and ref.name == cursor))
@@ -484,7 +485,11 @@ def test_a_refused_release_writes_a_picked_cursor_and_keeps_the_lists_own(
     writes: list[Ref | None] = []
     owner = SimpleNamespace(
         _press=SimpleNamespace(
-            row=1, name="Bravo", handle=handles["Bravo"], generation=0, voided=False
+            row=1,
+            name="Bravo",
+            handle=SimpleNamespace(getName=Mock(side_effect=AssertionError("a handle read"))),
+            generation=0,
+            voided=False,
         ),
         _monitor=SimpleNamespace(generation=0),  # No `check()` in the listener (#284).
         _pressed_sheet_in_place=Mock(return_value=False),
@@ -492,14 +497,6 @@ def test_a_refused_release_writes_a_picked_cursor_and_keeps_the_lists_own(
         names=lambda: rows,
         _show_selection=lambda: writes.append(selection.cursor),
     )
-    name_or_none = function("src/sheet_manager/uno_list.py", "_name_or_none", {"Any": Any})
-    namespace: dict[str, Any] = {"Ref": Ref, "_Press": Any, "_name_or_none": name_or_none}
-    fallback = method("src/sheet_manager/uno_list.py", "SheetList", "_fallback_cursor", namespace)
-
-    def fallback_cursor(press: Any) -> Ref | None:
-        return fallback(owner, press)
-
-    owner._fallback_cursor = fallback_cursor
     released = method(
         "src/sheet_manager/uno_list.py", "SheetList", "mouse_released", {"LEFT": 1, "RIGHT": 2}
     )

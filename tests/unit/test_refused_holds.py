@@ -36,6 +36,7 @@ from tests.unit.list_peer import (
     UP,
     A,
     Book,
+    Handle,
     NativeFailure,
     changed,
     click,
@@ -494,23 +495,56 @@ def test_each_failed_call_of_a_refused_release_leaves_no_wrong_pick(
         pytest.param((), held_ctrl_down, id="key repeat"),
     ],
 )
-def test_the_refused_release_listener_makes_the_same_native_calls_as_for_the_pressed_sheet(
-    others: tuple[str, ...], hold: Callable[[Any], None]
+def test_the_refused_release_listener_makes_the_same_calls_as_for_the_pressed_sheet(
+    others: tuple[str, ...], hold: Callable[[Any], None], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The mouse listener runs without LibreOffice's solar mutex, and its only native calls are
-    those that write a refused release's picks back (`SheetList`, AGENTS.md "Listeners"). Keeping
-    the cursor adds none: the listener writes the picks with the tree's cursor on one of them, as
-    for a cursor left on the pressed sheet, and the queued write moves the tree's cursor to the
-    list's. Only that posted write makes the clear an unpicked cursor's row needs, and a failure
-    there leaves the record unknown (#257)."""
+    """The mouse listener runs without LibreOffice's solar mutex, and it may only read the tree,
+    the handles and the document and write a refused release's picks back (`SheetList`,
+    AGENTS.md "Listeners"). Keeping the cursor adds no call there: the listener writes the picks
+    with the tree's cursor on one of them and reads the same handles, as for a cursor left on
+    the pressed sheet, and the queued write moves the tree's cursor to the list's. Only that
+    posted write makes the clear an unpicked cursor's row needs, and a failure there leaves the
+    record unknown (#257)."""
+    reads: list[str] = []
+    read = Handle.getName
 
-    def listener_calls(hold: Callable[[Any], None]) -> list[str]:
+    def counted(handle: Handle) -> str:
+        reads.append(handle.sheet.name)
+        return read(handle)
+
+    monkeypatch.setattr(Handle, "getName", counted)
+
+    def listener_calls(hold: Callable[[Any], None]) -> tuple[list[str], int]:
         owner = held_bravo(*others)
         hold(owner)
-        start = len(owner.faults.calls)
+        calls, handles = len(owner.faults.calls), len(reads)
         node = owner.tree._installed()[PRESSED]
         owner.tree.selected, owner.tree.cursor = [node], node
         owner.mouse_released(SimpleNamespace(Buttons=LEFT, X=0, Y=owner.tree.line(PRESSED)))
-        return owner.faults.calls[start:]
+        return owner.faults.calls[calls:], len(reads) - handles
 
     assert listener_calls(hold) == listener_calls(nothing)
+
+
+def test_a_cursor_lost_after_the_last_refresh_goes_to_the_pressed_pick() -> None:
+    """Alfa and Bravo are picked, Bravo is held while another window moves it, and Ctrl+Down
+    takes the cursor to Hotel. Another window renames Hotel, and the button goes up before the
+    refresh: the release finds the cursor's sheet gone and gives the cursor to the pressed
+    pick, as before #71, and the refresh after it keeps that."""
+    owner = sheet_list(Book(list(NAMES)))
+    click(owner, 0)
+    queued_click(owner, PRESSED)
+    owner.run_queue()
+    press(owner, PRESSED)
+    owner.run_queue()
+    owner.book.move("Bravo", 6)
+    refresh_now(owner)
+    ctrl_down(owner)
+    owner.book.rename("Hotel", "Hotel 2")
+    changed(owner)
+    late_release(owner)
+    assert cursor(owner) == "Bravo" and shown_cursor(owner) == "Bravo"
+    owner.retry()
+    assert set(picks(owner)) == {"Alfa", "Bravo"} and cursor(owner) == "Bravo"
+    key(owner, SPACE, MOD1)
+    assert picks(owner) == ["Alfa"]
