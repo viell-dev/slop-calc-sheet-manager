@@ -218,9 +218,9 @@ def main():
 <value>COLOR_SCHEME_LIBREOFFICE_LIGHT</value></prop>
 </item></oor:items>""",
             ) as (context, desktop, directory):
-                checks = run_checks(
-                    Lab(context, desktop, directory, output), output, arguments.check or ()
-                )
+                lab = Lab(context, desktop, directory, output)
+                result["list_calibrations"] = lab.calibrations  # Filled in place (#301).
+                checks = run_checks(lab, output, arguments.check or ())
                 result["checks"] = {name: check["pass"] for name, check in checks.items()}
                 failed = failed or not all(result["checks"].values())
         except Exception:

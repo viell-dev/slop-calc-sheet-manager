@@ -14,6 +14,26 @@ import time
 from types import SimpleNamespace
 from typing import Any
 
+from tests.unit.source_methods import constant, function
+
+LAB = "tests/ui/lab.py"
+
+
+def lab_calibration(confirm: float | None = None) -> dict[str, Any]:
+    """`tests/ui/lab.py`'s calibration functions and constants, read from source (#300).
+
+    The result is the functions' globals, with the fake `Tracker` below; `confirm`, when given,
+    replaces CONFIRM_SECONDS so that a test can set points aside sooner.
+    """
+    namespace: dict[str, Any] = {"Tracker": Tracker, "time": time}
+    for name in ("FIRST_SECONDS", "CONFIRM_SECONDS", "STEPS", "SPACING", "COLUMN"):
+        namespace[name] = constant(LAB, name)
+    if confirm is not None:
+        namespace["CONFIRM_SECONDS"] = confirm
+    for name in ("settled_report", "list_points", "confirmed_offset", "_paired"):
+        function(LAB, name, namespace)
+    return namespace
+
 
 class Tracker:
     """Stands in for the UI modules' `Tracker`: every position a window reported, and the last."""

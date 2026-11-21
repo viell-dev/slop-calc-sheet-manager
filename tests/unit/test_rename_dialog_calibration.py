@@ -1,33 +1,32 @@
-"""The rename dialog's pointer calibration attributes each report to its own move (#232).
+"""The rename dialog's pointer calibration attributes each report to its own move (#232, #300).
 
 `Dialog.calibrate` in `tests/ui/rename_dialog.py` takes the dialog's screen offset from where the
 dialog says the pointer is, trying points until one lands on the dialog's own background between
-its controls. The dialog hears a move only when LibreOffice's main thread gets to it, so a report
-can arrive after the pointer has gone on to the next point. The points start where the dialog's
-own coordinates begin, read from its buttons, rather than at its accessible location, which
-includes the window manager's frame (#253). The methods are read from source, as they import UNO,
-and run against a fake dialog whose reports a fake main thread delivers in order, late when it is
-kept busy.
+its controls, with the lab's `confirmed_offset`. The dialog hears a move only when LibreOffice's
+main thread gets to it, so a report can arrive after the pointer has gone on to the next point.
+The points start where the dialog's own coordinates begin, read from its buttons, rather than at
+its accessible location, which includes the window manager's frame (#253). The methods are read
+from source, as they import UNO, and run against a fake dialog whose reports a fake main thread
+delivers in order, late when it is kept busy.
 """
 
 import re
-import time
 from collections.abc import Callable, Iterator
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
-from tests.unit.motion_reports import Office, Tracker
+from tests.unit.motion_reports import Office, Tracker, lab_calibration
 from tests.unit.source_methods import function, method
 
 RENAME = "tests/ui/rename_dialog.py"
-LAB = "tests/ui/lab.py"
 ORIGIN = (600, 300)  # Where the dialog's own coordinates begin on screen.
 SIZE = (560, 472)
 MARGIN = 12  # The background around the controls, as in the real dialog; controls fill the rest.
 # The points tried first: the top row's left, middle and right, then the next row's left.
 LEFT, MIDDLE, RIGHT = 4, SIZE[0] // 2, SIZE[0] - 5
+ROW = 15  # How far apart the rows of points are.
 # The buttons' places in the dialog's own coordinates.
 BUTTONS = {
     "Replace All": (420, 44),
@@ -156,16 +155,8 @@ def dialog_for(
     shifts: dict[str, tuple[int, int]] | None = None,
 ) -> Any:
     """A fake dialog whose `calibrate` and `own_area` are the real methods, read from source."""
-    namespace: dict[str, Any] = {
-        "Tracker": Tracker,
-        "Pointer": Pointer,
-        "time": time,
-        "CONFIRM_SECONDS": confirm,
-        "REJECTED_POINTS": 3,
-    }
-    namespace["settled_report"] = function(LAB, "settled_report", namespace)
-    for name in ("_reported", "scan_points", "scan"):
-        function(RENAME, name, namespace)
+    namespace = {**lab_calibration(confirm), "Pointer": Pointer}
+    function(RENAME, "scan_points", namespace)
     calibration = method(RENAME, "Dialog", "calibrate", namespace)
     own_area = method(RENAME, "Dialog", "own_area", namespace)
     shifts = shifts or {}
@@ -190,31 +181,41 @@ def test_prompt_reports_give_the_true_offset(office: Office) -> None:
 
 
 def test_a_late_report_is_not_taken_for_the_next_points(office: Office) -> None:
-    # #232: the first point's report comes while the pointer is at the second point, and that
-    # point's own report later still. Taking the first report after a fixed 0.15-second wait
-    # read the first point's report for the second's, an offset half the dialog's width out.
-    assert calibrate(office, Input(office, {1: 0.25, 2: 0.15})) == ORIGIN
+    # #232: the first point's report comes while the pointer is at the second point, after
+    # the first wait, and that point's own report later still. Taking the first report after a
+    # fixed 0.15-second wait read the first point's report for the second's, an offset half the
+    # dialog's width out.
+    assert calibrate(office, Input(office, {1: 0.45, 2: 0.15})) == ORIGIN
+
+
+def test_reports_later_than_the_quiet_time_count_for_their_own_point(office: Office) -> None:
+    # #300: every report comes 0.35 s after its move, later than the 0.3-second quiet time.
+    # Requiring two settled reports 2 pixels apart, and taking the offset from the point being
+    # tried, credited the top row's right point's pair to the next row's left point: (49, 303).
+    real_input = Input(office, {move: 0.35 for move in range(1, 100)})
+    assert calibrate(office, real_input, confirm=2) == ORIGIN
 
 
 def test_a_late_report_over_a_control_moves_on_to_the_next_point(office: Office) -> None:
     # The first point's late report comes while the pointer is at the second point, which is
     # over a control, as is its second move: neither is reported, and the next points are tried.
-    real_input = Input(office, {1: 0.25}, background=left_margin)
+    # The next row's left point confirms, with the second step.
+    real_input = Input(office, {1: 0.45}, background=left_margin)
     assert calibrate(office, real_input) == ORIGIN
     assert real_input.moves[1:] == [
         (ORIGIN[0] + MIDDLE, ORIGIN[1] + 2),
         (ORIGIN[0] + MIDDLE + 2, ORIGIN[1] + 4),
         (ORIGIN[0] + RIGHT, ORIGIN[1] + 2),
-        (ORIGIN[0] + LEFT, ORIGIN[1] + 5),
-        (ORIGIN[0] + LEFT + 2, ORIGIN[1] + 7),
+        (ORIGIN[0] + LEFT, ORIGIN[1] + 2 + ROW),
+        (ORIGIN[0] + LEFT + 2, ORIGIN[1] + 2 + ROW + 4),
     ]
 
 
 def test_a_late_second_report_is_not_preceded_by_another_points_report(office: Office) -> None:
-    # The second point's report comes after the first's, and the second move's report after
-    # both and late. Taking the newest report other than the first point's for the second move
-    # would give an offset 2 pixels out on both axes.
-    real_input = Input(office, {1: 0.25, 2: 0.1, 3: 0.6})
+    # The first point's report comes at the second point, the second point's after it, and
+    # the second move's report after both and late. Taking the newest report other than the
+    # first point's for the second move would give an offset 2 pixels out on both axes.
+    real_input = Input(office, {1: 0.45, 2: 0.1, 3: 0.6})
     assert calibrate(office, real_input, confirm=2) == ORIGIN
     assert len(real_input.moves) == 3
 
@@ -230,10 +231,17 @@ def test_a_corrected_landing_is_not_taken_for_the_point(office: Office) -> None:
 
 
 def test_reports_that_never_follow_the_move_fail_with_the_points(office: Office) -> None:
-    # A window whose coordinates are twice the screen's: no pair differs by (2, 2).
+    # A window whose coordinates are twice the screen's: no two reports differ by a step.
     real_input = Input(office, {}, scale=2)
-    point = (ORIGIN[0] + LEFT, ORIGIN[1] + 2)
-    message = f"{{'point': {point}, 'reports': [{(2 * LEFT, 4)}, {(2 * LEFT + 4, 8)}]}}"
+    moves = [
+        {"point": (ORIGIN[0] + LEFT, ORIGIN[1] + 2), "step": (2, 2)},
+        {"point": (ORIGIN[0] + MIDDLE, ORIGIN[1] + 2), "step": (-2, 4)},
+        {"point": (ORIGIN[0] + RIGHT, ORIGIN[1] + 2), "step": (-4, 2)},
+    ]
+    message = (
+        "Calibrating the Rename Sheets dialog: no two of its reports differ by a point's second "
+        f"move; the points and their second moves: {moves}"
+    )
     with pytest.raises(AssertionError, match=re.escape(message)):
         calibrate(office, real_input)
     assert len(real_input.moves) == 6
@@ -246,14 +254,15 @@ def test_the_points_start_on_the_dialogs_own_window(
     # #253: the accessible area includes the window manager's frame, where the dialog hears
     # nothing, and the move that brings the pointer onto its background is not reported. The
     # points start where the dialog's own coordinates begin: the first, reached from off the
-    # dialog, goes unheard, and the second, reached from the first, counts.
+    # dialog, goes unheard, and the second, reached from the first, counts. Its second move
+    # goes down and, from the middle, to the left.
     real_input = Input(office, {}, entering=True)
     dialog = dialog_for(office, real_input, frame=frame)
     assert dialog.calibrate().offset == ORIGIN
     assert real_input.moves == [
         (ORIGIN[0] + LEFT, ORIGIN[1] + 2),
         (ORIGIN[0] + MIDDLE, ORIGIN[1] + 2),
-        (ORIGIN[0] + MIDDLE + 2, ORIGIN[1] + 4),
+        (ORIGIN[0] + MIDDLE - 2, ORIGIN[1] + 4),
     ]
     left, top, right, bottom = frame
     assert dialog.calibration["accessible"] == [
