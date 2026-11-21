@@ -141,15 +141,17 @@ first row's offset and the row height as it last saw them, and changes it only t
 hold of every row whose end it posts at once (`_saw_position`). It sees the position where it
 reads it anyway: in a rebuild's second read, now taken whenever the new rows show; in each paint,
 which shows the rows where the user sees them; and in the press listener's own read. A write that
-shows the cursor reads it once more after scrolling (`_show_row`). A listener whose press was
+shows the cursor reads it before and after it scrolls (`_show_row`), so that its scroll cannot
+bring back rows that the wheel moved unseen. A listener whose press was
 handled before such a change runs held. One that finds the rows at another position than the list
 saw last holds every row itself, its own press included, since it cannot tell whether the press
 came before the scroll. Each is a refusal, never a press on another sheet, and a press made once
 the list has painted the scrolled rows acts. The listener and the paint compare the reads they
 map and draw with, so neither makes a native call for this; each can post the end of a hold. The
-write's read is one `getNodeRect` in posted work, and a failed read holds every row. A press made
-between two scrolls that leave the rows where the list last saw them, with no paint or read
-between, is not seen: the list cannot tell that the rows moved and came back.
+write's reads are two `getNodeRect` calls in posted work, and a failed read holds every row. A
+press made between two scrolls by the wheel or the scrollbar that leave the rows where the list
+last saw them, with no paint between, is not seen: the list cannot tell that the rows moved and
+came back.
 
 Drags before the press's listener (#295). VCL recognizes a drag gesture within its handling of
 the pointer's motion (#264), so the gesture can come before its press's listener. After a
@@ -1182,8 +1184,11 @@ class SheetList:
         """Scroll the tree so that the row at `index` shows, holding presses if the rows moved.
 
         A press made before this scroll would map to another row (#299). The position is read
-        again once the tree has scrolled, also after a failed scroll: one `getNodeRect`.
+        before the scroll, since the wheel may have scrolled the tree since the list last saw it
+        and this scroll could bring the rows back there, and again once the tree has scrolled,
+        also after a failed scroll: two `getNodeRect` calls.
         """
+        self._note_position()
         try:
             self.tree.makeNodeVisible(self._nodes[index])
         finally:
@@ -2320,7 +2325,7 @@ class SheetList:
         if not picked:
             return
         index = self.names().index(picked[0].name)
-        self.tree.makeNodeVisible(self._nodes[index])
+        self._show_row(index)  # Holds presses if this scrolls, as a key's write does (#299).
         geometry = self.geometry()
         self._open_menu(
             geometry.row_height, geometry.gap_y(index) + geometry.row_height // 2, picked

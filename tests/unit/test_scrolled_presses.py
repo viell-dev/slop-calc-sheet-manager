@@ -20,7 +20,7 @@ from typing import Any
 
 import pytest
 
-from sheet_manager.keys import DOWN, END
+from sheet_manager.keys import DOWN, END, HOME
 from tests.unit.list_peer import (
     RIGHT,
     Book,
@@ -227,6 +227,48 @@ def test_the_wheel_between_a_press_and_its_listener_acts_on_no_other_sheet(
     assert in_view(owner) == ["Delta", "Echo", "Foxtrot", "Golf"]
     assert "Echo" not in acted(owner, recorded, kind), "Echo was never pressed"
     assert acted(owner, recorded, kind) == [] and picks(owner) == []
+
+
+def test_a_keys_write_that_scrolls_back_over_an_unseen_wheel_holds_the_press() -> None:
+    """Alfa clicked, and Home pressed: its write is queued. The wheel scrolls the list to Delta
+    to Golf, and the user clicks Echo there before VCL paints. Home's write then scrolls back to
+    Alfa, where the list last saw the rows, and the listener mapped the click's line to Bravo.
+    The write reads the position before it scrolls too, finds the rows elsewhere, and holds every
+    row."""
+    owner = top()
+    click(owner, row("Alfa"))
+    owner.tree_key(HOME, 0)
+    wheel(owner, 3, painted=False)
+    queued_click(owner, row("Echo"), 0)
+    owner.run_queue()
+    assert in_view(owner) == NAMES[:4]
+    assert "Bravo" not in picks(owner), "Bravo was never pressed"
+    assert picks(owner) == [] and move_to_top(owner) is None
+
+
+def test_the_keyboard_menus_scroll_back_over_an_unseen_wheel_holds_the_press() -> None:
+    """Alfa clicked, and the menu key pressed: its work, which scrolls the list to Alfa and opens
+    the menu for it, is queued. The wheel scrolls the list to Delta to Golf, and the user
+    right-clicks Echo there before VCL paints. The menu's scroll brings back the rows where the
+    list last saw them, and the right click's listener targeted Bravo, under its line then. The
+    menu's scroll holds presses as a key's write does."""
+    owner = top()
+    opened: list[str | None] = []
+
+    def open_menu(x: int, y: int, refs: Any = None, seen: int | None = None) -> None:
+        target = owner._context_target
+        names = [ref.name for ref in refs] if refs else [target.name] if target else [None]
+        opened.extend(names)
+
+    owner._open_menu = open_menu
+    click(owner, row("Alfa"))
+    owner.post(owner.open_menu_for_keyboard, "the sheet tab menu")
+    wheel(owner, 3, painted=False)
+    queued_click(owner, row("Echo"), 0, button=RIGHT)
+    owner.run_queue()
+    assert in_view(owner) == NAMES[:4]
+    assert "Bravo" not in opened, "Bravo was never pressed"
+    assert opened == ["Alfa", None] and picks(owner) == ["Alfa"]
 
 
 def test_a_double_click_before_the_wheel_activates_nothing() -> None:

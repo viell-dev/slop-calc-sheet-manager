@@ -5,6 +5,17 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- A click, double click or right click in the sheet list no longer acts on another sheet than the
+  one you clicked when the list scrolls before it handles the click: by the mouse wheel or the
+  scroll bar, or by a key such as End or Down that moved the selection out of view just before.
+  The list took the sheet scrolled under the pointer: a double click could go to it, and the
+  right-click menu could delete it. Such a click is now refused, as a click during a redraw is,
+  and so is a click that comes right after a scroll, before the list shows the scrolled rows.
+  Click again ([#299](https://github.com/viell-dev/slop-calc-sheet-manager/issues/299)).
+- A drag started in the sheet list just as the list redraws its rows, as it does when another
+  window moves a sheet, no longer drags the sheets that were selected before instead of the
+  sheet you pressed. Such a drag, and one started just as the list scrolls, now does not start:
+  drag again ([#295](https://github.com/viell-dev/slop-calc-sheet-manager/issues/295)).
 - A click, Ctrl+click, Shift+click, double click or right click in the sheet list no longer acts
   on another sheet than the one you clicked when the list redraws its rows at that moment, as it
   does when another window moves, inserts, deletes or renames a sheet. The list handled the

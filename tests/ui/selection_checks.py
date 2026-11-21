@@ -4,7 +4,8 @@ Clicking a row picks it without changing Calc's viewed sheet or grouped tabs; do
 activates it and ends grouped editing (#25). Calc's own tab changes, including real Ctrl+clicks on
 the native tab bar, are followed without rebuilding the rows. The list's accessible name follows
 the viewed sheet, never the picks (#83); a press in the panel's margins never undocks the sidebar
-(#133); and the selection notice expires without moving the focus (#90).
+(#133); and the selection notice expires without moving the focus (#90). Clicks right after the
+wheel or a key scrolled the list act on the rows they land on (#299).
 """
 
 import time
@@ -32,6 +33,48 @@ def check_click_activates(book):
     assert book.selection() == [NAMES[4]]
     assert book.labels()[4] == NAMES[4]
     return {"single_clicks": evidence, "double_click_active": book.active()}
+
+
+def check_clicks_after_scrolls(book):
+    """Clicks right after the wheel or a key scrolled the list act on the rows they land on.
+
+    A press made before such a scroll would map to another row, so the list holds presses while
+    the rows may have moved (#299): a key's write that scrolls, and a paint that shows the rows at
+    a new position, hold every row until work posted after them has run. A click made once the
+    scrolled rows are painted, as a hand's is, must still act; a refused one picks nothing.
+    """
+    tree = book.tree
+    tree.makeNodeVisible(book.nodes()[0])
+    time.sleep(0.3)
+    first = book.first_visible()
+    x, y = view.row_point(tree, first + 2, scroll=False)
+    book.pointer.wheel(x, y, down=True, ticks=4)
+    wheeled = book.first_visible()
+    clicked = wheeled + 1
+    book.pointer.click(*view.row_point(tree, clicked, scroll=False))
+    wait_until(lambda: book.selection() == [NAMES[clicked]], "the click after the wheel")
+    book.pointer.wheel(x, y, down=True, ticks=3)
+    again = book.first_visible()
+    activated = again + 2
+    point = view.row_point(tree, activated, scroll=False)
+    book.pointer.click(*point, pause=0.02)
+    book.pointer.click(*point)
+    wait_until(lambda: book.active() == NAMES[activated], "the double click after the wheel")
+    book.lab.input.tap("End", pause=0.6)
+    wait_until(lambda: book.selection() == [NAMES[-1]], "End's write")
+    bottom = book.first_visible()
+    keyed = bottom + 1
+    book.pointer.click(*view.row_point(tree, keyed, scroll=False))
+    wait_until(lambda: book.selection() == [NAMES[keyed]], "the click after End")
+    evidence = {
+        "first_visible": [first, wheeled, again, bottom],
+        "clicked_after_wheel": NAMES[clicked],
+        "activated_after_wheel": book.active(),
+        "clicked_after_end": book.selection(),
+    }
+    assert wheeled > first and again > wheeled and bottom > again, evidence
+    tree.makeNodeVisible(book.nodes()[0])
+    return evidence
 
 
 def check_viewed_sheet_name(book):

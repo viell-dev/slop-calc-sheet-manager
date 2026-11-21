@@ -106,6 +106,7 @@ METHODS = (
     "_note_position",
     "_show_row",
     "paint_rows",
+    "open_menu_for_keyboard",
     "selected_names",
     "_focus_row",
     "_move_tree_cursor",

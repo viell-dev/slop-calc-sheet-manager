@@ -79,6 +79,7 @@ from rename_dialog import check_stale as check_rename_stale  # noqa: E402
 from run import office_session  # noqa: E402
 from selection_checks import (  # noqa: E402
     check_click_activates,
+    check_clicks_after_scrolls,
     check_ctrl_shift_selection,
     check_margin_drag_keeps_sidebar_docked,
     check_plain_click_ends_group,
@@ -131,6 +132,7 @@ def run_checks(lab, output, only=()):
         ("drop_in_place_and_escape", lambda: check_drop_in_place_and_escape(book)),
         ("autoscroll", lambda: check_autoscroll(book)),
         ("wheel", lambda: check_wheel(book)),
+        ("clicks_after_scrolls", lambda: check_clicks_after_scrolls(book)),
         ("keys_stay_in_list", lambda: check_keys_stay_in_list(book)),
         ("shortcuts_reach_calc", lambda: check_shortcuts(book)),
         ("menu_right_click", lambda: check_menu_right_click(book)),
