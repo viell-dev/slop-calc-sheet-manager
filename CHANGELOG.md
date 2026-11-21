@@ -16,8 +16,13 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   window, and a new workbook's calibration takes about a second. In gtk3, the area of a newly
   opened workbook was 21 pixels above the list, and when the first point was the pointer entering
   the list, it was not reported; either way the window's scan took 12 to 18 seconds per
-  workbook. Each session's results now record its calibrations. This changes the test runner,
-  not the extension ([#301](https://github.com/viell-dev/slop-calc-sheet-manager/issues/301)).
+  workbook. That scan also crossed the window's toolbar, which is what makes gtk3 learn where the
+  window manager put a new window: until then, its accessible locations are 25 pixels too high,
+  and a real click at the native sheet tab's accessible place hit the scroll bar. The lab now
+  crosses the toolbar after a calibration while the list's accessible place disagrees with the
+  calibrated one, and each session's results record its calibrations. This changes the test
+  runner, not the extension
+  ([#301](https://github.com/viell-dev/slop-calc-sheet-manager/issues/301)).
 - The real-input lab's calibration of the sheet list now lets the list's reports of a point stop
   before it moves the pointer a second time, moves it toward the list's middle, and tries another
   point when that move goes unreported. Before, it waited 10 seconds and failed the session. gtk3

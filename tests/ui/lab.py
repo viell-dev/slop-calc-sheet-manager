@@ -32,6 +32,10 @@ SPACING = 14
 # The points down the tree's accessible area that come before the window's (#301): how many,
 # how far apart, and how far in from the area's left and top.
 COLUMN = (5, 24, (30, 12))
+# How far the tree's accessible location may lie from its calibrated place before the lab makes
+# gtk3 learn where its window is (#301). Settled, gtk3's lies 2 and 4 pixels out, gen's and
+# Windows' nowhere; unsettled, gtk3's was 21 pixels above the tree.
+PLACEMENT_TOLERANCE = 4
 
 
 class Tracker(unohelper.Base, XMouseMotionListener):
@@ -98,7 +102,8 @@ class Lab:
         only when LibreOffice's main thread gets to it, which a busy office delays: reading the
         second report after a fixed 0.2 seconds once took the first position for it, and the
         offset came out 2 pixels too large on both axes (#209). `calibrations` gets the record
-        of each calibration that succeeds, with the accessible area and the seconds it took.
+        of each calibration that succeeds, with the accessible area, what `show_placement` did
+        and the seconds it took.
         """
         started = time.monotonic()
         try:
@@ -123,11 +128,42 @@ class Lab:
             ) from None
         finally:
             tree.removeMouseMotionListener(tracker)
+        if area is not None:
+            found.update(self.show_placement(tree, window, offset, area))
         seconds = round(time.monotonic() - started, 2)
         self.calibrations.append(
             {"accessible": area, **found, "offset": offset, "seconds": seconds}
         )
         return offset
+
+    def show_placement(self, tree, window, offset, area):
+        """Make gtk3 learn where the window manager put a new window, if it has not (#301).
+
+        Until the pointer crosses the window's toolbar, gtk3 places every accessible location in
+        a window it has just shown 25 pixels above its settled place, which put the tree's 21
+        pixels above the tree. Moves in the tree or over the cells do not correct it; 40 seconds
+        without input did not either. The window scan's first row, which every new workbook's
+        calibration crossed before #301, did. Without it, `tab_selection_sync`'s Ctrl+click at
+        the native sheet tab's accessible centre hit the scroll bar above the tabs. So when the
+        tree's accessible location lies more than PLACEMENT_TOLERANCE from its calibrated place,
+        the pointer goes along that row until it does not. Returns the difference before and,
+        when the row was used, after it and the moves made.
+        """
+        drift = (area[0] - offset[0], area[1] - offset[1])
+        found = {"accessible_drift": drift}
+        if max(map(abs, drift)) <= PLACEMENT_TOLERANCE:
+            return found
+        frame = window.getPosSize()
+        moves = 0
+        for x in range(frame.X + frame.Width - 40, frame.X + frame.Width // 2, -40):
+            self.input.move(x, frame.Y + 60)
+            moves += 1
+            time.sleep(0.05)
+            location = tree.getProperty("XAccessible").getAccessibleContext().getLocationOnScreen()
+            drift = (location.X - offset[0], location.Y - offset[1])
+            if max(map(abs, drift)) <= PLACEMENT_TOLERANCE:
+                break
+        return {**found, "top_row_moves": moves, "drift_after_top_row": drift}
 
 
 def list_points(area, frame):

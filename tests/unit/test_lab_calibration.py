@@ -14,6 +14,7 @@ dozens.
 import re
 import time
 from collections.abc import Callable, Iterator
+from functools import partial
 from types import SimpleNamespace
 from typing import Any, NamedTuple
 
@@ -31,12 +32,15 @@ class Geometry(NamedTuple):
     # Where its accessible context places it on screen, with the tree's size; None for a tree
     # without one.
     accessible: tuple[int, int] | None
+    # Where it places it once the pointer has crossed the window's toolbar, if elsewhere.
+    settled: tuple[int, int] | None = None
 
 
 GEN = Geometry((1186, 136), (273, 784), (1186, 136))  # As in #209's gen session.
 # As in #298's gtk3 session, in a workbook that has just opened: the accessible area begins 21
-# pixels above the tree, so the first point misses it.
-GTK3 = Geometry((1125, 176), (321, 743), (1123, 155))
+# pixels above the tree, so the first point misses it, until the pointer crosses the toolbar.
+GTK3 = Geometry((1125, 176), (321, 743), (1123, 155), settled=(1123, 180))
+TOOLBAR = 100  # Moves above this screen height cross the windows' toolbar.
 FIRST = (30, 12)  # Where the first point lands in GEN's tree: its accessible location + (30, 12).
 # GEN's tree's points down its accessible area, in its own coordinates.
 COLUMN = [(30, 12), (30, 36), (30, 60)]
@@ -48,8 +52,8 @@ NARROW = (1000, 100, 240, 850)
 
 
 class Tree:
-    def __init__(self, office: Office, geometry: Geometry) -> None:
-        self.office, self.geometry = office, geometry
+    def __init__(self, office: Office, geometry: Geometry, real_input: "Input") -> None:
+        self.office, self.geometry, self.input = office, geometry, real_input
 
     def addMouseMotionListener(self, listener: Tracker) -> None:
         self.office.listeners.append(listener)
@@ -64,7 +68,9 @@ class Tree:
     def getProperty(self, name: str) -> Any:
         if self.geometry.accessible is None:
             raise RuntimeError("This tree has no accessible context")
-        location = SimpleNamespace(X=self.geometry.accessible[0], Y=self.geometry.accessible[1])
+        settled = self.input.crossed_toolbar and self.geometry.settled
+        x, y = settled or self.geometry.accessible
+        location = SimpleNamespace(X=x, Y=y)
         size = SimpleNamespace(Width=self.geometry.size[0], Height=self.geometry.size[1])
         context = SimpleNamespace(getLocationOnScreen=lambda: location, getSize=lambda: size)
         return SimpleNamespace(getAccessibleContext=lambda: context)
@@ -79,6 +85,7 @@ class Input:
     `entering`, a move onto the tree from elsewhere is not reported either: VCL delivers it as
     the pointer entering the tree, which motion listeners do not hear (#253). `after(n)` may add
     reports after move n's, and `scale` stands for a tree whose coordinates are not screen pixels.
+    A move above TOOLBAR crosses the window's toolbar, which settles gtk3's accessible places.
     """
 
     def __init__(
@@ -98,9 +105,11 @@ class Input:
         self.after, self.scale = after, scale
         self.moves: list[tuple[int, int]] = []
         self.inside = False
+        self.crossed_toolbar = False
 
     def move(self, x: int, y: int) -> None:
         self.moves.append((x, y))
+        self.crossed_toolbar = self.crossed_toolbar or y < TOOLBAR
         number = len(self.moves)
         (left, top), (width, height) = self.geometry.origin, self.geometry.size
         local = (x - left, y - top)
@@ -128,13 +137,16 @@ def calibrate(
     lab: Any = None,
 ) -> tuple[int, int]:
     """The real `Lab.calibrate`, read from source, over a fake tree in a window at `frame`."""
-    calibration = method(LAB, "Lab", "calibrate", lab_calibration(confirm))
+    namespace = lab_calibration(confirm)
+    calibration = method(LAB, "Lab", "calibrate", namespace)
+    show = method(LAB, "Lab", "show_placement", namespace)
     x, y, width, height = frame
     window = SimpleNamespace(
         getPosSize=lambda: SimpleNamespace(X=x, Y=y, Width=width, Height=height)
     )
     lab = lab or SimpleNamespace(input=real_input, calibrations=[])
-    return calibration(lab, Tree(office, geometry), window)
+    lab.show_placement = partial(show, lab)
+    return calibration(lab, Tree(office, geometry, real_input), window)
 
 
 def at(geometry: Geometry, local: tuple[int, int]) -> tuple[int, int]:
@@ -176,10 +188,12 @@ def test_a_corrected_first_landing_reported_late_is_not_taken_for_the_second(
 def test_a_new_gtk3_workbook_is_found_down_its_accessible_area(office: Office) -> None:
     # #301: the first point is above the tree, the second enters it and is not reported, and
     # the third is. Before, the window's scan reached the tree at its 58th point, in 17.6 s.
+    # The tree's accessible location is then still 21 pixels out, until the pointer crosses
+    # the window's toolbar, at the scan's first point.
     real_input = Input(office, GTK3, entering=True, rearm=0.1)
     lab = SimpleNamespace(input=real_input, calibrations=[])
     assert calibrate(office, real_input, GTK3, lab=lab) == GTK3.origin
-    assert real_input.moves == [(1153, 167), (1153, 191), (1153, 215), (1155, 217)]
+    assert real_input.moves == [(1153, 167), (1153, 191), (1153, 215), (1155, 217), (1460, 60)]
     record = dict(lab.calibrations[0])
     assert isinstance(record.pop("seconds"), float)
     assert record == {
@@ -190,8 +204,22 @@ def test_a_new_gtk3_workbook_is_found_down_its_accessible_area(office: Office) -
         "step": (2, 2),
         "reports": [(28, 39), (30, 41)],
         "rejected": [],
+        "accessible_drift": (-2, -21),
+        "top_row_moves": 1,
+        "drift_after_top_row": (-2, 4),
         "offset": GTK3.origin,
     }
+
+
+def test_an_accessible_location_that_never_settles_is_recorded(office: Office) -> None:
+    # The pointer goes along the whole top row, and the calibration keeps its offset.
+    geometry = GTK3._replace(settled=None)
+    real_input = Input(office, geometry, entering=True)
+    lab = SimpleNamespace(input=real_input, calibrations=[])
+    assert calibrate(office, real_input, geometry, lab=lab) == GTK3.origin
+    assert real_input.moves[4:] == [(x, 60) for x in range(1460, 750, -40)]
+    record = lab.calibrations[0]
+    assert (record["top_row_moves"], record["drift_after_top_row"]) == (18, (-2, -21))
 
 
 def test_a_tree_the_pointer_enters_at_the_first_point_is_found_at_the_second(
@@ -199,9 +227,13 @@ def test_a_tree_the_pointer_enters_at_the_first_point_is_found_at_the_second(
 ) -> None:
     # #301: gen's first point, reached from outside the tree, is not reported. Before, the
     # window's scan then took 40 points, 12.2 s.
+    # Its accessible location is right, so the pointer does not cross the toolbar.
     real_input = Input(office, entering=True)
-    assert calibrate(office, real_input) == GEN.origin
+    lab = SimpleNamespace(input=real_input, calibrations=[])
+    assert calibrate(office, real_input, lab=lab) == GEN.origin
     assert real_input.moves == [at(GEN, COLUMN[0]), at(GEN, COLUMN[1]), at(GEN, (32, 38))]
+    assert lab.calibrations[0]["accessible_drift"] == (0, 0)
+    assert "top_row_moves" not in lab.calibrations[0]
 
 
 def test_the_second_move_waits_until_gtk3_hears_moves_again(office: Office) -> None:
@@ -296,7 +328,7 @@ def test_a_point_on_the_trees_edge_moves_into_the_tree(
     geometry = GEN._replace(accessible=(point[0] - 30, point[1] - 12))
     real_input = Input(office, geometry)
     assert calibrate(office, real_input, geometry) == GEN.origin
-    assert real_input.moves == [point, (point[0] + step[0], point[1] + step[1])]
+    assert real_input.moves[:2] == [point, (point[0] + step[0], point[1] + step[1])]
 
 
 def test_reports_that_never_follow_the_moves_fail_with_the_points(office: Office) -> None:

@@ -132,7 +132,8 @@ Inside the container, `tests/ui/run_ui.py --check NAME` (repeatable) selects che
 shared workbook fixture and its rules in `workbook.py`.
 Results and screenshots are in `test-results/<lane>/ui-gtk3/` and `ui-gen/`. The printed
 `ui-results.json` records each session's sheet list calibrations under `list_calibrations`: the
-points tried and heard, the point that counted with its two reports, and the seconds taken.
+points tried and heard, the point that counted with its two reports, the accessible place's
+difference from the calibrated one, and the seconds taken.
 Windows synthetic input bypasses key handlers and cannot start a native drag; use the
 [visible Windows desktop](./hosted-checks.md#visible-windows-desktop) workflow for those paths.
 See [Optional desktop observations](../manual-tests.md) for human usability and additional

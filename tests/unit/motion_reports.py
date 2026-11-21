@@ -26,7 +26,15 @@ def lab_calibration(confirm: float | None = None) -> dict[str, Any]:
     replaces CONFIRM_SECONDS so that a test can set points aside sooner.
     """
     namespace: dict[str, Any] = {"Tracker": Tracker, "time": time}
-    for name in ("FIRST_SECONDS", "CONFIRM_SECONDS", "STEPS", "SPACING", "COLUMN"):
+    constants = (
+        "FIRST_SECONDS",
+        "CONFIRM_SECONDS",
+        "STEPS",
+        "SPACING",
+        "COLUMN",
+        "PLACEMENT_TOLERANCE",
+    )
+    for name in constants:
         namespace[name] = constant(LAB, name)
     if confirm is not None:
         namespace["CONFIRM_SECONDS"] = confirm
