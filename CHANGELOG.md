@@ -12,8 +12,10 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   deselected or replaced. The list now counts the changes to its selection that it did not make
   itself, and such input picks nothing and clears the selection, with the selection notice:
   select again. Two clicks or keys made so quickly that the list has not handled the first when
-  the second arrives can be refused in the same way
-  ([#294](https://github.com/viell-dev/slop-calc-sheet-manager/issues/294)).
+  the second arrives can be refused in the same way, and so is a Ctrl+Shift+click after Ctrl with
+  an arrow key moved the cursor
+  ([#294](https://github.com/viell-dev/slop-calc-sheet-manager/issues/294),
+  [#313](https://github.com/viell-dev/slop-calc-sheet-manager/issues/313)).
 - A click, double click or right click in the sheet list no longer acts on another sheet than the
   one you clicked when the list scrolls before it handles the click: by the mouse wheel or the
   scroll bar, or by a key such as End or Down that moved the selection out of view just before.
