@@ -172,14 +172,15 @@ class Lab:
 def list_points(area, frame):
     """The points that calibrate the sheet list: down its accessible area, then the window's.
 
-    The accessible area, (x, y, width, height) on screen, can be wrong: in a gtk3 workbook that
-    had just opened, it began 21 pixels above the tree (#298). Nor is a move onto the tree from
-    elsewhere reported: it is the pointer entering the tree (#253). So `COLUMN`'s points go down
-    the area, each reached from the one before, and one inside the tree counts even when the
-    area is that far out or the first point entered the tree. Without them, a new workbook's
-    calibration often scanned the window for 12 to 18 seconds (#301). The window's points cover
-    its right half, 40 pixels apart; one within 20 pixels of an earlier point is left out, which
-    keeps every point `SPACING` apart.
+    `area` is the tree's accessible location on screen with the tree's own size, (x, y, width,
+    height). The location can be wrong: in a gtk3 workbook that had just opened, it was 21
+    pixels above the tree (#298). Nor is a move onto the tree from elsewhere reported: it is
+    the pointer entering the tree (#253). So `COLUMN`'s points go down the area, each reached
+    from the one before, and one inside the tree counts even when the area is that far out or
+    the first point entered the tree. Without them, a new workbook's calibration often scanned
+    the window for 12 to 18 seconds (#301). The window's points cover its right half, 40 pixels
+    apart; one within 20 pixels of an earlier point is left out, which keeps every point
+    `SPACING` apart.
     """
     found = []
     if area is not None:
