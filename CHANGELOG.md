@@ -20,6 +20,26 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   looked at it, a Ctrl+click, a Ctrl+Shift+click or a key still acts against the earlier picks
   ([#291](https://github.com/viell-dev/slop-calc-sheet-manager/issues/291),
   [#294](https://github.com/viell-dev/slop-calc-sheet-manager/issues/294)).
+- A click, Ctrl+click, Shift+click, double click or right click in the sheet list no longer acts
+  on another sheet than the one you clicked when the list redraws its rows at that moment, as it
+  does when another window moves, inserts, deletes or renames a sheet. The list handled the
+  click only after the redraw and took the sheet then in that row: Move to Top could move a sheet
+  you never clicked, a double click could go to it, and the right-click menu could delete it.
+  This also happened on a row the redraw kept when the redraw scrolled the list, as it does when
+  the list gets shorter while scrolled to its end. At such a moment, a click on a row that the
+  redraw changed, on any row when it scrolled the list, and a Shift+click on any row, are now
+  refused: a refused right click opens no menu, and a refused left click clears the list's
+  selection, with the selection notice when you had made it. Click again
+  ([#293](https://github.com/viell-dev/slop-calc-sheet-manager/issues/293)).
+- The real-input lab's calibration of the sheet list now lets the list's reports of a point stop
+  before it moves the pointer a second time, moves it toward the list's middle, and tries another
+  point when that move goes unreported. Before, it waited 10 seconds and failed the session. gtk3
+  drops a move made before it has finished with the previous report: beside other busy processes,
+  one gtk3 calibration in five failed. The offset now comes only from two reports that belong to
+  one point's two moves. A late report of an earlier point can no longer shift it, and reports
+  that never follow the moves fail with the points tried. The Windows desktop checks use the same
+  calibration. This changes the test runner, not the extension
+  ([#298](https://github.com/viell-dev/slop-calc-sheet-manager/issues/298)).
 - A Ctrl+click or Ctrl+Space that deselects a sheet in the list no longer picks that sheet
   instead when the list drops picks at the same moment, as it does when another window inserts
   or deletes a sheet or renames a picked one; Move to Top then moved the sheet you had just

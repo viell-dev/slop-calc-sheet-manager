@@ -293,6 +293,13 @@ the selection, with the notice. So do a Ctrl+click, Ctrl+Space, and Ctrl with an
 End, Page Up or Page Down key on such a selection once the list has seen it, also when several
 Ctrl+clicks come at once. Select again; the next toggle acts
 ([#291](https://github.com/viell-dev/slop-calc-sheet-manager/issues/291)).
+<Unreleased /> A click in the list just as the list redraws its rows, as it does when another window
+moves, inserts, deletes or renames a sheet, is refused if the redraw changed the clicked row,
+rather than act on the sheet that the redraw put under the pointer. So is a Shift+click on any
+row, and a click on any row when the redraw moved the top row or scrolled the list, as it does
+when the list gets shorter while scrolled to its end. A refused right click opens no menu, and a
+refused left click clears the selection, with the notice when you had made it. Click again
+([#293](https://github.com/viell-dev/slop-calc-sheet-manager/issues/293)).
 
 **Undo and Redo of the list's moves.** <Unreleased since="0.0.8" /> Undo and Redo of a move the list
 made itself, by dragging, a move button, the menu or a shortcut, keep the picks and the view. The

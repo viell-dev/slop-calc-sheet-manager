@@ -134,6 +134,29 @@ def test_a_refresh_that_renames_or_reorders_the_rows_drops_the_picks_it_cannot_s
     assert move_to_top(owner) is None and owner.book.moved == []
 
 
+@pytest.mark.parametrize("modifiers", [pytest.param(0, id="click"), pytest.param(MOD1, id="Ctrl")])
+def test_a_reorder_over_a_waiting_selection_drops_the_picks_and_holds_a_press_on_a_moved_row(
+    modifiers: int,
+) -> None:
+    """#280 with #293's press hold: Alfa picked, then Echo selected alone through accessibility;
+    another view moves Delta to the top, its refresh is queued, and a click or Ctrl+click on
+    Bravo is handled natively before that refresh runs. The refresh drops Alfa, which the waiting
+    selection superseded, with the notice, and its rebuild holds presses. Bravo's row now shows
+    Alfa, so the click's listener picks nothing, and Move to Top refuses rather than act on
+    Alfa, the sheet now under the pointer."""
+    owner = alfa_then(["Echo"])
+    notices = len(owner.notices)
+    move_delta_to_the_top(owner.book)
+    owner.post(owner.refresh, "refreshing the sheet list")
+    queued_click(owner, row("Bravo"), modifiers)
+    owner.run_queue()
+    assert owner.names()[row("Bravo")] == "Alfa"
+    assert "Alfa" not in picks(owner), "Alfa, now under the pointer, was picked"
+    assert picks(owner) == [] and owner.tree.shown() == []
+    assert len(owner.notices) == notices + 1
+    assert move_to_top(owner) is None
+
+
 @pytest.mark.parametrize("assistive", ASSISTIVE)
 @pytest.mark.parametrize(
     "change",

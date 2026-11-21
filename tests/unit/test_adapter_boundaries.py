@@ -368,7 +368,6 @@ def test_failed_rebuild_releases_the_cursor_restoration_guard() -> None:
 
     owner = SimpleNamespace(
         _restoring_cursor=False,
-        _first_visible_name=lambda: None,
         context=SimpleNamespace(
             ServiceManager=SimpleNamespace(createInstanceWithContext=Mock(return_value=model))
         ),
@@ -376,6 +375,9 @@ def test_failed_rebuild_releases_the_cursor_restoration_guard() -> None:
         names=names,
         _selection=SimpleNamespace(picked=[]),
         _toggles_shown=Mock(),  # The new model shows the empty picks.
+        _nodes=[],  # No rows were shown: no scroll position to read, no presses held (#293).
+        _presses_held=None,
+        _release_presses=Mock(),
     )
 
     def fail_restore() -> None:

@@ -14,6 +14,13 @@ relies on from Calc and the tree control:
   26.8.2.2); `addSelection` and an assistive selection add a node without moving the cursor;
   `clearSelection` keeps the cursor; `getNodeRect` refuses a node outside the installed model,
   as LibreOffice documents;
+- the tree scrolls as `SvImpLBox` does (`MakeVisible`, `FillView` and `AdjustScrollBars`, read
+  in 26.8.2.2) once a test sets how many rows fit (`Tree.visible`; by default every row fits and
+  nothing scrolls): a new data model shows from its first row, `makeNodeVisible` leaves a row
+  in view where it is and otherwise starts the view at that row, but no further down than the
+  last rows fill the view, and a label longer than `Tree.wide` characters shows a horizontal
+  scrollbar, which takes one row's height. `getNodeRect` gives a row's line in the view, and
+  `Tree.scroll_to` scrolls as the user's wheel does;
 - every native call can be made to fail (`Faults`), before it has any effect. `select` can also
   fail once it has deselected the rows ("select cleared") or selected its row ("select done"),
   `clearSelection` and `addSelection` after their effect ("... done"), and the data model
@@ -77,6 +84,8 @@ METHODS = (
     "_toggle_held",
     "_toggles_shown",
     "_toggle_held_off",
+    "_hold_presses",
+    "_release_presses",
     "_rebuild",
     "_show_native",
     "_name_viewed",
@@ -89,7 +98,8 @@ METHODS = (
     "_current_picks",
     "_picks_at",
     "geometry",
-    "_first_visible_name",
+    "_first_visible_name",  # Only revisions before the second read of the position (#293).
+    "_hold_if_scrolled",
     "selected_names",
     "_focus_row",
     "_move_tree_cursor",
@@ -201,8 +211,8 @@ class Book:
         self.sheets.remove(sheet)
         self.sheets.insert(index, sheet)
 
-    def replace(self, name: str) -> Sheet:
-        """Delete the sheet and insert a different one under its name at the same place."""
+    def delete(self, name: str) -> int:
+        """Delete the sheet and return its index; Calc then shows the sheet its handle turned to."""
         index = self.sheets.index(self.sheet(name))
         deleted = self.sheets.pop(index)
         turned = self.sheets[index - 1] if index > 0 else self.sheets[0]
@@ -210,13 +220,22 @@ class Book:
             if handle.sheet is deleted:
                 handle.sheet = turned
         del self._own[id(deleted)]
+        if self.active is deleted:
+            self.active = turned
+        self.generation += 1
+        return index
+
+    def replace(self, name: str) -> Sheet:
+        """Delete the sheet and insert a different one under its name at the same place."""
+        shown = self.active is self.sheet(name)
+        index = self.delete(name)
         inserted = Sheet(name)
         self.sheets.insert(index, inserted)
         self._own[id(inserted)] = Handle(inserted)
         self._retained.append(self._own[id(inserted)])
-        if self.active is deleted:
+        if shown:
             self.active = inserted
-        self.generation += 2  # One deletion and one insertion.
+        self.generation += 1  # The insertion, after the deletion's.
         return inserted
 
     def snapshot(self) -> Any:
@@ -329,6 +348,7 @@ class ControlModel:
         faults.check("DataModel")
         self._tree.data = data
         self._tree.selected, self._tree.cursor = [], None
+        self._tree.start = 0  # `SvImpLBox::Clear`: the new rows show from the first.
         faults.check("DataModel installed")
 
 
@@ -340,10 +360,34 @@ class Tree:
         self.cursor: Node | None = None
         self.model = ControlModel(self)
         self.focused = 0
+        self.visible: int | None = None  # Rows that fit in the view; None: all of them.
+        self.wide: int | None = None  # A longer label shows a horizontal scrollbar.
+        self.start = 0  # The index of the first row in view.
 
     def _installed(self) -> list[Node]:
         root = self.data.root if self.data is not None else None
         return root.children if root is not None else []
+
+    def _in_view(self) -> int | None:
+        """How many rows fit, one fewer under a horizontal scrollbar; None if all of them do."""
+        if self.visible is None:
+            return None
+        nodes = self._installed()
+        wide = self.wide is not None and any(len(node.label) > self.wide for node in nodes)
+        return self.visible - 1 if wide else self.visible
+
+    def _last_start(self) -> int:
+        """The first row in view when the last rows fill the view (`SvImpLBox::FillView`)."""
+        fit = self._in_view()
+        return 0 if fit is None else max(0, len(self._installed()) - fit)
+
+    def scroll_to(self, start: int) -> None:
+        """Scroll as the user's wheel or scrollbar does, which no list call sees."""
+        self.start = max(0, min(start, self._last_start()))
+
+    def line(self, row: int) -> int:
+        """The line in the view that shows the row at `row`, as a mouse event's position."""
+        return row - self.start
 
     def _own(self, node: Any, call: str) -> Node:
         if not any(node is item for item in self._installed()):
@@ -382,15 +426,23 @@ class Tree:
         self.faults.check("clearSelection done")
 
     def makeNodeVisible(self, node: Any) -> None:
+        """`SvImpLBox::MakeVisible`: a row in view stays where it is (`IsEntryInView`); any
+        other row starts the view, which `FillView` then moves up until the view is full."""
         self.faults.check("makeNodeVisible")
-        self._own(node, "makeNodeVisible")
+        own = self._own(node, "makeNodeVisible")
+        fit = self._in_view()
+        if fit is None:
+            return
+        index = next(i for i, item in enumerate(self._installed()) if item is own)
+        if not self.start <= index < self.start + fit:
+            self.start = min(index, self._last_start())
 
     def getNodeRect(self, node: Any) -> Any:
+        """A row's bounds: its line in the view, one unit high, as the list's geometry reads."""
         self.faults.check("getNodeRect")
-        self._own(node, "getNodeRect")
-        return SimpleNamespace(
-            Y=0, Height=1
-        )  # The list reads the first row: a row's Y is its index.
+        own = self._own(node, "getNodeRect")
+        index = next(i for i, item in enumerate(self._installed()) if item is own)
+        return SimpleNamespace(Y=self.line(index), Height=1)
 
     def setFocus(self) -> None:
         self.focused += 1
@@ -585,6 +637,8 @@ def sheet_list(book: Book, source: str = SOURCE) -> Any:
         "MOD1": MOD1,
     }
     namespace["_Press"] = _load(source, others["_Press"], {"dataclass": dataclass, "Any": Any})
+    if "_PressHold" in others:  # A revision before #293 has none.
+        namespace["_PressHold"] = _load(source, others["_PressHold"], {"dataclass": dataclass})
     tree, peer = Tree(faults), Peer(faults)
     owner = _Owner(
         book=book,
@@ -614,6 +668,8 @@ def sheet_list(book: Book, source: str = SOURCE) -> Any:
         _toggles_release=None,
         _toggles_keys=True,
         _deferred=None,
+        _presses_held=None,
+        _presses_release=None,
         _selection=Selection(_current),
         _user_picks=False,
         _press=None,
@@ -708,8 +764,10 @@ def _listen(owner: Any, handler: Callable[[Any], None], event: Any) -> None:
 
 
 def press(owner: Any, row: int, button: int = LEFT, modifiers: int = 0) -> None:
-    """A press as the list's mouse listener runs it (`_Mouse._handle`)."""
-    event = SimpleNamespace(Buttons=button, X=0, Y=row, Modifiers=modifiers, ClickCount=1)
+    """A press as the list's mouse listener runs it (`_Mouse._handle`), on the line that shows
+    the row at `row` now."""
+    line = owner.tree.line(row)
+    event = SimpleNamespace(Buttons=button, X=0, Y=line, Modifiers=modifiers, ClickCount=1)
     _listen(owner, owner.mouse_pressed, event)
 
 
@@ -718,7 +776,7 @@ def release(owner: Any, row: int, button: int = LEFT) -> None:
     if button == LEFT:
         node = owner.tree._installed()[row]
         owner.tree.selected, owner.tree.cursor = [node], node
-    event = SimpleNamespace(Buttons=button, X=0, Y=row, Modifiers=0, ClickCount=1)
+    event = SimpleNamespace(Buttons=button, X=0, Y=owner.tree.line(row), Modifiers=0, ClickCount=1)
     _listen(owner, owner.mouse_released, event)
 
 
@@ -732,7 +790,9 @@ def toggle_natively(owner: Any, row: int) -> None:
     owner.tree.cursor = node
 
 
-def queued_click(owner: Any, row: int, modifiers: int = MOD1) -> None:
+def queued_click(
+    owner: Any, row: int, modifiers: int = MOD1, clicks: int = 1, button: int = LEFT
+) -> None:
     """A click as LibreOffice delivers it (#85, #269, #288): the tree handles the press at once,
     and the press's and the release's listeners are queued behind all the work already posted,
     which `run_queue` then runs in order. That is the latest place VCL gives them. VCL can also
@@ -740,14 +800,17 @@ def queued_click(owner: Any, row: int, modifiers: int = MOD1) -> None:
     them to that event (`VCLXWindowImpl::callBackAsync`); this does not model that. With Ctrl
     alone the tree toggles the row, and the release changes no native selection. Otherwise the
     row is selected alone, as a plain or Shift press on an unselected row selects it in the
-    tree."""
-    if modifiers == MOD1:
+    tree. `clicks` is the native click count, 2 for a double click's second click. A right click
+    changes no native selection here. `row` is the pressed row's index as the tree shows it when
+    the user presses; the events carry its line in the view, as VCL's carry a position."""
+    if button == LEFT and modifiers == MOD1:
         toggle_natively(owner, row)
-    else:
+    elif button == LEFT:
         node = owner.tree._installed()[row]
         owner.tree.selected, owner.tree.cursor = [node], node
-    pressed = SimpleNamespace(Buttons=LEFT, X=0, Y=row, Modifiers=modifiers, ClickCount=1)
-    released = SimpleNamespace(Buttons=LEFT, X=0, Y=row, Modifiers=modifiers, ClickCount=1)
+    line = owner.tree.line(row)
+    pressed = SimpleNamespace(Buttons=button, X=0, Y=line, Modifiers=modifiers, ClickCount=clicks)
+    released = SimpleNamespace(Buttons=button, X=0, Y=line, Modifiers=modifiers, ClickCount=clicks)
     owner.post(lambda: _listen(owner, owner.mouse_pressed, pressed), "a mouse press")
     owner.post(lambda: _listen(owner, owner.mouse_released, released), "a mouse release")
 
