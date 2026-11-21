@@ -19,8 +19,12 @@ relies on from Calc and the tree control:
   nothing scrolls): a new data model shows from its first row, `makeNodeVisible` leaves a row
   in view where it is and otherwise starts the view at that row, but no further down than the
   last rows fill the view, and a label longer than `Tree.wide` characters shows a horizontal
-  scrollbar, which takes one row's height. `getNodeRect` gives a row's line in the view, and
-  `Tree.scroll_to` scrolls as the user's wheel does;
+  scrollbar, which takes one row's height. `getNodeRect` gives a row's line in the view, in units
+  of `Tree.height`, and `Tree.scroll_to` scrolls with no list call seeing it. By reading the same
+  sources, the wheel and the scroll bar paint within their own handling (`DoScroll`,
+  `ScrollUpDownHdl`, then `PaintImmediately`), so `wheel` runs the list's paint listener,
+  `paint_rows`, at once; `MakeVisible`, `FillView` and a resize only invalidate, and VCL paints
+  later, so `resize` and `scroll_unseen` do not paint and a test paints where VCL would (`paint`);
 - every native call can be made to fail (`Faults`), before it has any effect. `select` can also
   fail once it has deselected the rows ("select cleared") or selected its row ("select done"),
   `clearSelection` and `addSelection` after their effect ("... done"), and the data model
@@ -31,7 +35,9 @@ Posted work runs on `run_queue`, and a failure there ends only that work and is 
 LibreOffice's callback reports it. `queued_click` posts a click's mouse listeners there too, after
 the tree has handled the press and behind all the work already posted, the latest place VCL gives
 them (#269), so that work posted earlier, such as a refresh or the tab sample, runs between the
-native press and the list's listener (#85, #288).
+native press and the list's listener (#85, #288). `bind_drag` binds the real `start_drag`, with
+the document's checks stubbed, so that a test can recognize a drag gesture between a press, which
+`native_press` handles, and its listener, as VCL can within its handling of the motion (#264).
 The refresh schedule's timers run on `retry`, which advances the fake clock. Move to Top runs
 through `queue_move` and `_move_selection`; the reorder layer's `apply_order` is replaced by
 `Book.apply`, which refuses a stale snapshot as `is_current` does and otherwise moves the planned
@@ -100,7 +106,14 @@ METHODS = (
     "_picks_at",
     "geometry",
     "_first_visible_name",  # Only revisions before the second read of the position (#293).
-    "_hold_if_scrolled",
+    "_hold_if_scrolled",  # The second read of the position until #299 renamed it.
+    "_note_rebuilt_position",  # From #299 on, as are the next four.
+    "_hold_every_row",
+    "_saw_position",
+    "_note_position",
+    "_show_row",
+    "paint_rows",
+    "open_menu_for_keyboard",
     "selected_names",
     "_focus_row",
     "_move_tree_cursor",
@@ -373,6 +386,7 @@ class Tree:
         self.visible: int | None = None  # Rows that fit in the view; None: all of them.
         self.wide: int | None = None  # A longer label shows a horizontal scrollbar.
         self.start = 0  # The index of the first row in view.
+        self.height = 1  # A row's height, as VCL fits it to the font and the display.
 
     def _installed(self) -> list[Node]:
         root = self.data.root if self.data is not None else None
@@ -392,12 +406,17 @@ class Tree:
         return 0 if fit is None else max(0, len(self._installed()) - fit)
 
     def scroll_to(self, start: int) -> None:
-        """Scroll as the user's wheel or scrollbar does, which no list call sees."""
+        """Start the view at `start`, as far as the rows allow; no list call sees this."""
         self.start = max(0, min(start, self._last_start()))
 
+    def fill_view(self) -> None:
+        """`SvImpLBox::FillView` after a resize: the view starts no further down than the last
+        rows fill it."""
+        self.start = min(self.start, self._last_start())
+
     def line(self, row: int) -> int:
-        """The line in the view that shows the row at `row`, as a mouse event's position."""
-        return row - self.start
+        """The position in the view of the row at `row`, as a mouse event's position."""
+        return (row - self.start) * self.height
 
     def _own(self, node: Any, call: str) -> Node:
         if not any(node is item for item in self._installed()):
@@ -448,11 +467,11 @@ class Tree:
             self.start = min(index, self._last_start())
 
     def getNodeRect(self, node: Any) -> Any:
-        """A row's bounds: its line in the view, one unit high, as the list's geometry reads."""
+        """A row's bounds: its position in the view and its height, as the list's geometry reads."""
         self.faults.check("getNodeRect")
         own = self._own(node, "getNodeRect")
         index = next(i for i, item in enumerate(self._installed()) if item is own)
-        return SimpleNamespace(Y=self.line(index), Height=1)
+        return SimpleNamespace(Y=self.line(index), Height=self.height)
 
     def setFocus(self) -> None:
         self.focused += 1
@@ -568,6 +587,10 @@ class _Owner(SimpleNamespace):
         return ref.name if ref is not None else None
 
 
+def _draw_nothing(rows: object, geometry: object, picked: object) -> None:
+    """`RowPaint.draw`: the peer draws nothing."""
+
+
 def sheet_list(book: Book, source: str = SOURCE) -> Any:
     """A list over `book` with the real methods of `source` bound, after its first refresh."""
     faults = Faults()
@@ -651,6 +674,7 @@ def sheet_list(book: Book, source: str = SOURCE) -> Any:
         namespace["_PressHold"] = _load(source, others["_PressHold"], {"dataclass": dataclass})
     tree, peer = Tree(faults), Peer(faults)
     owner = _Owner(
+        source=source,
         book=book,
         tree=tree,
         peer=peer,
@@ -680,6 +704,9 @@ def sheet_list(book: Book, source: str = SOURCE) -> Any:
         _deferred=None,
         _presses_held=None,
         _presses_release=None,
+        _position=None,
+        _row_paint=SimpleNamespace(draw=_draw_nothing),
+        _decoration_pending=False,
         _selection=Selection(_current),
         _user_picks=False,
         _press=None,
@@ -703,6 +730,11 @@ def sheet_list(book: Book, source: str = SOURCE) -> Any:
     owner._refreshes = RefreshSchedule(later, lambda: owner._timed_refresh(), lambda: clock.now)
     owner._show_cleared_notice = lambda: owner.notices.append(clock.now)
     owner._type_ahead = TypeAhead()
+
+    def decorate_rows() -> None:  # The borders `paint_rows` posts; nothing to draw here.
+        owner._decoration_pending = False
+
+    owner._decorate_rows = decorate_rows
 
     def post(work: Callable[[], None], where: str) -> None:
         owner.queue.append((work, where))
@@ -762,7 +794,7 @@ def key(owner: Any, code: int, modifiers: int = 0) -> None:
     owner.run_queue()
 
 
-def _listen(owner: Any, handler: Callable[[Any], None], event: Any) -> None:
+def listen(owner: Any, handler: Callable[[Any], None], event: Any) -> None:
     """Run a mouse handler as the list's mouse listener does (`_Mouse._handle`)."""
     owner._pointer_depth += 1
     try:
@@ -778,7 +810,7 @@ def press(owner: Any, row: int, button: int = LEFT, modifiers: int = 0) -> None:
     the row at `row` now."""
     line = owner.tree.line(row)
     event = SimpleNamespace(Buttons=button, X=0, Y=line, Modifiers=modifiers, ClickCount=1)
-    _listen(owner, owner.mouse_pressed, event)
+    listen(owner, owner.mouse_pressed, event)
 
 
 def release(owner: Any, row: int, button: int = LEFT) -> None:
@@ -787,7 +819,7 @@ def release(owner: Any, row: int, button: int = LEFT) -> None:
         node = owner.tree._installed()[row]
         owner.tree.selected, owner.tree.cursor = [node], node
     event = SimpleNamespace(Buttons=button, X=0, Y=owner.tree.line(row), Modifiers=0, ClickCount=1)
-    _listen(owner, owner.mouse_released, event)
+    listen(owner, owner.mouse_released, event)
 
 
 def toggle_natively(owner: Any, row: int) -> None:
@@ -821,8 +853,8 @@ def queued_click(
     line = owner.tree.line(row)
     pressed = SimpleNamespace(Buttons=button, X=0, Y=line, Modifiers=modifiers, ClickCount=clicks)
     released = SimpleNamespace(Buttons=button, X=0, Y=line, Modifiers=modifiers, ClickCount=clicks)
-    owner.post(lambda: _listen(owner, owner.mouse_pressed, pressed), "a mouse press")
-    owner.post(lambda: _listen(owner, owner.mouse_released, released), "a mouse release")
+    owner.post(lambda: listen(owner, owner.mouse_pressed, pressed), "a mouse press")
+    owner.post(lambda: listen(owner, owner.mouse_released, released), "a mouse release")
 
 
 def click(owner: Any, row: int) -> None:
@@ -830,6 +862,100 @@ def click(owner: Any, row: int) -> None:
     owner.run_queue()
     release(owner, row)
     owner.run_queue()
+
+
+def record_activations(owner: Any) -> list[str]:
+    """The sheets a double click's posted activation is asked to activate (`_activate_pressed`)."""
+    activated: list[str] = []
+
+    def activate_pressed(name: str, handle: Any, generation: int) -> None:
+        activated.append(handle.getName())
+
+    owner._activate_pressed = activate_pressed
+    return activated
+
+
+def record_menus(owner: Any) -> list[str | None]:
+    """The target of each sheet tab menu that a right click's release asks for (`_open_menu`)."""
+    targets: list[str | None] = []
+
+    def open_menu(x: int, y: int, refs: Any = None, seen: int | None = None) -> None:
+        target = owner._context_target
+        targets.append(None if target is None else target.token.getName())
+
+    owner._open_menu = open_menu
+    return targets
+
+
+def paint(owner: Any) -> None:
+    """VCL paints the tree, as after it scrolled or changed: the list's paint listener runs."""
+    owner.paint_rows()
+
+
+def wheel(owner: Any, start: int) -> None:
+    """The user's wheel or the scroll bar scrolls the view to start at `start`, which no list call
+    sees. VCL paints the scrolled rows within its handling of the scroll, so the list's paint
+    listener runs at once."""
+    owner.tree.scroll_to(start)
+    paint(owner)
+
+
+def resize(owner: Any, visible: int) -> None:
+    """The panel's height changes so that `visible` rows fit, as when the selection notice shows
+    or goes (`SheetList.set_bounds`). A taller view of a list scrolled to its end scrolls up
+    (`FillView`). VCL only invalidates, so the scrolled rows are painted later (`paint`)."""
+    owner.tree.visible = visible
+    owner.tree.fill_view()
+
+
+def scroll_unseen(owner: Any, start: int) -> None:
+    """Another UNO client's `makeNodeVisible` scrolls the view to start at `start`. `MakeVisible`
+    only invalidates, so the scrolled rows are painted later (`paint`)."""
+    owner.tree.scroll_to(start)
+
+
+def bind_drag(owner: Any) -> list[list[str]]:
+    """Bind the real `start_drag`, with the document's checks stubbed to pass: it is writable and
+    unprotected, and `is_current_as_reported` finds the rows current. Returns the sheets of each
+    drag started, in order."""
+    methods, _ = _parsed(owner.source)
+    namespace = dict(owner.namespace)
+
+    def current(document: object, observed: object) -> bool:
+        return True
+
+    def transferable(token: str) -> Any:
+        return SimpleNamespace(token=token)
+
+    def drag(names: list[str], observed: object, transferable: object, generation: int) -> Any:
+        return SimpleNamespace(names=names)
+
+    namespace.update(
+        is_current_as_reported=current,
+        _Transferable=transferable,
+        _Drag=drag,
+        uuid=SimpleNamespace(uuid4=lambda: SimpleNamespace(hex="token")),
+        ACTION_MOVE=2,
+    )
+    owner.start_drag = _load(owner.source, methods["start_drag"], namespace).__get__(owner)
+    dragged: list[list[str]] = []
+
+    def start(*arguments: object) -> None:
+        dragged.append(list(owner._drag.names))
+
+    owner._drag, owner._listeners = None, {"source": None}
+    owner._drag_source = SimpleNamespace(startDrag=start)
+    owner.book.isReadonly = owner.book.isProtected = lambda: False
+    return dragged
+
+
+def native_press(owner: Any, row: int) -> None:
+    """A plain press as the tree handles it at once, its listener queued behind the work already
+    posted (`queued_click` without the release, which waits while the button is held)."""
+    node = owner.tree._installed()[row]
+    owner.tree.selected, owner.tree.cursor = [node], node
+    event = SimpleNamespace(Buttons=LEFT, X=0, Y=owner.tree.line(row), Modifiers=0, ClickCount=1)
+    owner.post(lambda: listen(owner, owner.mouse_pressed, event), "a mouse press")
 
 
 def focus_event(owner: Any, index: int) -> None:
