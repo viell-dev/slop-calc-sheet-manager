@@ -97,6 +97,7 @@ class WindowsLab(Lab):
         self.output = output
         self.input = real_input
         self.calibrations = []
+        self.check = None
 
     def place(self, window):
         """Maximise the window to the work area and wait until its size stops changing."""

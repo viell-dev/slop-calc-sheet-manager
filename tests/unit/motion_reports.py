@@ -31,14 +31,27 @@ def lab_calibration(confirm: float | None = None) -> dict[str, Any]:
         "CONFIRM_SECONDS",
         "STEPS",
         "SPACING",
-        "COLUMN",
+        "COLUMN_POINTS",
+        "COLUMN_APART",
+        "COLUMN_START",
+        "LAYOUT_HEIGHT",
+        "LAYOUT_QUIET",
+        "LAYOUT_SECONDS",
         "PLACEMENT_TOLERANCE",
     )
     for name in constants:
         namespace[name] = constant(LAB, name)
     if confirm is not None:
         namespace["CONFIRM_SECONDS"] = confirm
-    for name in ("settled_report", "list_points", "confirmed_offset", "_paired"):
+    functions = (
+        "settled_report",
+        "list_points",
+        "confirmed_offset",
+        "_paired",
+        "laid_out",
+        "accessible_drift",
+    )
+    for name in functions:
         function(LAB, name, namespace)
     return namespace
 

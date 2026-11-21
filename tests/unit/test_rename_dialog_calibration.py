@@ -242,9 +242,12 @@ def test_reports_that_never_follow_the_move_fail_with_the_points(office: Office)
         "Calibrating the Rename Sheets dialog: no two of its reports differ by a point's second "
         f"move; the points and their second moves: {moves}"
     )
-    with pytest.raises(AssertionError, match=re.escape(message)):
+    with pytest.raises(AssertionError, match=re.escape(message)) as raised:
         calibrate(office, real_input)
     assert len(real_input.moves) == 6
+    # Only the message records a failed calibration, so it keeps the dialog's geometry.
+    geometry = {"accessible": [*ORIGIN, *SIZE], "own_area": [*ORIGIN, *SIZE]}
+    assert str(raised.value).endswith(f"; {geometry}")
 
 
 @pytest.mark.parametrize("frame", FRAMES.values(), ids=list(FRAMES))
