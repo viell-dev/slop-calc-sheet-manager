@@ -130,7 +130,12 @@ step. These tests exercise explicit key events, not the operating system's timed
 Inside the container, `tests/ui/run_ui.py --check NAME` (repeatable) selects checks.
 `run_ui.py` lists the checks in order; they live in `tests/ui/*_checks.py` by subject, with the
 shared workbook fixture and its rules in `workbook.py`.
-Results and screenshots are in `test-results/<lane>/ui-gtk3/` and `ui-gen/`.
+Results and screenshots are in `test-results/<lane>/ui-gtk3/` and `ui-gen/`. The printed
+`ui-results.json` records each session's sheet list calibrations under `list_calibrations`: the
+check that made each one (null for the session's first workbook), how long it waited for the
+list to be laid out, how many points were tried and which of them the list reported, the point
+that counted with its step and two reports, the accessible place's difference from the
+calibrated one before and after calibrating and after any top-row moves, and the seconds taken.
 Windows synthetic input bypasses key handlers and cannot start a native drag; use the
 [visible Windows desktop](./hosted-checks.md#visible-windows-desktop) workflow for those paths.
 See [Optional desktop observations](../manual-tests.md) for human usability and additional

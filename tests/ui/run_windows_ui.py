@@ -97,6 +97,8 @@ class WindowsLab(Lab):
         self.directory = directory
         self.output = output
         self.input = real_input
+        self.calibrations = []
+        self.check = None
 
     def place(self, window):
         """Maximise the window to the work area and wait until its size stops changing."""
@@ -253,6 +255,7 @@ def main():
             settings=SETTINGS,
         ) as (context, desktop_service, directory):
             lab = WindowsLab(context, desktop_service, directory, output, real_input)
+            result["list_calibrations"] = lab.calibrations  # Filled in place (#301).
             checks = run_checks(lab, output, arguments.check or ())
             result["checks"] = {name: check["pass"] for name, check in checks.items()}
             result["pointer_corrections"] = lab.input.pointer_corrections
