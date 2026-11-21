@@ -16,12 +16,14 @@ pointer when the user pressed, or refuse.
 """
 
 from collections.abc import Callable
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
 from sheet_manager.keys import DOWN, END, HOME
 from tests.unit.list_peer import (
+    LEFT,
     RIGHT,
     Book,
     bind_drag,
@@ -33,6 +35,7 @@ from tests.unit.list_peer import (
     queued_click,
     record_activations,
     record_menus,
+    run_listener,
     sheet_list,
     wheel,
 )
@@ -342,13 +345,47 @@ def test_a_drag_recognized_before_its_presss_listener_after_a_reorder_drags_noth
     wrote Bravo, so the tree no longer showed Delta selected, and the gesture dragged Bravo, which
     the user did not press: a drop then moved it. No drag starts while presses are held; the
     press's listener runs held, and its row now shows Echo, so it picks nothing and drops the
-    picks with the notice."""
+    picks with the notice. Since #296, the refresh also drops the picks that the press's native
+    selection superseded (#280), which refuses this drag by itself; the next test is one that the
+    drop does not reach."""
     owner, dragged = drag_after_reorder("Delta")
     notices = len(owner.notices)
     assert dragged == []
     owner.run_queue()
     assert picks(owner) == [] and len(owner.notices) == notices + 1
     assert move_to_top(owner) is None
+
+
+def test_a_drag_after_a_reorder_with_an_earlier_click_still_queued_drags_nothing() -> None:
+    """Bravo picked. The user clicks Alfa and then presses Delta and drags, all before their
+    listeners run; the first press's listener runs, then the refresh after another window moved
+    Charlie below Echo, and the gesture comes before the rest. With the first click's release
+    still queued, the refresh does not see the second press's native selection as one waiting
+    for the intake, so it does not drop the picks (#280); its rebuild writes Alfa over Delta, and
+    the gesture dragged Alfa, which the user did not press. No drag starts while presses are
+    held."""
+    owner = sheet_list(Book(list(NAMES)))
+    dragged = bind_drag(owner)
+    click(owner, row("Bravo"))
+    tree = owner.tree
+
+    def listen(handler: Callable[[Any], None], line: int) -> Callable[[], None]:
+        event = SimpleNamespace(Buttons=LEFT, X=0, Y=line, Modifiers=0, ClickCount=1)
+        return lambda: run_listener(owner, handler, event)
+
+    alfa, delta = tree.node("Alfa"), tree.node("Delta")
+    tree.selected, tree.cursor = [alfa], alfa  # The first press, as the tree handles it.
+    owner.post(listen(owner.mouse_pressed, row("Alfa")), "a mouse press")
+    owner.book.move("Charlie", row("Echo"))
+    owner.post(owner.refresh, "refreshing the sheet list")
+    owner.post(listen(owner.mouse_released, row("Alfa")), "a mouse release")
+    tree.selected, tree.cursor = [delta], delta  # The second press, on Delta.
+    owner.post(listen(owner.mouse_pressed, row("Delta")), "a mouse press")
+    for _ in range(2):  # The first press's listener, then the refresh.
+        work, _ = owner.queue.pop(0)
+        work()
+    owner.start_drag(object())
+    assert dragged == [], "Alfa, which the user did not drag, was dragged"
 
 
 def test_a_drag_on_a_row_the_reorder_left_alone_starts_nothing_but_the_press_picks() -> None:

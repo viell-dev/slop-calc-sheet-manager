@@ -201,9 +201,11 @@ Drags before the press's listener (#295). VCL recognizes a drag gesture within i
 the pointer's motion (#264), so the gesture can come before its press's listener. After a
 rebuild, the tree no longer shows the row the press selected, and the gesture carried the picks
 the rebuild wrote instead. So no drag starts while presses are held: the press's listener decides
-the press, held, and the user drags again. A selection key's or type-ahead's write that does not
-scroll holds nothing, so a gesture after it, before the press's listener, still drags the key's
-pick (#304).
+the press, held, and the user drags again. A refresh that drops the picks a waiting selection
+superseded (#280) refuses many of these drags too, but it cannot see the press's selection while
+an earlier click's press is still held, and its rebuild then writes that click's pick. A
+selection key's or type-ahead's write that does not scroll holds nothing, so a gesture after it,
+before the press's listener, still drags the key's pick (#304).
 
 Activation. A double click or Enter makes the sheet Calc's only selected tab and reads that back,
 because `setActiveSheet` keeps an existing group when the sheet belongs to it. Activation reads

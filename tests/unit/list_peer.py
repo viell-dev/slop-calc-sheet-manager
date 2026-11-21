@@ -784,6 +784,12 @@ def _listen(owner: Any, handler: Callable[[Any], None], event: Any) -> None:
             owner._queue_selection()
 
 
+def run_listener(owner: Any, handler: Callable[[Any], None], event: Any) -> None:
+    """Run a mouse handler as the list's mouse listener does, for a test that queues the
+    listeners itself."""
+    _listen(owner, handler, event)
+
+
 def press(owner: Any, row: int, button: int = LEFT, modifiers: int = 0) -> None:
     """A press as the list's mouse listener runs it (`_Mouse._handle`), on the line that shows
     the row at `row` now."""
