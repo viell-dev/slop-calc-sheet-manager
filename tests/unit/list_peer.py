@@ -29,7 +29,14 @@ relies on from Calc and the tree control:
   fail once it has deselected the rows ("select cleared") or selected its row ("select done"),
   `clearSelection` and `addSelection` after their effect ("... done"), and the data model
   assignment after installing its model. No native trigger is known for these failures (#257);
-  they test the list's own state, not LibreOffice's behaviour.
+  they test the list's own state, not LibreOffice's behaviour;
+- the toolkit's selection listener, which the list counts with (#294), is notified once per row
+  whose selection changes, synchronously inside the call that changes it, whoever makes it: an
+  assistive selection, the native part of a click, or the list's own tree calls. Every change
+  of `Tree.selected` notifies, so a test or probe that sets it directly is a native change. A
+  native Ctrl+Shift press adds the rows from the tree's anchor, its cursor when it has none, to
+  the pressed row and removes none, and the second press of a double click changes nothing, as
+  measured on #294.
 
 Posted work runs on `run_queue`, and a failure there ends only that work and is recorded, as
 LibreOffice's callback reports it. `queued_click` posts a click's mouse listeners there too, after
@@ -46,6 +53,7 @@ sheets.
 The native checks are in `tests/integration` and `tests/ui`.
 """
 
+import _thread
 import ast
 import functools
 import time
@@ -75,7 +83,7 @@ from tests.unit import source_methods
 
 SOURCE = "src/sheet_manager/uno_list.py"
 LEFT, RIGHT = 1, 2  # Mouse buttons,
-SHIFT, MOD1 = 1, 2  # and key modifiers, as UNO numbers them.
+SHIFT, MOD1, MOD2 = 1, 2, 4  # and key modifiers, as UNO numbers them.
 METHODS = (
     "names",
     "_ref",
@@ -120,6 +128,7 @@ METHODS = (
     "_queue_selection",
     "_flush_selection",
     "cursor_changed",
+    "tree_selection_changed",
     "type_ahead",
     "_timed_refresh",
     "_run_refresh",
@@ -360,16 +369,37 @@ class ControlModel:
         faults = self._tree.faults
         faults.check("DataModel")
         self._tree.data = data
-        self._tree.selected, self._tree.cursor = [], None
+        self._tree.selected, self._tree.cursor, self._tree.anchor = [], None, None
         self._tree.start = 0  # `SvImpLBox::Clear`: the new rows show from the first.
         faults.check("DataModel installed")
+
+
+class Selected(list[Node]):
+    """The tree's selected nodes: adding one notifies the tree's selection listener."""
+
+    def __init__(self, tree: "Tree", nodes: Any = ()) -> None:
+        super().__init__(nodes)
+        self._tree = tree
+
+    def append(self, node: Node) -> None:
+        if not any(node is item for item in self):
+            super().append(node)
+            self._tree.notify(1)
 
 
 class Tree:
     def __init__(self, faults: Faults) -> None:
         self.faults = faults
         self.data: NodeModel | None = None
-        self.selected: list[Node] = []
+        # The toolkit's selection listener (`XSelectionChangeListener`), and how many times it
+        # was notified.
+        self.listener: Callable[[], None] | None = None
+        self.notified = 0
+        self._selected = Selected(self)
+        self.anchor: Node | None = None  # The native range anchor, while it has one.
+        # Whether VCL's selection engine is in add mode: after a Ctrl+Shift press, until a plain
+        # or a Shift press (`SelectionEngine::SelMouseButtonDown`).
+        self.add_mode = False
         self.cursor: Node | None = None
         self.model = ControlModel(self)
         self.focused = 0
@@ -377,6 +407,26 @@ class Tree:
         self.wide: int | None = None  # A longer label shows a horizontal scrollbar.
         self.start = 0  # The index of the first row in view.
         self.height = 1  # A row's height, as VCL fits it to the font and the display.
+
+    @property
+    def selected(self) -> Selected:
+        return self._selected
+
+    @selected.setter
+    def selected(self, nodes: list[Node]) -> None:
+        """Select exactly `nodes`: the listener hears once per row whose selection changed."""
+        old = self._selected
+        changed = sum(1 for node in nodes if not any(node is item for item in old))
+        changed += sum(1 for node in old if not any(node is item for item in nodes))
+        self._selected = Selected(self, nodes)
+        self.notify(changed)
+
+    def notify(self, changes: int) -> None:
+        """Notify the selection listener once per changed row, inside the changing call."""
+        for _ in range(changes):
+            self.notified += 1
+            if self.listener is not None:
+                self.listener()
 
     def _installed(self) -> list[Node]:
         root = self.data.root if self.data is not None else None
@@ -427,6 +477,7 @@ class Tree:
         self.faults.check("select")
         assert self.model.SelectionType == "SINGLE", "Only the cursor write selects one row"
         self.selected = []  # Every row is deselected before the node is looked up.
+        self.anchor = None
         self.faults.check("select cleared")
         own = self._own(node, "select")
         self.selected, self.cursor = [own], own
@@ -470,7 +521,8 @@ class Tree:
         return next(node for node in self._installed() if node.DataValue == name)
 
     def assistive_select(self, name: str) -> None:
-        """Select a row as `XAccessibleSelection` does: no owned handler sees it."""
+        """Select a row as `XAccessibleSelection` does: no owned handler sees it, and only the
+        toolkit's selection listener hears it."""
         node = self.node(name)
         if not any(node is item for item in self.selected):
             self.selected.append(node)
@@ -658,8 +710,12 @@ def sheet_list(book: Book, source: str = SOURCE) -> Any:
         "RIGHT": RIGHT,
         "SHIFT": SHIFT,
         "MOD1": MOD1,
+        "MOD2": MOD2,
     }
     namespace["_Press"] = _load(source, others["_Press"], {"dataclass": dataclass, "Any": Any})
+    namespace["_thread"] = _thread
+    if "_OwnWrites" in others:  # A revision before #294 has none.
+        namespace["_OwnWrites"] = _load(source, others["_OwnWrites"], {"_thread": _thread})
     if "_PressHold" in others:  # A revision before #293 has none.
         namespace["_PressHold"] = _load(source, others["_PressHold"], {"dataclass": dataclass})
     tree, peer = Tree(faults), Peer(faults)
@@ -692,6 +748,14 @@ def sheet_list(book: Book, source: str = SOURCE) -> Any:
         _toggles_release=None,
         _toggles_keys=True,
         _deferred=None,
+        _unowned=0,
+        _accounted=0,
+        _writing=0,
+        _writer=None,
+        _write_start=0,
+        _shown_at=0,
+        _quiet=None,
+        _add_mode=False,
         _presses_held=None,
         _presses_release=None,
         _position=None,
@@ -758,6 +822,8 @@ def sheet_list(book: Book, source: str = SOURCE) -> Any:
     for name in METHODS:
         if name in methods:  # A method another revision lacks stays unbound.
             setattr(owner, name, _load(source, methods[name], dict(namespace)).__get__(owner))
+    if "tree_selection_changed" in methods:  # `_Selections`, as `_initialize` registers it.
+        tree.listener = lambda: owner.tree_selection_changed()
     owner.refresh()
     run_queue()
     return owner
@@ -813,13 +879,35 @@ def release(owner: Any, row: int, button: int = LEFT) -> None:
 
 
 def toggle_natively(owner: Any, row: int) -> None:
-    """A Ctrl+press as the tree handles it: the row's selection is toggled and the cursor moved."""
+    """A Ctrl+press as the tree handles it (`SelectionEngine::SelMouseButtonDown`): a selected
+    row is deselected; an unselected one is selected, except in add mode, where the engine only
+    moves the cursor (`SvImpLBox::SetCursor`; measured on #294 with 26.8.2.2). The cursor moves
+    to the row and the range anchor goes."""
     node = owner.tree._installed()[row]
     if node in owner.tree.selected:
         owner.tree.selected = [item for item in owner.tree.selected if item is not node]
-    else:
+    elif not owner.tree.add_mode:
         owner.tree.selected = [*owner.tree.selected, node]
     owner.tree.cursor = node
+    owner.tree.anchor = None
+
+
+def extend_natively(owner: Any, row: int) -> None:
+    """A Ctrl+Shift press as the tree handles it: the rows from the anchor, made at the cursor if
+    there is none, to the pressed row are added, none removed, and the cursor moves there."""
+    tree = owner.tree
+    nodes = tree._installed()
+    node = nodes[row]
+    if tree.anchor is None:
+        tree.anchor = tree.cursor if tree.cursor is not None else node
+    start = next((index for index, item in enumerate(nodes) if item is tree.anchor), row)
+    first, last = sorted((start, row))
+    tree.selected = [
+        *tree.selected,
+        *(item for item in nodes[first : last + 1] if item not in tree.selected),
+    ]
+    tree.cursor = node
+    tree.add_mode = True
 
 
 def queued_click(
@@ -830,16 +918,28 @@ def queued_click(
     which `run_queue` then runs in order. That is the latest place VCL gives them. VCL can also
     run them earlier, in the place of a callback event of the window still queued, since it adds
     them to that event (`VCLXWindowImpl::callBackAsync`); this does not model that. With Ctrl
-    alone the tree toggles the row, and the release changes no native selection. Otherwise the
-    row is selected alone, as a plain or Shift press on an unselected row selects it in the
-    tree. `clicks` is the native click count, 2 for a double click's second click. A right click
-    changes no native selection here. `row` is the pressed row's index as the tree shows it when
-    the user presses; the events carry its line in the view, as VCL's carry a position."""
-    if button == LEFT and modifiers == MOD1:
+    alone the tree toggles the row as the engine does (`toggle_natively`), and the release changes
+    no native selection; with Ctrl and Shift it adds the range from its anchor
+    (`extend_natively`) and enters add mode. Otherwise the row is selected alone, as a plain or
+    Shift press on an unselected row selects it in the tree, and add mode ends. `clicks` is the
+    native click count: above 1, as for a double or triple click's later clicks, the engine
+    returns at once and changes nothing (#310's review; measured on #294 with 26.8.2.2), except
+    that a plain one still selects its row alone, as the first click already did, which the
+    tests of #293 rely on. Alt (`MOD2`) makes the engine return at once too. A right click changes
+    no native selection (`SvImpLBox::MouseButtonDown` in 26.8). `row` is the pressed row's index
+    as the tree shows it when the user presses; the events carry its line in the view, as VCL's
+    carry a position."""
+    if button == LEFT and (modifiers & MOD2 or (modifiers & MOD1 and clicks > 1)):
+        pass
+    elif button == LEFT and modifiers == MOD1:
         toggle_natively(owner, row)
+    elif button == LEFT and modifiers == MOD1 | SHIFT:
+        extend_natively(owner, row)
     elif button == LEFT:
         node = owner.tree._installed()[row]
         owner.tree.selected, owner.tree.cursor = [node], node
+        owner.tree.anchor = None
+        owner.tree.add_mode = owner.tree.add_mode and clicks > 1
     line = owner.tree.line(row)
     pressed = SimpleNamespace(Buttons=button, X=0, Y=line, Modifiers=modifiers, ClickCount=clicks)
     released = SimpleNamespace(Buttons=button, X=0, Y=line, Modifiers=modifiers, ClickCount=clicks)
