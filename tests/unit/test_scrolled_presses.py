@@ -370,11 +370,19 @@ def test_a_drag_from_a_picked_row_across_a_reorder_is_refused() -> None:
     assert picks(owner) == ["Bravo"]
 
 
+def no_change(book: Book) -> None:
+    pass
+
+
+def recolour_golf(book: Book) -> None:
+    book.sheet("Golf").color = 0x336699
+
+
 @pytest.mark.parametrize(
     "change",
     [
-        pytest.param(lambda book: None, id="unchanged"),
-        pytest.param(lambda book: setattr(book.sheet("Golf"), "color", 0x336699), id="recoloured"),
+        pytest.param(no_change, id="unchanged"),
+        pytest.param(recolour_golf, id="recoloured"),
     ],
 )
 def test_a_drag_across_a_refresh_that_keeps_the_rows_drags_the_pressed_sheet(

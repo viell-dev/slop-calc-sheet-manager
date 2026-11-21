@@ -566,6 +566,10 @@ class _Owner(SimpleNamespace):
         return ref.name if ref is not None else None
 
 
+def _draw_nothing(rows: object, geometry: object, picked: object) -> None:
+    """`RowPaint.draw`: the peer draws nothing."""
+
+
 def sheet_list(book: Book, source: str = SOURCE) -> Any:
     """A list over `book` with the real methods of `source` bound, after its first refresh."""
     faults = Faults()
@@ -680,7 +684,7 @@ def sheet_list(book: Book, source: str = SOURCE) -> Any:
         _presses_held=None,
         _presses_release=None,
         _position=None,
-        _row_paint=SimpleNamespace(draw=lambda rows, geometry, picked: None),
+        _row_paint=SimpleNamespace(draw=_draw_nothing),
         _decoration_pending=False,
         _selection=Selection(_current),
         _user_picks=False,
@@ -881,10 +885,20 @@ def bind_drag(owner: Any) -> list[list[str]]:
     drag started, in order."""
     methods, _ = _parsed(owner.source)
     namespace = dict(owner.namespace)
+
+    def current(document: object, observed: object) -> bool:
+        return True
+
+    def transferable(token: str) -> Any:
+        return SimpleNamespace(token=token)
+
+    def drag(names: list[str], observed: object, transferable: object, generation: int) -> Any:
+        return SimpleNamespace(names=names)
+
     namespace.update(
-        is_current_as_reported=lambda document, observed: True,
-        _Transferable=lambda token: SimpleNamespace(token=token),
-        _Drag=lambda names, observed, transferable, generation: SimpleNamespace(names=names),
+        is_current_as_reported=current,
+        _Transferable=transferable,
+        _Drag=drag,
         uuid=SimpleNamespace(uuid4=lambda: SimpleNamespace(hex="token")),
         ACTION_MOVE=2,
     )
