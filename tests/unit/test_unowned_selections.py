@@ -195,6 +195,19 @@ def test_space_on_an_assistive_selection_before_any_intake_picks_nothing(modifie
     assert move_to_top(owner) is None
 
 
+def test_a_refused_ctrl_click_tells_of_the_assistive_selection_its_write_clears() -> None:
+    """Nothing picked; Echo selected through accessibility, and a Ctrl+click adds Golf before any
+    intake. The click is refused, and its write clears Echo, which the user selected, with Golf:
+    the notice tells of them, as it does once an intake has seen the selection (#291)."""
+    owner = fresh()
+    owner.tree.assistive_only("Echo")
+    queued_click(owner, row("Golf"))
+    owner.run_queue()
+    assert picks(owner) == [] and owner.tree.shown() == []
+    assert len(owner.notices) == 1, "Echo, which the tree showed selected, went without the notice"
+    assert move_to_top(owner) is None
+
+
 def test_an_assistive_clear_after_ctrl_clicks_in_flight_leaves_nothing_picked() -> None:
     """Nothing picked; Ctrl+clicks on Bravo and on Foxtrot are handled natively, and the
     selection is cleared through accessibility before their listeners run. Both listeners
@@ -332,6 +345,54 @@ def test_a_ctrl_shift_click_after_a_refresh_showed_a_waiting_selection_again_is_
     owner = shown_again("Foxtrot")
     queued_click(owner, row("Delta"), MOD1 | SHIFT)
     ahead_of_the_intake(owner)
+    owner.run_queue()
+    assert picks(owner) == [] and owner.tree.shown() == []
+    assert move_to_top(owner) is None
+
+
+# What the count cannot tell, which #291's record and holds still decide.
+#
+# The count does not say whose a change was. When the list takes or overwrites the tree between a
+# press's native change and its listener, the press's own change is accounted for, and a change
+# counted later looks like the press's own. These pass on `main` too; without the record's rules
+# the listener toggled its row again.
+
+
+def test_an_intake_that_took_a_clicks_toggle_still_holds_its_listener() -> None:
+    """Bravo picked, Delta added through accessibility, and the tab sample defers the intake; a
+    Ctrl+click adds Foxtrot natively, and the intake, queued ahead of its listener, takes Bravo,
+    Delta and Foxtrot; Golf is then added through accessibility. Golf is the only change left
+    unaccounted, which looks like the click's own, but the intake already took the click's
+    toggle: toggling Foxtrot again dropped the sheet the user had just added. The intake found
+    the tree changed since it looked and held toggles (#291), so the listener picks nothing."""
+    owner = picked("Bravo")
+    owner.tree.assistive_select("Delta")
+    sample(owner)
+    queued_click(owner, row("Foxtrot"))
+    work, where = owner.queue.pop(0)
+    assert where == INTAKE
+    work()
+    assert picks(owner) == ["Bravo", "Delta", "Foxtrot"]
+    owner.tree.assistive_select("Golf")
+    owner.run_queue()
+    assert picks(owner) == [] and owner.tree.shown() == []
+    assert move_to_top(owner) is None
+
+
+def test_a_write_that_erased_a_clicks_toggle_leaves_the_record_to_decide() -> None:
+    """Bravo picked, Echo added through accessibility, a Ctrl+click adding Golf natively, and the
+    tab sample, which defers the intake with the tree showing Bravo, Echo and Golf; a write
+    queued earlier then shows Bravo alone, and Charlie is added through accessibility. Charlie
+    looks like the click's own change, and toggling Golf picked a sheet the write had shown
+    deselected. The record shows that the tree differed by more than the click's toggle, so
+    the listener picks nothing (#291)."""
+    owner = picked("Bravo")
+    owner.tree.assistive_select("Echo")
+    queued_click(owner, row("Golf"))
+    sample(owner)
+    owner._show_selection()
+    assert owner.tree.shown() == ["Bravo"]
+    owner.tree.assistive_select("Charlie")
     owner.run_queue()
     assert picks(owner) == [] and owner.tree.shown() == []
     assert move_to_top(owner) is None
