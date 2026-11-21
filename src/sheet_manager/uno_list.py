@@ -175,9 +175,10 @@ handled natively before the first listener; Space, a Ctrl key or a right press a
 release's native change and before the list's write that follows it, or after a write that
 failed partway; and a Ctrl+Shift press whose native anchor differs from the list's. Still as on
 `main`, an assistive change made after a key or press and before the write it queued is shown
-over by that write (#307). The listener's registration and its removal, beside the other listeners', are
-the only native calls added; the counts are Python state. Each notification crosses into Python,
-which adds about 10 to 17 µs per changed row to the list's own writes (measured on #294).
+over by that write (#307). The listener's registration and its removal, beside the other
+listeners', are the only native calls added; the counts are Python state. Each notification
+crosses into Python, which adds about 10 to 17 µs per changed row to the list's own writes
+(measured on #294).
 
 Pointer input. A left press picks at once and keeps the pressed sheet's handle. A plain press
 on a picked row keeps the other picks, so that they can be dragged together; its release in the
@@ -967,7 +968,7 @@ class SheetList:
         self._release_with(
             lambda: self.peer.removeSelectionChangeListener(self._listeners["selections"])
         )
-        self._gestures =self.toolkit.getDragGestureRecognizer(self.peer)
+        self._gestures = self.toolkit.getDragGestureRecognizer(self.peer)
         self._gestures.addDragGestureListener(self._listeners["gesture"])
         self._release_with(
             lambda: self._gestures.removeDragGestureListener(self._listeners["gesture"])
@@ -1346,9 +1347,8 @@ class SheetList:
         it (#294). The refusal sets the whole selection, which its write shows over every one
         of them, so they are accounted for, as by a key that sets it; one counted since stays
         unaccounted. `waiting` says that some of them were not the input's own, such as a
-        selection made through accessibility, while toggles were free: the tree may show rows
-        of it, which that write clears too, so the notice tells of it, also before any intake
-        has looked. A refusal under a hold tells nothing new: the hold's start told.
+        selection made through accessibility: the tree may show rows of it, which that write
+        clears too, so the notice tells of it, also before any intake has looked.
         """
         shown = (deferred is not None and bool(deferred[0])) or waiting
         self._accounted = seen
@@ -1813,8 +1813,7 @@ class SheetList:
                 # meant to deselect, and keeping it could keep one (#257, #288, #291, #294).
                 # The key drops any picks, holds toggles and asks for the write; a toggle after
                 # it acts on the tree it leaves.
-                free = self._toggles_held is None
-                self._toggle_held_off(deferred, seen, waiting=free and waiting)
+                self._toggle_held_off(deferred, seen, waiting=waiting)
                 self._queue_selection(scroll=True)
                 return
             self._selection.choose(names[current], self._handles, names, toggle=True)
@@ -1837,8 +1836,7 @@ class SheetList:
                 # the older picks over that selection, or add to them, for a command to act on
                 # (#291, #294). As Ctrl+Space does, it drops any picks, holds toggles and asks
                 # for the write; the cursor moves.
-                free = self._toggles_held is None
-                self._toggle_held_off(deferred, seen, waiting=free and waiting)
+                self._toggle_held_off(deferred, seen, waiting=waiting)
                 self._selection.cursor = self._ref(name)
                 self._queue_selection(scroll=True)
                 return
@@ -2456,7 +2454,7 @@ class SheetList:
                 # accessibility: the write below would show the older picks over it, for the
                 # menu and the move buttons to act on (#294). They go, with the notice, as at
                 # a refused toggle, and the menu targets the pressed row alone.
-                self._toggle_held_off(deferred, seen, waiting=self._toggles_held is None)
+                self._toggle_held_off(deferred, seen, waiting=True)
             self._context_target = self._ref(self.rows[row].name) if row is not None else None
             self._context_generation = self._monitor.generation
             self._context_input = self._input
@@ -2493,8 +2491,7 @@ class SheetList:
                     # nor keeps picks the user may have toggled off: they go, with the notice,
                     # and toggles stay held until the write shows the result. The cursor and the
                     # anchor move here, as a toggle's do.
-                    free = self._toggles_held is None
-                    self._toggle_held_off(deferred, seen, waiting=free and waiting > own)
+                    self._toggle_held_off(deferred, seen, waiting=waiting > own)
                     target = self._ref(name)
                     if target is not None:
                         self._selection.cursor = self._selection.anchor = target
@@ -2518,8 +2515,7 @@ class SheetList:
                         # intake took the tree since the press, and adding a range twice adds it
                         # once, so the range is added as on `main`.
                         self._selection.picked = before
-                        free = self._toggles_held is None
-                        self._toggle_held_off(deferred, seen, waiting=free)
+                        self._toggle_held_off(deferred, seen, waiting=True)
                     else:
                         self._user_picks = True
                         if keys & MOD1:

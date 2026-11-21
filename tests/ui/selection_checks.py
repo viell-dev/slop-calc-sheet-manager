@@ -272,13 +272,15 @@ def check_assistive_selection_then_ctrl_input(book):
     """A selection made through accessibility, followed at once by a real Ctrl+click on its row
     or Ctrl+Space with the cursor there, never picks the row the user meant to deselect (#294).
 
-    Alfa is picked by a click; Bravo is then selected through the tree's `XAccessibleSelection`
-    on LibreOffice's main thread, as an assistive technology's bridge selects a row, and real
-    input follows without waiting for the list's intake, which takes such a selection at its next
-    tab sample. Before the fix, the list toggled Bravo against picks that lacked it in 12 of 12
-    gtk3 and 9 of 12 gen runs of the click (#294's measurement). Each attempt either finds the
-    selection the list has not taken and refuses, clearing the tree with the notice, or meets an
-    intake that took Bravo first and toggles it off; it records which.
+    Alfa is picked by a click; Bravo is then selected through the tree's `XAccessibleSelection`,
+    from this process as a remote assistive client selects a row, which LibreOffice runs on a
+    bridge thread, and real input follows without waiting for the list's intake, which takes such
+    a selection at its next tab sample. Before the fix, the list toggled Bravo against picks that
+    lacked it in 7 of 8 such runs of the click (#294's measurement). A selection made through a
+    main-thread callback from here holds the main thread long enough for a tab sample to queue,
+    and the intake then took it first in every attempt. Each attempt either finds the selection
+    the list has not taken and refuses, clearing the tree with the notice, or meets an intake that
+    took Bravo first and toggles it off; it records which.
     """
     context = book.tree.getProperty("XAccessible").getAccessibleContext()
     notice = view.footer_text(book.panel, "Why the sheet list")
@@ -290,7 +292,7 @@ def check_assistive_selection_then_ctrl_input(book):
             if kind == "ctrl_space":
                 book.lab.input.tap("Down", modifiers=("Control_L",))  # The cursor to Bravo.
             time.sleep(0.6)  # The list's write and a tab sample have run.
-            view.on_main_thread(book.lab.context, lambda: context.selectAccessibleChild(1))
+            context.selectAccessibleChild(1)  # Bravo, on a bridge thread in the office.
             if kind == "ctrl_click":
                 book.click(1, modifiers=("Control_L",))
             else:

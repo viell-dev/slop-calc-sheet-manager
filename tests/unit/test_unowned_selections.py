@@ -41,6 +41,8 @@ from tests.unit.list_peer import (
 
 NAMES = ["Alfa", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel"]
 INTAKE = "taking native list selection after queued input"
+# Whether the tab sample has seen the selection when the input comes.
+SAMPLED = [pytest.param(False, id="before"), pytest.param(True, id="seen")]
 
 
 def row(name: str) -> int:
@@ -250,7 +252,7 @@ def anchored_at_echo() -> Any:
     return owner
 
 
-@pytest.mark.parametrize("sampled", [pytest.param(False, id="before"), pytest.param(True, id="seen")])
+@pytest.mark.parametrize("sampled", SAMPLED)
 def test_a_ctrl_shift_click_over_an_assistive_selection_does_not_add_older_picks(
     sampled: bool,
 ) -> None:
@@ -273,7 +275,7 @@ def test_a_ctrl_shift_click_over_an_assistive_selection_does_not_add_older_picks
     assert move_to_top(owner) is None
 
 
-@pytest.mark.parametrize("sampled", [pytest.param(False, id="before"), pytest.param(True, id="seen")])
+@pytest.mark.parametrize("sampled", SAMPLED)
 def test_a_right_press_does_not_write_the_older_picks_over_an_assistive_selection(
     sampled: bool,
 ) -> None:
@@ -442,6 +444,27 @@ def test_a_ctrl_double_click_toggles_twice_as_before() -> None:
     owner.run_queue()
     assert picks(owner) == ["Alfa"] and owner.tree.shown() == ["Alfa"]
     assert move_to_top(owner) == ["Alfa"]
+
+
+def test_ctrl_space_after_a_ctrl_double_click_before_its_write_does_not_pick_the_row() -> None:
+    """Alfa picked; a Ctrl+double-click on Charlie, whose first press the tree toggles on and
+    whose second it does not, and Ctrl+Space with the cursor there before the listeners' write,
+    meant to deselect Charlie, which the tree shows selected. The listeners toggled Charlie twice,
+    so the picks lacked it, and Ctrl+Space picked it: Move to Top moved Alfa and Charlie. The
+    second listener holds toggles until its write shows the picks, so Ctrl+Space picks
+    nothing."""
+    owner = picked("Alfa")
+    queued_click(owner, row("Charlie"))
+    queued_click(owner, row("Charlie"), clicks=2)
+    for _ in range(4):  # The four listeners; their write stays queued.
+        work, where = owner.queue.pop(0)
+        assert where.startswith("a mouse"), where
+        work()
+    assert picks(owner) == ["Alfa"] and owner.tree.shown() == ["Alfa", "Charlie"]
+    key(owner, SPACE, MOD1)
+    assert "Charlie" not in picks(owner), "Charlie, which the user deselected, was picked"
+    assert picks(owner) == [] and owner.tree.shown() == []
+    assert move_to_top(owner) is None
 
 
 def test_an_assistive_selection_taken_before_a_ctrl_click_is_toggled_against() -> None:
