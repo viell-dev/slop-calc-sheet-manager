@@ -177,8 +177,8 @@ failed partway; and a Ctrl+Shift press whose native anchor differs from the list
 `main`, an assistive change made after a key or press and before the write it queued is shown
 over by that write (#307). The listener's registration and its removal, beside the other
 listeners', are the only native calls added; the counts are Python state. Each notification
-crosses into Python, which adds about 10 to 17 µs per changed row to the list's own writes
-(measured on #294).
+crosses into Python, which makes a write that changes many rows take about 1.6 times as long:
+writing 1,000 picks took about 80 ms instead of 50 on an idle machine (#294).
 
 Pointer input. A left press picks at once and keeps the pressed sheet's handle. A plain press
 on a picked row keeps the other picks, so that they can be dragged together; its release in the
