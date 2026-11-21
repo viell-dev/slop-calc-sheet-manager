@@ -274,6 +274,8 @@ def test_owned_navigation_accumulates_while_the_ui_queue_is_paused() -> None:
         _selection=selection,
         _shown=("Bravo",),  # The tree shows the pick,
         _toggles_held=None,  # and toggles act on it.
+        _deferred=None,  # No intake waits.
+        _hold_toggles=Mock(),  # A key's change holds presses until its write (#291).
         _handles=handles,
         _page_rows=3,
         _selection_write_pending=False,
