@@ -10,18 +10,20 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   than the 0.3-second quiet time, the dialog could credit the previous point's pair of reports to
   the point being tried, and click 551 pixels beside its controls. Its points' rows are now
   15 pixels apart instead of 3, because the moves of points that close can pair falsely; the
-  method now refuses points closer than 14 pixels. This changes the test runner, not the
+  method now refuses points closer than 15 pixels. This changes the test runner, not the
   extension ([#300](https://github.com/viell-dev/slop-calc-sheet-manager/issues/300)).
 - The real-input lab now tries points down the sheet list's accessible area before scanning the
-  window, and a new workbook's calibration takes about a second. In gtk3, the area of a newly
-  opened workbook was 21 pixels above the list, and when the first point was the pointer entering
-  the list, it was not reported; either way the window's scan took 12 to 18 seconds per
-  workbook. That scan also crossed the window's toolbar, which is what makes gtk3 learn where the
-  window manager put a new window: until then, its accessible locations are 25 pixels too high,
-  and a real click at the native sheet tab's accessible place hit the scroll bar. The lab now
-  crosses the toolbar after a calibration while the list's accessible place disagrees with the
-  calibrated one, and each session's results record its calibrations. This changes the test
-  runner, not the extension
+  window, after waiting until the list is laid out, and a new workbook's calibration takes about
+  a second. In gtk3, the area of a newly opened workbook was 21 pixels above the list, and when
+  the first point was the pointer entering the list, it was not reported; either way the window's
+  scan took 12 to 18 seconds per workbook. That scan also moved the pointer along the window's top
+  row. In gtk3, in a window the lab had just placed, accessible places lay 25 pixels above where
+  they lay after such moves, and without them a real click at the native sheet tab's accessible
+  place hit the scroll bar; the cause is not established
+  ([#309](https://github.com/viell-dev/slop-calc-sheet-manager/issues/309)). The lab now moves the
+  pointer along that row after a calibration while the list's accessible place lies more than 10
+  pixels from the calibrated one. Each session's results record its calibrations, with the
+  check that made them. This changes the test runner, not the extension
   ([#301](https://github.com/viell-dev/slop-calc-sheet-manager/issues/301)).
 - A selection made in the list through assistive technology is no longer replaced by the list's
   earlier picks when another window renames or moves a sheet before the list has taken it; Move
