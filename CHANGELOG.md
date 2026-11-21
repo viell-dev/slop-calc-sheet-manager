@@ -5,6 +5,12 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- When the list refuses a held click because the sheets changed during it, the keyboard cursor
+  now stays where your keys moved it during the hold, also outside the picks, as long as the list
+  can still identify that sheet. It returned to a picked sheet, so Ctrl+Space then toggled that
+  sheet instead; the picks were already kept. Releasing another mouse button while the left one
+  is held no longer ends the held click
+  ([#71](https://github.com/viell-dev/slop-calc-sheet-manager/issues/71)).
 - A selection made in the list through assistive technology is no longer replaced by the list's
   earlier picks when another window renames or moves a sheet before the list has taken it; Move
   to Top then moved the earlier picks. The list now clears both, with the selection notice, and
