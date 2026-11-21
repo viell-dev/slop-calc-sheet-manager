@@ -265,6 +265,49 @@ def check_tab_selection_sync(book):
     }
 
 
+ASSISTIVE_ATTEMPTS = 6
+
+
+def check_assistive_selection_then_ctrl_input(book):
+    """A selection made through accessibility, followed at once by a real Ctrl+click on its row
+    or Ctrl+Space with the cursor there, never picks the row the user meant to deselect (#294).
+
+    Alfa is picked by a click; Bravo is then selected through the tree's `XAccessibleSelection`
+    on LibreOffice's main thread, as an assistive technology's bridge selects a row, and real
+    input follows without waiting for the list's intake, which takes such a selection at its next
+    tab sample. Before the fix, the list toggled Bravo against picks that lacked it in 12 of 12
+    gtk3 and 9 of 12 gen runs of the click (#294's measurement). Each attempt either finds the
+    selection the list has not taken and refuses, clearing the tree with the notice, or meets an
+    intake that took Bravo first and toggles it off; it records which.
+    """
+    context = book.tree.getProperty("XAccessible").getAccessibleContext()
+    notice = view.footer_text(book.panel, "Why the sheet list")
+    outcomes = {"ctrl_click": [], "ctrl_space": []}
+    for kind in ("ctrl_click", "ctrl_space"):
+        for _ in range(ASSISTIVE_ATTEMPTS):
+            book.click(0)
+            wait_until(lambda: book.selection() == [NAMES[0]], "a click to pick Alfa")
+            if kind == "ctrl_space":
+                book.lab.input.tap("Down", modifiers=("Control_L",))  # The cursor to Bravo.
+            time.sleep(0.6)  # The list's write and a tab sample have run.
+            view.on_main_thread(book.lab.context, lambda: context.selectAccessibleChild(1))
+            if kind == "ctrl_click":
+                book.click(1, modifiers=("Control_L",))
+            else:
+                book.lab.input.tap("space", modifiers=("Control_L",))
+            time.sleep(1.5)  # The listener, the write and several tab samples have run.
+            shown = book.selection()
+            assert NAMES[1] not in shown, f"{kind}: the list picked Bravo, deselected: {shown}"
+            assert shown in ([], [NAMES[0]]), f"{kind}: {shown}"
+            if shown:
+                outcomes[kind].append("intake first")
+            else:
+                assert notice.getText().startswith("Selection cleared"), notice.getText()
+                outcomes[kind].append("refused")
+    wait_until(lambda: not notice.getText(), "notice expiration", timeout=14)
+    return outcomes
+
+
 def check_selection_notice(book):
     """Real Ctrl+Z creates a bounded notice without moving focus into a cell (#90).
 

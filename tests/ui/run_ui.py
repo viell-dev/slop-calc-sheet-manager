@@ -78,6 +78,7 @@ from rename_dialog import check_replace_conflict as check_rename_replace_conflic
 from rename_dialog import check_stale as check_rename_stale  # noqa: E402
 from run import office_session  # noqa: E402
 from selection_checks import (  # noqa: E402
+    check_assistive_selection_then_ctrl_input,
     check_click_activates,
     check_ctrl_shift_selection,
     check_margin_drag_keeps_sidebar_docked,
@@ -125,6 +126,10 @@ def run_checks(lab, output, only=()):
         ("document_colors", lambda: check_document_colors(book)),
         ("tab_selection_sync", lambda: check_tab_selection_sync(book)),
         ("selection_notice", lambda: check_selection_notice(book)),
+        (
+            "assistive_selection_then_ctrl_input",
+            lambda: check_assistive_selection_then_ctrl_input(book),
+        ),
         ("undo_own_move", lambda: check_undo_own_move(book)),
         ("drag_two_sheets_above_midpoint", lambda: check_drag_two_sheets(book, 0.25, 12)),
         ("drag_two_sheets_below_midpoint", lambda: check_drag_two_sheets(book, 0.75, 13)),

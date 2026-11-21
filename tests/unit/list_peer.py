@@ -356,7 +356,7 @@ class ControlModel:
         faults = self._tree.faults
         faults.check("DataModel")
         self._tree.data = data
-        self._tree.selected, self._tree.cursor = [], None
+        self._tree.selected, self._tree.cursor, self._tree.anchor = [], None, None
         self._tree.start = 0  # `SvImpLBox::Clear`: the new rows show from the first.
         faults.check("DataModel installed")
 
@@ -859,7 +859,7 @@ def extend_natively(owner: Any, row: int) -> None:
     node = nodes[row]
     if tree.anchor is None:
         tree.anchor = tree.cursor if tree.cursor is not None else node
-    start = next(index for index, item in enumerate(nodes) if item is tree.anchor)
+    start = next((index for index, item in enumerate(nodes) if item is tree.anchor), row)
     first, last = sorted((start, row))
     tree.selected = [
         *tree.selected,

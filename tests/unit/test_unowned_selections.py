@@ -114,15 +114,31 @@ def test_a_ctrl_click_on_an_assistive_selection_before_any_intake_picks_nothing(
 def test_the_same_with_the_sample_between_the_toggle_and_its_listener() -> None:
     """The click undid the accessibility selection before the tab sample looked, so the sample
     finds the tree showing exactly the picks, none, and defers nothing: the listener then
-    toggled Bravo on. The sample accounts for both changes, which leaves none of the click's own
-    for its listener, so it picks nothing."""
+    toggled Bravo on. Both changes stay unaccounted, so the listener picks nothing."""
     owner = fresh()
     owner.tree.assistive_only("Bravo")
     queued_click(owner, row("Bravo"))
     sample(owner)
-    assert owner._deferred is None and unaccounted(owner) == 0
+    assert owner._deferred is None and unaccounted(owner) == 2
     owner.run_queue()
     assert "Bravo" not in picks(owner), "Bravo, which the user deselected, was picked"
+    assert picks(owner) == [] and move_to_top(owner) is None
+
+
+def test_a_sample_that_finds_the_picks_shown_leaves_a_queued_click_its_own_change() -> None:
+    """Nothing picked; a Ctrl+click on Bravo is handled natively, the selection is cleared
+    through accessibility, the tab sample finds the tree showing exactly the picks, none, and
+    Charlie is then added through accessibility, all before the click's listener. Had the sample
+    accounted for the click's change, the listener would have taken Charlie's for its own and
+    toggled Bravo on, and Move to Top moved the sheet the user had cleared, as `main` does. The
+    sample accounts for nothing, so the listener picks nothing."""
+    owner = fresh()
+    queued_click(owner, row("Bravo"))
+    owner.tree.assistive_clear()
+    sample(owner)
+    owner.tree.assistive_select("Charlie")
+    owner.run_queue()
+    assert "Bravo" not in picks(owner), "Bravo, which the user cleared, was picked"
     assert picks(owner) == [] and move_to_top(owner) is None
 
 
