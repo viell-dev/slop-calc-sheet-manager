@@ -452,35 +452,61 @@ def test_stale_accessible_rows_preserve_cursor_without_hiding_other_errors(
 
 
 @pytest.mark.parametrize(
-    "names,expected",
-    [(("Bravo",), "Bravo"), (("Delta",), "Delta"), (("Alfa", "Bravo"), "Bravo"), ((), None)],
+    "names,cursor,gone,written,kept",
+    [
+        (("Bravo",), "Bravo", False, "Bravo", "Bravo"),  # The press's own cursor.
+        (("Bravo",), "Hotel", False, "Bravo", "Hotel"),  # Moved outside the picks (#71).
+        (("Bravo", "Delta"), "Delta", False, "Delta", "Delta"),  # Moved to another pick.
+        (("Delta",), "Delta", False, "Delta", "Delta"),  # A newer typed pick.
+        ((), "Hotel", False, None, "Hotel"),  # No pick survives, the cursor does.
+        (("Alfa", "Bravo"), "Hotel", True, "Bravo", "Bravo"),  # Gone: the pressed pick takes it,
+        (("Alfa", "Delta"), "Hotel", True, "Alfa", "Alfa"),  # or else the first pick,
+        ((), "Hotel", True, None, None),  # or nothing.
+        (("Alfa", "Bravo"), None, False, "Bravo", "Bravo"),
+        ((), None, False, None, None),
+    ],
 )
-def test_refused_release_restores_a_surviving_pick_instead_of_native_release_cursor(
-    names: tuple[str, ...], expected: str | None
+def test_a_refused_release_writes_a_picked_cursor_and_keeps_the_lists_own(
+    names: tuple[str, ...], cursor: str | None, gone: bool, written: str | None, kept: str | None
 ) -> None:
-    selection = Selection(lambda ref: True)
-    selection.picked = [Ref(name, object()) for name in names]
-    selection.cursor = Ref("Charlie", object())  # Native deferred release changed the cursor.
-    before = tuple(selection.picked)
-    applied: list[Ref | None] = []
+    """A press on Bravo, which a refresh moved away from the pressed row. The tree's native
+    release has moved its cursor to that row, Charlie's now, but the list ignored that while the
+    press was held, so its cursor is where its keys left it. The listener writes the picks back
+    with the tree's cursor on a pick, as before #71, and then keeps the list's own cursor, which
+    the write it queues shows; a cursor whose sheet is gone (`gone`) falls back to a pick, as
+    before. The cursor is always a ref the list made at the user's input, never one from the
+    release, and the listener reads no handle for it: the press's would fail the test."""
+    rows = ["Alfa", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Bravo", "Hotel"]
+    handles = {name: SimpleNamespace(getName=lambda name=name: name) for name in rows}
+    selection = Selection(lambda ref: not (gone and ref.name == cursor))
+    selection.picked = [Ref(name, handles[name]) for name in names]
+    selection.cursor = Ref(cursor, handles[cursor]) if cursor is not None else None
+    refs = [*selection.picked, selection.cursor]
+    writes: list[Ref | None] = []
     owner = SimpleNamespace(
-        _press=SimpleNamespace(row=1, name="Bravo", generation=0, voided=False),
+        _press=SimpleNamespace(
+            row=1,
+            name="Bravo",
+            handle=SimpleNamespace(getName=Mock(side_effect=AssertionError("a handle read"))),
+            generation=0,
+            voided=False,
+        ),
         _monitor=SimpleNamespace(generation=0),  # No `check()` in the listener (#284).
         _pressed_sheet_in_place=Mock(return_value=False),
         _selection=selection,
-        _show_selection=lambda: applied.append(selection.cursor),
+        names=lambda: rows,
+        _show_selection=lambda: writes.append(selection.cursor),
     )
     released = method(
         "src/sheet_manager/uno_list.py", "SheetList", "mouse_released", {"LEFT": 1, "RIGHT": 2}
     )
     released(owner, SimpleNamespace(Buttons=1))
-    cursor = cast(Ref | None, owner._selection.cursor)
-    assert tuple(selection.picked) == before
+    result = cast(Ref | None, owner._selection.cursor)
     assert owner._press is None
-    assert (cursor.name if cursor is not None else None) == expected
-    assert applied == [cursor]
-    if cursor is not None:
-        assert any(cursor is ref for ref in before)
+    assert [ref.name for ref in selection.picked] == list(names)
+    assert [ref.name if ref is not None else None for ref in writes] == [written]
+    assert (result.name if result is not None else None) == kept
+    assert result is None or any(result is ref for ref in refs)
 
 
 @pytest.mark.parametrize(

@@ -5,6 +5,12 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- When the list refuses a held click because the sheets changed during it, the keyboard cursor
+  now stays where your keys moved it during the hold, also outside the picks, as long as the list
+  can still identify that sheet. It returned to a picked sheet, so Ctrl+Space then toggled that
+  sheet instead; the picks were already kept. Releasing another mouse button while the left one
+  is held no longer ends the held click
+  ([#71](https://github.com/viell-dev/slop-calc-sheet-manager/issues/71)).
 - The real-input lab's Rename Sheets dialog now calibrates with the sheet list's method, which
   takes the offset only from two reports of one point's own moves. When every report came later
   than the 0.3-second quiet time, the dialog could credit the previous point's pair of reports to
