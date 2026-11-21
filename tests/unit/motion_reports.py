@@ -2,8 +2,10 @@
 
 A window's motion listener hears a pointer move only when LibreOffice's main thread gets to it,
 so a report can arrive well after its move, and after later moves. The calibration tests of the
-sheet list (#209) and the rename dialog (#232) run the real calibration methods, read from
+sheet list (#209, #298) and the rename dialog (#232) run the real calibration methods, read from
 source, against fake windows whose reports this thread delivers, each after a chosen busy time.
+It records when it last began to deliver one, for fakes that drop a move made too soon after
+(#298).
 """
 
 import queue
@@ -14,12 +16,14 @@ from typing import Any
 
 
 class Tracker:
-    """Stands in for the UI modules' `Tracker`: the last position a window reported."""
+    """Stands in for the UI modules' `Tracker`: every position a window reported, and the last."""
 
     def __init__(self) -> None:
         self.last: tuple[int, int] | None = None
+        self.reports: list[tuple[int, int]] = []
 
     def mouseMoved(self, event: Any) -> None:
+        self.reports.append((event.X, event.Y))
         self.last = (event.X, event.Y)
 
 
@@ -29,6 +33,7 @@ class Office:
     def __init__(self) -> None:
         self.listeners: list[Tracker] = []
         self.reports: queue.Queue[tuple[float, tuple[int, int]] | None] = queue.Queue()
+        self.delivered = float("-inf")  # When the last report began to reach the listeners.
         self.thread = threading.Thread(target=self._run, daemon=True)
         self.thread.start()
 
@@ -36,6 +41,7 @@ class Office:
         while (item := self.reports.get()) is not None:
             busy, (x, y) = item
             time.sleep(busy)
+            self.delivered = time.monotonic()
             for listener in list(self.listeners):
                 listener.mouseMoved(SimpleNamespace(X=x, Y=y))
 
