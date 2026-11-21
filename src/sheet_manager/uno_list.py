@@ -101,11 +101,16 @@ is the one any toggle asks for.
 Waiting selections (#280, #291). The tree also shows other rows than the picks without a drop:
 after a key changed the picks, until its queued write runs, and after a native selection that
 no owned handler sees, such as one made through accessibility, until the queued intake takes
-it. A key that changes the picks holds presses alone (`_hold_toggles(keys=False)`): a Ctrl+click
-handled before the write toggled a row of the tree as it was, while keys typed ahead act on the
-picks they changed. The intake that the tab sample or a refresh defers records the rows it
-found (`_deferred`) until it runs; a drop or a refused toggle ends the record sooner, since
-the intake then takes nothing, and their hold covers what the record held. The press listener
+it. A key whose picks the tree does not show yet holds presses (`_hold_toggles`): a Ctrl+click
+handled before the write toggled a row of the tree as it was. Keys typed ahead act on the picks
+the keys changed, so the key's hold leaves Space free, unless a hold that holds Space is on: a
+key after a refusal or a drop, before its write, leaves that hold as it is, since the tree still
+shows rows the picks lack, and Ctrl+Space would toggle the cursor's row against them. The
+intake that the tab sample or a refresh defers records the rows it found (`_deferred`) until it
+runs; a drop or a refused toggle ends the record sooner, since the intake then takes nothing.
+A refused toggle and a drop of picks or of a waiting selection hold toggles, Space included,
+which covers what the record held; only a drop with nothing picked and no selection waiting
+ends it without a hold, as such a drop held nothing before (#288). The press listener
 and the key handler read the record once, before any UNO call, through which queued work,
 that intake included, can run inside them. A Ctrl press's listener that runs before it was
 pressed before it looked, so it toggles only if toggling its row against the picks gives
@@ -621,9 +626,10 @@ class SheetList:
     - Toggles (`_toggles_held`, #288): from a drop of picks, or a failed write that leaves
       `_shown` None, until work posted once the tree shows exactly the picks has run, a Ctrl
       press's listener (`mouse_pressed`) and Ctrl+Space (`tree_key`) pick nothing, drop any
-      picks left (`_toggle_held_off`), hold toggles until that write, and ask for it. A key's
-      change of the picks, and an intake that finds the tree changed since it was deferred,
-      hold the listener alone (`_toggles_keys` False). While a deferred intake waits
+      picks left (`_toggle_held_off`), hold toggles until that write, and ask for it. A key
+      whose picks the tree does not show yet, and an intake that finds the tree changed since
+      it was deferred, hold the listener alone (`_toggles_keys` False), except that a key
+      leaves a hold that holds Space as it is. While a deferred intake waits
       (`_deferred`, #291, read once per listener or key), the listener is held unless its
       toggle accounts for the rows that intake found (`_toggle_held`), and Ctrl+Space and the
       cursor keys with Ctrl are held.
@@ -1073,6 +1079,8 @@ class SheetList:
         write. Each hold is a new token: a release posted for an earlier one does not end it.
         With `keys` False, Space is not held: after a key's own change, keys typed ahead act on
         the picks that change made, and after an intake's take the tree shows the picks (#291).
+        A key passes False only while no hold that holds Space is on: after a refusal or a drop,
+        Space stays held until the write (`tree_key`).
         """
         self._toggles_keys = keys
         self._toggles_held = object()
@@ -1556,12 +1564,15 @@ class SheetList:
                     toggle=bool(modifiers & MOD1),
                 )
         if self._shown is not None and set(self._selection.names()) != set(self._shown):
-            # The tree shows the new picks only once the queued write has run. A Ctrl+click
-            # handled natively before then toggles a row of the tree as it was, and its
-            # listener runs after the write: it would toggle that row against the new picks
-            # (#291). Presses are held until then; keys typed ahead still act on these picks.
-            # An unknown record keeps the hold its failure made, which holds Space too (#288).
-            self._hold_toggles(keys=False)
+            # The tree does not show the picks until the queued write has run: this key changed
+            # them, or a refusal or drop before it emptied them. A Ctrl+click handled natively
+            # before then toggles a row of the tree as it was, and its listener runs after the
+            # write: it would toggle that row against these picks (#291). So presses are held
+            # until then. A hold that holds Space too stays so: after a refusal or a drop the
+            # tree shows rows the picks lack, and Ctrl+Space typed ahead would toggle the
+            # cursor's row against them (#288). Otherwise keys typed ahead act on these picks.
+            # An unknown record keeps the hold its failure made, which holds Space too.
+            self._hold_toggles(keys=self._toggles_held is not None and self._toggles_keys)
         self._user_picks = True
         self._queue_selection(scroll=True)
 

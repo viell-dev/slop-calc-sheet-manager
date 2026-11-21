@@ -329,6 +329,20 @@ def test_a_deferred_intake_that_runs_inside_the_key_handler_does_not_free_ctrl_s
     assert move_to_top(owner) is None
 
 
+def test_a_deferred_intake_that_runs_inside_the_key_handler_does_not_free_ctrl_down() -> None:
+    """The same for a cursor key with Ctrl: Alfa picked, then Echo selected alone through
+    accessibility, and the tab sample defers the intake. If that intake runs while Ctrl+Down's
+    handler posts its acknowledgement, a handler that read the record after that call kept Alfa,
+    and its write showed Alfa again over Echo for Move to Top to move."""
+    owner = alfa_then(["Echo"])
+    sample(owner)
+    owner._tabs.note_input = lambda: run_the_deferred_intake(owner)
+    key(owner, DOWN, MOD1)
+    assert "Alfa" not in picks(owner), "Alfa, which the user replaced, was kept"
+    assert picks(owner) == [] and owner.tree.shown() == [] and cursor(owner) == "Bravo"
+    assert move_to_top(owner) is None
+
+
 def test_a_refused_ctrl_click_tells_of_the_waiting_selection_with_picks_that_follow_calc() -> None:
     """The picks follow Calc's tabs, Bravo and Charlie, rather than the user, so dropping them
     alone is silent; Echo is then added through accessibility, a Ctrl+click adds Delta natively,
@@ -501,6 +515,129 @@ def test_a_ctrl_key_between_a_ctrl_clicks_toggle_and_its_listener_picks_nothing(
     owner.run_queue()
     assert picks(owner) == [] and owner.tree.shown() == []
     assert len(owner.notices) == notices + 1
+    assert move_to_top(owner) is None
+
+
+def test_ctrl_space_after_a_refused_ctrl_key_and_a_cursor_key_does_not_pick_the_row() -> None:
+    """Keys typed after a refusal, before its write: Echo picked, Golf added through
+    accessibility, and the tab sample defers the intake. Ctrl+Down is refused and drops Echo,
+    with the notice, but the tree still shows Echo and Golf; Ctrl+Up then moved the cursor back
+    to Echo and lowered the refusal's hold to one that left Space free, so Ctrl+Space, meant to
+    deselect Echo, picked it, and Move to Top moved it. A key leaves a hold that holds Space as
+    it is, so Ctrl+Space picks nothing."""
+    owner = sheet_list(Book(list(NAMES)))
+    click(owner, row("Echo"))
+    owner.tree.assistive_select("Golf")
+    sample(owner)
+    owner.tree_key(DOWN, MOD1)
+    owner.tree_key(UP, MOD1)
+    owner.tree_key(SPACE, MOD1)
+    owner.run_queue()
+    assert "Echo" not in picks(owner), "Echo, which the user deselected, was picked"
+    assert picks(owner) == [] and owner.tree.shown() == [] and cursor(owner) == "Echo"
+    assert move_to_top(owner) is None
+
+
+def test_ctrl_keys_to_a_waiting_row_and_ctrl_space_do_not_pick_it() -> None:
+    """The plain keyboard path to the same case: Alfa picked, Echo selected alone through
+    accessibility, the tab sample, then Ctrl+Down four times to Echo and Ctrl+Space to deselect
+    it, all before any write. The first Ctrl+Down is refused and drops Alfa; the second lowered
+    the hold, and Ctrl+Space picked Echo."""
+    owner = alfa_then(["Echo"])
+    sample(owner)
+    for _ in range(4):
+        owner.tree_key(DOWN, MOD1)
+    assert cursor(owner) == "Echo"
+    owner.tree_key(SPACE, MOD1)
+    owner.run_queue()
+    assert "Echo" not in picks(owner), "Echo, which the user deselected, was picked"
+    assert picks(owner) == [] and owner.tree.shown() == []
+    assert move_to_top(owner) is None
+
+
+def test_ctrl_space_after_a_click_refused_behind_a_key_does_not_pick_the_deselected_row() -> None:
+    """The same without assistive technology: Alfa picked, and Shift+Down picks Alfa and Bravo;
+    a Ctrl+click on Delta is handled natively before that write, so its listener, run after the
+    write, is held and drops both picks, while the tree shows Alfa and Bravo until the refusal's
+    own write. Ctrl+Up twice moves the cursor to Bravo and lowered the hold; Ctrl+Space, meant to
+    deselect Bravo, picked it, and Move to Top moved it."""
+    owner = sheet_list(Book(list(NAMES)))
+    click(owner, row("Alfa"))
+    owner.tree_key(DOWN, SHIFT)
+    queued_click(owner, row("Delta"))
+    for _ in range(3):  # The key's write, then the click's two listeners.
+        work, _where = owner.queue.pop(0)
+        work()
+    assert picks(owner) == [] and owner.tree.shown() == ["Alfa", "Bravo"]
+    owner.tree_key(UP, MOD1)
+    owner.tree_key(UP, MOD1)
+    assert cursor(owner) == "Bravo"
+    owner.tree_key(SPACE, MOD1)
+    owner.run_queue()
+    assert "Bravo" not in picks(owner), "Bravo, which the user deselected, was picked"
+    assert picks(owner) == [] and owner.tree.shown() == []
+    assert move_to_top(owner) is None
+
+
+def test_ctrl_space_before_the_write_of_a_refusal_that_found_no_picks_picks_nothing() -> None:
+    """A refusal that finds no picks holds Space too: nothing picked, the cursor on Bravo, Bravo
+    selected through accessibility, and the tab sample defers the intake. Ctrl+Down is refused,
+    which ends the record, and Ctrl+Up moves the cursor back; Ctrl+Space before the refusal's
+    write, meant to deselect Bravo, would pick it under a hold that left Space free."""
+    owner = sheet_list(Book(list(NAMES)))
+    key(owner, DOWN, MOD1)
+    select_through_accessibility(owner, ["Bravo"])
+    sample(owner)
+    owner.tree_key(DOWN, MOD1)
+    owner.tree_key(UP, MOD1)
+    assert cursor(owner) == "Bravo" and owner.tree.shown() == ["Bravo"]
+    owner.tree_key(SPACE, MOD1)
+    owner.run_queue()
+    assert "Bravo" not in picks(owner), "Bravo, which the user deselected, was picked"
+    assert picks(owner) == [] and owner.tree.shown() == []
+    assert move_to_top(owner) is None
+
+
+def test_keys_typed_after_a_refusal_before_its_write_leave_ctrl_space_held() -> None:
+    """The cost of keeping Space held after a refusal until its write, where the keys meant a
+    set the list could have picked. Nothing picked; Bravo and Delta selected through
+    accessibility; the tab sample; Ctrl+Space is refused; Down picks Bravo alone, Ctrl+Down moves
+    the cursor to Charlie, and Ctrl+Space, all before the refusal's write: `main` picks Bravo and
+    Charlie, as the keys mean. The tree still shows Bravo and Delta, so Ctrl+Space picks nothing
+    and drops Bravo, with the notice."""
+    owner = sheet_list(Book(list(NAMES)))
+    select_through_accessibility(owner, ["Bravo", "Delta"])
+    sample(owner)
+    owner.tree_key(SPACE, MOD1)
+    owner.tree_key(DOWN, 0)
+    owner.tree_key(DOWN, MOD1)
+    assert picks(owner) == ["Bravo"] and cursor(owner) == "Charlie"
+    notices = len(owner.notices)
+    owner.tree_key(SPACE, MOD1)
+    owner.run_queue()
+    assert picks(owner) == [] and owner.tree.shown() == []
+    assert len(owner.notices) > notices
+    assert move_to_top(owner) is None
+
+
+def test_a_range_key_after_a_refused_toggle_before_its_write_leaves_ctrl_space_held() -> None:
+    """The same cost through a range: Alfa picked, then Echo selected alone through
+    accessibility; a Ctrl+click deselects Echo natively, the tab sample defers the intake before
+    its listener, and the listener is refused and drops Alfa. Before its write, Ctrl+Shift+Down
+    adds Echo and Foxtrot, and Ctrl+Space takes Foxtrot out again, so the keys mean Echo. The
+    tree still shows the refused click, so Ctrl+Space picks nothing."""
+    owner = alfa_then(["Echo"])
+    queued_click(owner, row("Echo"))
+    sample(owner)
+    for _ in range(2):  # The click's two listeners; the intake and the write stay queued.
+        work, _where = owner.queue.pop(0)
+        work()
+    assert picks(owner) == [] and cursor(owner) == "Echo"
+    owner.tree_key(DOWN, MOD1 | SHIFT)
+    assert picks(owner) == ["Echo", "Foxtrot"]
+    owner.tree_key(SPACE, MOD1)
+    owner.run_queue()
+    assert picks(owner) == [] and owner.tree.shown() == []
     assert move_to_top(owner) is None
 
 
