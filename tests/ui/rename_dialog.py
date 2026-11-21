@@ -4,9 +4,9 @@ The dialog is found as the visible dialog window over the document, and observed
 UNO only: its child windows' text, items, enabled state, focus and accessible name events. Pointer
 positions come from those windows and their accessible list items, after calibrating the input
 against a motion listener on the dialog's own background, with the lab's `Tracker` and
-`settled_report` that calibrate the sheet list. The calibration's points cover the dialog's own
-window, located from its buttons, because its accessible area includes the window manager's
-frame (#253).
+`confirmed_offset` that calibrate the sheet list (#300). The calibration's points cover the
+dialog's own window, located from its buttons, because its accessible area includes the window
+manager's frame (#253).
 """
 
 import sys
@@ -18,7 +18,7 @@ import uno
 import unohelper
 from button_pixels import capture as capture_disabled_buttons
 from com.sun.star.accessibility import XAccessibleEventListener
-from lab import Tracker, settled_report
+from lab import Tracker, confirmed_offset
 from run import wait_for
 from sheet_list_view import on_main_thread
 from xinput import Pointer
@@ -28,10 +28,6 @@ from sheet_manager.uno_menu import RENAME, RENAME_SHEETS
 
 FOCUSED = uno.getConstantByName("com.sun.star.accessibility.AccessibleStateType.FOCUSED")
 NAME_CHANGED = uno.getConstantByName("com.sun.star.accessibility.AccessibleEventId.NAME_CHANGED")
-# Calibration (#232): how long the dialog may take to report the confirming second move before
-# the next point is tried, and how many points may fail to confirm before calibration fails.
-CONFIRM_SECONDS = 2
-REJECTED_POINTS = 3
 
 
 class NameChanges(unohelper.Base, XAccessibleEventListener):
@@ -48,55 +44,19 @@ class NameChanges(unohelper.Base, XAccessibleEventListener):
         pass
 
 
-def _reported(tracker, before, seconds):
-    """Whether the window reports a position other than `before` within `seconds`."""
-    deadline = time.monotonic() + seconds
-    while tracker.last in (None, before):
-        if time.monotonic() > deadline:
-            return False
-        time.sleep(0.01)
-    return True
-
-
 def scan_points(origin, size):
-    """The points calibration tries: rows 3 pixels apart, each row's left, middle and right."""
+    """The points calibration tries: rows 15 pixels apart, each row's left, middle and right.
+
+    The left and right points are in the dialog's side margins, which are its background at
+    every height. Rows 3 pixels apart let `confirmed_offset` take two points' moves for one
+    point's pair (#300); 15 pixels keeps them its `SPACING` apart.
+    """
     width, height = size
     return [
         (origin[0] + x, origin[1] + y)
-        for y in range(2, height, 3)
+        for y in range(2, height, 15)
         for x in (4, width // 2, width - 5)
     ]
-
-
-def scan(real_input, tracker, points):
-    """Try `points` until one is confirmed; return the offset and how it was found (#232).
-
-    The record lists how many points were tried, which of them the window reported within
-    0.15 seconds, the point that counted with its two reports, and the points set aside.
-    """
-    rejected, heard = [], []
-    for tried, (x, y) in enumerate(points, 1):
-        tracker.last = None
-        real_input.move(x, y)
-        if not _reported(tracker, None, 0.15):
-            continue
-        heard.append(tried)
-        first = settled_report(tracker, None, (x, y))
-        real_input.move(x + 2, y + 2)
-        second = None
-        if _reported(tracker, first, CONFIRM_SECONDS):
-            second = settled_report(tracker, first, (x + 2, y + 2))
-        if second == (first[0] + 2, first[1] + 2):
-            # The pair agrees, so either report gives the offset.
-            found = {"tried": tried, "heard": heard, "point": (x, y), "reports": [first, second]}
-            return (x - first[0], y - first[1]), {**found, "rejected": rejected}
-        rejected.append({"point": (x, y), "reports": [first, second]})
-        if len(rejected) == REJECTED_POINTS:
-            break
-    raise AssertionError(
-        "The dialog never confirmed a point on its background; the points whose "
-        f"reports did not follow a 2-pixel second move: {rejected}"
-    )
 
 
 def _types(window):
@@ -219,11 +179,12 @@ class Dialog:
         are tried until the dialog reports one. It hears a move only when LibreOffice's main
         thread gets to it, so a report can arrive after the pointer has gone on to the next
         point; taking the first report after a fixed wait could read it for that point's (#232).
-        As for the sheet list (`Lab.calibrate`, #209), a point counts only when a second move,
-        2 pixels further on both axes, is reported too, each report read with `settled_report`
-        once the reports have stopped. The two reports must differ by that move. Otherwise one
-        of them belongs to another point, or the second move went over a control, and the next
-        point is tried; only a pair of moves can produce reports that differ by exactly (2, 2).
+        `lab.confirmed_offset`, which calibrates the sheet list too, takes the offset only from
+        a point's report and its own second move's, a step that no other point uses, so a late
+        pair counts for the point it belongs to. Requiring a pair of reports 2 pixels apart, and
+        taking the offset from the point being tried, credited the previous point's pair to the
+        current one when every report came later than the quiet time (#300). A point whose
+        second move goes over a control is set aside and the next point tried.
 
         The points cover the dialog's own window, from `own_area`, not its accessible area,
         which includes the window manager's frame, where the dialog hears nothing (#253). Nor
@@ -234,7 +195,7 @@ class Dialog:
         20 points (3.5 s) under the Linux lab's Openbox. On the Windows desktop, the left and
         right columns fell in the frame's 8-pixel borders, so every middle point was reached
         from off the dialog, and 368 points (57 s) were tried. `self.calibration` records the
-        geometry and the scan, for the checks' evidence.
+        geometry and `confirmed_offset`'s record, for the checks' evidence.
         """
         if self.pointer is not None:
             return self.pointer
@@ -249,9 +210,13 @@ class Dialog:
         tracker = Tracker()
         self.window.addMouseMotionListener(tracker)
         try:
-            offset, found = scan(self.book.lab.input, tracker, scan_points(origin, size))
+            offset, found = confirmed_offset(
+                self.book.lab.input, tracker, scan_points(origin, size), size
+            )
         except AssertionError as error:
-            raise AssertionError(f"{error}; {geometry}") from None
+            raise AssertionError(
+                f"Calibrating the Rename Sheets dialog: {error}; {geometry}"
+            ) from None
         finally:
             self.window.removeMouseMotionListener(tracker)
         seconds = round(time.monotonic() - started, 2)

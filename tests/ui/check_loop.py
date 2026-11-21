@@ -22,6 +22,7 @@ def run_named(lab, book, output, checks, only=()):
     `checks.json` is rewritten after every check. A failed check's record, with its traceback,
     is written before anything else runs; `after_failure` then keeps its diagnostics and cleans
     up its input (#190). The next check still runs, unless LibreOffice's main thread is stuck.
+    `lab.check` names the check running, for the lab's calibration records (#301).
     """
     if only:
         unknown = set(only) - {name for name, _ in checks}
@@ -36,6 +37,7 @@ def run_named(lab, book, output, checks, only=()):
     for name, check in checks:
         started = time.monotonic()
         note_progress()  # The session's stall watch counts checks as progress (#45).
+        lab.check = name
         try:
             reset(book)
             results[name] = {"pass": True, "evidence": check()}
