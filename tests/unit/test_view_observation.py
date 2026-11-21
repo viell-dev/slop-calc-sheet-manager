@@ -242,6 +242,7 @@ def test_refresh_seeds_the_new_proof_before_a_subsequent_tab_change(kept: bool) 
     owner._apply_selection = Mock()
     owner._generation = 0
     owner._name_viewed = Mock()
+    owner._release_presses = Mock()  # The rows are kept: no press hold to end (#293).
 
     def snapshot(document: Any) -> Any:
         return observed
@@ -702,6 +703,7 @@ def drag_list() -> tuple[Any, Any, Any, list[Any]]:
     owner._shown = ("Alfa",)
     owner._apply_selection, owner._rebuild = Mock(), Mock(side_effect=rebuild)
     owner._show_native, owner._name_viewed = Mock(), Mock()
+    owner._release_presses = Mock()  # A refresh that keeps the rows ends no press hold (#293).
     owner._busy, owner._drag = False, None
     owner._drag_source = SimpleNamespace(startDrag=Mock())
     owner._listeners = {"source": object()}

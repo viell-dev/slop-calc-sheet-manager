@@ -5,6 +5,17 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- A click, Ctrl+click, Shift+click, double click or right click in the sheet list no longer acts
+  on another sheet than the one you clicked when the list redraws its rows at that moment, as it
+  does when another window moves, inserts, deletes or renames a sheet. The list handled the
+  click only after the redraw and took the sheet then in that row: Move to Top could move a sheet
+  you never clicked, a double click could go to it, and the right-click menu could delete it.
+  This also happened on a row the redraw kept when the redraw scrolled the list, as it does when
+  the list gets shorter while scrolled to its end. At such a moment, a click on a row that the
+  redraw changed, on any row when it scrolled the list, and a Shift+click on any row, are now
+  refused: a refused right click opens no menu, and a refused left click clears the list's
+  selection, with the selection notice when you had made it. Click again
+  ([#293](https://github.com/viell-dev/slop-calc-sheet-manager/issues/293)).
 - The real-input lab's calibration of the sheet list now lets the list's reports of a point stop
   before it moves the pointer a second time, moves it toward the list's middle, and tries another
   point when that move goes unreported. Before, it waited 10 seconds and failed the session. gtk3
