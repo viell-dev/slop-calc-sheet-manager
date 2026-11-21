@@ -67,6 +67,7 @@ from run import office_session, property_value  # noqa: E402
 from selection_checks import (  # noqa: E402
     check_assistive_selection_then_ctrl_input,
     check_click_activates,
+    check_clicks_after_scrolls,
     check_ctrl_clicks_after_a_ctrl_shift_range,
     check_ctrl_shift_selection,
     check_margin_drag_keeps_sidebar_docked,
@@ -222,6 +223,7 @@ def checks_for(lab, book):
         ("rename_sheets_replace_conflict", lambda: check_rename_replace_conflict(book)),
         ("rename_sheets_stale", lambda: check_rename_stale(book)),
         ("wheel", lambda: check_wheel(book)),
+        ("clicks_after_scrolls", lambda: check_clicks_after_scrolls(book)),
         ("autoscroll", lambda: check_autoscroll(book)),
     ]
 

@@ -386,6 +386,7 @@ def test_failed_rebuild_releases_the_cursor_restoration_guard() -> None:
         _writing=0,
         _writer=None,
         _write_start=0,
+        _note_rebuilt_position=Mock(),  # The new rows show: their position is noted (#299).
     )
 
     def fail_restore() -> None:

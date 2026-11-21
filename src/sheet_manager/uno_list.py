@@ -219,10 +219,41 @@ cannot tell a rename in place from another sheet moved into the row, so a press 
 is refused too. A refresh that keeps every row's name holds nothing new, even when it loses the
 identity proof: the press acts on the sheet under that name, as a press after the refresh would,
 and a drop of picks there holds toggles (above). A refresh that keeps the rows also posts the end
-of a hold whose post failed. The listener makes no native call that `main` does not; a rebuild
-makes one more, the second read of the position, and the end of a hold is one post. The list
-also scrolls without a rebuild, by a key's queued write or the wheel, between a press and its
-listener, which then maps the position on the scrolled rows (#299).
+of a hold whose post failed.
+
+Scrolling under the pointer (#299). The tree also scrolls between a press and its listener
+without a rebuild: a key's queued write shows the cursor, and the wheel, the scrollbar or a resize
+scroll it with no list code running. So the list keeps the position that presses map through, the
+first row's offset and the row height as it last saw them, and changes it only together with a
+hold of every row whose end it posts at once (`_saw_position`). It sees the position where it
+reads it anyway: in a rebuild's second read, now taken whenever the new rows show; in each paint,
+which shows the rows where the user sees them; and in the press listener's own read. A write that
+shows the cursor, a key's, type-ahead's or the keyboard menu's, reads it before and after it
+scrolls (`_show_row`), so that its scroll cannot bring back rows that the wheel moved unseen. A
+listener whose press was handled before such a change runs held. One that finds the rows at
+another position than the list saw last holds every row itself, its own press included, since it
+cannot tell whether the press came before the scroll; it decides its press before it posts the
+hold's end. Each is a refusal, never a press on another sheet, and a press made once the list has
+painted the scrolled rows acts. By reading the 26.8.2.2 sources, the wheel and the scroll bar
+paint within their own handling (`ScrollBar::DoScroll`, `SvImpLBox::ScrollUpDownHdl`, then
+`PaintImmediately`), so the paint notes their scroll before any listener runs; `MakeVisible`,
+`FillView` and a resize only invalidate, and the listener's comparison covers them until VCL
+paints. The listener and the paint compare the reads they map and draw with, so neither makes a
+native call for this; each can post the end of a hold. The write's reads are two `getNodeRect`
+calls in posted work, and a failed read holds every row and keeps the old position. A drag's
+autoscroll needs nothing: no press is made while the button is held. A press made between two
+scrolls that VCL paints only later, such as two resizes, that leave the rows where the list last
+saw them is not seen: the list cannot tell that the rows moved and came back (#305).
+
+Drags before the press's listener (#295). VCL recognizes a drag gesture within its handling of
+the pointer's motion (#264), so the gesture can come before its press's listener. After a
+rebuild, the tree no longer shows the row the press selected, and the gesture carried the picks
+the rebuild wrote instead. So no drag starts while presses are held: the press's listener decides
+the press, held, and the user drags again. A refresh that drops the picks a waiting selection
+superseded (#280) refuses many of these drags too, but it cannot see the press's selection while
+an earlier click's press is still held, and its rebuild then writes that click's pick. A
+selection key's or type-ahead's write that does not scroll holds nothing, so a gesture after it,
+before the press's listener, still drags the key's pick (#304).
 
 Activation. A double click or Enter makes the sheet Calc's only selected tab and reads that back,
 because `setActiveSheet` keeps an existing group when the sheet belongs to it. Activation reads
@@ -717,7 +748,8 @@ class SheetList:
     `generation` with the list's proof, as the release does (#284). What only a check finds,
     such as a lock held at that moment, the drop's posted `_move` finds before anything moves:
     it checks the monitor, and `apply_order` repeats the whole preflight. A drag on stale rows
-    is refused and posts its refresh, whose tab sample must not run in the listener (#264).
+    is refused and posts its refresh, whose tab sample must not run in the listener (#264). No
+    drag starts while presses are held (#295, below).
 
     Collaborators, each owning its own state: `_refreshes` decides when to refresh
     (`refresh_schedule`), `_tabs` follows Calc's tabs and the sidebar (`uno_tabs`, for which this
@@ -778,7 +810,10 @@ class SheetList:
       `mouse_pressed` maps an event without Shift only to a row whose name every row list since
       the hold began had, and to none once the rebuild found its rows at another position. Any
       other left press picks nothing and drops the picks, so its release does nothing, and a
-      right press targets no menu.
+      right press targets no menu. A change of `_position`, the scroll position presses map
+      through, holds every row until work posted then has run (#299): seen by a rebuild, a write
+      that shows the cursor, a paint, or a press listener that finds the rows elsewhere. While
+      any hold lasts, `start_drag` starts no drag (#295).
     - Tab observation (`observation_paused`) waits while `_busy` (a move or rename runs),
       `_pointer_depth`, `_restoring_cursor`, `_press`, `_drag`, the menu's popup or
       `_menu_context` holds; the observer adds the document's locks and an own replay's view. A
@@ -879,6 +914,10 @@ class SheetList:
         # the hold whose end is posted.
         self._presses_held: _PressHold | None = None
         self._presses_release: _PressHold | None = None
+        # The scroll position that presses map through, as the list last saw its rows: the first
+        # row's offset and the row height. It changes only together with a hold of every row, as
+        # the tree can scroll between a press and its listener (#299; `_saw_position`).
+        self._position: tuple[int, int] | None = None
         # A sheet that may have been inserted or deleted since the picks were proved makes
         # every retained handle suspect (selection.py, structure.py), and the list then drops
         # its picks; `_generation` counts the drops, so that a drag or an open menu started
@@ -1302,18 +1341,21 @@ class SheetList:
         self.post(release, "accepting toggles again")
 
     def _hold_presses(self, names: tuple[str | None, ...]) -> None:
-        """Hold presses: a rebuild may show another sheet in a row the user pressed (#293).
+        """Hold presses: a rebuild or a scroll may show another sheet in a row the user pressed.
 
-        The module docstring's Rows under the pointer section gives the rule. Until the release
-        that `_release_presses` posts has run, `mouse_pressed` maps an event only to a row whose
-        name `names` keeps. Each hold is a new token, so that the release of an earlier one does
-        not end it.
+        The module docstring's Rows under the pointer (#293) and Scrolling under the pointer
+        (#299) sections give the rules. Until the release that `_release_presses` posts has run,
+        `mouse_pressed` maps an event only to a row whose name `names` keeps, and `start_drag`
+        starts no drag (#295). Each hold is a new token, so that the release of an earlier one
+        does not end it.
         """
         self._presses_held = _PressHold(names)
 
     def _release_presses(self) -> None:
-        """A rebuild, or a refresh that keeps the rows, is done: post the end of a press hold, to
-        run after every listener whose press LibreOffice handled before now (`_hold_presses`)."""
+        """Post the end of the press hold, to run after every listener whose press LibreOffice
+        handled before now (`_hold_presses`): when a rebuild or a refresh that keeps the rows is
+        done, and when a paint, a press listener or a cursor write noted the position. Nothing is
+        posted for a hold whose end already is."""
         held = self._presses_held
         if held is None or self._presses_release is held:
             return
@@ -1323,7 +1365,59 @@ class SheetList:
                 self._presses_held = None
 
         self.post(release, "accepting presses again")
-        self._presses_release = held  # Once posted: the next refresh retries a failed post.
+        self._presses_release = held  # Once posted: the next refresh or position note retries.
+
+    def _hold_every_row(self) -> None:
+        """Hold presses on every row: the rows may show at another position (#293, #299)."""
+        self._hold_presses((None,) * len(self.rows))
+
+    def _saw_position(self, geometry: RowGeometry) -> bool:
+        """Note where the rows show; if not where the list last saw them, hold every row (#299).
+
+        The tree can scroll between a press and its listener: a key's queued write shows the
+        cursor, and the wheel, the scrollbar or a resize scroll it without the list. A press made
+        on the rows as they showed before then maps to another row afterwards. So the position
+        that presses map through changes only together with a hold of every row, which the
+        caller ends by posting its release (`_release_presses`): every listener whose press was
+        handled before the change runs held. Returns whether the position changed.
+        """
+        position = (geometry.first_top, geometry.row_height)
+        if position == self._position:
+            return False
+        self._position = position
+        self._hold_every_row()
+        return True
+
+    def _note_position(self, geometry: RowGeometry | None = None) -> None:
+        """`_saw_position` for `geometry`, or for the position read now, and post the release.
+
+        A failed read holds every row and keeps the position the list saw last, so that the next
+        listener compares its own read with that. The release is also posted for a hold whose
+        post failed before (`_release_presses`).
+        """
+        if geometry is None:
+            try:
+                geometry = self.geometry()
+            except Exception:
+                report("reading the sheet list's scroll position")
+                self._hold_every_row()
+        if geometry is not None:
+            self._saw_position(geometry)
+        self._release_presses()
+
+    def _show_row(self, index: int) -> None:
+        """Scroll the tree so that the row at `index` shows, holding presses if the rows moved.
+
+        A press made before this scroll would map to another row (#299). The position is read
+        before the scroll, since the wheel may have scrolled the tree since the list last saw it
+        and this scroll could bring the rows back there, and again once the tree has scrolled,
+        also after a failed scroll: two `getNodeRect` calls.
+        """
+        self._note_position()
+        try:
+            self.tree.makeNodeVisible(self._nodes[index])
+        finally:
+            self._note_position()
 
     def _toggle_held_off(
         self,
@@ -1409,7 +1503,8 @@ class SheetList:
         Unless every row keeps its name and the scroll position is kept, presses are held from
         before the new model is shown until work posted when this returns has run, for the rows
         whose name changed, or for every row if the scroll position may have changed (#293).
-        Whether it changed is read again once the new model is shown (`_hold_if_scrolled`).
+        Whether it changed is read again once the new model is shown, which also notes the
+        position that presses map through (`_note_rebuilt_position`, #299).
         """
         try:
             before = self.geometry() if self._nodes else None
@@ -1468,13 +1563,14 @@ class SheetList:
             self._apply_selection()
         finally:
             self._restoring_cursor = restoring
-            if before is not None and not scrolled and self._nodes is nodes:
-                # Also when a call failed once the new rows showed, the restore's included.
-                self._hold_if_scrolled(before, len(rows))
+            if self._nodes is nodes:
+                # Also when a call failed once the new rows showed, the restore's included. A
+                # moved top row already holds every row: the read only notes the position (#299).
+                self._note_rebuilt_position(None if scrolled else before)
             self._release_presses()
 
-    def _hold_if_scrolled(self, before: RowGeometry, count: int) -> None:
-        """Hold every row if the new model shows its rows at another position than `before`.
+    def _note_rebuilt_position(self, before: RowGeometry | None) -> None:
+        """Note where the new model shows its rows, holding every row if not at `before`.
 
         The restore cannot always show the old top row at the top (#293). Showing a row makes
         it the first in view, but the last rows then fill the view (`SvImpLBox::MakeVisible`,
@@ -1482,16 +1578,23 @@ class SheetList:
         near its end, or that shows more rows because a long name and its horizontal scrollbar
         went. This read, one more `getNodeRect`, finds where the rows ended, also when the restore
         failed partway; a failed read holds them all. A press's listener maps a position to a row
-        through the same two values.
+        through the same two values. The read also notes the position the rows show at, so that
+        presses map through it (`_saw_position`, #299): it holds every row if that differs from
+        the position the list saw last, as after a scroll the list did not see.
         """
         try:
             after = self.geometry()
-            moved = (after.first_top, after.row_height) != (before.first_top, before.row_height)
         except Exception:
             report("reading the sheet list's restored scroll position")
-            moved = True
-        if moved:
-            self._hold_presses((None,) * count)
+            self._hold_every_row()
+            return
+        moved = before is not None and (after.first_top, after.row_height) != (
+            before.first_top,
+            before.row_height,
+        )
+        changed = self._saw_position(after)  # Holds every row if the list saw them elsewhere.
+        if moved and not changed:
+            self._hold_every_row()
 
     def _show_native(self, names: tuple[str, ...], accounted: int, shown_at: int) -> None:
         """Show a native selection that awaits intake again over rebuilt rows, keeping the cursor.
@@ -1805,7 +1908,7 @@ class SheetList:
             finally:
                 model.SelectionType = MULTI
         if scroll:
-            self.tree.makeNodeVisible(self._nodes[index])
+            self._show_row(index)  # As a key's write does, which holds presses if it scrolls.
 
     def tree_key(self, code: int, modifiers: int) -> None:
         """Record owned selection keys synchronously, so held keys accumulate before painting."""
@@ -1915,7 +2018,9 @@ class SheetList:
                 self._show_selection()
                 cursor = self._selection.cursor
                 if self._selection_scroll and cursor is not None and cursor.name in self.names():
-                    self.tree.makeNodeVisible(self._nodes[self.names().index(cursor.name)])
+                    # A key's write: a press made since the key maps to another row if this
+                    # scrolls, so it holds presses then (#299).
+                    self._show_row(self.names().index(cursor.name))
         finally:
             self._selection_write_pending = False
             self._selection_scroll = False
@@ -2458,22 +2563,31 @@ class SheetList:
         self._input += 1
         self._tabs.note_input()
         self.claim_window()
-        row = self.geometry().row_at(event.Y)
+        geometry = self.geometry()
+        row = geometry.row_at(event.Y)
         hit = row is not None  # Whether the tree handled this press on a row, as far as known.
         # The tree handled this press before this listener runs (#269). While presses are held,
         # a rebuild since then may show another sheet in the pressed row. Unless every row list
         # since the hold began showed the same name there, the press counts as one outside the
         # rows, which picks nothing and targets no menu (#293). So does a Shift press: its range
-        # runs through rows that may have changed.
+        # runs through rows that may have changed. The tree may also have scrolled since then
+        # without the list seeing it, by the wheel or the scrollbar: if the rows show at another
+        # position than the list saw last, every row is held, this press's included (#299). The
+        # press is decided before the hold's end is posted: posting can let queued work run here.
+        moved = self._saw_position(geometry)
         hold = self._presses_held
-        held = hold is not None and (
-            bool(event.Modifiers & SHIFT)
-            or row is None
-            or row >= len(hold.names)
-            or hold.names[row] != self.rows[row].name
+        held = moved or (
+            hold is not None
+            and (
+                bool(event.Modifiers & SHIFT)
+                or row is None
+                or row >= len(hold.names)
+                or hold.names[row] != self.rows[row].name
+            )
         )
         if held:
             row = None
+        self._release_presses()  # Also a hold whose post failed before.
         if event.Buttons & RIGHT:
             self._press = None
             if waiting:
@@ -2666,7 +2780,7 @@ class SheetList:
         if not picked:
             return
         index = self.names().index(picked[0].name)
-        self.tree.makeNodeVisible(self._nodes[index])
+        self._show_row(index)  # Holds presses if this scrolls, as a key's write does (#299).
         geometry = self.geometry()
         self._open_menu(
             geometry.row_height, geometry.gap_y(index) + geometry.row_height // 2, picked
@@ -2830,6 +2944,12 @@ class SheetList:
         self._press = None  # A drag is not a click.
         if self._busy or self._drag is not None or self._observed is None:
             return
+        if self._presses_held is not None:
+            # A rebuild or a scroll may have changed the rows since the tree handled the press,
+            # and the press's listener may not have run: a rebuild's write replaced the row the
+            # press selected with the picks, which a drag would carry instead (#295). The press's
+            # listener decides the press, held; the gesture starts nothing.
+            return
         # Not `check()`: VCL fires the gesture without the solar mutex, which the check's update
         # needs. The drop's posted `_move` checks before anything moves (#284).
         proof = self._proven
@@ -2906,11 +3026,11 @@ class SheetList:
     def paint_rows(self) -> None:
         if self._disposed or self._restoring_cursor:
             return
-        self._row_paint.draw(
-            self.rows,
-            self.geometry(),
-            set(self._selection.names()),
-        )
+        geometry = self.geometry()
+        self._row_paint.draw(self.rows, geometry, set(self._selection.names()))
+        # A paint shows the rows where the user sees them, also after a scroll no list code saw,
+        # such as the wheel's: presses map through that position from now on (#299).
+        self._note_position(geometry)
         if not self._decoration_pending:
             self._decoration_pending = True
             self.post(self._decorate_rows, "finishing sheet row borders")

@@ -80,6 +80,7 @@ from run import office_session  # noqa: E402
 from selection_checks import (  # noqa: E402
     check_assistive_selection_then_ctrl_input,
     check_click_activates,
+    check_clicks_after_scrolls,
     check_ctrl_clicks_after_a_ctrl_shift_range,
     check_ctrl_shift_selection,
     check_margin_drag_keeps_sidebar_docked,
@@ -141,6 +142,7 @@ def run_checks(lab, output, only=()):
         ("drop_in_place_and_escape", lambda: check_drop_in_place_and_escape(book)),
         ("autoscroll", lambda: check_autoscroll(book)),
         ("wheel", lambda: check_wheel(book)),
+        ("clicks_after_scrolls", lambda: check_clicks_after_scrolls(book)),
         ("keys_stay_in_list", lambda: check_keys_stay_in_list(book)),
         ("shortcuts_reach_calc", lambda: check_shortcuts(book)),
         ("menu_right_click", lambda: check_menu_right_click(book)),

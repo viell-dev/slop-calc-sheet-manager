@@ -37,7 +37,10 @@ from tests.unit.list_peer import (
     picks,
     press,
     queued_click,
+    record_activations,
+    record_menus,
     sheet_list,
+    wheel,
 )
 
 NAMES = ["Alfa", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel"]
@@ -86,29 +89,6 @@ def switch(owner: Any) -> None:
 def unchanged(owner: Any) -> None:
     """A refresh that finds the rows as they were."""
     post_refresh(owner)
-
-
-def record_activations(owner: Any) -> list[str]:
-    """The sheets a double click's posted activation is asked to activate (`_activate_pressed`)."""
-    activated: list[str] = []
-
-    def activate_pressed(name: str, handle: Any, generation: int) -> None:
-        activated.append(handle.getName())
-
-    owner._activate_pressed = activate_pressed
-    return activated
-
-
-def record_menus(owner: Any) -> list[str | None]:
-    """The target of each sheet tab menu that a right click's release asks for (`_open_menu`)."""
-    targets: list[str | None] = []
-
-    def open_menu(x: int, y: int, refs: Any = None, seen: int | None = None) -> None:
-        target = owner._context_target
-        targets.append(None if target is None else target.token.getName())
-
-    owner._open_menu = open_menu
-    return targets
 
 
 def refused(owner: Any, notices: int) -> None:
@@ -451,11 +431,13 @@ def test_a_reorder_that_moves_the_top_row_holds_every_row() -> None:
 
 
 def scrolled(names: list[str] = NAMES, wide: int | None = None) -> Any:
-    """A list where four rows fit, which the user has scrolled to its end; a label longer than
-    `wide` characters shows a horizontal scrollbar, which takes one of those rows."""
+    """A list where four rows fit, which the user has scrolled to its end and sees painted; a
+    label longer than `wide` characters shows a horizontal scrollbar, which takes one of those
+    rows."""
     owner = sheet_list(Book(list(names)))
     owner.tree.visible, owner.tree.wide = 4, wide
-    owner.tree.scroll_to(len(names))
+    wheel(owner, len(names))
+    owner.run_queue()
     return owner
 
 
@@ -526,7 +508,8 @@ def rename_bravo(owner: Any) -> None:
 
 
 def scroll_to_top_and_delete_hotel(owner: Any) -> None:
-    owner.tree.scroll_to(0)
+    wheel(owner, 0)
+    owner.run_queue()
     delete(owner, "Hotel")
 
 
