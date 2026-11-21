@@ -576,15 +576,18 @@ def test_an_assistive_change_after_quiet_samples_still_counts() -> None:
 def test_a_rebuild_without_picks_accounts_for_the_changes_before_its_model() -> None:
     """Nothing picked; Echo selected and deselected through accessibility, and another view
     renames Hotel, so the refresh installs a new model, which shows nothing selected, exactly the
-    picks. A Ctrl+click on Delta after it adds Delta, as on `main`: the model replaced what the
-    changes counted before it changed."""
+    picks. The rebuild's clear of the tree then fails, so its write accounts for nothing. A
+    Ctrl+click on Delta after it adds Delta, as on `main`: the model replaced what the changes
+    counted before it changed."""
     owner = fresh()
     owner.tree.assistive_only("Echo")
     owner.tree.assistive_clear()
     assert unaccounted(owner) == 2
     owner.book.rename("Hotel", "India")
+    owner.faults.fail("clearSelection")
     changed(owner)
-    owner.retry()
+    owner.retry(limit=1)
+    assert owner.faults.failed == ["clearSelection"]
     assert owner.names()[-1] == "India" and owner.tree.shown() == []
     assert unaccounted(owner) == 0
     queued_click(owner, row("Delta"))
