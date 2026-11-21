@@ -17,6 +17,7 @@ tab observer's sample, which finds a waiting selection and defers its intake (#8
 """
 
 import threading
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -24,6 +25,7 @@ import pytest
 from sheet_manager.keys import A
 from tests.unit.list_peer import (
     DOWN,
+    LEFT,
     MOD1,
     MOD2,
     RIGHT,
@@ -34,6 +36,7 @@ from tests.unit.list_peer import (
     click,
     cursor,
     key,
+    listen,
     move_to_top,
     picks,
     press,
@@ -431,6 +434,25 @@ def test_a_ctrl_click_on_an_unselected_row_in_add_mode_toggles_as_before() -> No
     owner.run_queue()
     assert picks(owner) == ["Alfa", "Charlie", "Echo"] == owner.tree.shown()
     assert move_to_top(owner) == ["Alfa", "Charlie", "Echo"]
+
+
+def test_a_plain_press_below_the_rows_leaves_add_mode() -> None:
+    """After the Ctrl+Shift+click, a plain press below the rows deselects every row without the
+    selection engine (`SvImpLBox::MouseButtonDown`), so add mode stays; the press's write shows
+    the picks again. A Ctrl+click on the unselected Echo then changes nothing natively, and its
+    listener adds Echo, as on `main`."""
+    owner = ranged_to_charlie()
+    owner.tree.selected = []
+    below = SimpleNamespace(
+        Buttons=LEFT, X=0, Y=owner.tree.line(len(NAMES)), Modifiers=0, ClickCount=1
+    )
+    listen(owner, owner.mouse_pressed, below)
+    listen(owner, owner.mouse_released, below)
+    owner.run_queue()
+    assert owner._add_mode and owner.tree.shown() == ["Alfa", "Bravo", "Charlie"]
+    queued_click(owner, row("Echo"))
+    owner.run_queue()
+    assert picks(owner) == ["Alfa", "Bravo", "Charlie", "Echo"] == owner.tree.shown()
 
 
 def test_a_plain_click_ends_add_mode() -> None:
@@ -851,6 +873,40 @@ def test_a_take_between_a_ctrl_click_and_its_listener_still_refuses() -> None:
     owner.run_queue()
     assert "Bravo" not in picks(owner), "Bravo, which the user deselected, was picked"
     assert picks(owner) == [] and move_to_top(owner) is None
+
+
+def test_a_take_after_a_write_that_overwrote_one_change_still_refuses() -> None:
+    """Alfa and Bravo picked; Golf selected through accessibility, and a write of the list's
+    shows the picks over it, overwriting that one change. A Ctrl+click then deselects Bravo, and
+    the list takes the tree's selection before the listener runs. The last accounting point is
+    the take, not the write, so the listener does not take the write's overwritten change for its
+    own: toggling Bravo again would pick it, which the user deselected."""
+    owner = picked("Alfa", "Bravo")
+    owner.tree.assistive_select("Golf")
+    owner._show_selection()
+    assert owner.tree.shown() == ["Alfa", "Bravo"] and unaccounted(owner) == 0
+    queued_click(owner, row("Bravo"))
+    owner._take_tree_selection()
+    owner.run_queue()
+    assert "Bravo" not in picks(owner), "Bravo, which the user deselected, was picked"
+    assert picks(owner) == [] and move_to_top(owner) is None
+
+
+def test_ctrl_space_before_the_write_of_a_toggle_over_an_overwritten_change_picks_nothing() -> None:
+    """The write between the Ctrl+click on Bravo and its listener showed Bravo again, and the
+    listener toggles Bravo off in the picks, which the tree shows only once its own write runs.
+    Ctrl+Space typed before that write, with the cursor on Bravo, which the user sees selected
+    again, would pick it: toggles are held until the write, Space included."""
+    owner = picked("Alfa", "Bravo")
+    queued_click(owner, row("Bravo"))
+    owner.queue.insert(0, (owner._show_selection, "showing the selection"))
+    for _ in range(3):  # The write and the click's listeners; their write stays queued.
+        work, _ = owner.queue.pop(0)
+        work()
+    assert picks(owner) == ["Alfa"] and owner.tree.shown() == ["Alfa", "Bravo"]
+    key(owner, SPACE, MOD1)
+    assert "Bravo" not in picks(owner) and picks(owner) == []
+    assert move_to_top(owner) is None
 
 
 def test_a_write_that_also_overwrote_an_assistive_change_still_refuses() -> None:
