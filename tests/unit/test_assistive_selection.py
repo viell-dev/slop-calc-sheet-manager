@@ -64,6 +64,7 @@ def shower(selected: list[str]) -> Any:
         _writing=0,
         _writer=None,
         _write_start=0,
+        _shown_at=2,
         _nodes=list(NAMES),
         names=lambda: list(NAMES),
         peer=SimpleNamespace(invalidate=Mock()),
@@ -74,7 +75,7 @@ def shower(selected: list[str]) -> Any:
     show = method(SOURCE, "SheetList", "_show_native", {"_OwnWrites": own_writes})
 
     def run(names: tuple[str, ...]) -> None:
-        show(owner, names, 0)  # and the count before the refresh.
+        show(owner, names, 0, 0)  # and the counts before the refresh.
 
     return owner, run
 
@@ -114,6 +115,7 @@ def refresher(change: str) -> Any:
         rows=[SheetRow(name) for name in NAMES],
         _shown=("Alfa",),
         _accounted=0,
+        _shown_at=0,
         _tabs=SimpleNamespace(refreshed=Mock()),
         _input=0,
         _monitor=SimpleNamespace(check=lambda: 1 if change == "generation" else 0),
@@ -167,7 +169,7 @@ def test_a_rebuild_shows_native_picks_awaiting_intake_again() -> None:
     refresh()
     owner._take_tree_selection.assert_called_once_with(defer=True)
     owner._rebuild.assert_called_once()
-    owner._show_native.assert_called_once_with(("Delta",), 0)
+    owner._show_native.assert_called_once_with(("Delta",), 0, 0)
     owner._name_viewed.assert_called_once_with()
 
 

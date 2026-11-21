@@ -21,9 +21,11 @@ from typing import Any
 
 import pytest
 
+from sheet_manager.keys import A
 from tests.unit.list_peer import (
     DOWN,
     MOD1,
+    MOD2,
     RIGHT,
     SHIFT,
     SPACE,
@@ -400,6 +402,223 @@ def test_a_write_that_erased_a_clicks_toggle_leaves_the_record_to_decide() -> No
     assert move_to_top(owner) is None
 
 
+# What VCL's selection engine changes for a press (#310's review; measured on #294).
+
+
+def ranged_to_charlie() -> Any:
+    """Alfa picked by a click, then a Ctrl+Shift+click on Charlie, which puts VCL's selection
+    engine in add mode until a plain or a Shift press."""
+    owner = picked("Alfa")
+    queued_click(owner, row("Charlie"), MOD1 | SHIFT)
+    owner.run_queue()
+    assert picks(owner) == ["Alfa", "Bravo", "Charlie"] == owner.tree.shown()
+    assert owner.tree.add_mode and owner._add_mode
+    return owner
+
+
+def test_a_ctrl_click_on_an_unselected_row_in_add_mode_toggles_as_before() -> None:
+    """After the Ctrl+Shift+click, a Ctrl+click on Echo only moves the tree's cursor: in add mode
+    the engine selects nothing. The listener expected one change and refused, dropping every
+    pick; it now expects none and adds Echo, as on `main`. A Ctrl+click on a selected row still
+    deselects it natively, and is still the press's own change."""
+    owner = ranged_to_charlie()
+    notified = owner.tree.notified
+    queued_click(owner, row("Echo"))
+    assert owner.tree.notified == notified, "The engine changed a row in add mode"
+    owner.run_queue()
+    assert picks(owner) == ["Alfa", "Bravo", "Charlie", "Echo"] == owner.tree.shown()
+    queued_click(owner, row("Bravo"))
+    owner.run_queue()
+    assert picks(owner) == ["Alfa", "Charlie", "Echo"] == owner.tree.shown()
+    assert move_to_top(owner) == ["Alfa", "Charlie", "Echo"]
+
+
+def test_a_plain_click_ends_add_mode() -> None:
+    owner = ranged_to_charlie()
+    queued_click(owner, row("Delta"), 0)
+    owner.run_queue()
+    assert not owner._add_mode and not owner.tree.add_mode
+    queued_click(owner, row("Foxtrot"))
+    owner.run_queue()
+    assert picks(owner) == ["Delta", "Foxtrot"] == owner.tree.shown()
+
+
+def test_ctrl_space_before_the_write_of_an_add_mode_ctrl_click_picks_nothing() -> None:
+    """The add-mode Ctrl+click on Echo picks Echo, which the tree does not show until the write.
+    Ctrl+Space typed before it, with the cursor on Echo, toggles what the user sees, an
+    unselected row; toggling the picks would take Echo out. So, as after the second click of a
+    Ctrl double click, toggles are held, Space included, until the write, and the key picks
+    nothing."""
+    owner = ranged_to_charlie()
+    queued_click(owner, row("Echo"))
+    for _ in range(2):  # The click's listeners; the write they ask for stays queued.
+        work, where = owner.queue.pop(0)
+        assert where.startswith("a mouse"), where
+        work()
+    assert "Echo" in picks(owner) and "Echo" not in owner.tree.shown()
+    key(owner, SPACE, MOD1)
+    assert picks(owner) == [] and owner.tree.shown() == []
+    assert move_to_top(owner) is None
+
+
+def test_a_triple_ctrl_click_toggles_its_row_three_times() -> None:
+    """Alfa, Bravo and Charlie picked; three quick Ctrl+clicks on Echo. The engine changes the
+    selection only at a click count of 1, and each listener runs before the next press, as at
+    normal speed: Echo on, off and on, as on `main`. The third listener expected one change and
+    dropped every pick."""
+    owner = picked("Alfa", "Bravo", "Charlie")
+    for clicks in (1, 2, 3):
+        queued_click(owner, row("Echo"), clicks=clicks)
+        owner.run_queue()
+    assert picks(owner) == ["Alfa", "Bravo", "Charlie", "Echo"] == owner.tree.shown()
+    assert move_to_top(owner) == ["Alfa", "Bravo", "Charlie", "Echo"]
+
+
+def test_a_ctrl_alt_click_toggles_its_row_as_before() -> None:
+    """With Alt, the engine returns at once and changes nothing; the listener, which ignores
+    Alt, toggles the row as on `main`."""
+    owner = picked("Alfa")
+    queued_click(owner, row("Charlie"), MOD1 | MOD2)
+    assert owner.tree.shown() == ["Alfa"]
+    owner.run_queue()
+    assert picks(owner) == ["Alfa", "Charlie"] == owner.tree.shown()
+
+
+# Changes that cancel out, and the points that account for changes.
+
+
+def post_sample(owner: Any) -> None:
+    """A tab sample, posted as the tab observer's timer posts it, behind the work queued."""
+    owner.post(lambda: sample(owner), "observing Calc's selected tabs")
+
+
+def cancelled_out(owner: Any, name: str) -> None:
+    """Deselect a picked row and select it again through accessibility: two changes, and the
+    tree shows the picks again."""
+    others = [node for node in owner.tree.selected if node.DataValue != name]
+    owner.tree.selected = others
+    owner.tree.selected = [*others, owner.tree.node(name)]
+
+
+def test_changes_that_cancel_out_are_accounted_for_by_two_quiet_samples() -> None:
+    """Alfa and Bravo picked; Bravo deselected and selected again through accessibility. The tree
+    shows the picks, but the two changes stayed unaccounted until the next input, however long
+    after, which was refused: a Ctrl+click on Delta dropped every pick. Two tab samples in a row
+    that find the tree showing the picks, with nothing counted and no input between them,
+    account for them, so the Ctrl+click adds Delta, as on `main`."""
+    owner = picked("Alfa", "Bravo")
+    cancelled_out(owner, "Bravo")
+    assert unaccounted(owner) == 2 and owner.tree.shown() == picks(owner)
+    post_sample(owner)
+    owner.run_queue()
+    assert unaccounted(owner) == 2, "One sample alone accounted"
+    post_sample(owner)
+    owner.run_queue()
+    assert unaccounted(owner) == 0
+    queued_click(owner, row("Delta"))
+    owner.run_queue()
+    assert picks(owner) == ["Alfa", "Bravo", "Delta"] == owner.tree.shown()
+    assert move_to_top(owner) == ["Alfa", "Bravo", "Delta"]
+
+
+def test_quiet_samples_do_not_account_for_a_queued_clicks_change() -> None:
+    """The sequence that made the first version wrong, with its second sample posted as the
+    timer posts it: a Ctrl+click on Bravo handled natively, the selection cleared through
+    accessibility, a sample posted before the click's listener that finds the tree showing the
+    picks, none, and Charlie then added through accessibility. The next sample is posted after
+    the first ran, behind the listener, so nothing accounts for the click's change before it
+    runs, and the listener, seeing more than its own change, picks nothing. Had one quiet sample
+    accounted, it would have taken Charlie's change for its own and picked Bravo, which the user
+    had cleared."""
+    owner = fresh()
+    queued_click(owner, row("Bravo"))
+    owner.tree.assistive_clear()
+    sample(owner)  # Posted before the click's listeners, so it runs ahead of them.
+    post_sample(owner)
+    owner.tree.assistive_select("Charlie")
+    owner.run_queue()
+    assert "Bravo" not in picks(owner), "Bravo, which the user cleared, was picked"
+    assert picks(owner) == [] and move_to_top(owner) is None
+
+
+def test_an_assistive_change_after_quiet_samples_still_counts() -> None:
+    owner = picked("Alfa", "Bravo")
+    cancelled_out(owner, "Bravo")
+    for _ in range(2):
+        post_sample(owner)
+        owner.run_queue()
+    owner.tree.assistive_select("Golf")
+    queued_click(owner, row("Delta"))
+    owner.run_queue()
+    assert picks(owner) == [] and move_to_top(owner) is None
+
+
+def test_a_rebuild_without_picks_accounts_for_the_changes_before_its_model() -> None:
+    """Nothing picked; Echo selected and deselected through accessibility, and another view
+    renames Hotel, so the refresh installs a new model, which shows nothing selected, exactly the
+    picks. A Ctrl+click on Delta after it adds Delta, as on `main`: the model replaced what the
+    changes counted before it changed."""
+    owner = fresh()
+    owner.tree.assistive_only("Echo")
+    owner.tree.assistive_clear()
+    assert unaccounted(owner) == 2
+    owner.book.rename("Hotel", "India")
+    changed(owner)
+    owner.retry()
+    assert owner.names()[-1] == "India" and owner.tree.shown() == []
+    assert unaccounted(owner) == 0
+    queued_click(owner, row("Delta"))
+    owner.run_queue()
+    assert picks(owner) == ["Delta"] and move_to_top(owner) == ["Delta"]
+
+
+def test_a_settled_record_accounts_for_the_changes_before_the_intake() -> None:
+    """Alfa picked; a Ctrl+click adds Charlie, and the write's last call fails after its effect,
+    so the record is unknown though the tree shows the picks; Golf is then selected and
+    deselected through accessibility. The intake settles the record from the tree, which shows
+    the picks, and that accounts for the changes counted before it read the tree, so a Ctrl+click
+    on Echo adds Echo, as on `main`."""
+    owner = picked("Alfa")
+    owner.faults.fail("addSelection done")
+    queued_click(owner, row("Charlie"))
+    owner.run_queue()
+    assert owner.faults.failed == ["addSelection done"]
+    assert owner._shown is None and owner.tree.shown() == ["Alfa", "Charlie"] == picks(owner)
+    owner.tree.assistive_select("Golf")
+    owner.tree.selected = [owner.tree.node("Alfa"), owner.tree.node("Charlie")]
+    sample(owner)
+    assert owner._shown == ("Alfa", "Charlie") and unaccounted(owner) == 0
+    queued_click(owner, row("Echo"))
+    owner.run_queue()
+    assert picks(owner) == ["Alfa", "Charlie", "Echo"] == owner.tree.shown()
+
+
+def test_ctrl_space_typed_after_ctrl_a_over_an_assistive_selection_acts() -> None:
+    """Alfa picked and Echo selected alone through accessibility; Ctrl+A picks every row, and
+    Ctrl+Space, typed before Ctrl+A's write, takes the cursor's row out again, as on `main`:
+    Ctrl+A set the whole selection, which its write shows over those changes."""
+    owner = picked("Alfa")
+    owner.tree.assistive_only("Echo")
+    owner.tree_key(A, MOD1)
+    owner.tree_key(SPACE, MOD1)
+    owner.run_queue()
+    assert picks(owner) == NAMES[1:] == owner.tree.shown()
+
+
+def test_a_type_ahead_write_accounts_for_the_changes_it_replaced() -> None:
+    """Alfa picked and Golf added through accessibility; a type-ahead to Echo picks Echo alone,
+    and its write shows only Echo. A Ctrl+click on Charlie after it adds Charlie, as on
+    `main`."""
+    owner = picked("Alfa")
+    owner.tree.assistive_select("Golf")
+    owner.type_ahead("e")
+    owner.run_queue()
+    assert picks(owner) == ["Echo"] == owner.tree.shown() and unaccounted(owner) == 0
+    queued_click(owner, row("Charlie"))
+    owner.run_queue()
+    assert picks(owner) == ["Charlie", "Echo"] and move_to_top(owner) == ["Charlie", "Echo"]
+
+
 # Controls: the same results as on `main`.
 
 
@@ -559,15 +778,31 @@ def test_a_write_between_a_ctrl_click_and_its_listener_refuses_the_toggle() -> N
     assert move_to_top(owner) is None
 
 
-def test_a_ctrl_click_before_a_plain_clicks_write_refuses_the_toggle() -> None:
+def test_a_ctrl_click_queued_behind_a_plain_click_toggles_as_before() -> None:
     """Alfa picked; a plain click on Charlie and a Ctrl+click on Echo are both handled natively
-    before the first listener runs. The plain press's own changes are not the Ctrl press's, so
-    its listener picks nothing; `main` picks Charlie and Echo."""
+    before the first listener runs, as when the user clicks ahead while LibreOffice is busy. The
+    plain press deselected Alfa and selected Charlie, as the record says the tree showed Alfa;
+    its listener accounts for exactly those changes, so the Ctrl+click's listener sees its own
+    change alone and picks Charlie and Echo, as on `main` (#44, #310's review)."""
     owner = picked("Alfa")
     queued_click(owner, row("Charlie"), 0)
     queued_click(owner, row("Echo"))
     owner.run_queue()
-    assert picks(owner) == [] and move_to_top(owner) is None
+    assert picks(owner) == ["Charlie", "Echo"] == owner.tree.shown()
+    assert move_to_top(owner) == ["Charlie", "Echo"]
+
+
+def test_an_assistive_change_between_a_plain_and_a_ctrl_click_still_refuses() -> None:
+    """The same, with Golf added through accessibility between the two presses: the plain
+    press's listener accounts only for its own changes, so Golf's stays, and the Ctrl+click's
+    listener, seeing two changes, picks nothing."""
+    owner = picked("Alfa")
+    queued_click(owner, row("Charlie"), 0)
+    owner.tree.assistive_select("Golf")
+    queued_click(owner, row("Echo"))
+    owner.run_queue()
+    assert picks(owner) == [] and owner.tree.shown() == []
+    assert move_to_top(owner) is None
 
 
 def test_a_ctrl_shift_click_from_another_anchor_than_the_tree_is_refused() -> None:

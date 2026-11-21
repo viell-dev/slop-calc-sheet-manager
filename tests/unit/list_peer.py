@@ -77,7 +77,7 @@ from tests.unit import source_methods
 
 SOURCE = "src/sheet_manager/uno_list.py"
 LEFT, RIGHT = 1, 2  # Mouse buttons,
-SHIFT, MOD1 = 1, 2  # and key modifiers, as UNO numbers them.
+SHIFT, MOD1, MOD2 = 1, 2, 4  # and key modifiers, as UNO numbers them.
 METHODS = (
     "names",
     "_ref",
@@ -384,6 +384,9 @@ class Tree:
         self.notified = 0
         self._selected = Selected(self)
         self.anchor: Node | None = None  # The native range anchor, while it has one.
+        # Whether VCL's selection engine is in add mode: after a Ctrl+Shift press, until a plain
+        # or a Shift press (`SelectionEngine::SelMouseButtonDown`).
+        self.add_mode = False
         self.cursor: Node | None = None
         self.model = ControlModel(self)
         self.focused = 0
@@ -684,6 +687,7 @@ def sheet_list(book: Book, source: str = SOURCE) -> Any:
         "RIGHT": RIGHT,
         "SHIFT": SHIFT,
         "MOD1": MOD1,
+        "MOD2": MOD2,
     }
     namespace["_Press"] = _load(source, others["_Press"], {"dataclass": dataclass, "Any": Any})
     namespace["_thread"] = _thread
@@ -725,6 +729,9 @@ def sheet_list(book: Book, source: str = SOURCE) -> Any:
         _writing=0,
         _writer=None,
         _write_start=0,
+        _shown_at=0,
+        _quiet=None,
+        _add_mode=False,
         _presses_held=None,
         _presses_release=None,
         _selection=Selection(_current),
@@ -840,12 +847,14 @@ def release(owner: Any, row: int, button: int = LEFT) -> None:
 
 
 def toggle_natively(owner: Any, row: int) -> None:
-    """A Ctrl+press as the tree handles it: the row's selection is toggled and the cursor moved,
-    and the range anchor goes (`SelectionEngine::SelMouseButtonDown`)."""
+    """A Ctrl+press as the tree handles it (`SelectionEngine::SelMouseButtonDown`): a selected
+    row is deselected; an unselected one is selected, except in add mode, where the engine only
+    moves the cursor (`SvImpLBox::SetCursor`; measured on #294 with 26.8.2.2). The cursor moves
+    to the row and the range anchor goes."""
     node = owner.tree._installed()[row]
     if node in owner.tree.selected:
         owner.tree.selected = [item for item in owner.tree.selected if item is not node]
-    else:
+    elif not owner.tree.add_mode:
         owner.tree.selected = [*owner.tree.selected, node]
     owner.tree.cursor = node
     owner.tree.anchor = None
@@ -866,6 +875,7 @@ def extend_natively(owner: Any, row: int) -> None:
         *(item for item in nodes[first : last + 1] if item not in tree.selected),
     ]
     tree.cursor = node
+    tree.add_mode = True
 
 
 def queued_click(
@@ -876,15 +886,18 @@ def queued_click(
     which `run_queue` then runs in order. That is the latest place VCL gives them. VCL can also
     run them earlier, in the place of a callback event of the window still queued, since it adds
     them to that event (`VCLXWindowImpl::callBackAsync`); this does not model that. With Ctrl
-    alone the tree toggles the row, and the release changes no native selection; with Ctrl and
-    Shift it adds the range from its anchor (`extend_natively`). Otherwise the row is selected
-    alone, as a plain or Shift press on an unselected row selects it in the tree. `clicks` is the
-    native click count, 2 for a double click's second click, which VCL's double-click path takes:
-    with Ctrl it changes no native selection (#294); a plain one still selects its row alone, as
-    the first click did. A right click changes no native selection (`SvImpLBox::MouseButtonDown`
-    in 26.8). `row` is the pressed row's index as the tree shows it when the user presses; the
-    events carry its line in the view, as VCL's carry a position."""
-    if button == LEFT and modifiers & MOD1 and clicks % 2 == 0:
+    alone the tree toggles the row as the engine does (`toggle_natively`), and the release changes
+    no native selection; with Ctrl and Shift it adds the range from its anchor
+    (`extend_natively`) and enters add mode. Otherwise the row is selected alone, as a plain or
+    Shift press on an unselected row selects it in the tree, and add mode ends. `clicks` is the
+    native click count: above 1, as for a double or triple click's later clicks, the engine
+    returns at once and changes nothing (#310's review; measured on #294 with 26.8.2.2), except
+    that a plain one still selects its row alone, as the first click already did, which the
+    tests of #293 rely on. Alt (`MOD2`) makes the engine return at once too. A right click changes
+    no native selection (`SvImpLBox::MouseButtonDown` in 26.8). `row` is the pressed row's index
+    as the tree shows it when the user presses; the events carry its line in the view, as VCL's
+    carry a position."""
+    if button == LEFT and (modifiers & MOD2 or (modifiers & MOD1 and clicks > 1)):
         pass
     elif button == LEFT and modifiers == MOD1:
         toggle_natively(owner, row)
@@ -894,6 +907,7 @@ def queued_click(
         node = owner.tree._installed()[row]
         owner.tree.selected, owner.tree.cursor = [node], node
         owner.tree.anchor = None
+        owner.tree.add_mode = owner.tree.add_mode and clicks > 1
     line = owner.tree.line(row)
     pressed = SimpleNamespace(Buttons=button, X=0, Y=line, Modifiers=modifiers, ClickCount=clicks)
     released = SimpleNamespace(Buttons=button, X=0, Y=line, Modifiers=modifiers, ClickCount=clicks)

@@ -389,6 +389,7 @@ LEFT = cast(int, uno.getConstantByName("com.sun.star.awt.MouseButton.LEFT"))
 RIGHT = cast(int, uno.getConstantByName("com.sun.star.awt.MouseButton.RIGHT"))
 SHIFT = cast(int, uno.getConstantByName("com.sun.star.awt.KeyModifier.SHIFT"))
 MOD1 = cast(int, uno.getConstantByName("com.sun.star.awt.KeyModifier.MOD1"))
+MOD2 = cast(int, uno.getConstantByName("com.sun.star.awt.KeyModifier.MOD2"))
 POSSIZE = cast(int, uno.getConstantByName("com.sun.star.awt.PosSize.POSSIZE"))
 ACTION_MOVE = cast(
     int, uno.getConstantByName("com.sun.star.datatransfer.dnd.DNDConstants.ACTION_MOVE")
@@ -864,6 +865,14 @@ class SheetList:
         self._writing = 0
         self._writer: int | None = None
         self._write_start = 0
+        # The count when the tree last showed exactly `_shown`, so that the tree is `_shown` with
+        # the changes counted since then (a plain press's share); the count and input count of
+        # the last tab sample that found the tree showing exactly the picks
+        # (`_take_tree_selection`); and whether VCL's selection engine is in add mode after the
+        # presses the list has handled (`mouse_pressed`).
+        self._shown_at = 0
+        self._quiet: tuple[int, int] | None = None
+        self._add_mode = False
         # While set, a mouse listener maps its event only to a row that showed the same name in
         # every row list since the hold began: a rebuild may have put another sheet under the
         # pointer since the tree handled the press (#293; `_hold_presses`). `_presses_release` is
@@ -1079,7 +1088,7 @@ class SheetList:
         # Let queued owned input run first. A native selection still waiting for that intake,
         # such as one made through accessibility, is shown again after a rebuild (`_show_native`),
         # and so are the changes the list has not taken that made it (#294).
-        accounted = self._accounted
+        accounted, shown_at = self._accounted, self._shown_at
         pending = (
             tuple(self.selected_names())
             if self._press is None and self._take_tree_selection(defer=True)
@@ -1147,7 +1156,7 @@ class SheetList:
             # clause only narrows the type.
             if changed and waiting and pending is not None:
                 reshowing = True
-                self._show_native(pending, accounted)
+                self._show_native(pending, accounted, shown_at)
         except BaseException:
             if (
                 pending is not None
@@ -1449,7 +1458,7 @@ class SheetList:
                 self._shown = None
             else:
                 self._shown = ()
-                self._accounted = start
+                self._accounted = self._shown_at = start
                 self._toggles_shown()
             names = self.names()
             if top in names and nodes:
@@ -1484,7 +1493,7 @@ class SheetList:
         if moved:
             self._hold_presses((None,) * count)
 
-    def _show_native(self, names: tuple[str, ...], accounted: int) -> None:
+    def _show_native(self, names: tuple[str, ...], accounted: int, shown_at: int) -> None:
         """Show a native selection that awaits intake again over rebuilt rows, keeping the cursor.
 
         Only the queued intake adopts it, after its own checks (`_take_tree_selection`). From
@@ -1493,11 +1502,13 @@ class SheetList:
         of that selection, neither of them what the user selected last (`_refresh`).
 
         The tree then shows again the changes the list has not taken, which the rebuild's write
-        of the picks accounted for: `accounted` is the count from before the refresh (#294).
+        of the picks accounted for: `accounted` and `shown_at` are the counts from before the
+        refresh, when the tree showed `_shown` with those changes, as it does again (#294).
         """
         restoring, shown, written = self._restoring_cursor, self._shown, False
         self._restoring_cursor, self._shown = True, None
         self._accounted = min(self._accounted, accounted)
+        self._shown_at = min(self._shown_at, shown_at)
         try:
             with _OwnWrites(self):
                 written = tuple(self.selected_names()) != names
@@ -1572,7 +1583,7 @@ class SheetList:
                     self._shown = None  # A failed clear can leave rows that are no picks now.
                 self.tree.clearSelection()
                 self._shown = ()
-                self._accounted = start
+                self._accounted = self._shown_at = start
                 self._toggles_shown()
                 return
             only = shown == (cursor.name,)  # Selecting the cursor's row then shows every pick.
@@ -1585,7 +1596,7 @@ class SheetList:
                 if names[index] != cursor.name:
                     self.tree.addSelection(self._nodes[index])
             self._shown = shown
-            self._accounted = start
+            self._accounted = self._shown_at = start
         self._toggles_shown()
         self.peer.invalidate(0)  # A failed repaint leaves a complete write: the next one paints.
 
@@ -1650,23 +1661,39 @@ class SheetList:
             self._shown = tuple(names)
             # The tree shows exactly the picks it just gave (#288), with every change counted
             # before it read them (#294).
-            self._accounted = seen
+            self._accounted = self._shown_at = seen
             self._toggles_shown()
             self._user_picks = True
             if paint:
                 self.peer.invalidate(0)
                 self._update_moves()
             return True
-        if deferred is not None and set(names) == set(self._selection.names()):
+        if set(names) != set(self._selection.names()):
+            return False
+        if deferred is not None:
             # The waiting selection was withdrawn, or toggled away, before this intake ran: the
             # tree shows exactly the picks, so a hold this intake made can end (#291), and the
             # changes counted before it read the tree are accounted for (#294). The tree changed
             # since the deferral, so that hold was made above: a press's listener still queued,
             # whose own change this accounts for, is held, and cannot take a change counted
-            # later for its own. A sample that finds the tree showing the picks without a
-            # deferral accounts for nothing, since such a listener would not be held.
-            self._accounted = seen
+            # later for its own.
+            self._accounted = self._shown_at = seen
             self._toggles_shown()
+        elif defer:
+            # A tab sample, or a refresh, that finds the tree showing exactly the picks. A
+            # press's listener may still be queued behind it, whose own change the tree no longer
+            # shows, as after a selection through accessibility that the press undid, so it
+            # accounts for nothing at once. When the next sample finds the same, with nothing
+            # counted and no input of the list's since, every listener queued before this one
+            # has run, since the next sample is posted after it ran, and a press handled since
+            # would have been counted, unless it changed nothing and expects nothing. Changes
+            # that cancelled out, such as a row deselected and selected again through
+            # accessibility, are then accounted for, rather than refusing the next input
+            # however long after it comes (#310's review).
+            mark = (seen, self._input)
+            if self._quiet == mark:
+                self._accounted = self._shown_at = seen
+            self._quiet = mark
         return False
 
     def _settle_shown(self, names: list[str], seen: int) -> None:
@@ -1691,7 +1718,7 @@ class SheetList:
                 self._queue_selection()
                 return
         self._shown = tuple(names)
-        self._accounted = seen
+        self._accounted = self._shown_at = seen
         self._toggles_shown()
 
     def _current_picks(self) -> list[Ref]:
@@ -1773,7 +1800,7 @@ class SheetList:
                 self.tree.select(self._nodes[index])
                 if shown is not None:
                     self._shown = shown
-                    self._accounted = start  # The write is complete (#294).
+                    self._accounted = self._shown_at = start  # The write is complete (#294).
                     self._toggles_shown()
             finally:
                 model.SelectionType = MULTI
@@ -2432,6 +2459,7 @@ class SheetList:
         self._tabs.note_input()
         self.claim_window()
         row = self.geometry().row_at(event.Y)
+        hit = row is not None  # Whether the tree handled this press on a row, as far as known.
         # The tree handled this press before this listener runs (#269). While presses are held,
         # a rebuild since then may show another sheet in the pressed row. Unless every row list
         # since the hold began showed the same name there, the press counts as one outside the
@@ -2461,6 +2489,22 @@ class SheetList:
             self._queue_selection()
         elif event.Buttons & LEFT:
             self._context_target = None
+            # VCL's selection engine handled this press before this listener ran (#294). It
+            # changes the selection only for a click count of 1 and without Alt: otherwise
+            # `SelectionEngine::SelMouseButtonDown` returns at once, which also takes a double
+            # click's later presses; and only on a row (`SvImpLBox::MouseButtonDown`). A
+            # Ctrl+Shift press puts it in add mode, which only a plain or a Shift press ends, and
+            # in add mode a Ctrl press on an unselected row moves the cursor and selects nothing
+            # (`SvImpLBox::SetCursor`; read in 26.8.2.2, measured on gtk3 and gen). Listeners
+            # run in the order of their presses, so `_add_mode` is the engine's mode when this
+            # press came; a held press counts too, since the engine handled it.
+            engine = event.ClickCount == 1 and not event.Modifiers & MOD2 and hit
+            add_mode = self._add_mode
+            if engine:
+                if event.Modifiers & (SHIFT | MOD1) == SHIFT | MOD1:
+                    self._add_mode = True
+                elif not event.Modifiers & MOD1:
+                    self._add_mode = False
             if held and self._selection.picked:
                 # The press selected, toggled or extended rows of the tree as it showed them
                 # then, which the list cannot read now. Keeping the picks could keep a row the
@@ -2479,9 +2523,9 @@ class SheetList:
             )
             if name is not None:
                 keys = event.Modifiers & (SHIFT | MOD1)
-                # VCL toggles a Ctrl press's row as it handles the press, and its double-click
-                # path, which takes the second press of a double click, changes nothing (#294).
-                own = event.ClickCount % 2
+                # A Ctrl press toggles its row natively, unless the engine skipped it or was in
+                # add mode and the row unselected, as far as the picks tell (above).
+                own = int(engine and not (add_mode and name not in self._selection.names()))
                 if keys == MOD1 and (self._toggle_held(name, deferred) or waiting != own):
                     # The tree toggled this row when the press happened, maybe against picks
                     # the list has dropped since or a tree that did not show them, so the list
@@ -2514,6 +2558,7 @@ class SheetList:
                         # as a toggle is. With nothing unaccounted, the list's own write or
                         # intake took the tree since the press, and adding a range twice adds it
                         # once, so the range is added as on `main`.
+                        # `choose` rebound `picked` to a new list, so `before` is unchanged.
                         self._selection.picked = before
                         self._toggle_held_off(deferred, seen, waiting=True)
                     else:
@@ -2526,6 +2571,23 @@ class SheetList:
                             # The tree did not toggle the row this listener toggled: hold
                             # toggles, Space included, until the write shows it (#288).
                             self._hold_toggles()
+                        elif (
+                            not keys
+                            and engine
+                            and self._shown is not None
+                            and name not in self._shown
+                            and self._selection.names() == [name]
+                        ):
+                            # A plain press on a row the tree did not select deselected the rows
+                            # the tree showed and selected its own, which the picks are now. The
+                            # tree showed `_shown` with the changes counted since `_shown_at`, so
+                            # this press's own share, counted from then, is at most every change
+                            # up to and including it, and those are all superseded by it. Its
+                            # listener accounts for them, so that a Ctrl+click handled before it
+                            # ran, as when the user clicks ahead while LibreOffice is busy, still
+                            # sees its own change alone (#44, #310's review).
+                            own_plain = self._shown_at + len(self._shown) + 1
+                            self._accounted = max(self._accounted, min(seen, own_plain))
                 self._queue_selection()
 
     def mouse_released(self, event) -> None:

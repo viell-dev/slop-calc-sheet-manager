@@ -43,6 +43,9 @@ def native_picks() -> tuple[Any, Any, list[Callable[[], None]]]:
         _deferred=None,
         _unowned=0,  # Nothing but the list changed the tree yet (#294).
         _accounted=0,
+        _shown_at=0,
+        _quiet=None,
+        _add_mode=False,
         _hold_toggles=Mock(),
         _presses_held=None,
         _toggles_shown=Mock(),  # A take shows exactly the picks it gives.
@@ -84,7 +87,7 @@ def test_native_ctrl_toggle_waits_for_the_owned_pointer_listener() -> None:
         SOURCE,
         "SheetList",
         "mouse_pressed",
-        {"LEFT": 1, "RIGHT": 2, "MOD1": 2, "SHIFT": 1, "_Press": Mock()},
+        {"LEFT": 1, "RIGHT": 2, "MOD1": 2, "MOD2": 4, "SHIFT": 1, "_Press": Mock()},
     )
     press(owner, SimpleNamespace(Buttons=1, Modifiers=2, ClickCount=1, Y=33))
     queued.pop()()  # Its old sample cannot toggle or replace the newer picks.
