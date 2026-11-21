@@ -152,13 +152,15 @@ post the end of a hold. The write's reads are two `getNodeRect` calls in posted 
 failed read holds every row. A drag's autoscroll needs nothing: no press is made while the button
 is held. A press made between two scrolls by the wheel or the scrollbar that leave the rows where
 the list last saw them, with no paint between, is not seen: the list cannot tell that the rows
-moved and came back.
+moved and came back (#305).
 
 Drags before the press's listener (#295). VCL recognizes a drag gesture within its handling of
 the pointer's motion (#264), so the gesture can come before its press's listener. After a
 rebuild, the tree no longer shows the row the press selected, and the gesture carried the picks
 the rebuild wrote instead. So no drag starts while presses are held: the press's listener decides
-the press, held, and the user drags again.
+the press, held, and the user drags again. A selection key's or type-ahead's write that does not
+scroll holds nothing, so a gesture after it, before the press's listener, still drags the key's
+pick (#304).
 
 Activation. A double click or Enter makes the sheet Calc's only selected tab and reads that back,
 because `setActiveSheet` keeps an existing group when the sheet belongs to it. Activation reads
