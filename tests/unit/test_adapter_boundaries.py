@@ -376,6 +376,7 @@ def test_failed_rebuild_releases_the_cursor_restoration_guard() -> None:
         _nodes=[],  # No rows were shown: no scroll position to read, no presses held (#293).
         _presses_held=None,
         _release_presses=Mock(),
+        _hold_if_scrolled=Mock(),  # The new rows show: their position is noted (#299).
     )
 
     def fail_restore() -> None:

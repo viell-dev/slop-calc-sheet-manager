@@ -68,6 +68,7 @@ def test_native_ctrl_toggle_waits_for_the_owned_pointer_listener() -> None:
     owner._tabs = SimpleNamespace(note_input=Mock())
     owner._queue_selection = Mock()
     owner.claim_window = Mock()
+    owner._note_position = Mock()  # The rows show where the list saw them: nothing held (#299).
     press = method(
         SOURCE,
         "SheetList",
