@@ -285,6 +285,14 @@ picked sheet that another window renamed, picks nothing, and the next toggle act
 shows its selection again after such a failure, a toggle also clears the selection, with the
 notice
 ([#288](https://github.com/viell-dev/slop-calc-sheet-manager/issues/288)).
+<Unreleased /> A selection made through assistive technology that the list has not taken yet is
+also cleared, with the picks it replaced, when a sheet is renamed or moved first
+([#280](https://github.com/viell-dev/slop-calc-sheet-manager/issues/280)). A Ctrl+click made
+just after a selection key, before the list shows that key's change, picks nothing and clears
+the selection, with the notice. So do a Ctrl+click, Ctrl+Space, and Ctrl with an arrow, Home,
+End, Page Up or Page Down key on such a selection once the list has seen it, also when several
+Ctrl+clicks come at once. Select again; the next toggle acts
+([#291](https://github.com/viell-dev/slop-calc-sheet-manager/issues/291)).
 <Unreleased /> A click in the list just as the list redraws its rows, as it does when another window
 moves, inserts, deletes or renames a sheet, is refused if the redraw changed the clicked row,
 rather than act on the sheet that the redraw put under the pointer. So is a Shift+click on any

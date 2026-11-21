@@ -118,6 +118,7 @@ def refresher(change: str) -> Any:
         _rebuild=Mock(),
         _apply_selection=Mock(),
         _show_native=Mock(),
+        _drop_picks=Mock(),
         _name_viewed=Mock(),
         _update_moves=Mock(),
     )
@@ -166,10 +167,16 @@ def test_a_rebuild_shows_native_picks_awaiting_intake_again() -> None:
 def test_native_picks_are_not_shown_again_when_their_intake_would_refuse_them(
     change: str,
 ) -> None:
+    """After a rename, which keeps the proof, the picks the waiting selection superseded are
+    dropped rather than written over it (#280); a lost proof drops every pick (#265)."""
     owner, refresh = refresher(change)
     refresh()
     owner._show_native.assert_not_called()
     owner._name_viewed.assert_called_once_with()
+    if change == "rename":
+        owner._drop_picks.assert_called_once_with(native=True)
+    else:
+        owner._drop_picks.assert_not_called()
 
 
 def test_a_held_press_leaves_the_tree_selection_to_its_handlers() -> None:

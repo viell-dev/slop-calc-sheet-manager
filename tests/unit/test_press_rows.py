@@ -355,23 +355,30 @@ def ctrl_click_bravo(owner: Any) -> None:
     "gesture, wanted",
     [
         pytest.param(click_golf, ["Golf"], id="plain click"),
-        pytest.param(ctrl_click_bravo, ["Bravo", "Delta"], id="Ctrl+click"),
+        pytest.param(ctrl_click_bravo, [], id="Ctrl+click"),
     ],
 )
-def test_a_press_on_a_row_the_reorder_left_alone_acts(
+def test_a_press_on_a_row_the_reorder_left_alone_is_not_held_by_the_press_hold(
     gesture: Callable[[Any], None], wanted: list[str]
 ) -> None:
     """Delta picked; another window moves Charlie below Echo, which leaves Alfa, Bravo, Foxtrot,
     Golf and Hotel in their rows, and the user clicks Golf, or Ctrl+clicks Bravo, before the
-    refresh runs. Those rows showed the same sheets before and after, so the press acts."""
+    refresh runs. Those rows showed the same sheets before and after, so the press hold maps the
+    press to its row. The refresh also finds the press's native effect in the tree, a selection
+    its intake has not taken, which it cannot tell from one made through accessibility: it drops
+    Delta, which it would otherwise write over that selection, with the notice, and holds
+    toggles (#280, #291). So the plain click picks Golf, and the Ctrl+click is refused as a held
+    toggle, which still moves the cursor to Bravo, where a press the press hold refused would
+    move nothing."""
     owner = picked("Delta")
     notices = len(owner.notices)
     reorder(owner)
     gesture(owner)
     owner.run_queue()
     assert picks(owner) == wanted and owner.tree.shown() == wanted
-    assert len(owner.notices) == notices
-    assert move_to_top(owner) == wanted
+    assert cursor(owner) == ("Golf" if wanted else "Bravo")
+    assert len(owner.notices) == notices + 1
+    assert move_to_top(owner) == (wanted or None)
 
 
 def test_a_double_or_right_click_on_a_row_the_reorder_left_alone_acts() -> None:
