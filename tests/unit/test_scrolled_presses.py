@@ -10,9 +10,11 @@ of the motion (#264); after a refresh that rebuilt the rows, the tree no longer 
 press selected, and the gesture dragged the picks the rebuild wrote instead (#295).
 
 The real list runs over the simulated peer of `list_peer`, whose tree scrolls as LibreOffice's
-does once four rows fit, and which paints where VCL would (`wheel`). The invariant: a press, its
-release, its double click, its menu and a drag act only on the sheet the tree showed under the
-pointer when the user pressed, or refuse.
+does once four rows fit. By reading LibreOffice's sources, the wheel and the scroll bar paint
+within their own handling, so `wheel` paints at once, while a resize and another client's
+`makeNodeVisible` only invalidate, so `resize` and `scroll_unseen` leave the paint for later. The
+invariant: a press, its release, its double click, its menu and a drag act only on the sheet the
+tree showed under the pointer when the user pressed, or refuse.
 """
 
 from collections.abc import Callable
@@ -29,13 +31,15 @@ from tests.unit.list_peer import (
     bind_drag,
     click,
     cursor,
+    listen,
     move_to_top,
     native_press,
     picks,
     queued_click,
     record_activations,
     record_menus,
-    run_listener,
+    resize,
+    scroll_unseen,
     sheet_list,
     wheel,
 )
@@ -54,8 +58,16 @@ def top() -> Any:
     return owner
 
 
+def end_view() -> Any:
+    """As `top`, scrolled to the end by the wheel, which shows Echo to Hotel painted."""
+    owner = top()
+    wheel(owner, len(NAMES))
+    owner.run_queue()
+    return owner
+
+
 def in_view(owner: Any) -> list[str]:
-    return owner.names()[owner.tree.start : owner.tree.start + 4]
+    return owner.names()[owner.tree.start : owner.tree.start + owner.tree._in_view()]
 
 
 def gesture(owner: Any, pressed: str, kind: str) -> list[Any]:
@@ -216,40 +228,86 @@ def test_a_keys_write_whose_scroll_fails_leaves_the_press_alone() -> None:
 
 
 @pytest.mark.parametrize("kind", KINDS)
-@pytest.mark.parametrize(
-    "painted",
-    [
-        pytest.param(False, id="listener first"),
-        pytest.param(True, id="painted first"),
-    ],
-)
-def test_the_wheel_between_a_press_and_its_listener_acts_on_no_other_sheet(
-    painted: bool, kind: str
-) -> None:
+def test_the_wheel_between_a_press_and_its_listener_acts_on_no_other_sheet(kind: str) -> None:
     """The user clicks Bravo's line, and before the listener runs the wheel scrolls the list by
     three rows, to Delta to Golf, with no list code running. The listener mapped the line to
     Echo: the click picked it, the double click activated it, the right click opened its menu.
-    The listener now finds the rows at another position than the list saw, or VCL painted them
-    first and the paint held every row; either way the press is refused."""
+    VCL paints the scrolled rows within its handling of the wheel, and that paint holds every row,
+    so the press is refused."""
     owner = top()
     recorded = gesture(owner, "Bravo", kind)
-    wheel(owner, 3, painted=painted)
+    wheel(owner, 3)
     owner.run_queue()
     assert in_view(owner) == ["Delta", "Echo", "Foxtrot", "Golf"]
     assert "Echo" not in acted(owner, recorded, kind), "Echo was never pressed"
     assert acted(owner, recorded, kind) == [] and picks(owner) == []
 
 
-def test_a_keys_write_that_scrolls_back_over_an_unseen_wheel_holds_the_press() -> None:
-    """Alfa clicked, and Home pressed: its write is queued. The wheel scrolls the list to Delta
-    to Golf, and the user clicks Echo there before VCL paints. Home's write then scrolls back to
-    Alfa, where the list last saw the rows, and the listener mapped the click's line to Bravo.
-    The write reads the position before it scrolls too, finds the rows elsewhere, and holds every
-    row."""
+@pytest.mark.parametrize("kind", KINDS)
+def test_a_resize_between_a_press_and_its_listener_acts_on_no_other_sheet(kind: str) -> None:
+    """Scrolled to the end, Echo to Hotel. The user clicks Foxtrot's line, and before the listener
+    runs the panel grows by a row, as when the selection notice goes: the last rows fill the taller
+    view, which now starts at Delta, and VCL paints it later. The listener mapped the line to Echo.
+    It finds the rows at another position than the list saw last, and refuses."""
+    owner = end_view()
+    recorded = gesture(owner, "Foxtrot", kind)
+    resize(owner, 5)
+    owner.run_queue()
+    assert in_view(owner) == ["Delta", "Echo", "Foxtrot", "Golf", "Hotel"]
+    assert "Echo" not in acted(owner, recorded, kind), "Echo was never pressed"
+    assert acted(owner, recorded, kind) == [] and picks(owner) == []
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_a_refresh_after_an_unpainted_scroll_still_holds_the_press(kind: str) -> None:
+    """As above, and another window colours Golf, so a refresh is queued before the press. The
+    refresh runs before the listener; it keeps every row and the position the resize left, and its
+    second read is the first to see that position. Noting it without holding every row let the
+    listener find the rows where the list last saw them: the click picked Echo, the double click
+    activated Echo, and the right click opened its menu."""
+    owner = end_view()
+    owner.book.sheet("Golf").color = 0x336699
+    owner.post(owner.refresh, "refreshing the sheet list")
+    recorded = gesture(owner, "Foxtrot", kind)
+    resize(owner, 5)
+    owner.run_queue()
+    assert in_view(owner) == ["Delta", "Echo", "Foxtrot", "Golf", "Hotel"]
+    assert "Echo" not in acted(owner, recorded, kind), "Echo was never pressed"
+    assert acted(owner, recorded, kind) == [] and picks(owner) == []
+
+
+def test_a_hold_released_inside_the_press_listener_still_refuses_its_press() -> None:
+    """As after a resize between a press and its listener, but the listener's own post of the
+    hold's end runs at once, as queued work can when a native call dispatches events. The press is
+    decided before that post, so it stays refused; reading the hold after the post found none, and
+    the click picked Echo."""
+    owner = end_view()
+    queued_click(owner, row("Foxtrot"), 0)
+    resize(owner, 5)
+    post = owner.post
+
+    def post_now(work: Callable[[], None], where: str) -> None:
+        if where == "accepting presses again" and owner._pointer_depth:
+            work()
+        else:
+            post(work, where)
+
+    owner.post = post_now
+    owner.run_queue()
+    assert "Echo" not in picks(owner), "Echo was never pressed"
+    assert picks(owner) == []
+
+
+def test_a_keys_write_that_scrolls_back_over_an_unseen_scroll_holds_the_press() -> None:
+    """Alfa clicked, and Home pressed: its write is queued. Another client's `makeNodeVisible`
+    scrolls the list to Delta to Golf, which VCL paints later, and the user clicks Echo there.
+    Home's write then scrolls back to Alfa, where the list last saw the rows, and the listener
+    mapped the click's line to Bravo. The write reads the position before it scrolls too, finds
+    the rows elsewhere, and holds every row."""
     owner = top()
     click(owner, row("Alfa"))
     owner.tree_key(HOME, 0)
-    wheel(owner, 3, painted=False)
+    scroll_unseen(owner, 3)
     queued_click(owner, row("Echo"), 0)
     owner.run_queue()
     assert in_view(owner) == NAMES[:4]
@@ -257,12 +315,12 @@ def test_a_keys_write_that_scrolls_back_over_an_unseen_wheel_holds_the_press() -
     assert picks(owner) == [] and move_to_top(owner) is None
 
 
-def test_the_keyboard_menus_scroll_back_over_an_unseen_wheel_holds_the_press() -> None:
+def test_the_keyboard_menus_scroll_back_over_an_unseen_scroll_holds_the_press() -> None:
     """Alfa clicked, and the menu key pressed: its work, which scrolls the list to Alfa and opens
-    the menu for it, is queued. The wheel scrolls the list to Delta to Golf, and the user
-    right-clicks Echo there before VCL paints. The menu's scroll brings back the rows where the
-    list last saw them, and the right click's listener targeted Bravo, under its line then. The
-    menu's scroll holds presses as a key's write does."""
+    the menu for it, is queued. Another client scrolls the list to Delta to Golf, unpainted, and
+    the user right-clicks Echo there. The menu's scroll brings back the rows where the list last
+    saw them, and the right click's listener targeted Bravo, under its line then. The menu's
+    scroll holds presses as a key's write does."""
     owner = top()
     opened: list[str | None] = []
 
@@ -274,7 +332,7 @@ def test_the_keyboard_menus_scroll_back_over_an_unseen_wheel_holds_the_press() -
     owner._open_menu = open_menu
     click(owner, row("Alfa"))
     owner.post(owner.open_menu_for_keyboard, "the sheet tab menu")
-    wheel(owner, 3, painted=False)
+    scroll_unseen(owner, 3)
     queued_click(owner, row("Echo"), 0, button=RIGHT)
     owner.run_queue()
     assert in_view(owner) == NAMES[:4]
@@ -282,17 +340,17 @@ def test_the_keyboard_menus_scroll_back_over_an_unseen_wheel_holds_the_press() -
     assert opened == ["Alfa", None] and picks(owner) == ["Alfa"]
 
 
-def test_a_double_click_before_the_wheel_activates_nothing() -> None:
-    """Both clicks of a double click on Bravo's line are made before the wheel scrolls the list
-    to Delta to Golf, and VCL has not painted yet when their listeners run. The first listener
+def test_a_double_click_before_a_resize_activates_nothing() -> None:
+    """Scrolled to the end; both clicks of a double click on Foxtrot's line are made before the
+    panel grows by a row, which VCL has not painted when their listeners run. The first listener
     finds the rows elsewhere and holds every row; the second, whose press came before that, runs
     held too. Without that hold the second found the position the first had noted, and the
     double click activated Echo."""
-    owner = top()
+    owner = end_view()
     activated = record_activations(owner)
-    queued_click(owner, row("Bravo"), 0)
-    queued_click(owner, row("Bravo"), 0, clicks=2)
-    wheel(owner, 3, painted=False)
+    queued_click(owner, row("Foxtrot"), 0)
+    queued_click(owner, row("Foxtrot"), 0, clicks=2)
+    resize(owner, 5)
     owner.run_queue()
     assert activated == [] and picks(owner) == []
 
@@ -309,18 +367,47 @@ def test_a_press_after_the_wheel_and_its_paint_acts_on_the_row_it_shows(kind: st
     assert acted(owner, recorded, kind) == ["Echo"] * (2 if kind == "double" else 1)
 
 
-def test_a_press_before_the_paint_of_a_scroll_is_refused_once() -> None:
-    """The cost of the rule. The wheel scrolls the list, and the user clicks Echo before VCL has
-    painted the scrolled rows. The list cannot tell that press from one made before the scroll,
-    so it is refused; the next click acts."""
-    owner = top()
-    wheel(owner, 3, painted=False)
+def test_a_press_after_a_resize_before_its_paint_is_refused_once() -> None:
+    """The cost of the rule. The panel grows by a row, which scrolls the list to Delta, and the
+    user clicks Echo before VCL has painted the scrolled rows. The list cannot tell that press from
+    one made before the resize, so it is refused; the next click acts."""
+    owner = end_view()
+    resize(owner, 5)
     queued_click(owner, row("Echo"), 0)
     owner.run_queue()
     assert picks(owner) == []
     queued_click(owner, row("Echo"), 0)
     owner.run_queue()
     assert picks(owner) == ["Echo"]
+
+
+def test_a_change_of_the_row_height_between_a_press_and_its_listener_holds_every_row() -> None:
+    """The user clicks Delta's line, and before the listener runs the rows get twice as tall, as
+    after a change of font or display scaling, with the first row still at the top. The listener
+    mapped the position to Bravo. The position the list compares includes the row height, so the
+    press is refused."""
+    owner = top()
+    queued_click(owner, row("Delta"), 0)
+    owner.tree.height = 2
+    owner.run_queue()
+    assert "Bravo" not in picks(owner), "Bravo was never pressed"
+    assert picks(owner) == []
+
+
+def test_a_press_after_a_failed_reads_hold_ends_acts() -> None:
+    """Alfa clicked; Down moves the cursor to Bravo, in view, and the write's read of the position
+    after its scroll, which did not move the rows, fails. Every row is held until work posted then
+    has run, and the list keeps the position it saw last, where the rows still are, so a click on
+    Charlie after that acts. Forgetting the position would refuse it."""
+    owner = top()
+    click(owner, row("Alfa"))
+    owner.tree_key(DOWN, 0)
+    owner.faults.fail("getNodeRect", after=1)
+    owner.run_queue()
+    assert owner.faults.failed == ["getNodeRect"]
+    queued_click(owner, row("Charlie"), 0)
+    owner.run_queue()
+    assert picks(owner) == ["Charlie"]
 
 
 def drag_after_reorder(pressed: str, picked: str = "Bravo") -> tuple[Any, list[list[str]]]:
@@ -369,18 +456,18 @@ def test_a_drag_after_a_reorder_with_an_earlier_click_still_queued_drags_nothing
     click(owner, row("Bravo"))
     tree = owner.tree
 
-    def listen(handler: Callable[[Any], None], line: int) -> Callable[[], None]:
+    def queued(handler: Callable[[Any], None], line: int) -> Callable[[], None]:
         event = SimpleNamespace(Buttons=LEFT, X=0, Y=line, Modifiers=0, ClickCount=1)
-        return lambda: run_listener(owner, handler, event)
+        return lambda: listen(owner, handler, event)
 
     alfa, delta = tree.node("Alfa"), tree.node("Delta")
     tree.selected, tree.cursor = [alfa], alfa  # The first press, as the tree handles it.
-    owner.post(listen(owner.mouse_pressed, row("Alfa")), "a mouse press")
+    owner.post(queued(owner.mouse_pressed, row("Alfa")), "a mouse press")
     owner.book.move("Charlie", row("Echo"))
     owner.post(owner.refresh, "refreshing the sheet list")
-    owner.post(listen(owner.mouse_released, row("Alfa")), "a mouse release")
+    owner.post(queued(owner.mouse_released, row("Alfa")), "a mouse release")
     tree.selected, tree.cursor = [delta], delta  # The second press, on Delta.
-    owner.post(listen(owner.mouse_pressed, row("Delta")), "a mouse press")
+    owner.post(queued(owner.mouse_pressed, row("Delta")), "a mouse press")
     for _ in range(2):  # The first press's listener, then the refresh.
         work, _ = owner.queue.pop(0)
         work()
@@ -453,22 +540,45 @@ def test_a_drag_across_a_keys_scroll_drags_nothing() -> None:
     assert dragged == []
 
 
-@pytest.mark.parametrize(
-    "painted, wanted",
-    [
-        pytest.param(False, [["Delta"]], id="before the paint: drags Delta"),
-        pytest.param(True, [], id="after the paint: refused"),
-    ],
-)
-def test_a_drag_across_the_wheel_drags_the_pressed_sheet_or_nothing(
-    painted: bool, wanted: list[list[str]]
-) -> None:
-    """The user presses Delta, the wheel scrolls the list, and the gesture follows. The tree
-    keeps Delta selected wherever it scrolls, so the gesture drags Delta. Once VCL has painted
-    the scrolled rows, presses are held, and the gesture starts nothing: a cost of the rule."""
+def test_a_drag_across_a_type_aheads_scroll_drags_nothing() -> None:
+    """Typing H jumps to Hotel in posted work, which picks Hotel, shows it and scrolls the list to
+    Echo to Hotel. The user pressed Charlie before that and drags: the gesture dragged Hotel. The
+    jump holds presses when it scrolls, so no drag starts."""
     owner = top()
     dragged = bind_drag(owner)
-    native_press(owner, row("Delta"))
-    wheel(owner, 3, painted=painted)
+    owner.post(lambda: owner.type_ahead("h"), "typing ahead")
+    native_press(owner, row("Charlie"))
+    work, _ = owner.queue.pop(0)
+    work()  # The jump.
+    owner.start_drag(object())
+    assert dragged == []
+
+
+def wheel_three(owner: Any) -> None:
+    wheel(owner, 3)
+
+
+def grow_by_a_row(owner: Any) -> None:
+    resize(owner, 5)
+
+
+@pytest.mark.parametrize(
+    "scroll, pressed, wanted",
+    [
+        pytest.param(wheel_three, "Delta", [], id="the wheel, painted at once: refused"),
+        pytest.param(grow_by_a_row, "Foxtrot", [["Foxtrot"]], id="a resize: drags Foxtrot"),
+    ],
+)
+def test_a_drag_across_a_scroll_drags_the_pressed_sheet_or_nothing(
+    scroll: Callable[[Any], None], pressed: str, wanted: list[list[str]]
+) -> None:
+    """The user presses a row, the list scrolls, and the gesture follows before the press's
+    listener. The tree keeps the pressed row selected wherever it scrolls, so the gesture drags it.
+    The wheel paints within its own handling, which holds presses, so after the wheel the gesture
+    starts nothing: a cost of the rule. A resize is painted later, so it holds nothing yet."""
+    owner = top() if pressed == "Delta" else end_view()
+    dragged = bind_drag(owner)
+    native_press(owner, row(pressed))
+    scroll(owner)
     owner.start_drag(object())
     assert dragged == wanted

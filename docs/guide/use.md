@@ -302,9 +302,9 @@ refused left click clears the selection, with the notice when you had made it. C
 ([#293](https://github.com/viell-dev/slop-calc-sheet-manager/issues/293)).
 <Unreleased /> A click is refused in the same way when the list scrolls just after it, before the
 list has handled it: by the mouse wheel or the scroll bar, or by a key that moves the selection
-out of view. So is a click that comes right after a scroll, before the list shows the scrolled
-rows. A drag does not start when you begin it just as the list redraws or scrolls its rows. Click
-or drag again ([#299](https://github.com/viell-dev/slop-calc-sheet-manager/issues/299),
+out of view. So is a click that comes just as the panel's height changes and scrolls the list, as
+it can when the selection notice appears or goes. A drag does not start when you begin it just as
+the list redraws or scrolls its rows. Click or drag again ([#299](https://github.com/viell-dev/slop-calc-sheet-manager/issues/299),
 [#295](https://github.com/viell-dev/slop-calc-sheet-manager/issues/295)).
 
 **Undo and Redo of the list's moves.** <Unreleased since="0.0.8" /> Undo and Redo of a move the list
