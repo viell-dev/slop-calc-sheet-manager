@@ -106,20 +106,23 @@ class Lab:
         and the seconds it took.
         """
         started = time.monotonic()
+        size = tree.getPosSize()
         try:
             context = tree.getProperty("XAccessible").getAccessibleContext()
             location, extent = context.getLocationOnScreen(), context.getSize()
             area = (location.X, location.Y, extent.Width, extent.Height)
         except Exception:
             area = None
-        size = tree.getPosSize()
+        # The column goes down the tree's own height from its accessible location: a reloaded
+        # panel's tree once had an accessible height of 0 while it was laid out (#301).
+        column = None if area is None else (area[0], area[1], size.Width, size.Height)
         tracker = Tracker()
         tree.addMouseMotionListener(tracker)
         try:
             offset, found = confirmed_offset(
                 self.input,
                 tracker,
-                list_points(area, window.getPosSize()),
+                list_points(column, window.getPosSize()),
                 (size.Width, size.Height),
             )
         except AssertionError as error:

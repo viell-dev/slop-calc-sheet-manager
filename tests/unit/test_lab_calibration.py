@@ -34,6 +34,8 @@ class Geometry(NamedTuple):
     accessible: tuple[int, int] | None
     # Where it places it once the pointer has crossed the window's toolbar, if elsewhere.
     settled: tuple[int, int] | None = None
+    # The accessible context's size, when it is not the tree's.
+    accessible_size: tuple[int, int] | None = None
 
 
 GEN = Geometry((1186, 136), (273, 784), (1186, 136))  # As in #209's gen session.
@@ -71,7 +73,8 @@ class Tree:
         settled = self.input.crossed_toolbar and self.geometry.settled
         x, y = settled or self.geometry.accessible
         location = SimpleNamespace(X=x, Y=y)
-        size = SimpleNamespace(Width=self.geometry.size[0], Height=self.geometry.size[1])
+        width, height = self.geometry.accessible_size or self.geometry.size
+        size = SimpleNamespace(Width=width, Height=height)
         context = SimpleNamespace(getLocationOnScreen=lambda: location, getSize=lambda: size)
         return SimpleNamespace(getAccessibleContext=lambda: context)
 
@@ -234,6 +237,17 @@ def test_a_tree_the_pointer_enters_at_the_first_point_is_found_at_the_second(
     assert real_input.moves == [at(GEN, COLUMN[0]), at(GEN, COLUMN[1]), at(GEN, (32, 38))]
     assert lab.calibrations[0]["accessible_drift"] == (0, 0)
     assert "top_row_moves" not in lab.calibrations[0]
+
+
+def test_an_accessible_area_without_height_still_gives_the_column(office: Office) -> None:
+    # #301: a reloaded panel's tree once had an accessible height of 0 while it was laid out,
+    # which left no point in the column, and the window's scan took 39 points, 11.9 s.
+    geometry = GEN._replace(accessible_size=(273, 0))
+    real_input = Input(office, geometry, entering=True)
+    lab = SimpleNamespace(input=real_input, calibrations=[])
+    assert calibrate(office, real_input, geometry, lab=lab) == GEN.origin
+    assert real_input.moves == [at(GEN, COLUMN[0]), at(GEN, COLUMN[1]), at(GEN, (32, 38))]
+    assert lab.calibrations[0]["accessible"] == (1186, 136, 273, 0)
 
 
 def test_the_second_move_waits_until_gtk3_hears_moves_again(office: Office) -> None:
