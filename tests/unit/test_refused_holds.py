@@ -37,7 +37,6 @@ from tests.unit.list_peer import (
     A,
     Book,
     Handle,
-    NativeFailure,
     changed,
     click,
     cursor,
@@ -101,15 +100,13 @@ def late_release(owner: Any, row: int = PRESSED) -> None:
     The tree's native release selects the row under the pointer and moves its cursor there,
     which its accessibility event reports at once, while the press is still held; the list's
     mouse listener runs after that (#70). A native failure in the listener ends only the
-    listener and is reported, as `_Mouse._handle` does.
+    listener and is recorded as "a mouse release", as the list's own listener guard reports it
+    (`list_peer.listen`).
     """
     node = owner.tree._installed()[row]
     owner.tree.selected, owner.tree.cursor = [node], node
     focus_event(owner, row)
-    try:
-        release(owner, row)
-    except NativeFailure:
-        owner.failures.append("a mouse release")
+    release(owner, row)
     owner.run_queue()
 
 
