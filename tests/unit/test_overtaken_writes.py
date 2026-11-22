@@ -260,6 +260,36 @@ def test_a_ctrl_shift_range_behind_a_refusal_is_not_shown_over_a_newer_selection
     assert move_to_top(owner) is None
 
 
+@pytest.mark.parametrize("keyed", [False, True], ids=["record known", "record unknown"])
+def test_a_click_released_over_another_row_does_not_show_its_pick_over_a_newer_selection(
+    keyed: bool,
+) -> None:
+    """Alfa picked, and if `keyed`, Down first, whose write a click then leaves to the intake.
+    The click on Charlie is handled natively, Echo is selected alone through accessibility, and
+    the button goes up over Delta, where VCL's release changes nothing for a press on a row it
+    did not show selected. The release does not narrow the picks, so only the press's listener
+    can tell that changes besides its own came before it: beyond its share, or any change at all
+    while the record is unknown. Its write, finding Echo, writes nothing."""
+    owner = fresh()
+    click(owner, row("Alfa"))
+    notices = len(owner.notices)
+    if keyed:
+        owner.tree_key(DOWN, 0)
+    pressed = owner.tree._installed()[row("Charlie")]
+    owner.tree.selected, owner.tree.cursor = [pressed], pressed
+    owner.tree.assistive_only("Echo")
+    line = owner.tree.line(row("Charlie"))
+    down = SimpleNamespace(Buttons=LEFT, X=0, Y=line, Modifiers=0, ClickCount=1)
+    owner.post(lambda: listen(owner, owner.mouse_pressed, down), "a mouse press")
+    owner.run_queue()
+    up = SimpleNamespace(
+        Buttons=LEFT, X=0, Y=owner.tree.line(row("Delta")), Modifiers=0, ClickCount=1
+    )
+    listen(owner, owner.mouse_released, up)
+    owner.run_queue()
+    refused(owner, notices)
+
+
 def narrowing_release(owner: Any, name: str, assistive: Callable[[Any], None] | None) -> None:
     """Alfa and Charlie picked; `name` pressed and held, its listener run; the release in its row,
     which VCL's selection engine handles by selecting the pressed row alone, then `assistive`, if

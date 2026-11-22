@@ -255,12 +255,13 @@ press picks its row and its write shows it. With the record unknown, a plain pre
 of the changes, so its own write checks the tree too. The pointer menu after such a write
 targets the pressed row alone (`_open_menu`). A complete write, a take, a settled record and a
 plain or Shift key or Ctrl+A, each newer than every change it read, end the mark; a write of no
-picks only clears and is not checked; a held press and an open menu are left to the release and
-the menu. The refusals this adds where `main` acted correctly: an assistive change after an input
-that the input's picks already agree with, such as a row added through accessibility after
-Ctrl+A; and input judged by the count (Space, a Ctrl key, a press other than a plain one) after
-an overtaken write, which leaves unaccounted the changes that `main`'s write accounted for by
-overwriting them, as when a second press is handled natively after a key and before its write.
+picks only clears and is not checked; an open menu is left to the menu. A held press's write is
+checked, and its settle waits for the release. The refusals this adds where `main` acted
+correctly: an assistive change after an input that the input's picks already agree with, such
+as a row added through accessibility after Ctrl+A; and input judged by the count (Space, a Ctrl
+key, a press other than a plain one) after an overtaken write, which leaves unaccounted the
+changes that `main`'s write accounted for by overwriting them, as when a second press is
+handled natively after a key and before its write.
 Still as on `main` (#323): a refresh that runs while a queued write waits reads no waiting
 selection and writes the picks, a type-ahead picks and writes in its own queued work, and a write
 of the list's that lands between a press and its listener, a refusal's clearing one included,
@@ -2259,13 +2260,14 @@ class SheetList:
         notice, and the tree is cleared. Until then commands refuse. A failed read leaves the
         record unknown too, and is retried as a failed write is (`_write_outside_refresh`).
 
-        The release decides while a press is held, and the menu while it is open, as the intake
-        waits for them; a write of no picks only clears. A right press's write is checked too:
-        the menu that its release opens then targets the pressed row alone (`_open_menu`). The
-        check also runs while the record is unknown, after a failed or an overtaken write: the
-        input whose write would settle it may itself be overtaken.
+        The menu decides while it is open, and a write of no picks only clears. A held press's
+        write is checked too, since a release that does not narrow the picks decides nothing;
+        its settle then waits for the release, as the intake does. A right press's write is
+        checked, and the menu that its release opens targets the pressed row alone
+        (`_open_menu`). The check also runs while the record is unknown, after a failed or an
+        overtaken write: the input whose write would settle it may itself be overtaken.
         """
-        if not self._selection.picked or self._press is not None or self._menu_context:
+        if not self._selection.picked or self._menu_context:
             return False
         if not self._unclaimed and self._unowned <= max(self._input_seen, self._accounted):
             return False
