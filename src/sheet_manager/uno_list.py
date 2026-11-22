@@ -208,20 +208,22 @@ key although it was pressed before, ranges natively from the cursor the tree sho
 list would range from the anchor the key moved: the key holds range presses until a write has shown
 the cursor (`_hold_ranges`), and the listener of each that runs held refuses its range as a held
 toggle is, holding toggles too, since the tree shows rows the press selected that the picks lack. A
-plain press on a row the record does not show leaves the tree showing that row alone, which takes at
-least one change for each row of `_shown` and one for its own, counted from when the tree showed
-`_shown` (`_shown_at`); its listener accounts for up to that many, so that a Ctrl press handled
-before that listener ran, as when the user clicks ahead while LibreOffice is busy, still sees its
-own change alone (#44). A write that lands between the press and its listener moves `_shown_at` past
-the press, and the share then covers changes made after that write; a drag from a row the tree
-selected without the record leaves the selection as it was, and the share can cover one change made
-after it. Either way a listener queued behind it can take a later change for its own and act as on
-`main`. The list cannot tell such a write from one before the press, as after a click on a selected
-row, whose release deselects and selects it again natively: skipping the share after every write
-that overwrote changes refused #44's real-input sequence on gtk3. Space, a cursor key with Ctrl and
-a right press act only when nothing is unaccounted. Otherwise each is refused as a held toggle is
-(`_toggle_held_off`): the picks go, with the notice, the cursor moves, and a right press's menu
-targets its row alone. Plain and Shift presses and the other keys set the picks as before.
+refused range press moves the anchor to its row before the refusal's write shows the cursor there,
+so it holds range presses too. A plain press on a row the record does not show leaves the tree
+showing that row alone, which takes at least one change for each row of `_shown` and one for its
+own, counted from when the tree showed `_shown` (`_shown_at`); its listener accounts for up to that
+many, so that a Ctrl press handled before that listener ran, as when the user clicks ahead while
+LibreOffice is busy, still sees its own change alone (#44). A write that lands between the press and
+its listener moves `_shown_at` past the press, and the share then covers changes made after that
+write; a drag from a row the tree selected without the record leaves the selection as it was, and
+the share can cover one change made after it. Either way a listener queued behind it can take a
+later change for its own and act as on `main`. The list cannot tell such a write from one before the
+press, as after a click on a selected row, whose release deselects and selects it again natively:
+skipping the share after every write that overwrote changes refused #44's real-input sequence on
+gtk3. Space, a cursor key with Ctrl and a right press act only when nothing is unaccounted.
+Otherwise each is refused as a held toggle is (`_toggle_held_off`): the picks go, with the notice,
+the cursor moves, and a right press's menu targets its row alone. Plain and Shift presses and the
+other keys set the picks as before.
 
 Each refusal is one where `main` may have acted correctly: a take of the list's between a Ctrl
 press's native handling and its listener, or a write or rebuild there that overwrote other changes
@@ -1439,10 +1441,11 @@ class SheetList:
     def _hold_ranges(self) -> None:
         """Hold range presses until work posted once a write has shown the cursor has run (#313).
 
-        A Ctrl key moves the list's range anchor with the cursor. The tree makes its next anchor
-        at its own cursor, which shows the key's only once the key's write has run: a Shift or
-        Ctrl+Shift press handled before then, also one made before the key whose listener runs
-        after it, ranges natively from the older cursor, and the list from the newer. By the
+        A Ctrl key moves the list's range anchor with the cursor, and so does a refused range
+        press. The tree makes its next anchor at its own cursor, which shows the list's only once
+        the following write has run: a Shift or Ctrl+Shift press handled before then, also one
+        made before the key whose listener runs after it, ranges natively from the older cursor,
+        and the list from the newer. By the
         queue order that toggles rely on (`_hold_toggles`), every such listener runs held, and
         `mouse_pressed` refuses its range as a held toggle is (`_toggle_held_off`): the tree shows
         rows the press selected that the picks lack, so toggles are held too. Each hold is a new
@@ -2872,6 +2875,12 @@ class SheetList:
                     target = self._ref(name)
                     if target is not None:
                         self._selection.cursor = self._selection.anchor = target
+                    if keys & SHIFT:
+                        # The tree kept its anchor at the range's start, and makes its next one at
+                        # this row only once the refusal's write shows the cursor here: until then
+                        # range presses are held, as after a Ctrl key (#313). A Ctrl press drops
+                        # the tree's anchor and moves its cursor here at once.
+                        self._hold_ranges()
                 else:
                     before = self._selection.picked
                     self._selection.choose(
@@ -2894,6 +2903,7 @@ class SheetList:
                         # `choose` rebound `picked` to a new list, so `before` is unchanged.
                         self._selection.picked = before
                         self._toggle_held_off(deferred, seen, waiting=True)
+                        self._hold_ranges()  # Its cursor moves before its write shows it (#313).
                     else:
                         self._user_picks = True
                         if keys & MOD1:
