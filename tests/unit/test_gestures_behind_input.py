@@ -237,7 +237,9 @@ def test_a_press_on_a_picked_row_after_the_keys_write_keeps_the_picks_for_a_drag
     [
         pytest.param(["Hotel"], [(END, SHIFT)], "Delta", id="shift-end-on-the-last-row"),
         pytest.param(["Hotel"], [(DOWN, MOD1 | SHIFT)], "Delta", id="ctrl-shift-down-at-the-end"),
-        pytest.param(["Charlie", "Delta"], [(UP, SHIFT)], "Foxtrot", id="shift-up-inside-the-picks"),
+        pytest.param(
+            ["Charlie", "Delta"], [(UP, SHIFT)], "Foxtrot", id="shift-up-inside-the-picks"
+        ),
     ],
 )
 def test_a_drag_across_the_write_of_a_key_that_holds_nothing_drags_the_pressed_sheet(
