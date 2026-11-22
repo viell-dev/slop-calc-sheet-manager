@@ -912,7 +912,11 @@ def sheet_list(book: Book, source: str = SOURCE) -> Any:
     }
     pressed = _class_methods(KEYS, "ListKeyHandler")["keyPressed"]
     handler.keyPressed = _load(KEYS, pressed, routing).__get__(handler)
-    buttons = owner.move_buttons = SimpleNamespace(_request=lambda name: owner.queue_move(name))
+
+    def request(action: str) -> None:  # `queue_move`, looked up when the button is pressed.
+        owner.queue_move(action)
+
+    buttons = owner.move_buttons = SimpleNamespace(_request=request)
     performed = _class_methods(MOVES, "MoveButtons")["actionPerformed"]
     buttons.actionPerformed = _load(MOVES, performed, {"report": contain}).__get__(buttons)
     owner.refresh()
@@ -938,30 +942,26 @@ def move_to_top(owner: Any) -> list[str] | str | None:
     return None if len(owner.errors) > errors else "failed"
 
 
-def key(owner: Any, code: int, modifiers: int = 0) -> bool:
+def key(owner: Any, code: int, modifiers: int = 0) -> None:
     """A selection key in the list, through the list's key handler (`ListKeyHandler.keyPressed`),
     then the work it queued. Only a key that the handler gives the tree (`tree_key`) is accepted:
     another would mean something else there, or nothing. A native failure while the handler runs
-    ends only that key, recorded as "the key handler", and the key is still consumed. Returns
-    whether the handler consumed the key, as it tells LibreOffice."""
+    ends only that key, recorded as "the key handler", and the key is still consumed: the
+    handler's `_consumed`, which consumes the key's release, says so."""
     assert route_key(code, modifiers) is KeyRoute.TREE, (code, modifiers, "is not a tree key")
-    event = SimpleNamespace(KeyCode=code, Modifiers=modifiers, KeyChar="")
-    consumed = owner.key_handler.keyPressed(event)
+    owner.key_handler.keyPressed(SimpleNamespace(KeyCode=code, Modifiers=modifiers, KeyChar=""))
     owner.run_queue()
-    return consumed
 
 
-def type_key(owner: Any, char: str) -> bool:
+def type_key(owner: Any, char: str) -> None:
     """A character typed in the list, through the list's key handler, which queues type-ahead
     for it (`queue_input`), then that work: a native failure in type-ahead ends only that work,
-    recorded as "type-ahead". Returns whether the handler consumed the key."""
+    recorded as "type-ahead"."""
     assert route_key(0, 0, char) is KeyRoute.TYPE_AHEAD, (char, "is not typed ahead")
     letter = char.isascii() and char.isalpha()
     code = A + ord(char.lower()) - ord("a") if letter else 0  # UNO's key codes A to Z.
-    event = SimpleNamespace(KeyCode=code, Modifiers=0, KeyChar=char)
-    consumed = owner.key_handler.keyPressed(event)
+    owner.key_handler.keyPressed(SimpleNamespace(KeyCode=code, Modifiers=0, KeyChar=char))
     owner.run_queue()
-    return consumed
 
 
 # The name each mouse handler's failure is reported under, as `_Mouse` passes it to `_handle`.

@@ -22,6 +22,7 @@ from tests.unit.list_peer import (
     DOWN,
     MOD2,
     SPACE,
+    A,
     Book,
     NativeFailure,
     click,
@@ -139,10 +140,10 @@ def test_a_native_failure_in_a_key_ends_only_that_key() -> None:
     owner = sheet_list(Book(list(NAMES)))
     click(owner, 1)
     fail_next_acknowledgement(owner, NativeFailure("addCallback"))
-    assert key(owner, DOWN) is True
-    assert owner.failures == ["the key handler"]
+    key(owner, DOWN)
+    assert owner.failures == ["the key handler"] and owner.key_handler._consumed == {DOWN: True}
     assert picks(owner) == ["Bravo"] and owner.tree.shown() == ["Bravo"]
-    assert key(owner, DOWN) is True
+    key(owner, DOWN)
     assert owner.failures == ["the key handler"]
     assert picks(owner) == ["Charlie"] and owner.tree.shown() == ["Charlie"]
 
@@ -157,7 +158,8 @@ def test_a_native_failure_in_type_ahead_ends_only_that_work(fails: bool) -> None
     inputs = owner._input
     if fails:
         owner.faults.fail("select")
-    assert type_key(owner, "d") is True
+    type_key(owner, "d")
+    assert owner.key_handler._consumed == {A + 3: True}  # UNO's code for D.
     assert owner._input > inputs and picks(owner) == ["Delta"]
     assert owner.failures == (["type-ahead"] if fails else [])
     assert owner.tree.shown() == (["Bravo"] if fails else ["Delta"])
@@ -195,9 +197,7 @@ def test_keys_and_move_to_top_raise_what_no_native_call_raises() -> None:
     assert owner.failures == [] and owner.book.moved == []
 
 
-@pytest.mark.parametrize(
-    "code,modifiers", [(SPACE, 0), (DOWN, MOD2)], ids=["Space", "Alt+Down"]
-)
+@pytest.mark.parametrize("code,modifiers", [(SPACE, 0), (DOWN, MOD2)], ids=["Space", "Alt+Down"])
 def test_key_takes_only_keys_the_handler_gives_the_tree(code: int, modifiers: int) -> None:
     """Plain Space means nothing in the list, and Alt+Down moves the picks: the key handler
     gives neither to the tree, so `key` refuses them before the handler sees them, rather than
