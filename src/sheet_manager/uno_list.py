@@ -1764,9 +1764,9 @@ class SheetList:
         and those a deferred intake found, may have come after a press still queued behind this
         one, and its listener may add picks before that write: the write then shows them only
         if the tree already does (`_unclaimed`, `_overtaken`, #307). Whatever the tree shows
-        then includes a refused press's own native change, which the list did not take: the
-        press's listener leaves the tree to no intake (`_unread`), and a refused key changed
-        nothing natively.
+        then includes the change the refusal could not read, a refused press's own native one or
+        a press's still queued behind a refused key, as one the user toggled off with Ctrl+Space,
+        so no intake takes it (`_unread`).
 
         A right press over such changes is refused here too, though it toggles nothing: its
         write would show the older picks over them for the menu to act on, and the refusal's
@@ -1774,6 +1774,7 @@ class SheetList:
         """
         shown = (deferred is not None and bool(deferred[0])) or waiting
         self._account(seen, partial=True)
+        self._unread()
         if shown:
             self._unclaimed = True
         if self._selection.picked:

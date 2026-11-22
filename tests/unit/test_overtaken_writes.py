@@ -1132,3 +1132,22 @@ def test_a_command_after_an_unread_press_ahead_of_the_take_refuses() -> None:
     middle = SimpleNamespace(Buttons=MIDDLE, X=0, Y=line, Modifiers=0, ClickCount=1)
     listen(owner, owner.mouse_pressed, middle)  # Ahead of the queued intake.
     assert move_to_top(owner) is None, "Bravo, which the tree never showed, was moved"
+
+
+def test_a_row_a_refused_ctrl_space_meant_to_toggle_off_is_not_taken() -> None:
+    """Alfa picked; a click on Charlie handled natively, its listeners still queued; Ctrl+Space,
+    meant to toggle Charlie off, is refused, since the tree shows the click's change, which the
+    list has not taken; Echo is added through accessibility. The click's listeners pick Charlie,
+    and its write finds Echo too. Taking the tree would pick Charlie, which the user toggled off,
+    as `main`'s write keeps it: the refusal could not read the tree, so the picks go, with the
+    notice (fuzz296 and fuzz294 over this round's removal of that mark)."""
+    owner = fresh()
+    click(owner, row("Alfa"))
+    notices = len(owner.notices)
+    queued_click(owner, row("Charlie"), 0)
+    owner.tree_key(SPACE, MOD1)
+    owner.tree.assistive_select("Echo")
+    owner.run_queue()
+    assert "Charlie" not in picks(owner), "the row the user toggled off"
+    assert picks(owner) == [] and owner.tree.shown() == [] and len(owner.notices) > notices
+    assert move_to_top(owner) is None
