@@ -49,7 +49,7 @@ def test_a_native_failure_in_a_press_listener_ends_only_that_listener() -> None:
     listener then fails at its first native call, which reads where the rows show. The failure
     is reported once, the call returns with the pointer depth lowered, and the listener has
     queued the selection write as it returned. That write shows Bravo again over the native
-    press, no press is kept, and the next click acts."""
+    press, the press is kept undecided, outside the rows (#318), and the next click acts."""
     owner = sheet_list(Book(list(NAMES)))
     click(owner, 1)
     delta = owner.tree.node("Delta")
@@ -57,7 +57,8 @@ def test_a_native_failure_in_a_press_listener_ends_only_that_listener() -> None:
     owner.faults.fail("getNodeRect")
     press(owner, 3)
     assert owner.faults.failed == ["getNodeRect"] and owner.failures == ["a mouse press"]
-    assert owner._pointer_depth == 0 and owner._press is None
+    assert owner._pointer_depth == 0
+    assert owner._press is not None and owner._press.name is None and owner._press.voided
     assert posted(owner) == ["showing the selection"]
     owner.run_queue()
     assert owner.failures == ["a mouse press"]

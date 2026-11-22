@@ -1,0 +1,291 @@
+"""Drag gestures that come before their press's listener, behind other input (#304, #318).
+
+VCL recognizes a drag gesture within its handling of the pointer's motion (#264), so the gesture
+can come before its press's queued listener (#269). The gesture then carries the list's record of
+the picks, or the tree's selection when the intake can take it. The record held other picks than
+the sheet the user pressed when a selection key or type-ahead had picked before the press and its
+write showed that pick after it, when an earlier click's listener ran between the press and the
+gesture, and when the press's listener failed before it decided the press: the drag carried those
+picks, and a drop moved them. No drag starts then.
+
+- A plain cursor key, a Ctrl key that moves the cursor and type-ahead's jump hold range presses
+  until work posted once a write has shown the cursor has run (#313, #326), and no drag starts
+  while they do, as while presses are held (#295). Nor does one while toggles are held: a key's
+  picks that the tree does not show yet hold them until that write (#288).
+- While a write of the picks is pending, the intake takes nothing, so the gesture would carry the
+  record: none starts unless every change of the tree counted so far is accounted for (#294), as
+  after the listener of this press when it ran first.
+- A press listener marks its press undecided before its first native call, so that a failure
+  there leaves no press for the gesture or the release to act on (#318).
+
+The real list runs over the simulated peer of `list_peer`, with `start_drag` bound and the
+document's checks stubbed (`bind_drag`).
+"""
+
+from collections.abc import Callable
+from types import SimpleNamespace
+from typing import Any
+
+import pytest
+
+from tests.unit.list_peer import (
+    DOWN,
+    HOME,
+    MOD1,
+    SHIFT,
+    SPACE,
+    A,
+    Book,
+    bind_drag,
+    click,
+    key,
+    native_press,
+    picks,
+    queued_click,
+    release,
+    sheet_list,
+)
+
+NAMES = ["Alfa", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel"]
+
+
+def row(name: str) -> int:
+    return NAMES.index(name)
+
+
+def clicked(name: str) -> tuple[Any, list[list[str]]]:
+    owner = sheet_list(Book(list(NAMES)))
+    dragged = bind_drag(owner)
+    click(owner, row(name))
+    assert picks(owner) == [name] == owner.tree.shown()
+    return owner, dragged
+
+
+def run_until(owner: Any, where: str) -> None:
+    """Run the posted work up to and including the next item posted as `where`."""
+    while owner.queue:
+        work, posted = owner.queue.pop(0)
+        work()
+        if posted == where:
+            return
+    raise AssertionError(f"nothing posted as {where!r}")
+
+
+def typed(owner: Any, char: str) -> None:
+    """A character typed in the list: its key handler queues the type-ahead (`queue_input`),
+    which runs when the queue next does."""
+    code = A + ord(char) - ord("a")
+    owner.key_handler.keyPressed(SimpleNamespace(KeyCode=code, Modifiers=0, KeyChar=char))
+
+
+# A selection key's or type-ahead's pick (#304).
+
+
+@pytest.mark.parametrize("written", [False, True], ids=["before-the-write", "after-the-write"])
+@pytest.mark.parametrize(
+    "keys,carried",
+    [
+        pytest.param([(DOWN, 0)], ["Charlie"], id="down"),
+        pytest.param([(DOWN, SHIFT)], ["Bravo", "Charlie"], id="shift-down"),
+        pytest.param([(DOWN, MOD1)], ["Bravo"], id="ctrl-down"),
+        pytest.param([(DOWN, MOD1 | SHIFT)], ["Bravo", "Charlie"], id="ctrl-shift-down"),
+        pytest.param([(DOWN, MOD1), (SPACE, MOD1)], ["Bravo", "Charlie"], id="ctrl-space"),
+        pytest.param([(A, MOD1)], NAMES, id="ctrl-a"),
+    ],
+)
+def test_a_drag_across_a_selection_keys_write_drags_nothing(
+    keys: list[tuple[int, int]], carried: list[str], written: bool
+) -> None:
+    """Bravo picked; a selection key, after any keys shown before it, then a press on Delta's row
+    and a drag before the press's listener, before or after the key's write. The gesture carried
+    the key's picks, which the user did not press: before the write the intake takes nothing, and
+    the write replaced the tree's Delta with them. No drag starts now; the press's listener then
+    decides the press."""
+    owner, dragged = clicked("Bravo")
+    *shown, (code, modifiers) = keys
+    for earlier in shown:
+        key(owner, *earlier)
+    owner.tree_key(code, modifiers)
+    native_press(owner, row("Delta"))
+    if written:
+        run_until(owner, "showing the selection")
+    owner.start_drag(object())
+    assert dragged == [], f"dragged the key's picks, {carried}, not Delta"
+    owner.run_queue()
+    assert "Delta" in picks(owner)
+
+
+def test_a_drag_before_a_ctrl_keys_write_that_moves_nothing_drags_nothing() -> None:
+    """Alfa picked; Ctrl+Home, which leaves the cursor and the anchor on Alfa and holds nothing,
+    then a press on Delta and a drag before the key's write. The record still holds Alfa, which
+    the intake cannot replace while the write is pending, and the press's own change is not
+    accounted for yet: no drag starts."""
+    owner, dragged = clicked("Alfa")
+    owner.tree_key(HOME, MOD1)
+    assert owner._ranges_held is None and owner._toggles_held is None
+    native_press(owner, row("Delta"))
+    owner.start_drag(object())
+    assert dragged == [], "dragged Alfa, not Delta"
+
+
+@pytest.mark.parametrize("jumped", [False, True], ids=["before-the-jump", "after-the-jump"])
+def test_a_drag_across_a_type_aheads_jump_drags_the_pressed_sheet_or_nothing(
+    jumped: bool,
+) -> None:
+    """Bravo picked; "c" typed, then a press on Delta's row and a drag before the press's
+    listener. Type-ahead jumps to Charlie in queued work and shows it at once, over the tree's
+    Delta: a gesture after it dragged Charlie. It now starts nothing. One before the jump takes
+    the tree's selection, which is the pressed sheet."""
+    owner, dragged = clicked("Bravo")
+    typed(owner, "c")
+    native_press(owner, row("Delta"))
+    if jumped:
+        run_until(owner, "type-ahead")
+    owner.start_drag(object())
+    assert dragged == ([] if jumped else [["Delta"]])
+
+
+# An earlier click's listener between the press and the gesture (#304).
+
+
+@pytest.mark.parametrize(
+    "listeners", ["a mouse press", "a mouse release"], ids=["its-press", "its-release"]
+)
+def test_a_drag_behind_an_earlier_clicks_listener_drags_nothing(listeners: str) -> None:
+    """Bravo picked. The user clicks Alfa, then presses Delta and drags, all before the
+    listeners run; Alfa's press listener, or that and its release's, runs before the gesture.
+    It recorded Alfa and queued the write, so the intake took nothing, and the drag carried Alfa.
+    The record cannot hold Delta's press while its change is unaccounted for: no drag starts."""
+    owner, dragged = clicked("Bravo")
+    queued_click(owner, row("Alfa"), 0)
+    native_press(owner, row("Delta"))
+    run_until(owner, listeners)
+    owner.start_drag(object())
+    assert dragged == [], "dragged Alfa, not Delta"
+
+
+# A failed press listener (#318).
+
+
+@pytest.mark.parametrize("written", [False, True], ids=["before-the-write", "after-the-write"])
+def test_a_drag_after_a_failed_press_listener_drags_nothing(written: bool) -> None:
+    """Bravo picked; a press on Delta's row, whose listener fails at its first native call, its
+    read of where the rows show. The listener's guard queues the write of the picks. A drag before
+    that write carried Bravo, the record, and one after it Bravo too, which the write had put back
+    over the tree's Delta. The listener had decided nothing, so no drag starts; the release does
+    nothing either, and the picks stay."""
+    owner, dragged = clicked("Bravo")
+    native_press(owner, row("Delta"))
+    owner.faults.fail("getNodeRect")
+    run_until(owner, "a mouse press")
+    assert owner.failures == ["a mouse press"]
+    if written:
+        run_until(owner, "showing the selection")
+        assert owner.tree.shown() == ["Bravo"]
+    owner.start_drag(object())
+    assert dragged == [], "dragged Bravo, not Delta"
+    owner.run_queue()
+    release(owner, row("Delta"))
+    owner.run_queue()
+    assert picks(owner) == ["Bravo"] == owner.tree.shown()
+
+
+def test_a_click_after_a_failed_press_listener_acts() -> None:
+    """Control: after the failed press's release, the next click picks its row, and a drag from
+    it carries it."""
+    owner, dragged = clicked("Bravo")
+    native_press(owner, row("Delta"))
+    owner.faults.fail("getNodeRect")
+    owner.run_queue()
+    release(owner, row("Delta"))
+    owner.run_queue()
+    click(owner, row("Echo"))
+    assert picks(owner) == ["Echo"]
+    native_press(owner, row("Echo"))
+    owner.start_drag(object())
+    assert dragged == [["Echo"]]
+
+
+# Controls and costs.
+
+
+def press_then(owner: Any, steps: Callable[[Any], None]) -> None:
+    native_press(owner, row("Delta"))
+    steps(owner)
+    owner.start_drag(object())
+
+
+def no_steps(owner: Any) -> None:
+    pass
+
+
+def listener(owner: Any) -> None:
+    run_until(owner, "a mouse press")
+
+
+def listener_and_write(owner: Any) -> None:
+    owner.run_queue()
+
+
+@pytest.mark.parametrize(
+    "steps",
+    [
+        pytest.param(no_steps, id="before-the-listener"),
+        pytest.param(listener, id="after-the-listener"),
+        pytest.param(listener_and_write, id="after-the-write"),
+    ],
+)
+def test_a_drag_drags_the_pressed_sheet(steps: Callable[[Any], None]) -> None:
+    """Control: Bravo picked; a press on Delta and a drag, before the press's listener, after it
+    and after its write: the drag carries Delta."""
+    owner, dragged = clicked("Bravo")
+    press_then(owner, steps)
+    assert dragged == [["Delta"]]
+
+
+def test_a_drag_after_keys_that_were_shown_drags_the_pressed_sheet() -> None:
+    """Control: keys and a type-ahead whose writes and holds have ended hold no later drag."""
+    owner, dragged = clicked("Bravo")
+    key(owner, DOWN)
+    key(owner, DOWN, MOD1)
+    typed(owner, "e")
+    owner.run_queue()
+    assert owner._ranges_held is None and owner._toggles_held is None
+    press_then(owner, no_steps)
+    assert dragged == [["Delta"]]
+
+
+def test_a_drag_of_a_ctrl_click_carries_the_picks_it_added_to() -> None:
+    """Control: a Ctrl+click on Delta and a drag after its listener carry Bravo and Delta."""
+    owner, dragged = clicked("Bravo")
+    queued_click(owner, row("Delta"))
+    run_until(owner, "a mouse press")
+    owner.start_drag(object())
+    assert dragged == [["Bravo", "Delta"]]
+
+
+def test_a_drag_whose_listener_ran_before_a_plain_keys_write_is_refused() -> None:
+    """A cost: the user presses Delta, Down is typed before the press's listener, which runs
+    before the key's write and picks Delta. The record holds the press, but the key's range hold
+    lasts until its write: no drag starts."""
+    owner, dragged = clicked("Bravo")
+    native_press(owner, row("Delta"))
+    owner.tree_key(DOWN, 0)
+    run_until(owner, "a mouse press")
+    assert picks(owner) == ["Delta"]
+    owner.start_drag(object())
+    assert dragged == []
+
+
+def test_a_drag_after_a_shift_clicks_listener_before_its_write_is_refused() -> None:
+    """A cost: Bravo picked, a Shift+click on Delta, and a drag after its press listener and
+    before its write. The listener does not account for the Shift press's change, since the
+    tree's range may not be the list's, so no drag starts until the write. After it, one does."""
+    owner, dragged = clicked("Bravo")
+    queued_click(owner, row("Delta"), SHIFT)
+    run_until(owner, "a mouse press")
+    owner.start_drag(object())
+    assert dragged == []
+    run_until(owner, "showing the selection")
+    owner.start_drag(object())
+    assert dragged == [["Bravo", "Charlie", "Delta"]]

@@ -707,7 +707,9 @@ def drag_list() -> tuple[Any, Any, Any, list[Any]]:
     owner._apply_selection, owner._rebuild = Mock(), Mock(side_effect=rebuild)
     owner._show_native, owner._name_viewed = Mock(), Mock()
     owner._release_presses = Mock()  # A refresh that keeps the rows ends no press hold (#293).
-    owner._presses_held = None  # No press is held, so a drag may start (#295).
+    # No press, toggle or range is held, and no write waits, so a drag may start (#295, #304).
+    owner._presses_held = owner._toggles_held = owner._ranges_held = None
+    owner._selection_write_pending = False
     owner._busy, owner._drag = False, None
     owner._drag_source = SimpleNamespace(startDrag=Mock())
     owner._listeners = {"source": object()}
