@@ -46,6 +46,7 @@ def native_picks() -> tuple[Any, Any, list[Callable[[], None]]]:
         _shown_at=0,
         _quiet=None,
         _erased=None,
+        _overwrote_at=-1,
         _add_mode=False,
         _hold_toggles=Mock(),
         _presses_held=None,
@@ -69,6 +70,20 @@ def native_picks() -> tuple[Any, Any, list[Callable[[], None]]]:
         return bool(held(owner, name, deferred))
 
     owner._toggle_held = toggle_held
+    account = method(SOURCE, "SheetList", "_account", {})
+
+    def account_native(seen: int, *, shown: bool = False) -> None:
+        account(owner, seen, shown=shown)
+
+    owner._account = account_native
+    engine = method(
+        SOURCE, "SheetList", "_follow_engine", {"RIGHT": 2, "MOD1": 2, "MOD2": 4, "SHIFT": 1}
+    )
+
+    def follow_engine(event: Any, hit: bool, add_mode: bool) -> bool:
+        return bool(engine(owner, event, hit, add_mode))
+
+    owner._follow_engine = follow_engine
     return owner, live, queued
 
 

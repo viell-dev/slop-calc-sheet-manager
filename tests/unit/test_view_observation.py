@@ -154,7 +154,8 @@ def observer() -> tuple[Any, Any, Any]:
 def test_tab_only_change_follows_once_without_rebuilding_or_consuming_monitor_evidence() -> None:
     owner, tabs, live = observer()
     tabs.observe(False)
-    owner._take_tree_selection.assert_called_once_with(paint=False, defer=True)
+    # The timer's tick, whose samples alone are ordered for the quiet-sample rule (#294).
+    owner._take_tree_selection.assert_called_once_with(paint=False, defer=True, tick=True)
     owner._select.assert_not_called()
     live.indices = (0, 2)
     tabs.observe(False)

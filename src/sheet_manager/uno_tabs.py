@@ -75,8 +75,12 @@ class TabHost(Protocol):
         """The shown rows are behind Calc's sheets: refresh them, unless one is pending."""
         ...
 
-    def pending_native_picks(self) -> bool:
-        """Whether native picks await the list's queued intake; it takes them later, if so."""
+    def pending_native_picks(self, tick: bool) -> bool:
+        """Whether native picks await the list's queued intake; it takes them later, if so.
+
+        `tick` says the observer's timer asks, which posts its next tick only after this one has
+        run; an acknowledgement or a refresh asks in no such order.
+        """
         ...
 
     def follow_tabs(self, tabs: list[str], active: str) -> None:
@@ -279,7 +283,8 @@ class TabObserver:
         newer_input = self._host.input_count != self._input or self._ack_pending
         # Native input can precede its queued mouse listener. Do not follow Calc over it, or
         # adopt the native toggle before the owned listener has handled that same input.
-        pending_picks = self._host.pending_native_picks()
+        # Only `_tick` observes without acknowledging, and only its samples are ordered (#294).
+        pending_picks = self._host.pending_native_picks(tick=not acknowledge)
         self.remember(active, tabs)
         if changed and not acknowledge and not newer_input and not pending_picks:
             self._host.follow_tabs(list(tabs), active)

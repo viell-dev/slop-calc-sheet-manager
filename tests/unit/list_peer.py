@@ -82,7 +82,7 @@ from sheet_manager.sheet_list import RowGeometry, SheetRow, list_name, ordered, 
 from tests.unit import source_methods
 
 SOURCE = "src/sheet_manager/uno_list.py"
-LEFT, RIGHT = 1, 2  # Mouse buttons,
+LEFT, RIGHT, MIDDLE = 1, 2, 4  # Mouse buttons,
 SHIFT, MOD1, MOD2 = 1, 2, 4  # and key modifiers, as UNO numbers them.
 METHODS = (
     "names",
@@ -98,6 +98,9 @@ METHODS = (
     "_toggle_held",
     "_toggles_shown",
     "_toggle_held_off",
+    "_account_write",  # From #310's third round on, as are the next two.
+    "_account",
+    "_follow_engine",
     "_hold_presses",
     "_release_presses",
     "_rebuild",
@@ -766,6 +769,7 @@ def sheet_list(book: Book, source: str = SOURCE) -> Any:
         _shown_at=0,
         _quiet=None,
         _erased=None,
+        _overwrote_at=-1,
         _add_mode=False,
         _presses_held=None,
         _presses_release=None,
@@ -936,17 +940,18 @@ def queued_click(
     native click count: above 1, as for a double or triple click's later clicks, the engine
     returns at once and changes nothing (#310's review; measured on #294 with 26.8.2.2), except
     that a plain one still selects its row alone, as the first click already did, which the
-    tests of #293 rely on. Alt (`MOD2`) makes the engine return at once too. A right click changes
-    no native selection (`SvImpLBox::MouseButtonDown` in 26.8). `row` is the pressed row's index
-    as the tree shows it when the user presses; the events carry its line in the view, as VCL's
-    carry a position."""
-    if button == LEFT and (modifiers & MOD2 or (modifiers & MOD1 and clicks > 1)):
+    tests of #293 rely on. Alt (`MOD2`) makes the engine return at once too. Every button but the
+    right one reaches the engine, a middle press as a left one does; a right click changes no
+    native selection (`SvImpLBox::MouseButtonDown` in 26.8.2.2). `row` is the pressed row's
+    index as the tree shows it when the user presses; the events carry its line in the view, as
+    VCL's carry a position."""
+    if button == RIGHT or modifiers & MOD2 or (modifiers & MOD1 and clicks > 1):
         pass
-    elif button == LEFT and modifiers == MOD1:
+    elif modifiers == MOD1:
         toggle_natively(owner, row)
-    elif button == LEFT and modifiers == MOD1 | SHIFT:
+    elif modifiers == MOD1 | SHIFT:
         extend_natively(owner, row)
-    elif button == LEFT:
+    else:
         node = owner.tree._installed()[row]
         owner.tree.selected, owner.tree.cursor = [node], node
         owner.tree.anchor = None
