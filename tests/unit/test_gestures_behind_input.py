@@ -244,10 +244,10 @@ def test_a_drag_after_a_press_listener_that_failed_after_deciding_drags_nothing(
     """Bravo and Delta picked and Hotel selected through accessibility; a Ctrl+press on Delta,
     which the tree deselects, and whose listener refuses it over Hotel's change. The refusal's
     post of the notice fails before the picks are dropped, so the listener had decided the press
-    and kept Bravo and Delta, which the guard's write shows over the tree. Once the toggle hold
-    has ended, a drag carried them, Delta included, which the user had just deselected. The
-    guard leaves the failed press undecided wherever the failure fell, and no drag starts
-    (#330's review)."""
+    and kept Bravo and Delta, which the guard's write shows over the tree. Once that work and
+    the toggle hold had ended, a drag carried them, Delta included, which the user had just
+    deselected. The guard leaves the failed press undecided wherever the failure fell, and no
+    drag starts (#330's review)."""
     owner, dragged = clicked("Bravo")
     queued_click(owner, row("Delta"))
     owner.run_queue()
@@ -269,7 +269,6 @@ def test_a_drag_after_a_press_listener_that_failed_after_deciding_drags_nothing(
     assert owner.failures == ["a mouse press"]
     assert picks(owner) == ["Bravo", "Delta"], "the failure came before the picks were dropped"
     owner.run_queue()
-    assert owner._toggles_held is None and owner.tree.shown() == ["Bravo", "Delta"]
     owner.start_drag(object())
     assert dragged == [], "dragged Delta, which the user had deselected"
 

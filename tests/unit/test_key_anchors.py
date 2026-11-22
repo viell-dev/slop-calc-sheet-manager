@@ -411,16 +411,17 @@ def test_a_range_click_before_a_type_aheads_jump_is_refused(modifiers: int) -> N
     assert move_to_top(owner) is None
 
 
-def test_a_range_click_before_shift_keys_write_acts() -> None:
-    """Shift keys hold no range presses (#326): Alfa clicked, Shift+Down twice, and a Ctrl+Shift+
-    click on Golf that the tree handles before the keys' write. The tree adds Alfa to Golf from
-    its cursor on Alfa, and the list adds the same range from its anchor, the range's start, with
-    every row up to the cursor picked: the click acts, with no notice (#330's review)."""
+def test_a_range_click_whose_listener_runs_after_shift_keys_acts() -> None:
+    """Shift keys hold no range presses (#326): Alfa clicked; a Ctrl+Shift+click on Golf, which
+    the tree adds Alfa to Golf for from its cursor on Alfa, and Shift+Down twice typed before the
+    click's listener runs. The keys keep the anchor on Alfa, the range's start, with every row up
+    to the cursor picked, so the list adds the same range as the tree: the click acts, with no
+    notice. Holding range presses for Shift keys refused it (#330's review)."""
     owner = clicked("Alfa")
+    queued_click(owner, row("Golf"), MOD1 | SHIFT)
     for _ in range(2):
         owner.tree_key(DOWN, SHIFT)
     assert picks(owner) == ["Alfa", "Bravo", "Charlie"] and owner._ranges_held is None
-    queued_click(owner, row("Golf"), MOD1 | SHIFT)
     owner.run_queue()
     assert picks(owner) == NAMES[: row("Golf") + 1] == owner.tree.shown()
     assert owner.notices == []
