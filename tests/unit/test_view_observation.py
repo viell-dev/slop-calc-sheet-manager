@@ -900,7 +900,9 @@ def click_list() -> tuple[Any, Any, Any, list[Any]]:
     owner._queue_selection, owner.refresh = Mock(), Mock()
     owner.restore_view = Mock(return_value=True)
     owner._activating, owner._activation_input = False, 0
-    owner._unowned = owner._input_seen = 0  # The release's read of the count (#307).
+    # The release's read of the count, against what is accounted for (#307).
+    owner._unowned = owner._input_seen = owner._accounted = 0
+    owner._unclaimed = False
     owner.context, owner.frame, owner.peer = object(), object(), object()
     owner.dispatch, owner.show_error = Mock(), Mock()
     selected = function(

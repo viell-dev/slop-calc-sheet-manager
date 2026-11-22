@@ -239,7 +239,8 @@ handling and before that write, which the write overwrote, and a command then ac
 input's picks. A key accounts for every change at once, and a press or release listener reads
 the count before any UNO call (`_input_seen`), so a change counted later came after that input.
 An input also marks changes it saw and did not claim (`_unclaimed`), since they may have come
-between its press's native handling and its listener: a plain press's beyond its share, and a
+between its native handling and its listener: a plain press's beyond its share, a release's
+that narrows the picks to the pressed row, whose native release narrowed the tree, and a
 refusal's besides its input's own or a deferred intake's rows, behind which a Ctrl+Shift press's
 listener added its range to the emptied picks. Only then the write reads the tree (one
 `getSelection` in posted work, `_overtaken`). If the tree shows exactly the picks, it goes ahead.
@@ -1022,8 +1023,9 @@ class SheetList:
         # The count when the latest press or release listener read it: a change counted later
         # came after that input. And whether an input since the tree last showed the picks found
         # changes it did not claim, which may have come after its own native handling: a plain
-        # press's beyond its share, or a refusal's besides its input's own. A queued write then
-        # shows the picks only if the tree already shows them (`_overtaken`, #307).
+        # press's beyond its share, a narrowing release's, or a refusal's besides its input's
+        # own. A queued write then shows the picks only if the tree already shows them
+        # (`_overtaken`, #307).
         self._input_seen = 0
         self._unclaimed = False
         # While set, a mouse listener maps its event only to a row that showed the same name in
@@ -2988,7 +2990,8 @@ class SheetList:
             return
         # A change counted after this read came after the release, whose own native selection
         # was counted before it (#307).
-        self._input_seen = max(self._input_seen, self._unowned)
+        seen = self._unowned
+        self._input_seen = max(self._input_seen, seen)
         press, self._press = self._press, None
         if press is None or press.name is None:
             return
@@ -3045,6 +3048,11 @@ class SheetList:
             self._queue_selection()
             return
         self._selection.choose(press.name, self._handles, self.names())
+        if seen > self._accounted:
+            # The native release narrowed the tree to the pressed row before this listener ran,
+            # and a change made since, such as through accessibility, is counted with it: the
+            # write shows the pressed sheet only if the tree does (`_overtaken`, #307).
+            self._unclaimed = True
         self._queue_selection()
         if press.clicks == 2:
             # Activation reads Calc's tabs, which needs the lock this listener runs without (#269).
@@ -3099,10 +3107,10 @@ class SheetList:
 
         The menu gets a fresh snapshot whose handles are those sheets; it checks them again
         when the chosen command runs. A right press's menu targets the picks when it was
-        pressed on one, after its write showed them, and otherwise the pressed row alone. So it
-        does while the record of what the tree shows is unknown, after that write failed partway
-        or left a newer change in the tree (`_overtaken`, #257, #307): the picks may not be what
-        the tree shows.
+        pressed on one, after its write showed them, and otherwise the pressed row alone. While
+        the record of what the tree shows is unknown, after that write failed partway or left a
+        newer change in the tree, it targets the pressed row alone too: the picks may not be what
+        the tree shows (`_overtaken`, #257, #307).
         """
         if seen is not None and seen != self._input:
             if self._context_input == seen:

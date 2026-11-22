@@ -260,6 +260,45 @@ def test_a_ctrl_shift_range_behind_a_refusal_is_not_shown_over_a_newer_selection
     assert move_to_top(owner) is None
 
 
+def narrowing_release(owner: Any, name: str, assistive: Callable[[Any], None] | None) -> None:
+    """Alfa and Charlie picked; `name` pressed and held, its listener run; the release in its row,
+    which VCL's selection engine handles by selecting the pressed row alone, then `assistive`, if
+    given, before the release's listener."""
+    queued_click(owner, row("Charlie"))
+    owner.run_queue()
+    press(owner, row(name))
+    owner.run_queue()
+    pressed = owner.tree._installed()[row(name)]
+    owner.tree.selected, owner.tree.cursor = [pressed], pressed
+    if assistive is not None:
+        assistive(owner)
+    line = owner.tree.line(row(name))
+    event = SimpleNamespace(Buttons=LEFT, X=0, Y=line, Modifiers=0, ClickCount=1)
+    listen(owner, owner.mouse_released, event)
+    owner.run_queue()
+
+
+def test_a_click_on_a_picked_row_does_not_show_its_pick_over_a_newer_selection() -> None:
+    """A click on Charlie, already picked: the tree narrows the selection to Charlie when the
+    button goes up, and Echo is added through accessibility before the release's listener. The
+    listener narrowed the picks to Charlie and its write showed Charlie over Echo. The release
+    now finds changes it does not claim, and the write, finding Echo too, writes nothing."""
+    owner = fresh()
+    click(owner, row("Alfa"))
+    notices = len(owner.notices)
+    narrowing_release(owner, "Charlie", add("Echo"))
+    refused(owner, notices)
+
+
+def test_a_click_on_a_picked_row_narrows_the_picks() -> None:
+    """Control: the same click without the assistive change narrows the picks to Charlie."""
+    owner = fresh()
+    click(owner, row("Alfa"))
+    narrowing_release(owner, "Charlie", None)
+    assert picks(owner) == ["Charlie"] == owner.tree.shown() and owner.notices == []
+    assert move_to_top(owner) == ["Charlie"]
+
+
 def test_a_plain_press_on_an_unknown_record_claims_nothing() -> None:
     """A key's write left the record unknown because Echo was selected through accessibility
     after it; a click on Charlie had been handled natively before that selection and its
