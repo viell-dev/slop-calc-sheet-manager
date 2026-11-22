@@ -263,14 +263,14 @@ def test_an_assistive_selection_after_a_ctrl_click_in_flight_is_not_added_to() -
 
 
 def anchored_at_echo() -> Any:
-    """Alfa picked by a click, and Ctrl+Down four times to Echo: the list's range anchor stays on
-    Alfa, while its write leaves the tree's cursor, from which the tree makes its anchor, on
-    Echo."""
+    """Alfa picked by a click, and Ctrl+Down four times to Echo: the list's range anchor moves
+    with the cursor, and its write leaves the tree's cursor, from which the tree makes its
+    anchor, on Echo too (#313)."""
     owner = picked("Alfa")
     for _ in range(4):
         key(owner, DOWN, MOD1)
     assert cursor(owner) == "Echo" and owner.tree.cursor is owner.tree.node("Echo")
-    assert owner._selection.anchor.name == "Alfa"
+    assert owner._selection.anchor.name == "Echo"
     return owner
 
 
@@ -280,8 +280,8 @@ def test_a_ctrl_shift_click_over_an_assistive_selection_does_not_add_older_picks
 ) -> None:
     """Echo then selected alone through accessibility; a Ctrl+Shift+click on Golf adds Foxtrot
     and Golf in the tree, from its anchor on Echo, so it shows Echo to Golf, and the tab sample
-    may see that before the listener runs. The listener added the list's range from Alfa to the
-    picks: Move to Top moved Alfa to Golf. The count shows changes outside the range's rows, so
+    may see that before the listener runs. The listener added the list's range to the older
+    picks: Move to Top moved Alfa with it. The count shows changes outside the range's rows, so
     the press is refused, with the notice."""
     owner = anchored_at_echo()
     owner.tree.assistive_only("Echo")
@@ -1200,15 +1200,17 @@ def test_a_plain_press_share_is_counted_from_when_the_tree_showed_the_record() -
     assert picks(owner) == [] and move_to_top(owner) is None
 
 
-# Costs: refusals where `main` acts correctly.
+# The list's anchor after Ctrl with a cursor key (#313; `test_key_anchors.py`).
 
 
-def test_a_ctrl_shift_click_from_another_anchor_than_the_tree_is_refused() -> None:
+def test_a_ctrl_shift_click_after_ctrl_keys_adds_the_trees_range() -> None:
     """Without assistive technology: Alfa picked, Ctrl+Down four times to Echo, and a
-    Ctrl+Shift+click on Golf. The tree adds Foxtrot and Golf from its anchor on Echo, while the
-    list's range from Alfa adds Bravo to Golf, so the counts differ and the press is refused;
-    `main` picks Alfa to Golf."""
+    Ctrl+Shift+click on Golf. The tree adds Foxtrot and Golf from its anchor on Echo, and so does
+    the list, from its own anchor there. With the list's anchor left on Alfa, its range added
+    Bravo to Golf, the counts differed and the press was refused (#313)."""
     owner = anchored_at_echo()
     queued_click(owner, row("Golf"), MOD1 | SHIFT)
     owner.run_queue()
-    assert picks(owner) == [] and move_to_top(owner) is None
+    wanted = ["Alfa", "Echo", "Foxtrot", "Golf"]
+    assert picks(owner) == wanted == owner.tree.shown() and owner.notices == []
+    assert move_to_top(owner) == wanted

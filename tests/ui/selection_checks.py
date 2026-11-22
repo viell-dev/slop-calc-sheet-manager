@@ -5,13 +5,15 @@ activates it and ends grouped editing (#25). Calc's own tab changes, including r
 the native tab bar, are followed without rebuilding the rows. The list's accessible name follows
 the viewed sheet, never the picks (#83); a press in the panel's margins never undocks the sidebar
 (#133); and the selection notice expires without moving the focus (#90). Clicks after the wheel
-or a key scrolled the list act on the rows they land on (#299).
+or a key scrolled the list act on the rows they land on (#299), and ranges after Ctrl with a
+cursor key start at the cursor, as the tree's do (#313).
 """
 
 import time
 
 import sheet_list_view as view
 import uno
+from focus_checks import CursorProbe
 from workbook import NAMES, wait_until
 from xinput import Pointer
 
@@ -343,6 +345,58 @@ def check_ctrl_clicks_after_a_ctrl_shift_range(book):
     time.sleep(1)
     evidence["triple_ctrl_click"] = book.selection()
     assert evidence["triple_ctrl_click"] == [NAMES[3], NAMES[5], NAMES[6]], evidence
+    return evidence
+
+
+def check_ctrl_shift_click_after_ctrl_keys(book):
+    """A real Ctrl+Shift+click after Ctrl with cursor keys adds the range from the cursor, the one
+    the tree shows, and a Shift+click there picks the range from the cursor (#313).
+
+    The list consumes its selection keys, so the tree shows the list's cursor once the list's
+    write has run, and that write leaves the tree no range anchor: the tree makes its next one at
+    its cursor (`ImpLBSelEng::CreateAnchor`, read in 26.8.2.2). The list's own anchor stayed where
+    the click had put it. After a click on Alfa and Ctrl+Down four times, a Ctrl+Shift+click on
+    Golf was then refused and cleared the selection, and after five times, one on Delta picked
+    Alfa to Delta, though the tree had shown Alfa and Delta to Foxtrot. Each case waits until an
+    accessibility client hears the tree's cursor reach the keys' row, so that the press comes
+    after the keys' write, and then checks the picks once later listeners, writes and tab samples
+    have run.
+    """
+    accessible = book.tree.getProperty("XAccessible").getAccessibleContext()
+    probe = CursorProbe()
+    view.on_main_thread(book.lab.context, lambda: accessible.addAccessibleEventListener(probe))
+    ctrl_shift, shift = ("Control_L", "Shift_L"), ("Shift_L",)
+    cases = [
+        ("ctrl_shift_to_golf", 4, 6, ctrl_shift, [NAMES[0], *NAMES[4:7]]),
+        ("ctrl_shift_to_delta", 5, 3, ctrl_shift, [NAMES[0], *NAMES[3:6]]),
+        ("shift_to_golf", 4, 6, shift, NAMES[4:7]),
+    ]
+    evidence = {}
+    try:
+        for case, downs, end, modifiers, wanted in cases:
+            book.click(0)
+            wait_until(lambda: book.selection() == [NAMES[0]], "a click to pick Alfa")
+            heard = len(probe.heard)
+            for _ in range(downs):
+                book.lab.input.tap("Down", modifiers=("Control_L",), pause=0.15)
+            wait_until(
+                lambda d=downs, h=heard: probe.rows()[h:][-1:] == [d],
+                f"the tree's cursor on {NAMES[downs]}",
+            )
+            assert book.selection() == [NAMES[0]], f"{case}: Ctrl+Down changed the picks"
+            book.click(end, modifiers=modifiers)
+            try:
+                wait_until(lambda w=wanted: book.selection() == w, f"{case}: the range")
+            except AssertionError as error:
+                error.add_note(f"The list shows {book.selection()}; earlier cases: {evidence}")
+                raise
+            time.sleep(1.0)
+            evidence[case] = book.selection()
+            assert evidence[case] == wanted, evidence
+    finally:
+        view.on_main_thread(
+            book.lab.context, lambda: accessible.removeAccessibleEventListener(probe)
+        )
     return evidence
 
 
