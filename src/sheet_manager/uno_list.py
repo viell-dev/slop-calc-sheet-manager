@@ -288,16 +288,17 @@ Shift key or Ctrl+A, each newer than every change it read, end the mark; a write
 only clears and is not checked; an open menu is left to the menu. A held press's write is
 checked, and the intake waits for its release. An overtaken write shows no cursor, so a range
 hold stays on until a later write does (#313): the tree still ranges from its older cursor. The
-costs where `main` acted correctly: an assistive change after an input that the input's picks
-already agree with, such as a row added through accessibility after Ctrl+A, replaces those
-picks with what the tree shows; and input judged by the count (Space, a Ctrl key, a press other
-than a plain one) after an overtaken write, which leaves unaccounted the changes that `main`'s
-write accounted for by overwriting them, is refused, as when a second press is handled natively
-after a key and before its write. Still as on `main` (#323): a refresh that runs while a queued
-write waits reads no waiting selection and writes the picks, a type-ahead picks and writes in its
-own queued work, and a write of the list's that lands between a press and its listener, a
-refusal's clearing one included, overwrites an assistive change made after that press, whose
-listener then acts on its press.
+next key moves from the list's cursor, where the keys before that write left it, as on `main`.
+The costs where `main` acted correctly: an assistive change after an input that the input's
+picks already agree with, such as a row added through accessibility after Ctrl+A, replaces
+those picks with what the tree shows; and input judged by the count (Space, a Ctrl key, a press
+other than a plain one) after an overtaken write, which leaves unaccounted the changes that
+`main`'s write accounted for by overwriting them, is refused, as when a second press is handled
+natively after a key and before its write. Still as on `main` (#323): a refresh that runs while
+a queued write waits reads no waiting selection and writes the picks, a type-ahead picks and
+writes in its own queued work, and a write of the list's that lands between a press and its
+listener, a refusal's clearing one included, overwrites an assistive change made after that
+press, whose listener then acts on its press.
 
 Pointer input. A left press picks at once and keeps the pressed sheet's handle. A plain press
 on a picked row keeps the other picks, so that they can be dragged together; its release in the

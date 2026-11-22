@@ -224,6 +224,23 @@ def test_a_ctrl_keys_write_goes_ahead_when_the_newer_change_leaves_the_picks_sho
     assert move_to_top(owner) == ["Alfa"]
 
 
+def test_a_key_after_an_overtaken_keys_write_moves_from_the_lists_cursor() -> None:
+    """Down from Alfa, and Echo selected alone through accessibility before its write: the write
+    is overtaken and shows no cursor, so the tree's cursor stays on Alfa while the list's is on
+    Bravo. The next Down moves from Bravo and picks Charlie, as the two Downs do on `main`, with
+    no notice (a limit: the tree never showed the cursor on Bravo)."""
+    owner = fresh()
+    click(owner, row("Alfa"))
+    owner.tree_key(DOWN, 0)
+    owner.tree.assistive_only("Echo")
+    owner.run_queue()
+    assert picks(owner) == ["Echo"] == owner.tree.shown()
+    assert cursor(owner) == "Bravo" and owner.tree.cursor is owner.tree.node("Alfa")
+    key(owner, DOWN)
+    assert picks(owner) == ["Charlie"] == owner.tree.shown() and owner.notices == []
+    assert move_to_top(owner) == ["Charlie"]
+
+
 def test_a_range_click_after_an_overtaken_ctrl_keys_write_is_refused() -> None:
     """Delta clicked; Ctrl+Down twice moves the list's cursor and anchor to Foxtrot, and Alfa is
     selected through accessibility before the keys' write. That write is overtaken and shows no
