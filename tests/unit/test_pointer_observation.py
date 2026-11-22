@@ -1,5 +1,6 @@
 """Native selection must not apply a queued owned pointer toggle twice (#85)."""
 
+import enum
 from collections.abc import Callable
 from types import SimpleNamespace
 from typing import Any
@@ -9,9 +10,10 @@ import pytest
 
 from sheet_manager.selection import Selection
 from sheet_manager.structure import StructureEvents
-from tests.unit.source_methods import method
+from tests.unit.source_methods import method, source_class
 
 SOURCE = "src/sheet_manager/uno_list.py"
+INTAKE = source_class(SOURCE, "_Intake", {"enum": enum})
 
 
 def native_picks() -> tuple[Any, Any, list[Callable[[], None]]]:
@@ -47,7 +49,8 @@ def native_picks() -> tuple[Any, Any, list[Callable[[], None]]]:
         _quiet=None,
         _erased=None,
         _input_seen=0,  # The press reads the count (#307),
-        _unclaimed=False,  # and no input left a change unclaimed.
+        _unclaimed=False,  # and no input left a change unclaimed,
+        _intake=INTAKE.CHANGES,  # nor a native change the list read otherwise.
         _add_mode=False,
         _hold_toggles=Mock(),
         _presses_held=None,
@@ -60,7 +63,7 @@ def native_picks() -> tuple[Any, Any, list[Callable[[], None]]]:
         peer=SimpleNamespace(invalidate=Mock()),
         _update_moves=Mock(),
     )
-    take = method(SOURCE, "SheetList", "_take_tree_selection", {})
+    take = method(SOURCE, "SheetList", "_take_tree_selection", {"_Intake": INTAKE})
 
     def take_native(**kwargs: bool) -> bool:
         return bool(take(owner, **kwargs))
@@ -72,12 +75,14 @@ def native_picks() -> tuple[Any, Any, list[Callable[[], None]]]:
         return bool(held(owner, name, deferred))
 
     owner._toggle_held = toggle_held
-    account = method(SOURCE, "SheetList", "_account", {})
+    account = method(SOURCE, "SheetList", "_account", {"_Intake": INTAKE})
 
     def account_native(seen: int, *, shown: bool = False, partial: bool = False) -> None:
         account(owner, seen, shown=shown, partial=partial)
 
     owner._account = account_native
+    unread = method(SOURCE, "SheetList", "_unread", {"_Intake": INTAKE})
+    owner._unread = lambda: unread(owner)
     engine = method(
         SOURCE, "SheetList", "_follow_engine", {"RIGHT": 2, "MOD1": 2, "MOD2": 4, "SHIFT": 1}
     )

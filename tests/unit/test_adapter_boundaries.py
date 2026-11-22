@@ -1,6 +1,7 @@
 """Deterministic races and display guards; real UNO behaviour is checked in integration."""
 
 import _thread
+import enum
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import Mock
@@ -453,7 +454,12 @@ def test_failed_rebuild_releases_the_cursor_restoration_guard() -> None:
 
     owner._apply_selection = fail_restore
     owner._prove = Mock()
-    account_write = method("src/sheet_manager/uno_list.py", "SheetList", "_account_write", {})
+    account_write = method(
+        "src/sheet_manager/uno_list.py",
+        "SheetList",
+        "_account_write",
+        {"_Intake": source_class("src/sheet_manager/uno_list.py", "_Intake", {"enum": enum})},
+    )
 
     def account(start: int) -> None:
         account_write(owner, start)

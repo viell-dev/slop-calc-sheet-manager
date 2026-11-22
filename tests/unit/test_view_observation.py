@@ -6,6 +6,7 @@ how the list pauses observation and follows Calc.
 """
 
 import contextlib
+import enum
 import threading
 import time
 import uuid
@@ -25,6 +26,7 @@ from sheet_manager.structure import VIEW_RESTORE_LIMIT, History, Quiet, Structur
 from tests.unit.source_methods import function, method, source_class
 
 SOURCE = "src/sheet_manager/uno_list.py"
+INTAKE = source_class(SOURCE, "_Intake", {"enum": enum})
 TABS = "src/sheet_manager/uno_tabs.py"
 HOST_METHODS = (
     "input_count",
@@ -903,6 +905,8 @@ def click_list() -> tuple[Any, Any, Any, list[Any]]:
     # The release's read of the count, against what is accounted for (#307).
     owner._unowned = owner._input_seen = owner._accounted = 0
     owner._unclaimed = False
+    owner._intake = INTAKE.CHANGES
+    bind("_unread", {"_Intake": INTAKE})
     owner.context, owner.frame, owner.peer = object(), object(), object()
     owner.dispatch, owner.show_error = Mock(), Mock()
     selected = function(
