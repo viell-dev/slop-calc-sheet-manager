@@ -55,8 +55,11 @@ rows could act on a sheet nobody picked. A refresh writes after its tab baseline
 outside a refresh is retried as a failed refresh is (`RefreshSchedule.failed`). A write that can
 leave only the picks or an empty tree, a repeated write of the one pick the tree shows or a
 clear of a tree that shows nothing, keeps `_shown`, except at a refused release, where the tree
-shows the native release's row (#315). A refresh that loses the identity proof while the tree shows
-a native selection the intake has not taken treats it the same way, with the clearing notice: it
+shows the native release's row (#315). The repeat keeps it only while no change the list did not
+make has been counted since the tree last showed it (`_shown_at`): an accepted release's native
+selection of another row, which a failure there left for the intake, is such a change (#316). A
+refresh that loses the identity proof while the tree shows a native selection the intake has not
+taken treats it the same way, with the clearing notice: it
 was made against rows whose handles no longer prove their sheets. So does a refresh whose new model
 replaced such a selection and that fails before showing it again in full: the picks it superseded
 are dropped, and a queued write clears the rows the tree still shows, as settling does. Until a
@@ -245,16 +248,78 @@ the row by height alone though the engine changed nothing, unless the last accou
 write that overwrote exactly one change; and a Shift or Ctrl+Shift press that the range hold
 refuses (#313, #326): one handled before the write of a Ctrl key with a cursor key that moved the
 cursor or the anchor or was refused, of a plain cursor key or type-ahead's jump, also one that
-moved nothing, or of a refused range press, or whose listener runs after such a key;
-one handled after that write whose listener VCL runs ahead of the hold's posted end; and, once,
-one made after a cursor write failed before it showed the cursor and left the hold on until a
-later write. Still as on `main`, an assistive change made after a key or
-press and before the write it queued is shown over by that write, and a Ctrl+Shift press whose
-listener runs after a refusal accounted adds its range to the emptied picks (#307). The
+moved nothing, or of a refused range press, or whose listener runs after such a key; one handled
+after that write whose listener VCL runs ahead of the hold's posted end; and, once, one made after
+a cursor write failed before it showed the cursor and left the hold on until a later write, or
+after an intake took a selection that a write left in the tree (#307). The
 listener's registration and its removal, beside the other listeners', are the only native calls
-added; the counts are Python state. Each notification crosses into Python, which makes a write
-that changes many rows take about 1.6 times as long: writing 1,000 picks took about 80 ms
-instead of 50 on an idle machine (#294).
+added; the counts are Python state. Each notification crosses into Python, which makes a write that
+changes many rows take about 1.6 times as long: writing 1,000 picks took about 80 ms instead of 50
+on an idle machine (#294).
+
+Newer changes (#307). The count tells a queued write when the tree may show a change newer than the
+input whose picks it shows: an assistive selection made after a key or a press's native handling and
+before that write, which the write overwrote, and a command then acted on the input's picks. A key
+accounts for every change at once, and a press listener, or a plain press's release listener, reads
+the count before any UNO call (`_input_seen`), so a change counted later came after that input; a
+release that selects nothing natively reads none as its own (#329). An input also marks changes
+it saw and did not claim (`_unclaimed`), since they may have come between its native handling and
+its listener: a plain or Shift press's beyond its share, a release's that narrows the picks to the
+pressed row, and a refusal's besides its input's own or a deferred intake's rows. A plain press's
+share is a change for each row of `_shown` and one for its own, a Shift press's one for each row of
+`_shown` and of its range, each counted from `_shown_at`. Each claims what its share covers, also
+what an earlier input left unclaimed, since its native press deselected every row; so does a Ctrl
+toggle whose own change is all that is unaccounted. Only then the write reads the tree (one
+`getSelection` in posted work, `_overtaken`). If the tree shows exactly the picks, it goes ahead.
+
+Otherwise it writes nothing, and one state says what the intake may then make of the tree
+(`_Intake`). It takes the tree only after inputs that left it showing what the list read: keys
+other than Space and Ctrl+Space, which change nothing natively; plain and Ctrl+Shift presses that
+the engine handled, and a Shift press whose changes fit its share; a Ctrl press whose toggle the
+tree shows; a release that narrows the picks, or that nothing was counted with since the press's
+listener. Then the intake takes whatever the tree shows, also the record itself, which an intake
+that takes changes alone would not see as one. Every other input since the tree last showed the
+record left the tree showing otherwise than the list reads it (`_unread`): Space and Ctrl+Space,
+whose toggle the tree shows only at their write; a refused toggle's native change, a held or a
+middle press's, a Ctrl press's that the tree does not show, as a Ctrl+double-click's second, a
+Shift press's beyond its share, which may be a range from another cursor than the list's, as before
+a key's write (#326), the native release of a click released over another row, also one handled
+before the listener of a plain press that kept the picks, which then finds changes unaccounted; a
+change counted between a Shift or Ctrl press's listener and its release's (#329); and a right
+press, whose record may still match the picks for its menu. Then the record is unknown, and the
+intake settles it, dropping the picks with the notice, and a right press's menu targets the pressed
+row alone (`_open_menu`). The intake is
+posted behind every listener queued before the write, so that a queued press's listener acts on its
+own change first, as on `main`, and its write then shows its picks. It takes at once, as a command
+does; a press handled since the write is judged by the count against what it took. A complete write,
+a take and a settled record end the mark and that state, and a plain or Shift key or Ctrl+A, each
+newer than every change it read, ends the mark; a write of no picks only clears and is not checked;
+an open menu is left to the menu; a held press's write is checked, and the intake waits for its
+release. An overtaken write shows no cursor, and the list's cursor and anchor stay where the input
+put them, while the tree's stayed, also when the intake takes the tree: range presses are held from
+that intake, whether it takes or finds another write queued, until a write shows the cursor (#313),
+and the next key moves from the list's cursor, as on `main`.
+
+The costs where `main` acted correctly: an assistive change after an input that the input's picks
+already agree with, such as a row added through accessibility after Ctrl+A, replaces those picks
+with what the tree shows; input judged by the count (Space, a Ctrl key, a press other than a plain
+one) after an overtaken write, which leaves unaccounted the changes that `main`'s write accounted
+for by overwriting them, is refused, as when a second press is handled natively after a key and
+before its write; an overtaken write after an input that the list does not read as the tree shows it
+drops the picks, among them a Shift+click handled before a key's write, Space and Ctrl+Space, so
+that an assistive selection made right after Space is dropped too, and a click on a pick whose
+listener found changes unaccounted, as after its release was handled first, or as a double click's
+second press after an assistive selection made before its listeners; and one range press after an
+overtaken write or a take is refused. Still as on `main` (#323): a refresh that runs
+while a queued write waits reads no waiting selection and writes the picks; a type-ahead picks and
+writes in its own queued work; a write of the list's that lands between a press and its listener,
+a refusal's clearing one included, overwrites an assistive change made after that press, whose
+listener then acts on its press; a command run before the input's write, or while a press is held
+after it, acts on the input's picks; a press or plain release listener that picks nothing still
+reads the count, so a key's write after it shows the key's picks over a change counted before; a
+write of no picks, as after Ctrl+Space unpicks the last pick, clears a newer change with no notice;
+a change counted between a held click's native release and its listener is shown over; and a Shift
+press's share covers a change made after it that fits within it.
 
 Pointer input. A left press picks at once and keeps the pressed sheet's handle. A plain press
 on a picked row keeps the other picks, so that they can be dragged together, unless toggles are
@@ -364,13 +429,18 @@ dragged the key's pick. The gesture reads only Python state for these rules. The
 press whose listener ran before the key's write; one after a refusal or a drop of picks, until
 its write's posted end; one after a Shift+click's listener and before its write, which leaves
 the Shift press's change unaccounted; and one from the second of two presses handled before the
-first one's listener ran, whose own change neither listener's share covers. Still as on `main`,
-a write that holds nothing and lands between the press and the gesture shows the earlier picks
-over the press's row, and the drag carries them: one of a key that leaves the picks as the tree
-shows them and holds no range presses, such as Ctrl+Home on the first row, Shift+End on the last
-or Shift+Up inside the picks, or one of an earlier click whose listeners have run. So does a
-click's write when its listeners ran after the tree handled the press (#329), and a refresh that
-keeps the rows and writes the picks between an earlier click's listener and the gesture (#323).
+first one's listener ran, whose own change neither listener's share covers. A write that holds
+nothing and lands between the press and the gesture, of a key that leaves the picks as the tree
+shows them, such as Ctrl+Home on the first row, Shift+End on the last or Shift+Up inside the
+picks, or of an earlier click, finds the press's change counted after the input it writes for,
+and leaves the tree as it is (Newer changes, #307): the drag carries the pressed sheet, or
+nothing after Space or Ctrl+Space, whose toggle the tree shows only at its write. Toggle and
+range holds outlast such a write until a later write or take shows the picks and the cursor:
+until then a drag between a later press's listener and its write is refused, and a plain press
+while toggles are held picks its row alone. Still as on `main`, a refresh that keeps the rows and
+writes the picks between an earlier click's listener and the gesture writes that click's pick
+over the press's row, and the drag carries it (#323); and a plain press on a row still among the
+picks after an assistive selection replaced them keeps the others for its drag (#334).
 
 Activation. A double click or Enter makes the sheet Calc's only selected tab and reads that back,
 because `setActiveSheet` keeps an existing group when the sheet belongs to it. Activation reads
@@ -455,6 +525,7 @@ and the request takes effect then.
 
 import _thread
 import contextlib
+import enum
 import time
 import uuid
 from collections.abc import Callable, Mapping
@@ -610,6 +681,23 @@ class _Press:
         starts no drag and its release does nothing (#318)."""
         modifiers, clicks = event.Modifiers, event.ClickCount
         return cls(None, modifiers, None, None, generation, voided=True, clicks=clicks)
+
+
+class _Intake(enum.Enum):
+    """What the intake may make of the tree's selection since the tree last showed the record
+    (#307; the module docstring's Newer changes section)."""
+
+    # Every change since then is a native one that the list read as the tree shows it, or one
+    # made without the list, such as through accessibility: the intake takes what differs from
+    # the record, as always.
+    CHANGES = enum.auto()
+    # A queued write left the tree as it is, over picks that it does not show (`_overtaken`):
+    # the intake takes whatever the tree shows, the record itself included.
+    ANY = enum.auto()
+    # An input left the tree showing otherwise than the list reads it, such as a refused
+    # toggle's native change or Space's toggle before its write: a queued write that leaves the
+    # tree as it is leaves the record unknown, and the intake settles it (`_unread`).
+    NONE = enum.auto()
 
 
 @dataclass(frozen=True, eq=False)
@@ -930,10 +1018,18 @@ class SheetList:
     - While `_shown` is still None after the intake, `_current_picks` returns no picks after
       writing them, and `queue_move` refuses: the user saw another selection. A refresh then
       writes the picks after its tab baseline, and `_write_outside_refresh` retries a write
-      outside a refresh (#257). The pointer menu (`_open_menu` without refs) does not check
-      `_shown`: the right press queues a write of the picks, which runs before the release opens
-      the menu, so the menu targets the picks that write showed, or the pressed row. If that
-      write fails partway, the menu still targets the picks, as before #257.
+      outside a refresh (#257). The pointer menu (`_open_menu` without refs) settles nothing:
+      the right press queues a write of the picks, which runs before the release opens the
+      menu, so the menu targets the picks that write showed, or the pressed row. If that write
+      failed partway, or left a newer change in the tree (`_overtaken`, #307), `_shown` is
+      None, and the menu targets the pressed row alone.
+    - The queued write of an input (`_flush_selection`) shows the picks over changes the tree
+      shows that it cannot attribute to that input only if the tree already shows exactly the
+      picks (`_overtaken`, #307): those counted after the latest press or plain release listener
+      read the count (`_input_seen`) or after a key, and those an input saw without claiming them
+      (`_unclaimed`). Otherwise it writes nothing, and the intake posted behind queued listeners
+      takes whatever the tree shows only if every input since the tree last showed the record
+      left it showing what the list read (`_Intake`); else `_shown` is None, and is settled.
     - Toggles (`_toggles_held`, #288): from a drop of picks, or a failed write that leaves
       `_shown` None, until work posted once the tree shows exactly the picks has run, a Ctrl
       press's listener (`mouse_pressed`) and Ctrl+Space (`tree_key`) pick nothing, drop any
@@ -1065,6 +1161,16 @@ class SheetList:
         # changes it overwrote that were unaccounted until then, while no other point has
         # accounted since (`_account_write`, `mouse_pressed`).
         self._erased: tuple[int, int] | None = None
+        # The count when the latest press listener, or a plain press's release listener, read it:
+        # a change counted later came after that input. And whether an input since the tree last
+        # showed the picks found changes it did not claim, which may have come after its own
+        # native handling: a plain or Shift press's beyond its share, a narrowing release's, or a
+        # refusal's besides its input's own. A queued write then shows the picks only if the tree
+        # already shows them, and `_intake` says what the intake may then take (`_overtaken`,
+        # #307).
+        self._input_seen = 0
+        self._unclaimed = False
+        self._intake = _Intake.CHANGES
         # While set, a mouse listener maps its event only to a row that showed the same name in
         # every row list since the hold began: a rebuild may have put another sheet under the
         # pointer since the tree handled the press (#293; `_hold_presses`). `_presses_release` is
@@ -1511,9 +1617,12 @@ class SheetList:
         rows the press selected that the picks lack, so toggles are held too. A Ctrl key that
         leaves the cursor and the anchor on their row holds nothing unless it is refused
         (`tree_key`). A write that fails before it shows the cursor leaves the hold on until a
-        later one does. While the hold waits for that write or for its posted end, `start_drag`
-        starts no drag: the write shows the key's picks over any press made since the key (#304).
-        Each hold is a new token.
+        later one does. A write that left the tree as it was, and so showed no cursor, holds range
+        presses from its intake, whether that takes the tree or finds another write queued
+        (`_take_overtaken`), and so does an intake that takes such a selection itself
+        (`_take_tree_selection`, #307). While the hold waits for a write or for its posted end,
+        `start_drag` starts no drag: the write shows the key's picks over any press made since the
+        key (#304). Each hold is a new token.
         """
         self._ranges_held = object()
 
@@ -1615,21 +1724,53 @@ class SheetList:
         began at `start` and showed the picks over them, and record how many it overwrote (#294).
 
         A write nested in another ends with the outer one's `start`, which the inner end has
-        already accounted for, so the record is made once.
+        already accounted for, so the record is made once. The tree shows the record, so it
+        ends the record that an input left changes unclaimed, and the intake reads the tree as
+        always again: a write of picks showed them over those changes only if the tree already
+        showed them, and a write of none cleared them (`_overtaken`, #307).
         """
         if self._accounted < start:
             self._erased = (start, start - self._accounted)
         self._accounted = self._shown_at = start
+        self._unclaimed = False
+        self._intake = _Intake.CHANGES
 
-    def _account(self, seen: int, *, shown: bool = False) -> None:
+    def _account(self, seen: int, *, shown: bool = False, partial: bool = False) -> None:
         """Account for the changes counted up to `seen` at a point that is not a write: the list
         set the whole selection, or, with `shown`, found the tree showing exactly the picks
         (#294). A write's record of the changes it overwrote goes: this point came after it.
+        With `shown`, the intake reads the tree as always again (`_Intake`, #307).
+
+        With `partial`, the point accounts for an input's own share, or for changes that a
+        refusal's write will show over, but does not set the selection after all of them: a
+        Ctrl+Shift press, a Ctrl press that takes an overwritten change or none, a refusal. A
+        change an earlier input left unclaimed may then still be in the tree, and the record of
+        it stays (#307). A Ctrl press whose own change is all that is unaccounted is not
+        partial: it claims every change counted. Nor is a plain press's share: its native press
+        deselected every row the tree showed, so no change from before it is left there.
         """
         self._accounted = seen
         if shown:
             self._shown_at = seen
+            self._intake = _Intake.CHANGES
         self._erased = None
+        if not partial:
+            self._unclaimed = False
+
+    def _unread(self) -> None:
+        """An input left the tree showing otherwise than the list reads it (#307): a native
+        change that the list reads otherwise, or a toggle that the tree shows only at its write.
+
+        The tree then shows what no intake may take as the user's selection: a queued write that
+        finds a newer change there leaves the record unknown, and the intake settles it
+        (`_Intake.NONE`). If a write already left the tree as it was, for the intake to take
+        what it shows (`_Intake.ANY`), that intake can no longer: the record is unknown at once,
+        as after a failed write, and the next intake settles it. Python state only, so that a
+        listener can say it.
+        """
+        if self._intake is _Intake.ANY:
+            self._shown = None
+        self._intake = _Intake.NONE
 
     def _follow_engine(self, event, hit: bool, add_mode: bool) -> bool:
         """Whether VCL's selection engine changed the selection for this press, which it handled
@@ -1684,14 +1825,23 @@ class SheetList:
         of them, so they are accounted for, as by a key that sets it; one counted since stays
         unaccounted. `waiting` says that some of them were not the input's own, such as a
         selection made through accessibility: the tree may show rows of it, which that write
-        clears too, so the notice tells of it, also before any intake has looked.
+        clears too, so the notice tells of it, also before any intake has looked. Such rows,
+        and those a deferred intake found, may have come after a press still queued behind this
+        one, and its listener may add picks before that write: the write then shows them only
+        if the tree already does (`_unclaimed`, `_overtaken`, #307). Whatever the tree shows
+        then includes the change the refusal could not read, a refused press's own native one or
+        a press's still queued behind a refused key, as one the user toggled off with Ctrl+Space,
+        so no intake takes it (`_unread`).
 
         A right press over such changes is refused here too, though it toggles nothing: its
         write would show the older picks over them for the menu to act on, and the refusal's
         drop, hold and notice are what it needs (#294).
         """
         shown = (deferred is not None and bool(deferred[0])) or waiting
-        self._account(seen)
+        self._account(seen, partial=True)
+        self._unread()
+        if shown:
+            self._unclaimed = True
         if self._selection.picked:
             self._drop_picks(native=shown)
         else:
@@ -1919,7 +2069,12 @@ class SheetList:
         From the first call to the last selection call `_shown` is None, so a failure leaves it
         None: the tree may show part of the write, or none of it, which the intake must not take
         (#257). A repeated write of the one pick the tree shows, and a clear of a tree that
-        shows nothing, keep it: a failure there can leave only that pick or nothing.
+        shows nothing, keep it: a failure there can leave only that pick or nothing. The repeat
+        keeps it only while no change the list did not make has been counted since the tree
+        last showed it (`_shown_at`): after an accepted release, whose native release selected a
+        row itself, the tree shows something else, which a failure left for the intake to take
+        (`_move_tree_cursor`, #316). A refused release marks the record unknown itself before it
+        writes, which also covers the clear (#315).
 
         Its own selection changes are not counted, and a complete write accounts for the changes
         counted before it began (`_OwnWrites`, #294).
@@ -1993,7 +2148,9 @@ class SheetList:
             return False
         if deferred is not None and tuple(names) != deferred:
             self._hold_toggles(keys=False)
-        if tuple(names) != self._shown:
+        # After a write that left the tree as it was, the tree may show the record again, which
+        # the picks are not (`_Intake.ANY`, #307).
+        if tuple(names) != self._shown or self._intake is _Intake.ANY:
             if defer:
                 seen, proof, generation = self._input, self._proven, self._generation
                 order = tuple(self.names())
@@ -2015,6 +2172,13 @@ class SheetList:
                 # Taking it now would apply the same Ctrl toggle again in that listener.
                 self.post(take, "taking native list selection after queued input")
                 return True
+            if self._intake is _Intake.ANY:
+                # The write this take replaces showed no cursor: the list's cursor and anchor
+                # stay where its input put them, and the tree's where they were, so a range press
+                # handled from now on may range from another row than the list's. Range presses
+                # are held until a write shows the cursor (#313). Every listener queued before
+                # that write has run, the listener of a range press that overtook it included.
+                self._hold_ranges()
             self._selection.take(names, self._handles, self.names())
             self._selection.anchor = self._selection.cursor
             self._shown = tuple(names)
@@ -2150,9 +2314,12 @@ class SheetList:
         failure that changed nothing leaves the tree without the picks the user just chose.
         `shown`, given when this row is the only pick, completes the write as soon as `select`
         returns (#257). If the tree already shows exactly `shown`, a failed call can leave only
-        that row or none, neither of them another sheet, so `_shown` stays.
+        that row or none, neither of them another sheet, so `_shown` stays. The tree shows the
+        record only while no change the list did not make has been counted since it last
+        showed it (`_shown_at`): an accepted release's native selection of another row, or an
+        assistive change, would otherwise be left for the intake by a failure here (#316).
         """
-        if shown is None or shown != self._shown:
+        if shown is None or shown != self._shown or self._unowned != self._shown_at:
             self._shown = None
         with _OwnWrites(self) as start:
             model = self.tree.getModel()
@@ -2210,6 +2377,11 @@ class SheetList:
                 self._queue_selection(scroll=True)
                 return
             self._selection.choose(names[current], self._handles, names, toggle=True)
+            # The tree does not show this toggle until the write: a row the user toggled off
+            # still shows selected, and one toggled on does not. If a newer change overtakes
+            # that write, the intake must not take the tree, which would pick the row toggled off
+            # or lose the one toggled on, as for a Ctrl press the tree does not show (#307).
+            self._unread()
         else:
             target = {
                 UP: current - 1,
@@ -2300,6 +2472,11 @@ class SheetList:
             self.post(self._flush_selection, "showing the selection")
 
     def _flush_selection(self) -> None:
+        """The queued write of a click's, key's or refusal's picks (`_queue_selection`).
+
+        It does not show the picks over a change the tree shows that is newer than the input
+        (`_overtaken`, #307).
+        """
         if self._disposed:
             return  # Queued by a click or key; the tree is closed, the monitor maybe too (#285).
         if self._pointer_depth:
@@ -2312,6 +2489,8 @@ class SheetList:
                 # The cursor keeps its row until the refresh, also when its sheet was renamed:
                 # the tree shows it where the next key moves from (#314).
                 self._selection.revalidate(keep_rows=True)
+                if self._overtaken():
+                    return
                 self._show_selection()
                 cursor = self._selection.cursor
                 if self._selection_scroll and cursor is not None and cursor.name in self.names():
@@ -2321,6 +2500,72 @@ class SheetList:
         finally:
             self._selection_write_pending = False
             self._selection_scroll = False
+
+    def _overtaken(self) -> bool:
+        """Whether the queued write must leave the tree as it is, because it may show a change
+        newer than the input whose picks the write would show (#307).
+
+        A selection made through accessibility after a key or a press's native handling, and
+        before the input's queued write, was overwritten by that write, and a command acted on
+        the input's picks. The write cannot attribute changes counted after the latest input
+        read the count (`_input_seen`, or `_accounted`, since a key accounts at once), nor
+        changes an input saw and did not claim (`_unclaimed`). They may be the user's latest
+        selection, or the native part of a press whose listener is still queued, which the
+        count cannot tell apart. Only for them does the write read the tree (`_read_tree`). If
+        it shows exactly the picks, nothing is overwritten and the write goes ahead.
+
+        Otherwise it writes nothing. Where every input since the tree last showed the record
+        left it showing what the list read (`_Intake.CHANGES`), the tree's selection is one the
+        user made: the record stays, and the intake takes whatever the tree shows, also the
+        record itself if a later change brought it back (`_Intake.ANY`). Elsewhere, and while
+        the record is unknown, the record is unknown, and the intake settles it, dropping the
+        picks with the notice. The intake is posted behind every listener already queued, so
+        that a queued press's listener acts on its own change first, as on `main`, and its
+        write then shows its picks; one handled since is judged by the count against what the
+        intake took. The menu decides while it is open, and a write of no picks only clears. An
+        overtaken write shows no cursor, which the intake's take leaves to a later write
+        (`_take_tree_selection`, #313).
+        """
+        if not self._selection.picked or self._menu_context:
+            return False
+        if not self._unclaimed and self._unowned <= max(self._input_seen, self._accounted):
+            return False
+        shown, self._shown = self._shown, None
+        tree = self._read_tree()
+        wanted = {ref.name for ref in self._selection.picked}
+        if tree == [name for name in self.names() if name in wanted]:
+            self._shown = shown
+            return False
+        if shown is not None and self._intake is not _Intake.NONE:
+            self._shown = shown
+            self._intake = _Intake.ANY
+        self.post(self._take_overtaken, "taking the sheet list's newer selection")
+        return True
+
+    def _read_tree(self) -> list[str]:
+        """The tree's selected rows, read in posted work for a queued write (`_overtaken`).
+
+        The caller has made the record unknown, which a failed read leaves so: toggles are held
+        and the refresh's retry is asked for, as after a failed write (`_write_outside_refresh`).
+        """
+        try:
+            return self.selected_names()
+        except BaseException:
+            self._hold_toggles()
+            self._refreshes.failed()
+            raise
+
+    def _take_overtaken(self) -> None:
+        """The intake after an overtaken write (`_overtaken`): it takes the tree's selection, or
+        settles a record left unknown, unless a held press, a queued write or a menu is still to
+        decide (`_take_tree_selection`). It takes at once, as a command does: no take runs inside
+        a mouse listener, and a press handled since that write is judged by the count against
+        what it took. The write showed no cursor, so range presses are held until a later one
+        does, also when another write is queued and nothing is taken here: a range press handled
+        before that write ranges natively from the tree's older cursor (#313)."""
+        if not self._disposed:
+            self._hold_ranges()
+            self._take_tree_selection()
 
     def tree_selection_changed(self) -> None:
         """Count a change of one row's selection, unless the list's own write on this thread made
@@ -2862,6 +3107,9 @@ class SheetList:
         unaccounted = seen - accounted
         add_mode, shown, shown_at = self._add_mode, self._shown, self._shown_at
         ranges = self._ranges_held  # So is a range hold, whose end can run inside (#313).
+        # A change counted after this read came after this press (#307). One run inside a later
+        # UNO call of this listener, for a later press, read a larger count.
+        self._input_seen = max(self._input_seen, seen)
         toggles = self._toggles_held  # And a toggle hold, for a plain press (#304).
         self._input += 1
         self._tabs.note_input()
@@ -2893,6 +3141,9 @@ class SheetList:
         if held:
             row = None
         self._release_presses()  # Also a hold whose post failed before.
+        # Whether the tree shows this press's native handling as the list read it: only then may
+        # the intake take a selection made after it (`_unread`, #307). No other press is known to.
+        read = False
         if event.Buttons & RIGHT:
             self._press = None
             if unaccounted:
@@ -2991,7 +3242,8 @@ class SheetList:
                         # set the user did not see (#294). It is refused as a toggle is. With
                         # nothing unaccounted, the list's own write, intake or a refusal
                         # accounted since the press, and adding a range twice adds it once, so
-                        # the range is added as on `main` (after a refusal, as #307 records).
+                        # the range is added as on `main`. After a refusal that saw changes
+                        # besides its own, the write shows it only if the tree does (#307).
                         # `choose` rebound `picked` to a new list, so `before` is unchanged.
                         self._selection.picked = before
                         self._toggle_held_off(deferred, seen, waiting=True)
@@ -3000,8 +3252,30 @@ class SheetList:
                         self._user_picks = True
                         if keys & MOD1:
                             # The tree shows exactly the picks now: the changes counted so far
-                            # are this press's own (#294).
-                            self._account(seen)
+                            # are this press's own (#294). A toggle whose own change is all that
+                            # was unaccounted claims every change an earlier input left
+                            # unclaimed, as a plain press's listener does when a Ctrl+click
+                            # came before it ran. After a range, a toggle the engine skipped or
+                            # one taking an overwritten change, such a change may still be
+                            # shown with the picks, and the record of it stays (#307).
+                            claimed = keys == MOD1 and 0 < own == unaccounted
+                            self._account(seen, partial=not claimed)
+                        # The tree shows this press as the list read it, unless the tree does not
+                        # show the row a Ctrl press toggled, a Shift press in add mode may have
+                        # added its range to rows the list drops, or the engine skipped a press
+                        # whose listener changed the picks (#307).
+                        read = (
+                            engine
+                            and not (keys == MOD1 and (not own or overwritten))
+                            and not (keys == SHIFT and add_mode)
+                        ) or self._selection.names() == [ref.name for ref in before]
+                        if not keys and unaccounted and name in {ref.name for ref in before}:
+                            # A plain press on a picked row keeps the picks. Changes unaccounted
+                            # when this listener ran may include its native release, handled
+                            # before it, which selected a row itself, at the press or under the
+                            # pointer: the release's listener then counts nothing newer, and the
+                            # list does not read that row (#307).
+                            read = False
                         if keys == MOD1 and (not own or overwritten):
                             # The tree does not show the row this listener toggled: hold
                             # toggles, Space included, until the write shows it (#288).
@@ -3009,8 +3283,7 @@ class SheetList:
                         elif (
                             not keys
                             and engine
-                            and shown is not None
-                            and name not in shown
+                            and (shown is None or name not in shown)
                             and self._selection.names() == [name]
                         ):
                             # A plain press on a row the tree did not select deselected the rows
@@ -3025,9 +3298,36 @@ class SheetList:
                             # press, and the share then covers later changes; telling that write
                             # from one before the press, such as a click's on a selected row,
                             # would need the press's time, which no listener has (#310's reviews).
-                            own_plain = shown_at + len(shown) + 1
-                            self._account(max(self._accounted, min(seen, own_plain)))
+                            # With the record unknown, there is no share to count. The share
+                            # claims what it covers, also what an earlier input left unclaimed,
+                            # which the press deselected (`_account`).
+                            if shown is not None:
+                                own_plain = shown_at + len(shown) + 1
+                                share = max(self._accounted, min(seen, own_plain))
+                                self._account(share)
+                            if seen > self._accounted:
+                                # Changes beyond the share came before the press, which
+                                # superseded them, or after it, as a selection made through
+                                # accessibility before this listener ran: the write tells which
+                                # from the tree (`_overtaken`, #307).
+                                self._unclaimed = True
+                        elif keys == SHIFT and engine and not add_mode and shown is not None:
+                            # A Shift press deselected the rows the tree showed and selected its
+                            # range, which the picks are now (#313): at most one change for each
+                            # row of `_shown` and of the range, counted from `_shown_at`. It
+                            # claims as many, as a plain press's share does. Changes beyond them
+                            # may be a selection made through accessibility before this listener
+                            # ran, or a longer range: the tree ranged from its own cursor, which a
+                            # key may have left elsewhere than the list's anchor before its write
+                            # (#326). Either way the tree is not read, and a write that finds it
+                            # changed drops the picks (`_overtaken`, #307). The count is not
+                            # accounted, so input judged by it still refuses until the write.
+                            own_range = shown_at + len(shown) + len(self._selection.picked)
+                            self._unclaimed = seen > own_range
+                            read = read and not self._unclaimed
                 self._queue_selection()
+        if not read:
+            self._unread()
 
     def press_failed(self, event) -> None:
         """The left press whose listener failed is undecided (`_Mouse.mousePressed`, #318).
@@ -3053,7 +3353,15 @@ class SheetList:
             # A release names only the button released: another button's leaves a held left
             # press, and its gate on native cursor events, in place (#71).
             return
+        # A change counted after this read came after the release, whose own native selection
+        # was counted before it (#307), and after the latest listener's read of the count. Only a
+        # plain press's release can select natively: the release of a Shift, Ctrl or Ctrl+Shift
+        # press, or of none, reads nothing as its own, so a change counted before it, such as a
+        # press handled meanwhile, still leaves the click's write to read the tree (#329).
+        seen, before = self._unowned, self._input_seen
         press, self._press = self._press, None
+        if press is not None and not press.modifiers & (SHIFT | MOD1):
+            self._input_seen = max(before, seen)
         if press is None or press.name is None:
             return
         # Not `check()`: its update needs the solar mutex, which this listener runs without, and
@@ -3105,12 +3413,29 @@ class SheetList:
             return
         row = press.row
         if row is None or press.modifiers & (SHIFT | MOD1):
+            if press.modifiers & (SHIFT | MOD1) and seen > before:
+                # Changed since the press's listener read the count, though this release selects
+                # nothing natively: another press handled meanwhile, a selection made through
+                # accessibility, or a native release that selects after all. The list cannot tell
+                # which, so the intake must not take the tree for it (#307, #329).
+                self._unread()
             self._queue_selection()
             return
         if self.geometry().row_at(event.Y) != row:
+            if seen > before:
+                # Changed since the press's listener read the count: the native release of a press
+                # on a selected row narrows the tree itself, at the press or under the pointer,
+                # which this release does not pick, and a change counted with it may be its own.
+                # The intake must not take a row from that (#307).
+                self._unread()
             self._queue_selection()
             return
         self._selection.choose(press.name, self._handles, self.names())
+        if seen > self._accounted:
+            # The native release narrowed the tree to the pressed row before this listener ran,
+            # and a change made since, such as through accessibility, is counted with it: the
+            # write shows the pressed sheet only if the tree does (`_overtaken`, #307).
+            self._unclaimed = True
         self._queue_selection()
         if press.clicks == 2:
             # Activation reads Calc's tabs, which needs the lock this listener runs without (#269).
@@ -3164,7 +3489,11 @@ class SheetList:
         """Open the sheet tab menu for the list's picks, each checked to be its sheet still.
 
         The menu gets a fresh snapshot whose handles are those sheets; it checks them again
-        when the chosen command runs.
+        when the chosen command runs. A right press's menu targets the picks when it was
+        pressed on one, after its write showed them, and otherwise the pressed row alone. When
+        the record of what the tree shows does not say it shows the picks, after that write
+        failed partway or left a newer change in the tree, it targets the pressed row alone too
+        (`_overtaken`, #257, #307).
         """
         if seen is not None and seen != self._input:
             if self._context_input == seen:
@@ -3179,9 +3508,9 @@ class SheetList:
                 self._context_target = None
                 self._queue_selection()
                 return
-            refs = (
-                list(self._selection.picked) if target.name in self._selection.names() else [target]
-            )
+            names = self._selection.names()
+            shown = self._shown is not None and set(self._shown) == set(names)
+            refs = list(self._selection.picked) if shown and target.name in names else [target]
         if not refs:
             return
         generation, structure, activated = self._generation, self._proven, self._activation_input

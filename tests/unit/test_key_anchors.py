@@ -186,8 +186,10 @@ def test_a_range_click_before_the_ctrl_keys_write_is_refused(modifiers: int) -> 
 def test_a_range_click_before_a_refused_range_clicks_write_is_refused() -> None:
     """Alfa clicked; Ctrl+Down, and a Ctrl+Shift+click on Charlie handled before the key's write,
     which is refused and moves the list's cursor and anchor to Charlie. Before the refusal's write
-    shows that cursor, a Ctrl+Shift+click on Echo ranges natively from the tree's anchor, still
-    on Bravo. It is refused too: the list would have added Charlie to Echo (#313's fuzzing)."""
+    shows that cursor, a Ctrl+Shift+click on Echo ranges natively from the tree's anchor, which is
+    on Alfa, where the first range started: the key's write found that range in the tree and wrote
+    nothing (#307). It is refused too: the list would have added Charlie to Echo (#313's
+    fuzzing)."""
     owner = clicked("Alfa")
     owner.tree_key(DOWN, MOD1)
     queued_click(owner, row("Charlie"), MOD1 | SHIFT)
@@ -197,7 +199,8 @@ def test_a_range_click_before_a_refused_range_clicks_write_is_refused() -> None:
         if where == "a mouse release":
             break
     assert picks(owner) == [] and cursor(owner) == anchor(owner) == "Charlie"
-    assert owner.tree.cursor is not owner.tree.node("Charlie"), "the refusal's write ran"
+    assert any(where == "showing the selection" for _, where in owner.queue), "the write ran"
+    assert owner.tree.anchor is owner.tree.node("Alfa")
     queued_click(owner, row("Echo"), MOD1 | SHIFT)
     owner.run_queue()
     assert "Charlie" not in picks(owner), "a range from the anchor the tree did not have"
