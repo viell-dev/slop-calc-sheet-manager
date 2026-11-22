@@ -171,9 +171,28 @@ def test_a_range_click_before_the_ctrl_keys_write_is_refused(modifiers: int) -> 
     assert picks(owner) == [] and owner.tree.shown() == []
     assert len(owner.notices) == 1
     assert move_to_top(owner) is None
-    queued_click(owner, row("Golf"), MOD1 | SHIFT)  # The write has shown the cursor on Echo.
+    # The refusal moved the cursor and the anchor to Golf, as a refused toggle does, and its
+    # write showed them: a range from there acts.
+    assert cursor(owner) == anchor(owner) == "Golf"
+    queued_click(owner, row("Echo"), MOD1 | SHIFT)
     owner.run_queue()
     assert picks(owner) == ["Echo", "Foxtrot", "Golf"] == owner.tree.shown()
+
+
+def test_a_ctrl_click_behind_a_refused_range_click_does_not_toggle_against_its_range() -> None:
+    """Nothing picked; Ctrl+Down, then a Ctrl+Shift+click on Alfa and a Ctrl+click on Bravo, all
+    before the key's write. The tree adds Alfa from its own cursor and, in its add mode, leaves
+    Bravo unselected. The range press is refused; the Ctrl+click's listener must not then pick
+    Bravo against picks that lack the range the tree showed, as when the refusal held no toggles
+    (#313's fuzzing): toggles are held, as at every refused toggle."""
+    owner = sheet_list(Book(list(NAMES)))
+    owner.tree_key(DOWN, MOD1)
+    queued_click(owner, row("Alfa"), MOD1 | SHIFT)
+    queued_click(owner, row("Bravo"))
+    owner.run_queue()
+    assert "Bravo" not in picks(owner), "the row the user had just deselected"
+    assert picks(owner) == [] and owner.tree.shown() == []
+    assert move_to_top(owner) is None
 
 
 @pytest.mark.parametrize(
@@ -198,7 +217,9 @@ def test_a_range_click_whose_listener_runs_after_ctrl_keys_is_refused(
     owner.run_queue()
     assert "Delta" not in picks(owner), "the range from the anchor that later keys moved"
     assert picks(owner) == [] and owner.tree.shown() == []
-    assert len(owner.notices) == 1
+    # The first Ctrl+Down is refused too, since the press's change waits: each refusal renews the
+    # one notice.
+    assert len(owner.notices) == 2
     assert move_to_top(owner) is None
 
 
