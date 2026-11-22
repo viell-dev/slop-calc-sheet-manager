@@ -75,9 +75,12 @@ If Sheet Manager does not work in an environment where it is expected to, please
   ([#254](https://github.com/viell-dev/slop-calc-sheet-manager/issues/254)).
   A selection made through assistive technology just after a click or key in the list, before
   the list has drawn that input, is replaced by what the input selected. <Unreleased /> The list
-  now keeps that selection. A right click there opens the menu for the clicked sheet alone and
-  then clears the selection, with the selection notice
-  ([#307](https://github.com/viell-dev/slop-calc-sheet-manager/issues/307)).
+  now keeps that selection, or clears it with the selection notice where it cannot tell what was
+  selected, as after a right click there, whose menu opens for the clicked sheet alone
+  ([#307](https://github.com/viell-dev/slop-calc-sheet-manager/issues/307)). A command made
+  before the list has drawn the input, a refresh just then, and typing a sheet's first letters can
+  still act on or show what the input selected
+  ([#323](https://github.com/viell-dev/slop-calc-sheet-manager/issues/323)).
   <Unreleased /> Two clicks or keys in the list made so quickly that the list has not handled the
   first when the second arrives, such as two Ctrl+clicks while LibreOffice is busy, can be
   refused: the list clears its selection, with the selection notice, and you select again

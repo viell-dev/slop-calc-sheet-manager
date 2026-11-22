@@ -9,11 +9,10 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   before the list has shown that input, is no longer replaced by what the input selected. Move to
   Top then moved the click's or key's sheets, though the selection showed last was another. The
   list now keeps that selection, and commands act on it. Where it cannot tell what you selected,
-  when that selection matches what the list showed before or comes with a Ctrl+click the list
-  refused, it clears the selection with the selection notice instead. A right click there opens
-  the menu for the clicked sheet alone and then clears the selection, with the notice. A click on
-  a row just after a key still selects the row clicked, and the list no longer scrolls to the
-  key's selection over it
+  after a Ctrl+click it refused, a Ctrl+double-click, a click held and released over another row,
+  or a right click, it clears the selection with the selection notice instead; the right click's
+  menu opens for the clicked sheet alone. A click on a row just after a key still selects the row
+  clicked, and the list no longer scrolls to the key's selection over it
   ([#307](https://github.com/viell-dev/slop-calc-sheet-manager/issues/307)).
 - A sheet list write that LibreOffice fails after you hold a click on the picked sheet and release
   it over another row no longer leaves that row to be taken as a pick. Move to Top could then move

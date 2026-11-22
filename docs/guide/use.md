@@ -326,14 +326,13 @@ the list redraws or scrolls its rows. Click or drag again ([#299](https://github
 [#295](https://github.com/viell-dev/slop-calc-sheet-manager/issues/295)).
 <Unreleased /> A selection made through assistive technology just after a click or key in the
 list, before the list has shown that input, is not replaced by what the input selected: the list
-keeps that selection, and commands act on it. When that selection matches what the list showed
-before the input, or the list refused a Ctrl+click made with it, the list cannot tell what you
-selected, and clears its selection instead, with the notice; so does a right click there, after
-its menu, which opens for the clicked sheet alone. When the input was Ctrl with an arrow, Home or
-End key, the list has not shown the cursor where the key moved it, so the next Shift+click or
-Ctrl+Shift+click picks nothing and clears the selection, as one made just after such a key does.
-A click on another row just after a key still selects the row clicked, and the list then does not
-scroll to the key's selection
+keeps that selection, and commands act on it. Where the list cannot tell what you selected, after
+a Ctrl+click it refused, a Ctrl+double-click, a click held and released over another row, or a
+right click, it clears its selection instead, with the notice; the right click's menu opens for
+the clicked sheet alone. The list has then not shown its keyboard cursor where the click or key
+moved it, so the next Shift+click or Ctrl+Shift+click picks nothing and clears the selection, as
+one made just after Ctrl with an arrow key does: click again. A click on another row just after a
+key still selects the row clicked, and the list then does not scroll to the key's selection
 ([#307](https://github.com/viell-dev/slop-calc-sheet-manager/issues/307)). When
 LibreOffice fails to show the selection after you hold a click on a selected sheet and release it
 over another row, the list clears the selection too, rather than act on the row you released over
