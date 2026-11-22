@@ -2815,6 +2815,7 @@ class SheetList:
         unaccounted = seen - accounted
         add_mode, shown, shown_at = self._add_mode, self._shown, self._shown_at
         ranges = self._ranges_held  # So is a range hold, whose end can run inside (#313).
+        toggles = self._toggles_held  # And a toggle hold, for a plain press (#304).
         if event.Buttons & LEFT and not event.Buttons & RIGHT:
             # Until this listener decides the press, it is an undecided one, outside the rows and
             # voided, so that a native failure before then leaves no press to act on: the tree
@@ -2937,13 +2938,18 @@ class SheetList:
                         self._hold_ranges()
                 else:
                     before = self._selection.picked
+                    # A plain press on a picked row keeps the other picks, so that they can be
+                    # dragged together, but not while toggles are held: the tree may not have
+                    # shown them when it handled the press, as before a key's write, and then
+                    # selected this row alone, so that a drag would carry sheets the user never
+                    # saw selected (#304). The press picks its row alone then.
                     self._selection.choose(
                         name,
                         self._handles,
                         self.names(),
                         extend=bool(event.Modifiers & SHIFT),
                         toggle=bool(event.Modifiers & MOD1),
-                        preserve=not event.Modifiers & (SHIFT | MOD1),
+                        preserve=not event.Modifiers & (SHIFT | MOD1) and toggles is None,
                     )
                     added = len(set(self._selection.names()) - {ref.name for ref in before})
                     if keys == SHIFT | MOD1 and unaccounted not in (0, added):
@@ -3264,19 +3270,24 @@ class SheetList:
         press, self._press = self._press, None  # A drag is not a click.
         if self._busy or self._drag is not None or self._observed is None:
             return
-        if (
-            self._presses_held is not None
-            or self._ranges_held is not None
-            or self._toggles_held is not None
-        ):
+        if self._presses_held is not None:
             # A rebuild or a scroll may have changed the rows since the tree handled the press,
             # and the press's listener may not have run: a rebuild's write replaced the row the
-            # press selected with the picks, which a drag would carry instead (#295). So did the
-            # write of a key or type-ahead that changed the picks or moved the cursor before the
-            # press, which holds toggles or range presses until work posted once it has shown
-            # them has run (#304). The press's listener decides the press; the gesture starts
-            # nothing.
+            # press selected with the picks, which a drag would carry instead (#295). The press's
+            # listener decides the press, held; the gesture starts nothing.
             return
+        for held, release in (
+            (self._toggles_held, self._toggles_release),
+            (self._ranges_held, self._ranges_release),
+        ):
+            if held is not None and (self._selection_write_pending or release is held):
+                # A key or type-ahead that changed the picks or moved the cursor holds toggles or
+                # range presses until work posted once a write has shown them has run. Until
+                # then its write is queued, and the record holds its picks, or it has shown them
+                # over the selection of a press made since: the drag would carry them (#304).
+                # The press's listener decides the press. Once that write was left undone, for
+                # a newer change of the tree (#307), the intake takes the tree's selection.
+                return
         if press is not None and press.voided:
             # The press's listener failed before it decided the press, whose native selection the
             # list has no record of (#318), or the list dropped every pick while it was held.

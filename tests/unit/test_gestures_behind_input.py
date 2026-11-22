@@ -9,9 +9,11 @@ gesture, and when the press's listener failed before it decided the press: the d
 picks, and a drop moved them. No drag starts then.
 
 - A plain cursor key, a Ctrl key that moves the cursor and type-ahead's jump hold range presses
-  until work posted once a write has shown the cursor has run (#313, #326), and no drag starts
-  while they do, as while presses are held (#295). Nor does one while toggles are held: a key's
-  picks that the tree does not show yet hold them until that write (#288).
+  until work posted once a write has shown the cursor has run (#313, #326), and a key's picks
+  that the tree does not show yet hold toggles until that write (#288). While such a hold waits
+  for its write, or for its posted end, no drag starts, as while presses are held (#295).
+- A plain press handled while toggles are held picks its row alone rather than keep the other
+  picks for a drag: the tree may not have shown them when it handled the press.
 - While a write of the picks is pending, the intake takes nothing, so the gesture would carry the
   record: none starts unless every change of the tree counted so far is accounted for (#294), as
   after the listener of this press when it ran first.
@@ -31,6 +33,7 @@ import pytest
 from tests.unit.list_peer import (
     DOWN,
     HOME,
+    LEFT,
     MOD1,
     SHIFT,
     SPACE,
@@ -39,6 +42,7 @@ from tests.unit.list_peer import (
     bind_drag,
     click,
     key,
+    listen,
     native_press,
     picks,
     queued_click,
@@ -143,6 +147,49 @@ def test_a_drag_across_a_type_aheads_jump_drags_the_pressed_sheet_or_nothing(
         run_until(owner, "type-ahead")
     owner.start_drag(object())
     assert dragged == ([] if jumped else [["Delta"]])
+
+
+def press_keeping(owner: Any, name: str) -> None:
+    """A plain press as VCL's selection engine handles it: on a row the tree shows selected it
+    changes nothing and waits for a drag (`SelectionEngine::SelMouseButtonDown`), and on another
+    row it selects that row alone. Its listener is queued."""
+    node = owner.tree.node(name)
+    if node not in owner.tree.selected:
+        owner.tree.selected = [node]
+    owner.tree.cursor = node
+    event = SimpleNamespace(
+        Buttons=LEFT, X=0, Y=owner.tree.line(row(name)), Modifiers=0, ClickCount=1
+    )
+    owner.post(lambda: listen(owner, owner.mouse_pressed, event), "a mouse press")
+
+
+def test_a_press_before_keys_write_does_not_keep_their_picks_for_a_drag() -> None:
+    """Echo picked; Home and Shift+Down pick Alfa and Bravo, and the user presses Bravo, which the
+    tree, still showing Echo, selects alone, before the keys' write. The press's listener ran
+    after that write, found Bravo picked and kept Alfa for a drag, so a drag recognized once all
+    of it had run carried Alfa, which the tree did not show selected when the user pressed. While
+    toggles are held, the press picks its row alone."""
+    owner, dragged = clicked("Echo")
+    owner.tree_key(HOME, 0)
+    owner.tree_key(DOWN, SHIFT)
+    press_keeping(owner, "Bravo")
+    owner.run_queue()
+    assert picks(owner) == ["Bravo"] == owner.tree.shown()
+    owner.start_drag(object())
+    assert dragged == [["Bravo"]], "dragged Alfa, which the tree did not show selected"
+
+
+def test_a_press_on_a_picked_row_after_the_keys_write_keeps_the_picks_for_a_drag() -> None:
+    """Control: once the keys' write and its hold have ended, a press on a picked row keeps the
+    other picks, and the drag carries them all."""
+    owner, dragged = clicked("Echo")
+    key(owner, HOME)
+    key(owner, DOWN, SHIFT)
+    assert picks(owner) == ["Alfa", "Bravo"] == owner.tree.shown()
+    press_keeping(owner, "Bravo")
+    owner.run_queue()
+    owner.start_drag(object())
+    assert dragged == [["Alfa", "Bravo"]]
 
 
 # An earlier click's listener between the press and the gesture (#304).
