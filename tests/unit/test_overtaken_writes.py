@@ -1151,3 +1151,21 @@ def test_a_row_a_refused_ctrl_space_meant_to_toggle_off_is_not_taken() -> None:
     assert "Charlie" not in picks(owner), "the row the user toggled off"
     assert picks(owner) == [] and owner.tree.shown() == [] and len(owner.notices) > notices
     assert move_to_top(owner) is None
+
+
+def test_a_shift_click_in_add_mode_is_not_taken() -> None:
+    """Alfa clicked, and a Ctrl+Shift+click on Charlie, which starts the engine's add mode. A
+    Shift+click on Echo then, whose native range in add mode the list does not follow, and Golf
+    added through accessibility before its write. The list cannot show that the tree shows the
+    press as it read it, so it does not take the tree: the picks go, with the notice."""
+    owner = fresh()
+    click(owner, row("Alfa"))
+    queued_click(owner, row("Charlie"), MOD1 | SHIFT)
+    owner.run_queue()
+    assert owner._add_mode
+    notices = len(owner.notices)
+    queued_click(owner, row("Echo"), SHIFT)
+    run(owner, 2)  # The Shift+click's listeners; its write is queued.
+    owner.tree.assistive_select("Golf")
+    owner.run_queue()
+    refused(owner, notices)
