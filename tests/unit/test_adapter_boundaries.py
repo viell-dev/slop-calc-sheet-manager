@@ -338,6 +338,7 @@ def test_owned_navigation_accumulates_while_the_ui_queue_is_paused() -> None:
         _accounted=0,
         _hold_toggles=Mock(),  # A key's change holds presses until its write (#291).
         _hold_ranges=Mock(),  # A Ctrl key holds range presses until its write (#313).
+        _unread=Mock(),  # Space's toggle leaves the tree to no intake until its write (#307).
         _handles=handles,
         _page_rows=3,
         _selection_write_pending=False,
