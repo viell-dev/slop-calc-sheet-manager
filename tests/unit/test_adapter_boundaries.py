@@ -530,6 +530,8 @@ def test_a_refused_release_writes_a_picked_cursor_and_keeps_the_lists_own(
             voided=voided,
         ),
         _monitor=SimpleNamespace(generation=0),  # No `check()` in the listener (#284).
+        _unowned=0,  # The release reads the count, and nothing else of it (#307).
+        _input_seen=0,
         _pressed_sheet_in_place=Mock(return_value=False),
         _selection=selection,
         names=lambda: rows,

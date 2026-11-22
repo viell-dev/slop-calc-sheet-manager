@@ -102,7 +102,8 @@ def right_press(owner: Any, name: str) -> list[str]:
     press(owner, row(name), RIGHT)
     owner.run_queue()
     target = owner._context_target
-    targets = picks(owner) if target.name in picks(owner) else [target.name]
+    shown = owner._shown is not None and target.name in picks(owner)  # As `_open_menu` (#307).
+    targets = picks(owner) if shown else [target.name]
     owner._context_target = None
     owner._show_selection()
     owner.run_queue()

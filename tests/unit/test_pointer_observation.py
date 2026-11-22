@@ -46,6 +46,8 @@ def native_picks() -> tuple[Any, Any, list[Callable[[], None]]]:
         _shown_at=0,
         _quiet=None,
         _erased=None,
+        _input_seen=0,  # The press reads the count (#307),
+        _unclaimed=False,  # and no input left a change unclaimed.
         _add_mode=False,
         _hold_toggles=Mock(),
         _presses_held=None,
@@ -71,8 +73,8 @@ def native_picks() -> tuple[Any, Any, list[Callable[[], None]]]:
     owner._toggle_held = toggle_held
     account = method(SOURCE, "SheetList", "_account", {})
 
-    def account_native(seen: int, *, shown: bool = False) -> None:
-        account(owner, seen, shown=shown)
+    def account_native(seen: int, *, shown: bool = False, partial: bool = False) -> None:
+        account(owner, seen, shown=shown, partial=partial)
 
     owner._account = account_native
     engine = method(

@@ -131,6 +131,8 @@ METHODS = (
     "tree_key",
     "_queue_selection",
     "_flush_selection",
+    "_overtaken",  # From #307 on, as is the next.
+    "_settle_overtaken",
     "cursor_changed",
     "tree_selection_changed",
     "type_ahead",
@@ -769,6 +771,8 @@ def sheet_list(book: Book, source: str = SOURCE) -> Any:
         _shown_at=0,
         _quiet=None,
         _erased=None,
+        _input_seen=0,
+        _unclaimed=False,
         _add_mode=False,
         _presses_held=None,
         _presses_release=None,
