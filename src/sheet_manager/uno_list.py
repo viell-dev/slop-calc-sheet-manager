@@ -173,75 +173,75 @@ refresh that shows a waiting selection again restores the counts from before it
 the engine's add mode and the plain share need, once, before any UNO call.
 
 VCL's selection engine handles a press of any button but the right one before its listener runs
-(`SelectionEngine::SelMouseButtonDown`, `SvImpLBox::MouseButtonDown`, read in 26.8.2.2; add mode
-and the click counts measured with real input on gtk3 and gen, #294). It changes nothing for a
-click count above 1, as for a double or triple click's later presses, with Alt, or off a row. A
-Ctrl press toggles its row, except in add mode, which a Ctrl+Shift press starts and a plain or a
-Shift press ends, of any button but the right one: there a Ctrl press on an unselected row only
-moves the cursor. A Ctrl+Shift press adds the rows from the tree's own anchor that it did not
-show, and removes none, and a right press changes nothing. The listener follows add mode from
-the presses it handles, in the order they came (`_follow_engine`), and judges a row unselected
-by the picks. So a Ctrl press whose own share is one change toggles only when that is all that
-is unaccounted, and then accounts for it; one whose share is none toggles only when nothing is,
-and holds toggles, Space included, until its write, since the tree did not toggle the row. So
-does one whose share is one when nothing is unaccounted and the last accounting point is a
-complete write or a rebuild's model that overwrote exactly one change: that change was this
-press's own, which the write erased, as when VCL runs a plain click's listener before it handles
-the next press and that listener's write lands between the press and its listener (#44). Any
-other accounting point since, such as a take, a key that sets the selection or a refusal, clears
-that record, and a write that overwrote more records more than one change: the press is then
-refused, since a take includes its toggle, which the listener would toggle again. A Ctrl+Shift
-press adds its range only when as many rows as it adds to the picks are unaccounted, or none
-are, as after the list's own write, intake or refusal accounted since the press; a range added
-twice is added once. That compares counts, not rows, so it relies on the list's anchor being the
-tree's. The list's writes leave the tree no anchor, and the tree makes one at its cursor, the
-list's, for its next range (`SvImpLBox::SelAllDestrAnch`, `ImpLBSelEng::CreateAnchor`, read in
-26.8.2.2). A plain or Ctrl press, Ctrl+Space and a plain key set the list's anchor at the
-cursor, a Shift range keeps it at its start with every row up to the cursor picked, which the
-tree's range from the cursor adds to alike, and a Ctrl key with a cursor key moves the anchor to
-the cursor, as VCL's own handling of that key drops its anchor (#313). They can still differ
-where the cursor moves alone otherwise: when a refresh drops the cursor's sheet and the write
-puts the cursor on the first pick, or when the tree moves its cursor without the list outside a
-press, as assistive technology might. A range from the other anchor that happens to add as many
-rows is then added as on `main`. A press that the tree handles before a key's write extends from
-the cursor the tree showed then, and the list from where the keys put it. That write shows the
-list's picks over the tree's range, so nothing is unaccounted when the listener runs, and it adds
-the range that the input gives, as for a press behind any key. A plain press on a row the record
-does not show leaves the tree showing that row alone, which takes at least one change for each
-row of `_shown` and one for its own, counted from when the tree showed `_shown` (`_shown_at`); its
-listener accounts for up to that many, so that a Ctrl press handled before that listener ran, as
-when the user clicks ahead while LibreOffice is busy, still sees its own change alone (#44). A
-write that lands between the press and its listener moves `_shown_at` past the press, and the
-share then covers changes made after that write; a drag from a row the tree selected without the
-record leaves the selection as it was, and the share can cover one change made after it. Either
-way a listener queued behind it can take a later change for its own and act as on `main`. The
-list cannot tell such a write from one before the press, as after a click on a selected row,
-whose release deselects and selects it again natively: skipping the share after every write that
-overwrote changes refused #44's real-input sequence on gtk3. Space, a cursor key with Ctrl
-and a right press act only when nothing is unaccounted. Otherwise each is refused as a held
-toggle is (`_toggle_held_off`): the picks go, with the notice, the cursor moves, and a right
-press's menu targets its row alone. Plain and Shift presses and the other keys set the picks as
-before.
+(`SelectionEngine::SelMouseButtonDown`, `SvImpLBox::MouseButtonDown`, read in 26.8.2.2; add mode and
+the click counts measured with real input on gtk3 and gen, #294). It changes nothing for a click
+count above 1, as for a double or triple click's later presses, with Alt, or off a row. A Ctrl press
+toggles its row, except in add mode, which a Ctrl+Shift press starts and a plain or a Shift press
+ends, of any button but the right one: there a Ctrl press on an unselected row only moves the
+cursor. A Ctrl+Shift press adds the rows from the tree's own anchor that it did not show, and
+removes none, and a right press changes nothing. The listener follows add mode from the presses it
+handles, in the order they came (`_follow_engine`), and judges a row unselected by the picks. So a
+Ctrl press whose own share is one change toggles only when that is all that is unaccounted, and then
+accounts for it; one whose share is none toggles only when nothing is, and holds toggles, Space
+included, until its write, since the tree did not toggle the row. So does one whose share is one
+when nothing is unaccounted and the last accounting point is a complete write or a rebuild's model
+that overwrote exactly one change: that change was this press's own, which the write erased, as when
+VCL runs a plain click's listener before it handles the next press and that listener's write lands
+between the press and its listener (#44). Any other accounting point since, such as a take, a key
+that sets the selection or a refusal, clears that record, and a write that overwrote more records
+more than one change: the press is then refused, since a take includes its toggle, which the
+listener would toggle again. A Ctrl+Shift press adds its range only when as many rows as it adds to
+the picks are unaccounted, or none are, as after the list's own write, intake or refusal accounted
+since the press; a range added twice is added once. That compares counts, not rows, so it relies on
+the list's anchor being the tree's. The list's writes leave the tree no anchor, and the tree makes
+one at its cursor, the list's, for its next range (`SvImpLBox::SelAllDestrAnch`,
+`ImpLBSelEng::CreateAnchor`, read in 26.8.2.2). A plain or Ctrl press, Ctrl+Space and a plain key
+set the list's anchor at the cursor, a Shift range keeps it at its start with every row up to the
+cursor picked, which the tree's range from the cursor adds to alike, and a Ctrl key with a cursor
+key moves the anchor to the cursor, as VCL's own handling of that key drops its anchor (#313). They
+can still differ where the cursor moves alone otherwise: when a refresh drops the cursor's sheet and
+the write puts the cursor on the first pick, or when the tree moves its cursor without the list
+outside a press, as assistive technology might. A range from the other anchor that happens to add as
+many rows is then added as on `main`, and otherwise the press is refused (#321). A Shift or
+Ctrl+Shift press that the tree handles before such a key's write, or whose listener runs after the
+key although it was pressed before, ranges natively from the cursor the tree showed then, while the
+list would range from the anchor the key moved: the key holds range presses until a write has shown
+the cursor (`_hold_ranges`), and the listener of each that runs held counts its press as one outside
+the rows (Rows under the pointer). A plain press on a row the record does not show leaves the tree
+showing that row alone, which takes at least one change for each row of `_shown` and one for its
+own, counted from when the tree showed `_shown` (`_shown_at`); its listener accounts for up to that
+many, so that a Ctrl press handled before that listener ran, as when the user clicks ahead while
+LibreOffice is busy, still sees its own change alone (#44). A write that lands between the press and
+its listener moves `_shown_at` past the press, and the share then covers changes made after that
+write; a drag from a row the tree selected without the record leaves the selection as it was, and
+the share can cover one change made after it. Either way a listener queued behind it can take a
+later change for its own and act as on `main`. The list cannot tell such a write from one before the
+press, as after a click on a selected row, whose release deselects and selects it again natively:
+skipping the share after every write that overwrote changes refused #44's real-input sequence on
+gtk3. Space, a cursor key with Ctrl and a right press act only when nothing is unaccounted.
+Otherwise each is refused as a held toggle is (`_toggle_held_off`): the picks go, with the notice,
+the cursor moves, and a right press's menu targets its row alone. Plain and Shift presses and the
+other keys set the picks as before.
 
 Each refusal is one where `main` may have acted correctly: a take of the list's between a Ctrl
-press's native handling and its listener, or a write or rebuild there that overwrote other
-changes too; two presses other than a plain one, or a press and an assistive change, handled
-natively before the first listener, and a plain press and a Ctrl press so handled when a write
-of the list's lands between the plain press and its listener, which then accounts for the Ctrl
-press's change; a key that sets the selection,
-or Ctrl+A, between a Ctrl press and its listener, also when it leaves the picks as they were;
-Space, a Ctrl key or a right press after a press's or release's native change and before the
-list's write that follows it, or after a write that failed partway; an assistive deselection
-and reselection that cancel out, until two tab samples have found the tree showing the picks; a
-Ctrl press in the few pixels left of a row's native hit area, which `RowGeometry.row_at` maps to
-the row by height alone though the engine changed nothing, unless the last accounting point is a
-write that overwrote exactly one change. Still as on `main`, an assistive change made after a key or
-press and before the write it queued is shown over by that write, and a Ctrl+Shift press whose
-listener runs after a refusal accounted adds its range to the emptied picks (#307). The
-listener's registration and its removal, beside the other listeners', are the only native calls
-added; the counts are Python state. Each notification crosses into Python, which makes a write
-that changes many rows take about 1.6 times as long: writing 1,000 picks took about 80 ms
-instead of 50 on an idle machine (#294).
+press's native handling and its listener, or a write or rebuild there that overwrote other changes
+too; two presses other than a plain one, or a press and an assistive change, handled natively before
+the first listener, and a plain press and a Ctrl press so handled when a write of the list's lands
+between the plain press and its listener, which then accounts for the Ctrl press's change; a key
+that sets the selection, or Ctrl+A, between a Ctrl press and its listener, also when it leaves the
+picks as they were; Space, a Ctrl key or a right press after a press's or release's native change
+and before the list's write that follows it, or after a write that failed partway; an assistive
+deselection and reselection that cancel out, until two tab samples have found the tree showing the
+picks; a Ctrl press in the few pixels left of a row's native hit area, which `RowGeometry.row_at`
+maps to the row by height alone though the engine changed nothing, unless the last accounting point
+is a write that overwrote exactly one change; and a Shift or Ctrl+Shift press handled before the
+write of a Ctrl key with a cursor key, or whose listener runs after such a key, which the range hold
+refuses (#313). Still as on `main`, an assistive change made after a key or press and before the
+write it queued is shown over by that write, and a Ctrl+Shift press whose listener runs after a
+refusal accounted adds its range to the emptied picks (#307). The listener's registration and its
+removal, beside the other listeners', are the only native calls added; the counts are Python state.
+Each notification crosses into Python, which makes a write that changes many rows take about 1.6
+times as long: writing 1,000 picks took about 80 ms instead of 50 on an idle machine (#294).
 
 Pointer input. A left press picks at once and keeps the pressed sheet's handle. A plain press
 on a picked row keeps the other picks, so that they can be dragged together; its release in the
@@ -973,6 +973,11 @@ class SheetList:
         self._toggles_held: object | None = None
         self._toggles_release: object | None = None
         self._toggles_keys = True
+        # While set, a Shift or Ctrl+Shift press picks nothing: a Ctrl key moved the range anchor
+        # with the cursor, and the press may have been handled before the tree showed that
+        # cursor (#313; `_hold_ranges`). `_ranges_release` is the hold whose end is posted.
+        self._ranges_held: object | None = None
+        self._ranges_release: object | None = None
         # The tree's selected rows and the rows' order when the queued intake last deferred a
         # native selection, until that intake runs, or a drop or a refused toggle, after which
         # it takes nothing, ends the record (#291; `_take_tree_selection`, `_toggle_held_off`).
@@ -1431,6 +1436,32 @@ class SheetList:
 
         self.post(release, "accepting toggles again")
 
+    def _hold_ranges(self) -> None:
+        """Hold range presses until work posted once a write has shown the cursor has run (#313).
+
+        A Ctrl key moves the list's range anchor with the cursor. The tree makes its next anchor
+        at its own cursor, which shows the key's only once the key's write has run: a Shift or
+        Ctrl+Shift press handled before then, also one made before the key whose listener runs
+        after it, ranges natively from the older cursor, and the list from the newer. By the
+        queue order that toggles rely on (`_hold_toggles`), every such listener runs held, and
+        `mouse_pressed` counts its press as one outside the rows. Each hold is a new token.
+        """
+        self._ranges_held = object()
+
+    def _ranges_shown(self) -> None:
+        """The tree shows the list's cursor, as the list just wrote it: post the end of a range
+        hold, to run after every listener already queued (`_hold_ranges`)."""
+        held = self._ranges_held
+        if held is None or self._ranges_release is held:
+            return
+        self._ranges_release = held
+
+        def release() -> None:
+            if self._ranges_held is held:
+                self._ranges_held = None
+
+        self.post(release, "accepting ranges again")
+
     def _hold_presses(self, names: tuple[str | None, ...]) -> None:
         """Hold presses: a rebuild or a scroll may show another sheet in a row the user pressed.
 
@@ -1842,6 +1873,7 @@ class SheetList:
                 self._shown = ()
                 self._account_write(start)
                 self._toggles_shown()
+                self._ranges_shown()  # The list has no cursor left for the tree to show (#313).
                 return
             only = shown == (cursor.name,)  # Selecting the cursor's row then shows every pick.
             self._move_tree_cursor(
@@ -2058,6 +2090,7 @@ class SheetList:
             model.SelectionType = SINGLE
             try:
                 self.tree.select(self._nodes[index])
+                self._ranges_shown()  # The tree's cursor, where its next range starts (#313).
                 if shown is not None:
                     self._shown = shown
                     self._account_write(start)  # The write is complete (#294).
@@ -2127,9 +2160,11 @@ class SheetList:
                 # the older picks over that selection, or add to them, for a command to act on
                 # (#291, #294). As Ctrl+Space does, it drops any picks, holds toggles and asks
                 # for the write; the cursor moves, and the anchor with it, as at a refused press:
-                # the write leaves the tree no anchor, so its next range starts there (#313).
+                # the write leaves the tree no anchor, so its next range starts there. Range
+                # presses are held until the write shows the cursor (#313).
                 self._toggle_held_off(deferred, seen, waiting=waiting)
                 self._selection.cursor = self._selection.anchor = self._ref(name)
+                self._hold_ranges()
                 self._queue_selection(scroll=True)
                 return
             if modifiers & MOD1 and not modifiers & SHIFT:
@@ -2140,7 +2175,10 @@ class SheetList:
                 # next Shift or Ctrl+Shift press (`SvImpLBox::SelAllDestrAnch`,
                 # `ImpLBSelEng::CreateAnchor`, read in 26.8.2.2). With the anchor left behind, a
                 # Ctrl+Shift+click added another range to the picks than the tree showed (#313).
+                # Until the write shows the cursor, the tree still ranges from the older one, so
+                # range presses handled before it are held (`_hold_ranges`).
                 self._selection.cursor = self._selection.anchor = self._ref(name)
+                self._hold_ranges()
             else:
                 self._selection.choose(
                     name,
@@ -2732,6 +2770,7 @@ class SheetList:
         seen, accounted, erased = self._unowned, self._accounted, self._erased
         unaccounted = seen - accounted
         add_mode, shown, shown_at = self._add_mode, self._shown, self._shown_at
+        ranges = self._ranges_held  # So is a range hold, whose end can run inside (#313).
         self._input += 1
         self._tabs.note_input()
         self.claim_window()
@@ -2758,6 +2797,13 @@ class SheetList:
                 or row >= len(hold.names)
                 or hold.names[row] != self.rows[row].name
             )
+        )
+        # A Shift or Ctrl+Shift press that the tree handled before a Ctrl key's write showed the
+        # cursor ranged from the cursor the tree showed then, not from the anchor the key moved
+        # since; so does one made before the key whose listener runs after it. It counts as a
+        # press outside the rows too (#313). A right press changes no selection natively.
+        held = held or (
+            ranges is not None and bool(event.Modifiers & SHIFT) and not event.Buttons & RIGHT
         )
         if held:
             row = None

@@ -10,7 +10,9 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   where the selection had started instead: the click was refused and cleared the selection, or,
   when both ranges had as many rows, the list replaced the range it had shown with the other, and
   Move to Top then moved sheets you had not selected. A Shift or Ctrl+Shift range made by key or
-  click after such keys also starts at the cursor now
+  click after such keys also starts at the cursor now. A Shift+click or Ctrl+Shift+click made so
+  quickly after such a key that the list has not shown the cursor there yet picks nothing and
+  clears the selection, since LibreOffice's list still ranges from the earlier cursor then
   ([#313](https://github.com/viell-dev/slop-calc-sheet-manager/issues/313)).
 - A key pressed just after another window renamed the sheet under the keyboard cursor, before the
   list showed the new name, no longer moves from the first row of the list: Down selected the
