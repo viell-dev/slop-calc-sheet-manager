@@ -243,14 +243,17 @@ to the list. While the list has focus:
 
 The four move shortcuts apply while the list has focus, without changing Calc's shortcut
 configuration. In a cell, Alt+Down retains Calc's Data Select command.
-Ctrl+Shift with navigation adds a range to the existing selection. <Unreleased /> After Ctrl with
-an arrow, Home or End key moves the keyboard cursor, a range made with Shift or Ctrl+Shift, by
-key or by click, starts at the cursor, where the list shows it. A Shift+click or
-Ctrl+Shift+click made so quickly after such a key that the list has not shown the cursor there
-yet picks nothing and clears the selection: click again
-([#313](https://github.com/viell-dev/slop-calc-sheet-manager/issues/313)). <Unreleased /> When
-another window renames the sheet under the keyboard cursor, keys keep moving from that row until
-the list shows the new name, and they do not select the renamed sheet until then
+Ctrl+Shift with navigation adds a range to the existing selection.
+
+**Ranges after Ctrl keys.** <Unreleased /> After Ctrl with an arrow, Home or End key moves the
+keyboard cursor, a range made with Shift or Ctrl+Shift, by key or by click, starts at the cursor,
+where the list shows it. A Shift+click or Ctrl+Shift+click made so quickly after such a key that
+the list has not shown the cursor there yet picks nothing and clears the selection: click again
+([#313](https://github.com/viell-dev/slop-calc-sheet-manager/issues/313)).
+
+**A renamed cursor row.** <Unreleased /> When another window renames the sheet under the keyboard
+cursor, keys keep moving from that row until the list shows the new name, and they do not select
+the renamed sheet until then
 ([#314](https://github.com/viell-dev/slop-calc-sheet-manager/issues/314)).
 
 **Move-button shortcuts.** <Unreleased since="0.0.4" /> Move shortcuts also apply while a move
