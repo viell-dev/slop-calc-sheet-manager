@@ -39,7 +39,13 @@ relies on from Calc and the tree control:
   measured on #294.
 
 Posted work runs on `run_queue`, and a failure there ends only that work and is recorded, as
-LibreOffice's callback reports it. `queued_click` posts a click's mouse listeners there too, after
+LibreOffice's callback reports it. The mouse handlers run through the list's own mouse listener,
+`_Mouse`, which is loaded from the source with its guard, `_guarded` (`listen`): a failure inside a
+handler ends only that handler and is recorded in the same place, under the listener's name, and
+the listener still queues the selection write as it returns, as in LibreOffice (#312). Both
+record only a simulated native failure; any other exception is a defect of the list or of a test,
+which LibreOffice would report too, and it is raised. `queued_click` posts a click's mouse
+listeners there too, after
 the tree has handled the press and behind all the work already posted, the latest place VCL gives
 them (#269), so that work posted earlier, such as a refresh or the tab sample, runs between the
 native press and the list's listener (#85, #288). `bind_drag` binds the real `start_drag`, with
@@ -56,6 +62,7 @@ The native checks are in `tests/integration` and `tests/ui`.
 import _thread
 import ast
 import functools
+import sys
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
@@ -646,6 +653,14 @@ def _draw_nothing(rows: object, geometry: object, picked: object) -> None:
     """`RowPaint.draw`: the peer draws nothing."""
 
 
+class _UnoBase:
+    """`unohelper.Base`, which the list's listeners derive from."""
+
+
+class _MouseListener:
+    """`XMouseListener`, which `_Mouse` implements."""
+
+
 def sheet_list(book: Book, source: str = SOURCE) -> Any:
     """A list over `book` with the real methods of `source` bound, after its first refresh."""
     faults = Faults()
@@ -832,6 +847,24 @@ def sheet_list(book: Book, source: str = SOURCE) -> Any:
         return ran
 
     owner.post, owner.run_queue, owner.retry = post, run_queue, retry
+
+    def contain(where: str) -> None:
+        """`report` as the listener guard calls it, while it handles a handler's failure: a
+        simulated native failure is recorded where `run_queue` records one, and anything else
+        is raised again."""
+        failure = sys.exception()
+        if isinstance(failure, NativeFailure):
+            owner.failures.append(where)
+        elif failure is not None:
+            raise failure
+
+    guarded = _load(source, others["_guarded"], {"report": contain})
+    listener = {
+        "unohelper": SimpleNamespace(Base=_UnoBase),
+        "XMouseListener": _MouseListener,
+        "_guarded": guarded,
+    }
+    owner.mouse = _load(source, others["_Mouse"], listener)(owner)  # `_listeners["mouse"]`.
     owner.namespace = namespace  # The methods' globals, for a sequence that binds its own.
     for name in METHODS:
         if name in methods:  # A method another revision lacks stays unbound.
@@ -864,15 +897,16 @@ def key(owner: Any, code: int, modifiers: int = 0) -> None:
     owner.run_queue()
 
 
+# The name each mouse handler's failure is reported under, as `_Mouse` passes it to `_handle`.
+LISTENERS = {"mouse_pressed": "a mouse press", "mouse_released": "a mouse release"}
+
+
 def listen(owner: Any, handler: Callable[[Any], None], event: Any) -> None:
-    """Run a mouse handler as the list's mouse listener does (`_Mouse._handle`)."""
-    owner._pointer_depth += 1
-    try:
-        handler(event)
-    finally:
-        owner._pointer_depth -= 1
-        if not owner._pointer_depth:
-            owner._queue_selection()
+    """Run a mouse handler through the list's own mouse listener (`_Mouse._handle`), as
+    LibreOffice calls it: inside the pointer depth, guarded, and queueing the selection write as
+    it returns. A native failure in the handler ends only the handler and is recorded once in
+    `failures`, under the listener's name; the call returns."""
+    owner.mouse._handle(LISTENERS[handler.__name__], handler, event)
 
 
 def press(owner: Any, row: int, button: int = LEFT, modifiers: int = 0) -> None:
