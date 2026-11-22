@@ -584,20 +584,22 @@ def test_ctrl_keys_to_a_waiting_row_and_ctrl_space_do_not_pick_it() -> None:
 
 def test_ctrl_space_after_a_click_refused_behind_a_key_does_not_pick_the_deselected_row() -> None:
     """The same without assistive technology: Alfa picked, and Shift+Down picks Alfa and Bravo;
-    a Ctrl+click on Delta is handled natively before that write, so its listener, run after the
-    write, is held and drops both picks, while the tree shows Alfa and Bravo until the refusal's
-    own write. Ctrl+Up twice moves the cursor to Bravo and lowered the hold; Ctrl+Space, meant to
-    deselect Bravo, picked it, and Move to Top moved it."""
+    a Ctrl+click adds Bravo in the tree before that write, so the tree shows the picks and the
+    write runs. The click's listener, run after the write, is held and drops both picks, while
+    the tree shows Alfa and Bravo until the refusal's own write. (A Ctrl+click on another row
+    there leaves the write to the intake, #307.) Ctrl+Up and Ctrl+Down bring the cursor back to
+    Bravo and lowered the hold; Ctrl+Space, meant to deselect Bravo, picked it, and Move to Top
+    moved it."""
     owner = sheet_list(Book(list(NAMES)))
     click(owner, row("Alfa"))
     owner.tree_key(DOWN, SHIFT)
-    queued_click(owner, row("Delta"))
+    queued_click(owner, row("Bravo"))
     for _ in range(3):  # The key's write, then the click's two listeners.
         work, _where = owner.queue.pop(0)
         work()
     assert picks(owner) == [] and owner.tree.shown() == ["Alfa", "Bravo"]
     owner.tree_key(UP, MOD1)
-    owner.tree_key(UP, MOD1)
+    owner.tree_key(DOWN, MOD1)
     assert cursor(owner) == "Bravo"
     owner.tree_key(SPACE, MOD1)
     owner.run_queue()
