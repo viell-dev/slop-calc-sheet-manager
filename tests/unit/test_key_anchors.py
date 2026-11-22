@@ -245,6 +245,89 @@ def test_a_range_click_whose_listener_runs_after_ctrl_keys_is_refused(
     assert move_to_top(owner) is None
 
 
+def test_a_range_click_before_a_refused_ctrl_keys_write_is_refused() -> None:
+    """Alfa picked and Hotel selected through accessibility, so Ctrl+Down is refused: the picks go,
+    and the cursor and the anchor move to Bravo. A Shift+click on Echo before the refusal's write
+    ranges natively from the tree's cursor, still on Alfa. It is refused too; without the hold the
+    list picked Bravo to Echo, which the tree never showed (#325's review)."""
+    owner = clicked("Alfa")
+    owner.tree.assistive_select("Hotel")
+    owner.tree_key(DOWN, MOD1)
+    assert cursor(owner) == anchor(owner) == "Bravo"
+    queued_click(owner, row("Echo"), SHIFT)
+    owner.run_queue()
+    assert "Bravo" not in picks(owner), "a range from the anchor the tree did not have"
+    assert picks(owner) == [] and owner.tree.shown() == []
+    assert move_to_top(owner) is None
+
+
+def test_a_range_click_behind_a_ctrl_shift_click_the_count_refuses_is_refused() -> None:
+    """Alfa clicked; a Ctrl+Shift+click on Charlie, Hotel selected through accessibility, and a
+    Shift+click on Echo, all before the listeners. The count refuses the Ctrl+Shift press, which
+    moves the cursor and the anchor to Charlie before its write shows them, while the Shift press
+    ranged natively from the tree's anchor on Alfa. It is refused too; without the hold the list
+    picked Charlie to Echo (#325's review)."""
+    owner = clicked("Alfa")
+    queued_click(owner, row("Charlie"), MOD1 | SHIFT)
+    owner.tree.assistive_select("Hotel")
+    queued_click(owner, row("Echo"), SHIFT)
+    owner.run_queue()
+    assert "Charlie" not in picks(owner), "a range from the anchor the tree did not have"
+    assert picks(owner) == [] and owner.tree.shown() == []
+    assert move_to_top(owner) is None
+
+
+def test_a_write_without_a_cursor_ends_the_range_hold() -> None:
+    """Alfa clicked; Ctrl+Down, and a sheet inserted before the key's write. The refresh that write
+    asks for cannot prove the sheets, so it drops the picks and the cursor, and its write shows no
+    cursor: that write ends the hold, and a later Shift+click acts. Without it the hold stayed, and
+    the next range click was refused, however late (#325's review)."""
+    owner = clicked("Alfa")
+    owner.tree_key(DOWN, MOD1)
+    owner.book.insert("India", 3)
+    owner.run_queue()
+    assert cursor(owner) is None and owner._ranges_held is None
+    queued_click(owner, row("Charlie"), SHIFT)
+    owner.run_queue()
+    assert picks(owner) == ["Charlie"] == owner.tree.shown()
+
+
+@pytest.mark.parametrize(
+    "start,code,end",
+    [
+        pytest.param("Alfa", HOME, "Charlie", id="ctrl-home-on-the-first-row"),
+        pytest.param("Alfa", UP, "Charlie", id="ctrl-up-on-the-first-row"),
+        pytest.param("Hotel", END, "Foxtrot", id="ctrl-end-on-the-last-row"),
+        pytest.param("Hotel", DOWN, "Foxtrot", id="ctrl-down-on-the-last-row"),
+    ],
+)
+def test_a_ctrl_key_that_moves_nothing_holds_no_range_press(
+    start: str, code: int, end: str
+) -> None:
+    """A Ctrl key that leaves the cursor and the anchor on their row, then a Shift+click before
+    the key's write: the tree and the list range from the same row, so the click acts. With the
+    hold it was refused (#325's review)."""
+    owner = clicked(start)
+    owner.tree_key(code, MOD1)
+    queued_click(owner, row(end), SHIFT)
+    owner.run_queue()
+    first, last = sorted((row(start), row(end)))
+    assert picks(owner) == NAMES[first : last + 1] == owner.tree.shown()
+    assert owner.notices == []
+
+
+def test_a_refused_ctrl_key_that_moves_nothing_holds_no_range_press() -> None:
+    """The same when the key is refused over a selection made through accessibility: Alfa picked,
+    Hotel selected that way, Ctrl+Home refused, its picks dropped with the notice; the cursor and
+    the anchor stay on Alfa, and a Shift+click on Charlie before the refusal's write acts."""
+    owner = clicked("Alfa")
+    owner.tree.assistive_select("Hotel")
+    owner.tree_key(HOME, MOD1)
+    queued_click(owner, row("Charlie"), SHIFT)
+    owner.run_queue()
+    assert picks(owner) == ["Alfa", "Bravo", "Charlie"] == owner.tree.shown()
+
+
 def test_a_ctrl_shift_click_after_a_shift_range_adds_as_before() -> None:
     """Control: after a Shift range the anchor stays at its start, and every row up to the cursor
     is picked, so the tree's range from the cursor and the list's from the anchor add alike."""

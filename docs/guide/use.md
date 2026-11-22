@@ -254,7 +254,9 @@ the list has not shown the cursor there yet picks nothing and clears the selecti
 **A renamed cursor row.** <Unreleased /> When another window renames the sheet under the keyboard
 cursor, keys keep moving from that row until the list shows the new name, and they do not select
 the renamed sheet until then
-([#314](https://github.com/viell-dev/slop-calc-sheet-manager/issues/314)).
+([#314](https://github.com/viell-dev/slop-calc-sheet-manager/issues/314)). Once the list shows
+the new name, the cursor moves to the first selected sheet, or, with none selected, to the first
+row in view ([#327](https://github.com/viell-dev/slop-calc-sheet-manager/issues/327)).
 
 **Move-button shortcuts.** <Unreleased since="0.0.4" /> Move shortcuts also apply while a move
 button has focus.
