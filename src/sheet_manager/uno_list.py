@@ -1445,11 +1445,11 @@ class SheetList:
         press. The tree makes its next anchor at its own cursor, which shows the list's only once
         the following write has run: a Shift or Ctrl+Shift press handled before then, also one
         made before the key whose listener runs after it, ranges natively from the older cursor,
-        and the list from the newer. By the
-        queue order that toggles rely on (`_hold_toggles`), every such listener runs held, and
-        `mouse_pressed` refuses its range as a held toggle is (`_toggle_held_off`): the tree shows
-        rows the press selected that the picks lack, so toggles are held too. Each hold is a new
-        token.
+        and the list from the newer. By the queue order that toggles rely on (`_hold_toggles`),
+        every such listener runs held, and `mouse_pressed` refuses its range as a held toggle is
+        (`_toggle_held_off`): the tree shows rows the press selected that the picks lack, so
+        toggles are held too. A write that fails before it shows the cursor leaves the hold on
+        until a later one does. Each hold is a new token.
         """
         self._ranges_held = object()
 
