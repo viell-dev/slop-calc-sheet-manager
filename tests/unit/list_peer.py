@@ -52,7 +52,8 @@ sheets.
 
 The mouse handlers run through the list's own mouse listener, `_Mouse`, which is loaded from the
 source with its guard, `_guarded` (`listen`). As in LibreOffice, a failure inside a handler ends
-only that handler, and the listener still queues the selection write as it returns (#312). The
+only that handler, and the listener still queues the selection write as it returns (#312), and
+leaves a failed press undecided (#318). The
 failure is recorded where `run_queue` records one, under the listener's name. So do the keys and
 Move to Top: `key` and `type_key` run the list's key handler, `ListKeyHandler.keyPressed`, and
 `move_to_top` its button's action listener, `MoveButtons.actionPerformed`, each loaded with its
@@ -171,6 +172,7 @@ METHODS = (
     "_move_selection",
     "mouse_pressed",
     "mouse_released",
+    "press_failed",  # From #318 on.
     "_pressed_sheet_in_place",
     "follow_tabs",
 )
@@ -978,20 +980,23 @@ def type_key(owner: Any, char: str) -> None:
     owner.run_queue()
 
 
-# The name each mouse handler's failure is reported under, as `_Mouse` passes it to `_handle`.
-LISTENERS = {"mouse_pressed": "a mouse press", "mouse_released": "a mouse release"}
-
-
 def listen(owner: Any, handler: Callable[[Any], None], event: Any) -> None:
-    """Run a mouse handler through the list's own mouse listener (`_Mouse._handle`), as
-    LibreOffice calls it: inside the pointer depth, guarded, and queueing the selection write as
-    it returns. A native failure in the handler ends only the handler and is recorded once in
-    `failures`, under the listener's name; the call returns."""
-    owner.mouse._handle(LISTENERS[handler.__name__], handler, event)
+    """Run a mouse handler through the list's own mouse listener (`_Mouse.mousePressed` or
+    `mouseReleased`), as LibreOffice calls it: inside the pointer depth, guarded, and queueing the
+    selection write as it returns. A native failure in the handler ends only the handler and is
+    recorded once in `failures`, under the listener's name ("a mouse press" or "a mouse
+    release"), and a failed press is left undecided (`press_failed`, #318); the call returns.
+    `handler` is the list's handler as the listener finds it, a wrapper a sequence installed
+    included."""
+    name = handler.__name__
+    assert handler == getattr(owner, name), (name, "is not the list's own handler")
+    {"mouse_pressed": owner.mouse.mousePressed, "mouse_released": owner.mouse.mouseReleased}[name](
+        event
+    )
 
 
 def press(owner: Any, row: int, button: int = LEFT, modifiers: int = 0) -> None:
-    """A press as the list's mouse listener runs it (`_Mouse._handle`), on the line that shows
+    """A press as the list's mouse listener runs it (`_Mouse.mousePressed`), on the line that shows
     the row at `row` now."""
     line = owner.tree.line(row)
     event = SimpleNamespace(Buttons=button, X=0, Y=line, Modifiers=modifiers, ClickCount=1)

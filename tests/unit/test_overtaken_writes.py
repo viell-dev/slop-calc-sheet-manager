@@ -1075,18 +1075,21 @@ def test_a_shift_click_after_a_taken_selection_is_refused_until_a_write_shows_th
     assert picks(owner) == ["Delta", "Echo", "Foxtrot"] == owner.tree.shown()
 
 
-def test_a_shift_click_that_overtakes_a_keys_write_acts() -> None:
-    """Control: a Shift+click handled before Down's write, which the tree ranges from its cursor
-    on Alfa, and whose change leaves that write overtaken. Its listener runs before any take, so
-    the range hold that a take makes does not refuse it: the list ranges from Bravo, where Down
-    put its anchor, as on `main`, and its write shows that."""
+def test_a_shift_click_that_overtakes_a_keys_write_is_refused() -> None:
+    """A Shift+click handled before Down's write, which the tree ranges from its cursor on Alfa,
+    and whose change leaves that write overtaken. Down moved the anchor to Bravo, where the list
+    would range from, and holds range presses until a write has shown the cursor (#326): the
+    click's listener refuses its range, and the picks go, with the notice. `main` and #307 alone
+    picked Bravo to Delta, a range the tree did not show."""
     owner = fresh()
     click(owner, row("Alfa"))
+    notices = len(owner.notices)
     owner.tree_key(DOWN, 0)
     vcl_shift_click(owner, "Alfa", "Delta")
     owner.run_queue()
-    assert owner.notices == []
-    assert picks(owner) == ["Bravo", "Charlie", "Delta"] == owner.tree.shown()
+    assert "Bravo" not in picks(owner), "a range from the anchor Down moved"
+    assert picks(owner) == [] == owner.tree.shown()
+    assert len(owner.notices) == notices + 1
 
 
 @pytest.mark.parametrize(
