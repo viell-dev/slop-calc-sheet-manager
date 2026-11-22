@@ -101,9 +101,10 @@ def right_press(owner: Any, name: str) -> list[str]:
     `_open_menu` chooses them; the menu then closes without a command, as `_finish_menu` ends."""
     press(owner, row(name), RIGHT)
     owner.run_queue()
-    target = owner._context_target
-    shown = owner._shown is not None and target.name in picks(owner)  # As `_open_menu` (#307).
-    targets = picks(owner) if shown else [target.name]
+    target, names = owner._context_target, picks(owner)
+    # As `_open_menu` chooses: the picks only while the record says the tree shows them (#307).
+    shown = owner._shown is not None and set(owner._shown) == set(names)
+    targets = names if shown and target.name in names else [target.name]
     owner._context_target = None
     owner._show_selection()
     owner.run_queue()
@@ -1161,7 +1162,7 @@ def plain_click_after_a_write_landed(owner: Any, foreign: bool) -> None:
     owner.run_queue()
 
 
-def test_a_share_that_covers_a_later_change_ends_in_a_refusal() -> None:
+def test_a_share_that_covers_a_later_change_leaves_the_tree_to_the_intake() -> None:
     """#310's second review, P1. The write that landed between the plain press and its listener
     overwrote the press's own change and moved `_shown_at` past the press, so the plain share,
     counted from that write, covers Golf's change, and the Ctrl+click's listener takes it for its
@@ -1169,14 +1170,14 @@ def test_a_share_that_covers_a_later_change_ends_in_a_refusal() -> None:
     still cannot tell that write from one before the press, as after a click on a selected row;
     skipping the share after such writes refused #44's real-input sequence on gtk3. But the plain
     press's listener finds Echo's change beyond its share, so the write reads the tree, which does
-    not show Charlie and Echo, and leaves it to the intake, which drops them with the notice (#307).
-    """
+    not show Charlie and Echo, and leaves it to the intake, which takes Echo and Golf, the
+    selection the tree showed last (#307)."""
     owner = picked("Alfa")
     notices = len(owner.notices)
     plain_click_after_a_write_landed(owner, foreign=True)
-    assert picks(owner) == [] and owner.tree.shown() == []
-    assert len(owner.notices) == notices + 1
-    assert move_to_top(owner) is None
+    assert picks(owner) == ["Echo", "Golf"] == owner.tree.shown()
+    assert len(owner.notices) == notices
+    assert move_to_top(owner) == ["Echo", "Golf"]
 
 
 def test_a_ctrl_click_after_such_a_plain_click_is_refused() -> None:

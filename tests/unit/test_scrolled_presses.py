@@ -572,9 +572,24 @@ def test_a_drag_across_a_refresh_that_keeps_the_rows_drags_the_pressed_sheet(
 
 
 def test_a_drag_across_a_keys_scroll_drags_nothing() -> None:
-    """End picked Hotel, and the user presses Charlie and drags before the write runs. The write
-    showed Hotel, so the gesture dragged Hotel, which the user did not press. The write scrolled,
-    which holds presses, so no drag starts."""
+    """Alfa clicked, End picked Hotel, and the user presses Alfa, the row the tree shows
+    selected, and drags before the write runs. The write showed Hotel, so the gesture dragged
+    Hotel, which the user did not press. The write scrolled, which holds presses, so no drag
+    starts."""
+    owner = top()
+    dragged = bind_drag(owner)
+    alfa_then_end(owner)
+    native_press(owner, row("Alfa"))
+    work, _ = owner.queue.pop(0)
+    work()  # The key's write.
+    owner.start_drag(object())
+    assert dragged == []
+
+
+def test_a_drag_after_a_press_that_selected_its_row_drags_that_row() -> None:
+    """End picked Hotel, and the user presses Charlie, which the tree selects, and drags before
+    the write runs. The write leaves the tree as the press left it and does not scroll (#307),
+    so the gesture takes the tree's selection and drags Charlie, the sheet the user pressed."""
     owner = top()
     dragged = bind_drag(owner)
     end(owner)
@@ -582,7 +597,7 @@ def test_a_drag_across_a_keys_scroll_drags_nothing() -> None:
     work, _ = owner.queue.pop(0)
     work()  # The key's write.
     owner.start_drag(object())
-    assert dragged == []
+    assert dragged == [["Charlie"]]
 
 
 def test_a_drag_across_a_type_aheads_scroll_drags_nothing() -> None:

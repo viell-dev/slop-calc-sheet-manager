@@ -156,7 +156,7 @@ METHODS = (
     "_queue_selection",
     "_flush_selection",
     "_overtaken",  # From #307 on, as is the next.
-    "_settle_overtaken",
+    "_take_overtaken",
     "cursor_changed",
     "tree_selection_changed",
     "type_ahead",

@@ -6,11 +6,12 @@ before its write was overwritten by the write, and a command then acted on the i
 the user's latest selection was lost without a notice (#307). The list counts the tree's changes
 it did not make (#294), so the write can tell when there are changes it cannot attribute to the
 input: counted after the input read the count, or seen by an input that did not claim them. It
-then reads the tree, and if the tree does not show exactly the picks, it writes nothing and
-leaves its record of what the tree shows unknown, as a failed write does (#257): the intake
-settles it, commands refuse, and the selection notice tells the user. A press handled natively
-after the input changes the tree too; its listener, still queued, acts on its own change, as on
-`main`.
+then reads the tree, and if the tree does not show exactly the picks, it writes nothing, and the
+intake takes the tree's selection, as one made without any input of the list's, deferred behind
+the listeners already queued. A press handled natively after the input changes the tree too; its
+listener, still queued, acts on its own change, as on `main`. When the newer change leaves the
+tree showing what the list last wrote, which the intake would not see as a change, the record is
+unknown instead, as after a failed write (#257): the picks go, with the selection notice.
 
 A write of the one pick the tree already shows keeps that record, since a failure there can
 leave only that pick. After a release the list accepts, the native release has selected a row
@@ -48,6 +49,7 @@ from tests.unit.list_peer import (
     picks,
     press,
     queued_click,
+    record_activations,
     release,
     sheet_list,
 )
@@ -111,39 +113,63 @@ def refused(owner: Any, notices: int) -> None:
     assert move_to_top(owner) is None
 
 
+def taken(owner: Any, names: list[str], notices: int) -> None:
+    """The list took the tree's selection, `names`, with no notice, and Move to Top moves it, or
+    refuses when it is empty."""
+    assert picks(owner) == names == owner.tree.shown()
+    assert len(owner.notices) == notices
+    assert move_to_top(owner) == (names or None)
+
+
 # An assistive selection between a key and its write (#307, the first row).
 
 ASSISTIVE = {
-    "Echo alone": only("Echo"),
-    "Echo added": add("Echo"),
-    "cleared": clear,
-    "Alfa deselected and selected again": reselect("Alfa"),
+    "Echo alone": (only("Echo"), ["Echo"]),
+    "Echo added": (add("Echo"), ["Alfa", "Echo"]),
+    "cleared": (clear, []),
 }
 KEYS = {"Down": (DOWN, 0), "Shift+Down": (DOWN, SHIFT), "Ctrl+A": (A, MOD1)}
 # Every key and change but Ctrl+A with Echo added, which Ctrl+A's picks already include: that
-# is a cost (`test_an_assistive_change_the_picks_include_is_still_refused`).
+# is a cost (`test_an_assistive_change_the_picks_include_replaces_them`).
 OVERWRITTEN = [
-    pytest.param(*KEYS[keys], ASSISTIVE[change], id=f"{keys}-{change}")
+    pytest.param(*KEYS[keys], *ASSISTIVE[change], id=f"{keys}-{change}")
     for keys in KEYS
     for change in ASSISTIVE
     if (keys, change) != ("Ctrl+A", "Echo added")
 ]
 
 
-@pytest.mark.parametrize("code, modifiers, assistive", OVERWRITTEN)
+@pytest.mark.parametrize("code, modifiers, assistive, tree", OVERWRITTEN)
 def test_a_keys_write_does_not_show_its_picks_over_a_newer_assistive_selection(
-    code: int, modifiers: int, assistive: Callable[[Any], None]
+    code: int, modifiers: int, assistive: Callable[[Any], None], tree: list[str]
 ) -> None:
     """Alfa picked; a key changes the picks and queues its write; the tree's selection is then
     changed through accessibility before that write runs. The write showed the key's picks over
     it, and Move to Top moved them. Now the write finds changes counted after the key and a tree
-    that does not show the picks, so it writes nothing, and the intake drops the picks with the
-    notice: the user's latest selection is not replaced by an older one."""
+    that does not show the picks, so it writes nothing, and the intake takes the tree's
+    selection: the user's latest selection is not replaced by an older one."""
     owner = fresh()
     click(owner, row("Alfa"))
     notices = len(owner.notices)
     owner.tree_key(code, modifiers)
     assistive(owner)
+    owner.run_queue()
+    taken(owner, tree, notices)
+
+
+@pytest.mark.parametrize("code, modifiers", list(KEYS.values()), ids=list(KEYS))
+def test_a_newer_change_back_to_the_shown_selection_drops_the_keys_picks(
+    code: int, modifiers: int
+) -> None:
+    """As above, with Alfa deselected and selected again through accessibility: the tree shows
+    Alfa, which the list last wrote, so the intake would see no change and the picks would stay
+    the key's, which the tree does not show. The record is unknown instead, and the picks go,
+    with the notice."""
+    owner = fresh()
+    click(owner, row("Alfa"))
+    notices = len(owner.notices)
+    owner.tree_key(code, modifiers)
+    reselect("Alfa")(owner)
     owner.run_queue()
     refused(owner, notices)
 
@@ -160,28 +186,27 @@ def test_a_ctrl_keys_write_does_not_show_the_picks_over_a_newer_assistive_select
     assistive: Callable[[Any], None],
 ) -> None:
     """Ctrl+Down keeps the picks and moves the cursor; its write showed Alfa again over the
-    selection made after it, and Move to Top moved Alfa."""
+    selection made after it, and Move to Top moved Alfa. The intake now takes the tree's."""
     owner = fresh()
     click(owner, row("Alfa"))
-    notices = len(owner.notices)
     owner.tree_key(DOWN, MOD1)
     assistive(owner)
+    shown = owner.tree.shown()
     owner.run_queue()
-    refused(owner, notices)
+    taken(owner, shown, 0)
 
 
-def test_an_assistive_change_the_picks_include_is_still_refused() -> None:
+def test_an_assistive_change_the_picks_include_replaces_them() -> None:
     """The cost of the rule: Ctrl+A picks every sheet, and Echo is added through accessibility
     before its write. Showing every sheet would undo nothing the user did, as on `main`, but the
     write cannot tell which rows the change selected, only that the tree does not show the picks,
-    so the list clears the selection with the notice."""
+    so the intake takes what the tree shows, Alfa and Echo."""
     owner = fresh()
     click(owner, row("Alfa"))
-    notices = len(owner.notices)
     owner.tree_key(A, MOD1)
     owner.tree.assistive_select("Echo")
     owner.run_queue()
-    refused(owner, notices)
+    taken(owner, ["Alfa", "Echo"], 0)
 
 
 def test_a_ctrl_keys_write_goes_ahead_when_the_newer_change_leaves_the_picks_shown() -> None:
@@ -200,16 +225,16 @@ def test_a_ctrl_keys_write_goes_ahead_when_the_newer_change_leaves_the_picks_sho
 @pytest.mark.parametrize("sampled", [False, True], ids=["no sample", "sampled"])
 def test_the_tab_sample_before_the_write_changes_nothing(sampled: bool) -> None:
     """As the first row, with the tab sample between the assistive selection and the write: its
-    deferred intake runs after the write and settles the record the write left unknown."""
+    deferred intake runs after the write, finds the key's input, and takes nothing; the write's
+    own intake then takes Echo."""
     owner = fresh()
     click(owner, row("Alfa"))
-    notices = len(owner.notices)
     owner.tree_key(DOWN, 0)
     owner.tree.assistive_only("Echo")
     if sampled:
         sample(owner)
     owner.run_queue()
-    refused(owner, notices)
+    taken(owner, ["Echo"], 0)
 
 
 # An assistive selection between a press's native handling and its listener (#307's rows 2, 3).
@@ -230,14 +255,14 @@ def test_a_clicks_write_does_not_show_its_pick_over_a_newer_assistive_selection(
     accessibility before the click's listeners run. The listener picked Charlie and its write
     showed Charlie over the selection, for Move to Top to move. The listener now finds changes
     beyond its press's own share, and the write, finding the tree showing something else than
-    Charlie, writes nothing; the intake drops the pick with the notice."""
+    Charlie, writes nothing; the intake takes what the tree shows."""
     owner = fresh()
     click(owner, row("Alfa"))
-    notices = len(owner.notices)
     queued_click(owner, row("Charlie"), 0)
     assistive(owner)
+    shown = owner.tree.shown()
     owner.run_queue()
-    refused(owner, notices)
+    taken(owner, shown, 0)
 
 
 def test_a_ctrl_shift_range_behind_a_refusal_is_not_shown_over_a_newer_selection() -> None:
@@ -247,7 +272,8 @@ def test_a_ctrl_shift_range_behind_a_refusal_is_not_shown_over_a_newer_selection
     so the Ctrl+Shift+click's listener found nothing unaccounted and added its range to the
     emptied picks: Move to Top moved Bravo to Delta, though the tree last showed Hotel alone. The
     refusal records that it saw changes besides its own, and the range's write, finding the tree
-    showing Hotel, writes nothing."""
+    showing Hotel, writes nothing; the intake takes Hotel. The refused Ctrl+click told of its
+    refusal with the notice."""
     owner = fresh()
     click(owner, row("Bravo"))
     notices = len(owner.notices)
@@ -255,26 +281,36 @@ def test_a_ctrl_shift_range_behind_a_refusal_is_not_shown_over_a_newer_selection
     queued_click(owner, row("Delta"), MOD1 | SHIFT)
     owner.tree.assistive_only("Hotel")
     owner.run_queue()
-    assert picks(owner) == [] and owner.tree.shown() == []
-    assert len(owner.notices) > notices
-    assert move_to_top(owner) is None
+    assert picks(owner) == ["Hotel"] == owner.tree.shown()
+    assert len(owner.notices) == notices + 1
+    assert move_to_top(owner) == ["Hotel"]
 
 
-@pytest.mark.parametrize("keyed", [False, True], ids=["record known", "record unknown"])
+def failed_down(owner: Any) -> None:
+    """Down, whose write fails at its `select`: the record is unknown, as after any failed write
+    (#257), and the tree still shows Alfa."""
+    owner.faults.fail("select")
+    owner.tree_key(DOWN, 0)
+    owner.run_queue()
+    assert owner.faults.failed == ["select"] and owner._shown is None
+
+
+@pytest.mark.parametrize("unknown", [False, True], ids=["record known", "record unknown"])
 def test_a_click_released_over_another_row_does_not_show_its_pick_over_a_newer_selection(
-    keyed: bool,
+    unknown: bool,
 ) -> None:
-    """Alfa picked, and if `keyed`, Down first, whose write a click then leaves to the intake.
-    The click on Charlie is handled natively, Echo is selected alone through accessibility, and
-    the button goes up over Delta, where VCL's release changes nothing for a press on a row it
-    did not show selected. The release does not narrow the picks, so only the press's listener
-    can tell that changes besides its own came before it: beyond its share, or any change at all
-    while the record is unknown. Its write, finding Echo, writes nothing."""
+    """Alfa picked, and if `unknown`, a failed write of Down first. The click on Charlie is
+    handled natively, Echo is selected alone through accessibility, and the button goes up over
+    Delta, where VCL's release changes nothing for a press on a row it did not show selected. The
+    release does not narrow the picks, so only the press's listener can tell that changes besides
+    its own came before it: beyond its share, or any change at all while the record is unknown.
+    Its write ran while the button was held and showed Charlie over Echo. It now writes nothing:
+    the intake takes Echo, or, with the record unknown, drops the picks with the notice."""
     owner = fresh()
     click(owner, row("Alfa"))
+    if unknown:
+        failed_down(owner)
     notices = len(owner.notices)
-    if keyed:
-        owner.tree_key(DOWN, 0)
     pressed = owner.tree._installed()[row("Charlie")]
     owner.tree.selected, owner.tree.cursor = [pressed], pressed
     owner.tree.assistive_only("Echo")
@@ -287,7 +323,10 @@ def test_a_click_released_over_another_row_does_not_show_its_pick_over_a_newer_s
     )
     listen(owner, owner.mouse_released, up)
     owner.run_queue()
-    refused(owner, notices)
+    if unknown:
+        refused(owner, notices)
+    else:
+        taken(owner, ["Echo"], notices)
 
 
 def narrowing_release(owner: Any, name: str, assistive: Callable[[Any], None] | None) -> None:
@@ -312,12 +351,12 @@ def test_a_click_on_a_picked_row_does_not_show_its_pick_over_a_newer_selection()
     """A click on Charlie, already picked: the tree narrows the selection to Charlie when the
     button goes up, and Echo is added through accessibility before the release's listener. The
     listener narrowed the picks to Charlie and its write showed Charlie over Echo. The release
-    now finds changes it does not claim, and the write, finding Echo too, writes nothing."""
+    now finds changes it does not claim, and the write, finding Echo too, writes nothing: the
+    intake takes Charlie and Echo, as the tree shows them."""
     owner = fresh()
     click(owner, row("Alfa"))
-    notices = len(owner.notices)
     narrowing_release(owner, "Charlie", add("Echo"))
-    refused(owner, notices)
+    taken(owner, ["Charlie", "Echo"], 0)
 
 
 def test_a_click_on_a_picked_row_narrows_the_picks() -> None:
@@ -330,15 +369,15 @@ def test_a_click_on_a_picked_row_narrows_the_picks() -> None:
 
 
 def test_a_plain_press_on_an_unknown_record_claims_nothing() -> None:
-    """A key's write left the record unknown because Echo was selected through accessibility
-    after it; a click on Charlie had been handled natively before that selection and its
-    listeners were still queued. With the record unknown, the plain press has no share to count,
-    so it claims none of the changes, and its own write, finding Echo where it would show
-    Charlie, writes nothing either."""
+    """Down's write failed, so the record is unknown; a click on Charlie is handled natively and
+    Echo is selected through accessibility before its listeners. With the record unknown, the
+    plain press has no share to count, so it claims none of the changes, and its write, finding
+    Echo where it would show Charlie, writes nothing; the intake settles the record and drops the
+    picks, with the notice."""
     owner = fresh()
     click(owner, row("Alfa"))
+    failed_down(owner)
     notices = len(owner.notices)
-    owner.tree_key(DOWN, 0)
     queued_click(owner, row("Charlie"), 0)
     owner.tree.assistive_only("Echo")
     owner.run_queue()
@@ -441,6 +480,32 @@ def test_two_quick_ctrl_clicks_toggle_both_rows() -> None:
     assert owner.notices == []
 
 
+def test_a_ctrl_click_after_a_plain_clicks_write_was_left_and_a_refresh_still_toggles() -> None:
+    """#44's real-input check with a delayed refresh (`check_stale_clicks`): a double click on
+    Bravo, whose listeners run before VCL handles a Ctrl+click on Delta, and a refresh queued for
+    another window's colour change that runs after the double click's write and before the
+    Ctrl+click's listener. The write leaves Delta's toggle in the tree; the refresh's intake
+    defers it, as the tab sample's does, so the Ctrl+click's listener runs first and toggles
+    Delta: Bravo and Delta are picked, as on `main`. A record left unknown there instead was
+    settled by the refresh, which dropped Bravo, and the held listener picked nothing."""
+    owner = fresh()
+    record_activations(owner)
+    click(owner, row("Alfa"))
+    queued_click(owner, row("Bravo"), 0)
+    queued_click(owner, row("Bravo"), 0, clicks=2)
+    while owner.queue and owner.queue[0][1].startswith("a mouse"):
+        run(owner, 1)  # The double click's listeners; their write and activation stay queued.
+    owner.book.sheet("Foxtrot").color = 0x2A6099
+    queued_click(owner, row("Delta"))
+    listeners = [item for item in owner.queue if item[1].startswith("a mouse")]
+    owner.queue[:] = [item for item in owner.queue if not item[1].startswith("a mouse")]
+    owner.post(owner.refresh, "refreshing the sheet list")
+    owner.queue.extend(listeners)
+    owner.run_queue()
+    assert picks(owner) == ["Bravo", "Delta"] == owner.tree.shown() and owner.notices == []
+    assert move_to_top(owner) == ["Bravo", "Delta"]
+
+
 def test_a_ctrl_click_handled_after_a_key_is_still_held() -> None:
     """Down, then a Ctrl+click on Echo handled natively before the key's write: the key's hold
     refuses the toggle, as on `main`; the write it would have shown is left to the intake."""
@@ -456,8 +521,9 @@ def test_a_ctrl_click_handled_after_a_key_is_still_held() -> None:
 def test_a_right_press_over_a_newer_assistive_selection_targets_its_row_alone() -> None:
     """Alfa and Echo picked; a right press on Echo, and Golf selected alone through accessibility
     before its write. The write showed Alfa and Echo again, and the menu targeted both. It now
-    writes nothing, and the menu its release opens targets Echo alone; the intake then drops the
-    picks with the notice."""
+    writes nothing and leaves the record unknown, since the record still matches the picks, and
+    the menu its release opens targets Echo alone; the intake then drops the picks with the
+    notice."""
     owner = fresh()
     click(owner, row("Alfa"))
     queued_click(owner, row("Echo"))
@@ -466,9 +532,9 @@ def test_a_right_press_over_a_newer_assistive_selection_targets_its_row_alone() 
 
     def open_menu(x: int, y: int, refs: Any = None, seen: int | None = None) -> None:
         # As `_open_menu` chooses its targets for a right press (#307).
-        target = owner._context_target
-        shown = owner._shown is not None and target.name in picks(owner)
-        opened.append(picks(owner) if shown else [target.name])
+        target, names = owner._context_target, picks(owner)
+        shown = owner._shown is not None and set(owner._shown) == set(names)
+        opened.append(names if shown and target.name in names else [target.name])
         owner._context_target = None
 
     owner._open_menu = open_menu
@@ -577,14 +643,14 @@ def test_a_failed_repeat_with_nothing_else_counted_keeps_the_record() -> None:
 
 
 def test_space_after_an_overtaken_write_is_refused() -> None:
-    """After the write left the record unknown, Ctrl+Space, before the intake, toggles nothing:
+    """After the write left Echo in the tree, Ctrl+Space, before the intake, toggles nothing:
     the tree shows Echo, which the picks lack, as after any change the list has not taken."""
     owner = fresh()
     click(owner, row("Alfa"))
     owner.tree_key(DOWN, 0)
     owner.tree.assistive_only("Echo")
     run(owner, 1)  # The key's write, which leaves the tree as it is.
-    assert owner._shown is None and owner.tree.shown() == ["Echo"]
+    assert owner._shown == ("Alfa",) and owner.tree.shown() == ["Echo"]
     owner.tree_key(UP, MOD1)
     owner.tree_key(SPACE, MOD1)
     owner.run_queue()
