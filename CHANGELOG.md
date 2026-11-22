@@ -5,6 +5,13 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- The unit tests' simulated sheet list now runs the list's mouse handlers through the list's own
+  mouse listener and its error guard, loaded from the extension's source. A LibreOffice failure
+  inside a press's or a release's handler is then reported and ends only that handler, and the
+  list still queues its selection write, as in LibreOffice. The failure escaped to the test
+  instead, so tests caught it themselves and randomized checks built on the simulation stopped at
+  such a sequence without judging it. This changes the unit tests, not the extension
+  ([#312](https://github.com/viell-dev/slop-calc-sheet-manager/issues/312)).
 - A Ctrl+click, Ctrl+Shift+click, Space, Ctrl+Space, right click, or Ctrl with an arrow, Home,
   End, Page Up or Page Down key, made just after rows were selected or cleared through assistive
   technology, no longer acts against the list's earlier picks before the list has taken that
