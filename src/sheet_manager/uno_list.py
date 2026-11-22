@@ -198,12 +198,14 @@ to add as many rows is added as on `main` (#313). A plain press on a row the rec
 show leaves the tree showing that row alone, which takes at least one change for each row of
 `_shown` and one for its own, counted from when the tree showed `_shown` (`_shown_at`); its
 listener accounts for up to that many, so that a Ctrl press handled before that listener ran, as
-when the user clicks ahead while LibreOffice is busy, still sees its own change alone (#44). It
-does not when the tree last showed `_shown` through a write that overwrote changes
-(`_overwrote_at`): that write may have landed between the press and its listener, after the
-press's own changes, and the share would then cover later ones. Only a drag from a row the tree
-selected without the record leaves the selection as it was; it can then account for one change
-made after it, and a listener queued behind it acts as on `main`. Space, a cursor key with Ctrl
+when the user clicks ahead while LibreOffice is busy, still sees its own change alone (#44). A
+write that lands between the press and its listener moves `_shown_at` past the press, and the
+share then covers changes made after that write; a drag from a row the tree selected without the
+record leaves the selection as it was, and the share can cover one change made after it. Either
+way a listener queued behind it can take a later change for its own and act as on `main`. The
+list cannot tell such a write from one before the press, as after a click on a selected row,
+whose release deselects and selects it again natively: skipping the share after every write that
+overwrote changes refused #44's real-input sequence on gtk3. Space, a cursor key with Ctrl
 and a right press act only when nothing is unaccounted. Otherwise each is refused as a held
 toggle is (`_toggle_held_off`): the picks go, with the notice, the cursor moves, and a right
 press's menu targets its row alone. Plain and Shift presses and the other keys set the picks as
@@ -212,8 +214,9 @@ before.
 Each refusal is one where `main` may have acted correctly: a take of the list's between a Ctrl
 press's native handling and its listener, or a write or rebuild there that overwrote other
 changes too; two presses other than a plain one, or a press and an assistive change, handled
-natively before the first listener, and a plain press and a Ctrl press so handled when the tree
-last showed the record through a write that overwrote changes; a key that sets the selection,
+natively before the first listener, and a plain press and a Ctrl press so handled when a write
+of the list's lands between the plain press and its listener, which then accounts for the Ctrl
+press's change; a key that sets the selection,
 or Ctrl+A, between a Ctrl press and its listener, also when it leaves the picks as they were;
 Space, a Ctrl key or a right press after a press's or release's native change and before the
 list's write that follows it, or after a write that failed partway; an assistive deselection
@@ -976,10 +979,8 @@ class SheetList:
         self._add_mode = False
         # The count a complete write or a rebuild's model last accounted from, and how many
         # changes it overwrote that were unaccounted until then, while no other point has
-        # accounted since; and the count the last write that overwrote changes began at, which
-        # nothing clears (`_account_write`, `mouse_pressed`).
+        # accounted since (`_account_write`, `mouse_pressed`).
         self._erased: tuple[int, int] | None = None
-        self._overwrote_at = -1
         # While set, a mouse listener maps its event only to a row that showed the same name in
         # every row list since the hold began: a rebuild may have put another sheet under the
         # pointer since the tree handled the press (#293; `_hold_presses`). `_presses_release` is
@@ -1500,7 +1501,6 @@ class SheetList:
         """
         if self._accounted < start:
             self._erased = (start, start - self._accounted)
-            self._overwrote_at = start
         self._accounted = self._shown_at = start
 
     def _account(self, seen: int, *, shown: bool = False) -> None:
@@ -2699,7 +2699,6 @@ class SheetList:
         seen, accounted, erased = self._unowned, self._accounted, self._erased
         unaccounted = seen - accounted
         add_mode, shown, shown_at = self._add_mode, self._shown, self._shown_at
-        overwrote_at = self._overwrote_at
         self._input += 1
         self._tabs.note_input()
         self.claim_window()
@@ -2826,7 +2825,6 @@ class SheetList:
                             and engine
                             and shown is not None
                             and name not in shown
-                            and overwrote_at != shown_at
                             and self._selection.names() == [name]
                         ):
                             # A plain press on a row the tree did not select deselected the rows
@@ -2836,10 +2834,11 @@ class SheetList:
                             # up to and including it, and those are all superseded by it. Its
                             # listener accounts for them, so that a Ctrl+click handled before it
                             # ran, as when the user clicks ahead while LibreOffice is busy, still
-                            # sees its own change alone (#44, #310's review). Not when the tree
-                            # last showed `_shown` through a write that overwrote changes: that
-                            # write may have landed between this press and its listener, after
-                            # the press's own changes, so the share would cover later ones.
+                            # sees its own change alone (#44, #310's review). A write that lands
+                            # between this press and its listener moves `_shown_at` past the
+                            # press, and the share then covers later changes; telling that write
+                            # from one before the press, such as a click's on a selected row,
+                            # would need the press's time, which no listener has (#310's reviews).
                             own_plain = shown_at + len(shown) + 1
                             self._account(max(self._accounted, min(seen, own_plain)))
                 self._queue_selection()

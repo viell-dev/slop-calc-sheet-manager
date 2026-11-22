@@ -769,7 +769,6 @@ def sheet_list(book: Book, source: str = SOURCE) -> Any:
         _shown_at=0,
         _quiet=None,
         _erased=None,
-        _overwrote_at=-1,
         _add_mode=False,
         _presses_held=None,
         _presses_release=None,

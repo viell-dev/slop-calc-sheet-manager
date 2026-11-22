@@ -1087,6 +1087,44 @@ def test_a_ctrl_click_queued_behind_a_plain_click_toggles_as_before() -> None:
     assert move_to_top(owner) == ["Charlie", "Echo"]
 
 
+def test_a_ctrl_click_queued_behind_a_plain_click_after_quiet_ticks_toggles_as_before() -> None:
+    """Alfa and Bravo picked; Bravo deselected and selected again through accessibility, and two
+    quiet ticks account for that, the tree showing the picks then. A plain click on Echo and a
+    Ctrl+click on Golf are both handled natively before the first listener runs. The plain
+    press's share is counted from the ticks, when the tree last showed the picks, so the
+    Ctrl+click's listener sees its own change alone and picks Echo and Golf, as on `main`."""
+    owner = picked("Alfa", "Bravo")
+    cancelled_out(owner, "Bravo")
+    for _ in range(2):
+        post_sample(owner)
+        owner.run_queue()
+    assert unaccounted(owner) == 0
+    queued_click(owner, row("Echo"), 0)
+    queued_click(owner, row("Golf"))
+    owner.run_queue()
+    assert picks(owner) == ["Echo", "Golf"] == owner.tree.shown()
+    assert move_to_top(owner) == ["Echo", "Golf"]
+
+
+def test_a_plain_press_share_after_a_waiting_change_is_shown_again_toggles_as_before() -> None:
+    """Alfa picked and deselected through accessibility; a plain click on Echo and a Ctrl+click on
+    Hotel are handled natively; a recolour's refresh, queued before them, runs ahead of their
+    listeners, rebuilds the rows and shows the tree's selection again with the counts from before
+    it (`_show_native`), `_shown_at` included. The plain press's share is counted from when the
+    tree last showed Alfa, before the accessibility change, which the press superseded, so the
+    Ctrl+click's listener sees its own change alone and picks Echo and Hotel, as on `main`."""
+    owner = picked("Alfa")
+    owner.tree.assistive_clear()
+    owner.book.sheet("Golf").color = 0x993366
+    queued_click(owner, row("Echo"), 0)
+    queued_click(owner, row("Hotel"))
+    owner.refresh()  # Queued before the clicks, it runs ahead of their listeners.
+    assert owner.tree.shown() == ["Echo", "Hotel"] and unaccounted(owner) == 3
+    owner.run_queue()
+    assert picks(owner) == ["Echo", "Hotel"] == owner.tree.shown()
+    assert move_to_top(owner) == ["Echo", "Hotel"]
+
+
 def test_an_assistive_change_between_a_plain_and_a_ctrl_click_still_refuses() -> None:
     """The same, with Golf added through accessibility between the two presses: the plain
     press's listener accounts only for its own changes, so Golf's stays, and the Ctrl+click's
@@ -1115,23 +1153,25 @@ def plain_click_after_a_write_landed(owner: Any, foreign: bool) -> None:
     owner.run_queue()
 
 
-def test_a_plain_press_share_after_a_write_that_landed_before_its_listener_is_not_taken() -> None:
-    """The write that landed between the plain press and its listener overwrote the press's own
-    change, so the plain share, counted from that write, would cover Golf's. The share is not
-    taken when the tree last showed the record through a write that overwrote changes, and the
-    Ctrl+click's listener, seeing two changes, picks nothing. `main` picks Charlie and Echo,
-    though the tree showed Echo and Golf (#310's second review, P1)."""
+def test_a_write_that_lands_before_a_plain_press_listener_lets_its_share_cover_more() -> None:
+    """A known limit (#310's second review, P1). The write that landed between the plain press and
+    its listener overwrote the press's own change and moved `_shown_at` past the press, so the
+    plain share, counted from that write, covers Golf's change, and the Ctrl+click's listener takes
+    it for its own: Charlie and Echo are picked, as on `main`, though the tree showed Echo and Golf.
+    The list cannot tell that write from one before the press, as after a click on a selected row;
+    skipping the share after such writes refused #44's real-input sequence on gtk3."""
     owner = picked("Alfa")
     plain_click_after_a_write_landed(owner, foreign=True)
-    assert picks(owner) == [] and move_to_top(owner) is None
+    assert picks(owner) == ["Charlie", "Echo"] == owner.tree.shown()
 
 
-def test_a_ctrl_click_after_such_a_plain_click_toggles_as_before() -> None:
-    """The control, without the accessibility selection: the Ctrl+click's listener sees its own
-    change alone and picks Charlie and Echo, as on `main` (P1b)."""
+def test_a_ctrl_click_after_such_a_plain_click_is_refused() -> None:
+    """A known limit too (P1b): without the accessibility selection, the share covers the
+    Ctrl+click's own change, so its listener finds nothing of its own and picks nothing, where
+    `main` picks Charlie and Echo."""
     owner = picked("Alfa")
     plain_click_after_a_write_landed(owner, foreign=False)
-    assert picks(owner) == ["Charlie", "Echo"] == owner.tree.shown()
+    assert picks(owner) == [] and move_to_top(owner) is None
 
 
 def test_a_plain_press_share_is_counted_from_when_the_tree_showed_the_record() -> None:
