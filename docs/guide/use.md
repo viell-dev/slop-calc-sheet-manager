@@ -315,6 +315,15 @@ out of view. So is a click that comes just as the panel's height changes and scr
 it can when the selection notice appears or goes. A drag does not start when you begin it just as
 the list redraws or scrolls its rows. Click or drag again ([#299](https://github.com/viell-dev/slop-calc-sheet-manager/issues/299),
 [#295](https://github.com/viell-dev/slop-calc-sheet-manager/issues/295)).
+<Unreleased /> A selection made through assistive technology just after a click or key in the
+list, before the list has shown that input, is not replaced by what the input selected: the list
+clears its selection instead, with the notice, so that no command acts on the older one, and a
+right click there opens the menu for the clicked sheet alone. Select again. A click on another row
+just after a key still selects the row clicked, and the list then does not scroll to the key's
+selection ([#307](https://github.com/viell-dev/slop-calc-sheet-manager/issues/307)). When
+LibreOffice fails to show the selection after you hold a click on a selected sheet and release it
+over another row, the list clears the selection too, rather than act on the row you released over
+([#316](https://github.com/viell-dev/slop-calc-sheet-manager/issues/316)).
 
 **Undo and Redo of the list's moves.** <Unreleased since="0.0.8" /> Undo and Redo of a move the list
 made itself, by dragging, a move button, the menu or a shortcut, keep the picks and the view. The

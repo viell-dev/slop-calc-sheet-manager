@@ -113,21 +113,24 @@ def refused(owner: Any, notices: int) -> None:
 
 # An assistive selection between a key and its write (#307, the first row).
 
-ASSISTIVE = [
-    pytest.param(only("Echo"), id="Echo alone"),
-    pytest.param(add("Echo"), id="Echo added"),
-    pytest.param(clear, id="cleared"),
-    pytest.param(reselect("Alfa"), id="Alfa deselected and selected again"),
-]
-KEYS = [
-    pytest.param(DOWN, 0, id="Down"),
-    pytest.param(DOWN, SHIFT, id="Shift+Down"),
-    pytest.param(A, MOD1, id="Ctrl+A"),
+ASSISTIVE = {
+    "Echo alone": only("Echo"),
+    "Echo added": add("Echo"),
+    "cleared": clear,
+    "Alfa deselected and selected again": reselect("Alfa"),
+}
+KEYS = {"Down": (DOWN, 0), "Shift+Down": (DOWN, SHIFT), "Ctrl+A": (A, MOD1)}
+# Every key and change but Ctrl+A with Echo added, which Ctrl+A's picks already include: that
+# is a cost (`test_an_assistive_change_the_picks_include_is_still_refused`).
+OVERWRITTEN = [
+    pytest.param(*KEYS[keys], ASSISTIVE[change], id=f"{keys}-{change}")
+    for keys in KEYS
+    for change in ASSISTIVE
+    if (keys, change) != ("Ctrl+A", "Echo added")
 ]
 
 
-@pytest.mark.parametrize("assistive", ASSISTIVE)
-@pytest.mark.parametrize("code, modifiers", KEYS)
+@pytest.mark.parametrize("code, modifiers, assistive", OVERWRITTEN)
 def test_a_keys_write_does_not_show_its_picks_over_a_newer_assistive_selection(
     code: int, modifiers: int, assistive: Callable[[Any], None]
 ) -> None:
@@ -163,6 +166,20 @@ def test_a_ctrl_keys_write_does_not_show_the_picks_over_a_newer_assistive_select
     notices = len(owner.notices)
     owner.tree_key(DOWN, MOD1)
     assistive(owner)
+    owner.run_queue()
+    refused(owner, notices)
+
+
+def test_an_assistive_change_the_picks_include_is_still_refused() -> None:
+    """The cost of the rule: Ctrl+A picks every sheet, and Echo is added through accessibility
+    before its write. Showing every sheet would undo nothing the user did, as on `main`, but the
+    write cannot tell which rows the change selected, only that the tree does not show the picks,
+    so the list clears the selection with the notice."""
+    owner = fresh()
+    click(owner, row("Alfa"))
+    notices = len(owner.notices)
+    owner.tree_key(A, MOD1)
+    owner.tree.assistive_select("Echo")
     owner.run_queue()
     refused(owner, notices)
 

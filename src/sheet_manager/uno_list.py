@@ -55,8 +55,11 @@ rows could act on a sheet nobody picked. A refresh writes after its tab baseline
 outside a refresh is retried as a failed refresh is (`RefreshSchedule.failed`). A write that can
 leave only the picks or an empty tree, a repeated write of the one pick the tree shows or a
 clear of a tree that shows nothing, keeps `_shown`, except at a refused release, where the tree
-shows the native release's row (#315). A refresh that loses the identity proof while the tree shows
-a native selection the intake has not taken treats it the same way, with the clearing notice: it
+shows the native release's row (#315). The repeat keeps it only while no change the list did not
+make has been counted since the tree last showed it (`_shown_at`): an accepted release's native
+selection of another row, which a failure there left for the intake, is such a change (#316). A
+refresh that loses the identity proof while the tree shows a native selection the intake has not
+taken treats it the same way, with the clearing notice: it
 was made against rows whose handles no longer prove their sheets. So does a refresh whose new model
 replaced such a selection and that fails before showing it again in full: the picks it superseded
 are dropped, and a queued write clears the rows the tree still shows, as settling does. Until a
@@ -225,13 +228,42 @@ Ctrl press in the few pixels left of a row's native hit area, which `RowGeometry
 the row by height alone though the engine changed nothing, unless the last accounting point is a
 write that overwrote exactly one change; and, every time, a Ctrl+Shift press after Ctrl with a
 cursor key moved the tree's anchor, which is its cursor, away from the list's, unless both
-ranges add as many rows (#313). Still as on `main`, an assistive change made after a key or
-press and before the write it queued is shown over by that write, and a Ctrl+Shift press whose
-listener runs after a refusal accounted adds its range to the emptied picks (#307). The
-listener's registration and its removal, beside the other listeners', are the only native calls
-added; the counts are Python state. Each notification crosses into Python, which makes a write
-that changes many rows take about 1.6 times as long: writing 1,000 picks took about 80 ms
-instead of 50 on an idle machine (#294).
+ranges add as many rows (#313). The listener's registration and its removal, beside the other
+listeners', are the only native calls added; the counts are Python state. Each notification
+crosses into Python, which makes a write that changes many rows take about 1.6 times as long:
+writing 1,000 picks took about 80 ms instead of 50 on an idle machine (#294).
+
+Newer changes (#307). The count tells a queued write when the tree may show a change newer than
+the input whose picks it shows: an assistive selection made after a key or a press's native
+handling and before that write, which the write overwrote, and a command then acted on the
+input's picks. A key accounts for every change at once, and a press or release listener reads
+the count before any UNO call (`_input_seen`), so a change counted later came after that input.
+An input also marks changes it saw and did not claim (`_unclaimed`), since they may have come
+between its press's native handling and its listener: a plain press's beyond its share, and a
+refusal's besides its input's own or a deferred intake's rows, behind which a Ctrl+Shift press's
+listener added its range to the emptied picks. Only then the write reads the tree (one
+`getSelection` in posted work, `_overtaken`). If the tree shows exactly the picks, it goes ahead.
+Otherwise it writes nothing and leaves `_shown` None, as a failed write does, and posts an
+intake that settles it after every listener already queued: commands refuse meanwhile, and the
+picks go, with the notice, unless the tree then shows them. Taking the tree's selection instead
+would keep an assistive user's selection, but the count cannot tell it from the native part of a
+press whose listener is still queued, which would then be applied twice, and a selection that
+cancels out to the record's would not show as a change at all. A queued press's listener acts on
+its own change, which the write left unaccounted, as on `main`: a Ctrl press toggles, a plain
+press picks its row and its write shows it. With the record unknown, a plain press claims none
+of the changes, so its own write checks the tree too. The pointer menu after such a write
+targets the pressed row alone (`_open_menu`). A complete write, a take, a settled record and a
+plain or Shift key or Ctrl+A, each newer than every change it read, end the mark; a write of no
+picks only clears and is not checked; a held press and an open menu are left to the release and
+the menu. The refusals this adds where `main` acted correctly: an assistive change after an input
+that the input's picks already agree with, such as a row added through accessibility after
+Ctrl+A; and input judged by the count (Space, a Ctrl key, a press other than a plain one) after
+an overtaken write, which leaves unaccounted the changes that `main`'s write accounted for by
+overwriting them, as when a second press is handled natively after a key and before its write.
+Still as on `main` (#323): a refresh that runs while a queued write waits reads no waiting
+selection and writes the picks, a type-ahead picks and writes in its own queued work, and a write
+of the list's that lands between a press and its listener, a refusal's clearing one included,
+overwrites an assistive change made after that press, whose listener then acts on its press.
 
 Pointer input. A left press picks at once and keeps the pressed sheet's handle. A plain press
 on a picked row keeps the other picks, so that they can be dragged together; its release in the
@@ -2897,7 +2929,8 @@ class SheetList:
                         # set the user did not see (#294). It is refused as a toggle is. With
                         # nothing unaccounted, the list's own write, intake or a refusal
                         # accounted since the press, and adding a range twice adds it once, so
-                        # the range is added as on `main` (after a refusal, as #307 records).
+                        # the range is added as on `main`. After a refusal that saw changes
+                        # besides its own, the write shows it only if the tree does (#307).
                         # `choose` rebound `picked` to a new list, so `before` is unchanged.
                         self._selection.picked = before
                         self._toggle_held_off(deferred, seen, waiting=True)
