@@ -257,6 +257,17 @@ def test_a_toggle_on_the_renamed_cursors_row_picks_nothing_and_keeps_the_cursor_
     assert move_to_top(owner) == ["Bravo"]
 
 
+def test_a_commands_check_of_its_picks_keeps_the_renamed_cursors_row() -> None:
+    """The keyboard menu's check of the picks before the refresh, as every command's, keeps the
+    cursor on the renamed sheet's row, as the key handler does: the next key moves from there."""
+    owner = renamed((SPACE, MOD1))
+    owner.open_menu_for_keyboard()  # Nothing is picked, so no menu opens.
+    owner.run_queue()
+    assert cursor(owner) == "Charlie" and owner.tree.cursor is owner.tree.node("Charlie")
+    key(owner, DOWN, 0)
+    assert picks(owner) == ["Delta"]
+
+
 def test_the_refresh_then_drops_the_renamed_cursor() -> None:
     """Control: the refresh drops the cursor and the anchor as it drops picks, and its write puts
     the cursor on the first pick, as on `main`. Two Ctrl+clicks on Delta leave both on it."""
