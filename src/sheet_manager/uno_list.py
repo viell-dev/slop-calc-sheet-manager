@@ -361,9 +361,11 @@ only Python state for these rules. They refuse where `main` dragged the pressed 
 the moment after a key or type-ahead, also from a press whose listener ran before the key's
 write; one after a Shift+click's listener and before its write, which leaves the Shift press's
 change unaccounted; and one from the second of two presses handled before the first one's
-listener ran, whose own change neither listener's share covers. Still as on `main`, a refresh
-that keeps the rows and writes the picks between an earlier click's listener and the gesture
-writes that click's pick over the press's row, and the drag carries it (#323).
+listener ran, whose own change neither listener's share covers. Still as on `main`, an earlier
+click's write that lands between the press and the gesture shows that click's picks over the
+press's row when the click's listeners ran after the tree handled the press, and the drag
+carries them (#329); so does a refresh that keeps the rows and writes the picks between an
+earlier click's listener and the gesture (#323).
 
 Activation. A double click or Enter makes the sheet Calc's only selected tab and reads that back,
 because `setActiveSheet` keeps an existing group when the sheet belongs to it. Activation reads
