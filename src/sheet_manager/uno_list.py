@@ -439,8 +439,10 @@ range holds outlast such a write until a later write or take shows the picks and
 until then a drag between a later press's listener and its write is refused, and a plain press
 while toggles are held picks its row alone. Still as on `main`, a refresh that keeps the rows and
 writes the picks between an earlier click's listener and the gesture writes that click's pick
-over the press's row, and the drag carries it (#323); and a plain press on a row still among the
-picks after an assistive selection replaced them keeps the others for its drag (#334).
+over the press's row, and the drag carries it (#323); a plain press on a row still among the
+picks after an assistive selection replaced them keeps the others for its drag (#334); and an
+earlier click's write that lands after a press that changed nothing, on a row a write had just
+shown selected, shows that click's pick over it, and the drag carries it (#335).
 
 Activation. A double click or Enter makes the sheet Calc's only selected tab and reads that back,
 because `setActiveSheet` keeps an existing group when the sheet belongs to it. Activation reads
