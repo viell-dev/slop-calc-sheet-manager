@@ -53,8 +53,12 @@ sheets.
 The mouse handlers run through the list's own mouse listener, `_Mouse`, which is loaded from the
 source with its guard, `_guarded` (`listen`). As in LibreOffice, a failure inside a handler ends
 only that handler, and the listener still queues the selection write as it returns (#312). The
-failure is recorded where `run_queue` records one, under the listener's name. Both record only a
-simulated native failure: any other exception is a defect of the list or of a test, which
+failure is recorded where `run_queue` records one, under the listener's name. So do the keys and
+Move to Top: `key` and `type_key` run the list's key handler, `ListKeyHandler.keyPressed`, and
+`move_to_top` its button's action listener, `MoveButtons.actionPerformed`, each loaded with its
+guard from the current `uno_keys.py` and `uno_moves.py`, also for another revision of the list; a
+failure there is recorded as "the key handler" or "a move button" (#320). Each guard records only
+a simulated native failure: any other exception is a defect of the list or of a test, which
 LibreOffice would report too, and it is raised.
 
 The native checks are in `tests/integration` and `tests/ui`.
@@ -77,10 +81,16 @@ from sheet_manager.keys import (
     PAGEDOWN,
     PAGEUP,
     SPACE,
+    TAB,
     UP,
     A,
+    KeyRoute,
     TypeAhead,
+    button_route,
     find_prefix,
+    move_action,
+    route_key,
+    unbound_route,
 )
 from sheet_manager.refresh_schedule import RefreshSchedule
 from sheet_manager.reorder import Plan, plan_move
@@ -90,6 +100,10 @@ from sheet_manager.sheet_list import RowGeometry, SheetRow, list_name, ordered, 
 from tests.unit import source_methods
 
 SOURCE = "src/sheet_manager/uno_list.py"
+# The key handler and the move buttons, always from these sources, also for another revision of
+# the list.
+KEYS = "src/sheet_manager/uno_keys.py"
+MOVES = "src/sheet_manager/uno_moves.py"
 LEFT, RIGHT, MIDDLE = 1, 2, 4  # Mouse buttons,
 SHIFT, MOD1, MOD2 = 1, 2, 4  # and key modifiers, as UNO numbers them.
 METHODS = (
@@ -137,6 +151,8 @@ METHODS = (
     "_focus_row",
     "_move_tree_cursor",
     "tree_key",
+    "note_input",  # For the key handler, as is the next one.
+    "queue_input",
     "_queue_selection",
     "_flush_selection",
     "_overtaken",  # From #307 on, as is the next.
@@ -638,6 +654,14 @@ def _parsed(source: str) -> tuple[dict[str, ast.FunctionDef], Definitions]:
     return methods, others
 
 
+@functools.cache
+def _class_methods(source: str, name: str) -> dict[str, ast.FunctionDef]:
+    """The methods of the module-level class `name` in `source`, parsed once."""
+    tree = ast.parse((source_methods.ROOT / source).read_text(encoding="utf-8"))
+    owner = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == name)
+    return {node.name: node for node in owner.body if isinstance(node, ast.FunctionDef)}
+
+
 def _load(source: str, node: ast.AST, namespace: dict[str, Any]) -> Any:
     module = ast.Module(body=[cast(ast.stmt, node)], type_ignores=[])
     exec(compile(module, source, "exec"), namespace)
@@ -854,9 +878,8 @@ def sheet_list(book: Book, source: str = SOURCE) -> Any:
     owner.post, owner.run_queue, owner.retry = post, run_queue, retry
 
     def contain(where: str) -> None:
-        """`report` as the listener guard calls it, while it handles a handler's failure: a
-        simulated native failure is recorded where `run_queue` records one, and anything else
-        is raised again."""
+        """`report` as a guard below calls it, while it handles a failure: a simulated native
+        failure is recorded where `run_queue` records one, and anything else is raised again."""
         failure = sys.exception()
         if isinstance(failure, NativeFailure):
             owner.failures.append(where)
@@ -876,6 +899,30 @@ def sheet_list(book: Book, source: str = SOURCE) -> Any:
             setattr(owner, name, _load(source, methods[name], dict(namespace)).__get__(owner))
     if "tree_selection_changed" in methods:  # `_Selections`, as `_initialize` registers it.
         tree.listener = lambda: owner.tree_selection_changed()
+    # The key handler that the list registers while it has the focus, which it always has here,
+    # and the move buttons' action listener, which requests a move as `_initialize` passes it.
+    owner.owns_keys = owner.owns_tree_keys = lambda: True
+    handler = owner.key_handler = SimpleNamespace(_list=owner, _shortcuts=None, _consumed={})
+    routing = {
+        "route_key": route_key,
+        "button_route": button_route,
+        "move_action": move_action,
+        "unbound_route": unbound_route,
+        "KeyRoute": KeyRoute,
+        "TAB": TAB,
+        "SHIFT": SHIFT,
+        "SPACE": SPACE,
+        "report": contain,
+    }
+    pressed = _class_methods(KEYS, "ListKeyHandler")["keyPressed"]
+    handler.keyPressed = _load(KEYS, pressed, routing).__get__(handler)
+
+    def request(action: str) -> None:  # `queue_move`, looked up when the button is pressed.
+        owner.queue_move(action)
+
+    buttons = owner.move_buttons = SimpleNamespace(_request=request)
+    performed = _class_methods(MOVES, "MoveButtons")["actionPerformed"]
+    buttons.actionPerformed = _load(MOVES, performed, {"report": contain}).__get__(buttons)
     owner.refresh()
     run_queue()
     return owner
@@ -887,10 +934,12 @@ def changed(owner: Any) -> None:
 
 
 def move_to_top(owner: Any) -> list[str] | str | None:
-    """Press Move to Top: the sheets it moved, None if it refused, or "failed" if it did
-    neither (a native failure ended it before its message)."""
+    """Press Move to Top, through the button's action listener (`MoveButtons.actionPerformed`),
+    then the work it queued: the sheets it moved, None if it refused, or "failed" if it did
+    neither, as when a native failure ended it before its message. A failure before the move is
+    queued ends only that press, recorded as "a move button"."""
     moves, errors = len(owner.book.moved), len(owner.errors)
-    owner.queue_move("top")
+    owner.move_buttons.actionPerformed(SimpleNamespace(ActionCommand="top"))
     owner.run_queue()
     if len(owner.book.moved) > moves:
         return owner.book.moved[-1]
@@ -898,7 +947,24 @@ def move_to_top(owner: Any) -> list[str] | str | None:
 
 
 def key(owner: Any, code: int, modifiers: int = 0) -> None:
-    owner.tree_key(code, modifiers)
+    """A selection key in the list, through the list's key handler (`ListKeyHandler.keyPressed`),
+    then the work it queued. Only a key that the handler gives the tree (`tree_key`) is accepted:
+    another would mean something else there, or nothing. A native failure while the handler runs
+    ends only that key, recorded as "the key handler", and the key is still consumed: the
+    handler's `_consumed`, which consumes the key's release, says so."""
+    assert route_key(code, modifiers) is KeyRoute.TREE, (code, modifiers, "is not a tree key")
+    owner.key_handler.keyPressed(SimpleNamespace(KeyCode=code, Modifiers=modifiers, KeyChar=""))
+    owner.run_queue()
+
+
+def type_key(owner: Any, char: str) -> None:
+    """A character typed in the list, through the list's key handler, which queues type-ahead
+    for it (`queue_input`), then that work: a native failure in type-ahead ends only that work,
+    recorded as "type-ahead"."""
+    assert route_key(0, 0, char) is KeyRoute.TYPE_AHEAD, (char, "is not typed ahead")
+    letter = char.isascii() and char.isalpha()
+    code = A + ord(char.lower()) - ord("a") if letter else 0  # UNO's key codes A to Z.
+    owner.key_handler.keyPressed(SimpleNamespace(KeyCode=code, Modifiers=0, KeyChar=char))
     owner.run_queue()
 
 

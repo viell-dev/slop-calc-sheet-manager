@@ -18,13 +18,17 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   it, though nobody picked it. The list now clears the picks with the selection notice, as after
   a refused held click. LibreOffice's tree has been seen to fail such a call only while a panel
   closes ([#316](https://github.com/viell-dev/slop-calc-sheet-manager/issues/316)).
-- The unit tests' simulated sheet list now runs the list's mouse handlers through the list's own
-  mouse listener and its error guard, loaded from the extension's source. A LibreOffice failure
-  inside a press's or a release's handler is then reported and ends only that handler, and the
-  list still queues its selection write, as in LibreOffice. The failure escaped to the test
-  instead, so tests caught it themselves and randomized checks built on the simulation stopped at
-  such a sequence without judging it. This changes the unit tests, not the extension
-  ([#312](https://github.com/viell-dev/slop-calc-sheet-manager/issues/312)).
+- The unit tests' simulated sheet list now runs the list's mouse handlers, keys, type-ahead and
+  Move to Top through the extension's own mouse listener, key handler and move button listener,
+  with their error guards, loaded from the extension's source. A LibreOffice failure inside a
+  press's or a release's handler, a key or a Move to Top is then reported and ends only that
+  input, and the list still queues its selection write after a mouse handler, as in LibreOffice.
+  The failure escaped to the test instead, so tests caught it themselves and randomized checks
+  built on the simulation stopped at such a sequence without judging it. A key the key handler
+  never gives the list, such as a plain Space, can no longer reach it in these tests. This
+  changes the unit tests, not the extension
+  ([#312](https://github.com/viell-dev/slop-calc-sheet-manager/issues/312),
+  [#320](https://github.com/viell-dev/slop-calc-sheet-manager/issues/320)).
 - A Ctrl+click, Ctrl+Shift+click, Space, Ctrl+Space, right click, or Ctrl with an arrow, Home,
   End, Page Up or Page Down key, made just after rows were selected or cleared through assistive
   technology, no longer acts against the list's earlier picks before the list has taken that

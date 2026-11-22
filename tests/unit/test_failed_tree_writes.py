@@ -31,6 +31,7 @@ from tests.unit.list_peer import (
     press,
     release,
     sheet_list,
+    type_key,
 )
 
 NAMES = ["Alfa", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel"]
@@ -414,8 +415,8 @@ def test_a_failed_type_ahead_write_does_not_bring_back_the_picks_it_replaced() -
     owner = sheet_list(Book(list(NAMES)))
     click(owner, 1)
     owner.faults.fail("select")
-    with pytest.raises(NativeFailure):
-        owner.type_ahead("d")  # Posted by the key handler; a failure ends that work.
+    type_key(owner, "d")  # The key handler posts type-ahead; a failure ends that work.
+    assert owner.faults.failed == ["select"] and owner.failures == ["type-ahead"]
     assert picks(owner) == ["Delta"] and owner.tree.shown() == ["Bravo"]
     assert owner.timers, "No retry was scheduled"
     owner.tree.assistive_select("Foxtrot")
