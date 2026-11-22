@@ -41,6 +41,12 @@ def native_picks() -> tuple[Any, Any, list[Callable[[], None]]]:
         _shown=("Bravo",),
         _toggles_held=None,
         _deferred=None,
+        _unowned=0,  # Nothing but the list changed the tree yet (#294).
+        _accounted=0,
+        _shown_at=0,
+        _quiet=None,
+        _erased=None,
+        _add_mode=False,
         _hold_toggles=Mock(),
         _presses_held=None,
         _toggles_shown=Mock(),  # A take shows exactly the picks it gives.
@@ -63,12 +69,28 @@ def native_picks() -> tuple[Any, Any, list[Callable[[], None]]]:
         return bool(held(owner, name, deferred))
 
     owner._toggle_held = toggle_held
+    account = method(SOURCE, "SheetList", "_account", {})
+
+    def account_native(seen: int, *, shown: bool = False) -> None:
+        account(owner, seen, shown=shown)
+
+    owner._account = account_native
+    engine = method(
+        SOURCE, "SheetList", "_follow_engine", {"RIGHT": 2, "MOD1": 2, "MOD2": 4, "SHIFT": 1}
+    )
+
+    def follow_engine(event: Any, hit: bool, add_mode: bool) -> bool:
+        return bool(engine(owner, event, hit, add_mode))
+
+    owner._follow_engine = follow_engine
     return owner, live, queued
 
 
 def test_native_ctrl_toggle_waits_for_the_owned_pointer_listener() -> None:
     owner, live, queued = native_picks()
-    # Recorded native order: the tree has added Delta before the owned press arrives.
+    # Recorded native order: the tree has added Delta before the owned press arrives, and the
+    # toolkit's selection listener counted that change (#294).
+    owner._unowned += 1
     assert owner._take_tree_selection(paint=False, defer=True)
     assert owner._selection.names() == ["Bravo"]
     owner.geometry = lambda: SimpleNamespace(row_at=Mock(return_value=1))
@@ -82,7 +104,7 @@ def test_native_ctrl_toggle_waits_for_the_owned_pointer_listener() -> None:
         SOURCE,
         "SheetList",
         "mouse_pressed",
-        {"LEFT": 1, "RIGHT": 2, "MOD1": 2, "SHIFT": 1, "_Press": Mock()},
+        {"LEFT": 1, "RIGHT": 2, "MOD1": 2, "MOD2": 4, "SHIFT": 1, "_Press": Mock()},
     )
     press(owner, SimpleNamespace(Buttons=1, Modifiers=2, ClickCount=1, Y=33))
     queued.pop()()  # Its old sample cannot toggle or replace the newer picks.

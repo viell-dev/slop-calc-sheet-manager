@@ -310,6 +310,87 @@ def check_tab_selection_sync(book):
     }
 
 
+def check_ctrl_clicks_after_a_ctrl_shift_range(book):
+    """Ctrl+clicks after a real Ctrl+Shift+click toggle their rows, and a quick triple Ctrl+click
+    toggles its row three times (#294, #310's review).
+
+    After a Ctrl+Shift+click, VCL's selection engine stays in add mode until a plain or Shift
+    click, and a Ctrl+click on an unselected row then only moves the tree's cursor: it selects
+    nothing (measured with 26.8.2.2 on gtk3 and gen). The second and third presses of a quick
+    triple click change nothing either, since the engine handles only a click count of 1. The
+    list counts the tree's changes that it did not make, and must expect no change from these
+    presses: before that, it refused each of them and cleared the selection.
+    """
+    evidence = {}
+    book.click(0)
+    wait_until(lambda: book.selection() == [NAMES[0]], "a click to pick Alfa")
+    book.click(2, modifiers=("Control_L", "Shift_L"))
+    wait_until(lambda: book.selection() == NAMES[:3], "a Ctrl+Shift+click range to Charlie")
+    book.click(4, modifiers=("Control_L",))
+    wait_until(lambda: book.selection() == [*NAMES[:3], NAMES[4]], "a Ctrl+click adding Echo")
+    evidence["unselected_in_add_mode"] = book.selection()
+    book.click(1, modifiers=("Control_L",))
+    wait_until(lambda: book.selection() == [NAMES[0], NAMES[2], NAMES[4]], "Bravo toggled off")
+    evidence["selected_in_add_mode"] = book.selection()
+    book.click(3)
+    wait_until(lambda: book.selection() == [NAMES[3]], "a plain click on Delta")
+    book.click(5, modifiers=("Control_L",))
+    wait_until(lambda: book.selection() == [NAMES[3], NAMES[5]], "a Ctrl+click adding Foxtrot")
+    evidence["after_a_plain_click"] = book.selection()
+    point = book.point(6)
+    for _ in range(3):
+        book.pointer.click(*point, modifiers=("Control_L",), pause=0.02)
+    time.sleep(1)
+    evidence["triple_ctrl_click"] = book.selection()
+    assert evidence["triple_ctrl_click"] == [NAMES[3], NAMES[5], NAMES[6]], evidence
+    return evidence
+
+
+ASSISTIVE_ATTEMPTS = 6
+
+
+def check_assistive_selection_then_ctrl_input(book):
+    """A selection made through accessibility, followed at once by a real Ctrl+click on its row
+    or Ctrl+Space with the cursor there, never picks the row the user meant to deselect (#294).
+
+    Alfa is picked by a click; Bravo is then selected through the tree's `XAccessibleSelection`,
+    from this process as a remote assistive client selects a row, which LibreOffice runs on a
+    bridge thread, and real input follows without waiting for the list's intake, which takes such
+    a selection at its next tab sample. Before the fix, the list toggled Bravo against picks that
+    lacked it in 7 of 8 such runs of the click (#294's measurement). A selection made through a
+    main-thread callback from here holds the main thread long enough for a tab sample to queue,
+    and the intake then took it first in every attempt. Each attempt either finds the selection
+    the list has not taken and refuses, clearing the tree with the notice, or meets an intake that
+    took Bravo first and toggles it off; it records which.
+    """
+    context = book.tree.getProperty("XAccessible").getAccessibleContext()
+    notice = view.footer_text(book.panel, "Why the sheet list")
+    outcomes = {"ctrl_click": [], "ctrl_space": []}
+    for kind in ("ctrl_click", "ctrl_space"):
+        for _ in range(ASSISTIVE_ATTEMPTS):
+            book.click(0)
+            wait_until(lambda: book.selection() == [NAMES[0]], "a click to pick Alfa")
+            if kind == "ctrl_space":
+                book.lab.input.tap("Down", modifiers=("Control_L",))  # The cursor to Bravo.
+            time.sleep(0.6)  # The list's write and a tab sample have run.
+            context.selectAccessibleChild(1)  # Bravo, on a bridge thread in the office.
+            if kind == "ctrl_click":
+                book.click(1, modifiers=("Control_L",))
+            else:
+                book.lab.input.tap("space", modifiers=("Control_L",))
+            time.sleep(1.5)  # The listener, the write and several tab samples have run.
+            shown = book.selection()
+            assert NAMES[1] not in shown, f"{kind}: the list picked Bravo, deselected: {shown}"
+            assert shown in ([], [NAMES[0]]), f"{kind}: {shown}"
+            if shown:
+                outcomes[kind].append("intake first")
+            else:
+                assert notice.getText().startswith("Selection cleared"), notice.getText()
+                outcomes[kind].append("refused")
+    wait_until(lambda: not notice.getText(), "notice expiration", timeout=14)
+    return outcomes
+
+
 def check_selection_notice(book):
     """Real Ctrl+Z creates a bounded notice without moving focus into a cell (#90).
 

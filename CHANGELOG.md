@@ -5,6 +5,17 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- A Ctrl+click, Ctrl+Shift+click, Space, Ctrl+Space, right click, or Ctrl with an arrow, Home,
+  End, Page Up or Page Down key, made just after rows were selected or cleared through assistive
+  technology, no longer acts against the list's earlier picks before the list has taken that
+  selection, within about a quarter of a second. Move to Top could then move a sheet you had just
+  deselected or replaced. The list now counts the changes to its selection that it did not make
+  itself, and such input picks nothing and clears the selection, with the selection notice:
+  select again. Two clicks or keys made so quickly that the list has not handled the first when
+  the second arrives can be refused in the same way, and so is a Ctrl+Shift+click after Ctrl with
+  an arrow key moved the cursor
+  ([#294](https://github.com/viell-dev/slop-calc-sheet-manager/issues/294),
+  [#313](https://github.com/viell-dev/slop-calc-sheet-manager/issues/313)).
 - When the list refuses a held click because the sheets changed during it, the keyboard cursor
   now stays where your keys moved it during the hold, also outside the picks, as long as the list
   can still identify that sheet. It returned to a picked sheet, so Ctrl+Space then toggled that
@@ -59,10 +70,7 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   Home, End, Page Up or Page Down key no longer brings back the earlier picks over it. Such a
   toggle or key now picks nothing and clears the selection, with the selection notice, and until
   the list has redrawn, Ctrl+Space picks nothing either, also after arrow keys typed meanwhile:
-  select again. Within about a quarter of a second of an assistive selection, before the list has
-  looked at it, a Ctrl+click, a Ctrl+Shift+click or a key still acts against the earlier picks
-  ([#291](https://github.com/viell-dev/slop-calc-sheet-manager/issues/291),
-  [#294](https://github.com/viell-dev/slop-calc-sheet-manager/issues/294)).
+  select again ([#291](https://github.com/viell-dev/slop-calc-sheet-manager/issues/291)).
 - A click, Ctrl+click, Shift+click, double click or right click in the sheet list no longer acts
   on another sheet than the one you clicked when the list redraws its rows at that moment, as it
   does when another window moves, inserts, deletes or renames a sheet. The list handled the

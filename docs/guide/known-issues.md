@@ -73,12 +73,21 @@ If Sheet Manager does not work in an environment where it is expected to, please
   The speech probes cover Orca on gtk3/X11 and NVDA on Windows in English. Braille, other
   configurations, and other backends remain unverified
   ([#254](https://github.com/viell-dev/slop-calc-sheet-manager/issues/254)).
-  A Ctrl+click, a Ctrl+Shift+click, Ctrl+Space or Ctrl with an arrow key made within about a
-  quarter of a second of selecting or clearing rows through assistive technology, before the list
-  has looked at that selection, acts on the list's earlier picks rather than on the rows the list
-  showed selected. A Ctrl+Shift+click or a right-click made before the list has taken such a
-  selection does so too
+  A selection made through assistive technology just after a click or key in the list, before
+  the list has drawn that input, is replaced by what the input selected
+  ([#307](https://github.com/viell-dev/slop-calc-sheet-manager/issues/307)).
+  <Unreleased /> Two clicks or keys in the list made so quickly that the list has not handled the
+  first when the second arrives, such as two Ctrl+clicks while LibreOffice is busy, can be
+  refused: the list clears its selection, with the selection notice, and you select again
   ([#294](https://github.com/viell-dev/slop-calc-sheet-manager/issues/294)).
+  So can a Ctrl+click, Space or right click within about half a second after rows were
+  deselected and selected again through assistive technology, and a Ctrl+click at the very left
+  edge of a row. <Unreleased /> A Ctrl+Shift+click after Ctrl with an arrow, Home, End, Page Up or
+  Page Down key moved the cursor is refused every time, unless the range from the cursor and the
+  range from where the selection started have as many rows: then the list selects the range from
+  where the selection started, not the one the list first showed. Click where the range starts,
+  then Ctrl+Shift+click
+  ([#313](https://github.com/viell-dev/slop-calc-sheet-manager/issues/313)).
 - **Large lists.** The list rebuilds after changes. During rapid sheet switches the active-sheet
   marker, and <Unreleased since="0.0.9" /> the list's accessible name, can lag. LibreOffice's tree
   control cannot update a single row in place, so the rebuild stays; the measurements and that

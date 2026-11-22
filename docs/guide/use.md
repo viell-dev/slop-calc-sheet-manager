@@ -293,6 +293,15 @@ the selection, with the notice. So do a Ctrl+click, Ctrl+Space, and Ctrl with an
 End, Page Up or Page Down key on such a selection once the list has seen it, also when several
 Ctrl+clicks come at once. Select again; the next toggle acts
 ([#291](https://github.com/viell-dev/slop-calc-sheet-manager/issues/291)).
+<Unreleased /> They do so too just after rows were selected or cleared through assistive
+technology, before the list has looked at that selection, and so do a Ctrl+Shift+click, Space
+and a right click: the list counts the changes to its selection that it did not make itself. A
+right click there opens the menu for the clicked sheet alone
+([#294](https://github.com/viell-dev/slop-calc-sheet-manager/issues/294)). A Ctrl+Shift+click
+after Ctrl with an arrow, Home, End, Page Up or Page Down key moved the cursor is usually
+refused the same way: the list extends from where the selection started, the tree from the
+cursor. Click where the range starts, then Ctrl+Shift+click its end
+([#313](https://github.com/viell-dev/slop-calc-sheet-manager/issues/313)).
 <Unreleased /> A click in the list just as the list redraws its rows, as it does when another window
 moves, inserts, deletes or renames a sheet, is refused if the redraw changed the clicked row,
 rather than act on the sheet that the redraw put under the pointer. So is a Shift+click on any

@@ -154,7 +154,8 @@ def observer() -> tuple[Any, Any, Any]:
 def test_tab_only_change_follows_once_without_rebuilding_or_consuming_monitor_evidence() -> None:
     owner, tabs, live = observer()
     tabs.observe(False)
-    owner._take_tree_selection.assert_called_once_with(paint=False, defer=True)
+    # The timer's tick, whose samples alone are ordered for the quiet-sample rule (#294).
+    owner._take_tree_selection.assert_called_once_with(paint=False, defer=True, tick=True)
     owner._select.assert_not_called()
     live.indices = (0, 2)
     tabs.observe(False)
@@ -239,6 +240,7 @@ def test_refresh_seeds_the_new_proof_before_a_subsequent_tab_change(kept: bool) 
 
     owner._selection = SimpleNamespace(carry=carry, names=selected_names, picked=[])
     owner._shown = ()
+    owner._unowned = owner._accounted = owner._shown_at = 0
     owner._apply_selection = Mock()
     owner._generation = 0
     owner._name_viewed = Mock()
@@ -701,6 +703,7 @@ def drag_list() -> tuple[Any, Any, Any, list[Any]]:
     owner._selection = Selection(function(SOURCE, "_current", {"Ref": Ref}))
     owner._selection.take(["Alfa"], owner._handles, owner.names())
     owner._shown = ("Alfa",)
+    owner._unowned = owner._accounted = owner._shown_at = 0
     owner._apply_selection, owner._rebuild = Mock(), Mock(side_effect=rebuild)
     owner._show_native, owner._name_viewed = Mock(), Mock()
     owner._release_presses = Mock()  # A refresh that keeps the rows ends no press hold (#293).

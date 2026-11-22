@@ -65,8 +65,10 @@ from rename_dialog import check_replace_conflict as check_rename_replace_conflic
 from rename_dialog import check_stale as check_rename_stale  # noqa: E402
 from run import office_session, property_value  # noqa: E402
 from selection_checks import (  # noqa: E402
+    check_assistive_selection_then_ctrl_input,
     check_click_activates,
     check_clicks_after_scrolls,
+    check_ctrl_clicks_after_a_ctrl_shift_range,
     check_ctrl_shift_selection,
     check_margin_drag_keeps_sidebar_docked,
     check_viewed_sheet_name,
@@ -187,6 +189,14 @@ def checks_for(lab, book):
             lambda: check_margin_drag_keeps_sidebar_docked(book),
         ),
         ("ctrl_shift_selection", lambda: check_ctrl_shift_selection(book)),
+        (
+            "ctrl_clicks_after_a_ctrl_shift_range",
+            lambda: check_ctrl_clicks_after_a_ctrl_shift_range(book),
+        ),
+        (
+            "assistive_selection_then_ctrl_input",
+            lambda: check_assistive_selection_then_ctrl_input(book),
+        ),
         ("viewed_sheet_name", lambda: check_viewed_sheet_name(book)),
         ("keys_stay_in_list", lambda: check_keys_stay_in_list(book)),
         ("shortcuts_reach_calc", lambda: check_shortcuts(book)),
