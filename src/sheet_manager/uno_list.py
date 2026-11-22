@@ -211,9 +211,11 @@ key moved: a key that moves the cursor or the anchor, or is refused, holds range
 write has shown the cursor (`_hold_ranges`), and the listener of each that runs held refuses its
 range as a held toggle is, holding toggles too, since the tree shows rows the press selected
 that the picks lack. A refused range press moves the anchor to its row before the refusal's
-write shows the cursor, so it holds range presses too. A plain press on a row the record does not
-show leaves the tree showing that row alone, which takes at least one change for each row of
-`_shown` and one for its own, counted from when the tree showed `_shown` (`_shown_at`); its
+write shows the cursor, so it holds range presses too. A plain cursor key and type-ahead's jump
+move the anchor with the cursor as well, and hold range presses in the same way, also when they
+leave both on their row (#326). A plain press on a row the record does not show leaves the tree
+showing that row alone, which takes at least one change for each row of `_shown` and one for its
+own, counted from when the tree showed `_shown` (`_shown_at`); its
 listener accounts for up to that many, so that a Ctrl press handled before that listener ran, as
 when the user clicks ahead while LibreOffice is busy, still sees its own change alone (#44). A
 write that lands between the press and its listener moves `_shown_at` past the press, and the
@@ -241,9 +243,9 @@ and reselection that cancel out, until two tab samples have found the tree showi
 Ctrl press in the few pixels left of a row's native hit area, which `RowGeometry.row_at` maps to
 the row by height alone though the engine changed nothing, unless the last accounting point is a
 write that overwrote exactly one change; and a Shift or Ctrl+Shift press that the range hold
-refuses (#313): one handled before the write of a Ctrl key with a cursor key that moved the
-cursor or the anchor or was refused, or of a refused range press, or whose listener runs after
-such a key;
+refuses (#313, #326): one handled before the write of a Ctrl key with a cursor key that moved the
+cursor or the anchor or was refused, of a plain cursor key or type-ahead's jump, also one that
+moved nothing, or of a refused range press, or whose listener runs after such a key;
 one handled after that write whose listener VCL runs ahead of the hold's posted end; and, once,
 one made after a cursor write failed before it showed the cursor and left the hold on until a
 later write. Still as on `main`, an assistive change made after a key or
@@ -255,7 +257,8 @@ that changes many rows take about 1.6 times as long: writing 1,000 picks took ab
 instead of 50 on an idle machine (#294).
 
 Pointer input. A left press picks at once and keeps the pressed sheet's handle. A plain press
-on a picked row keeps the other picks, so that they can be dragged together; its release in the
+on a picked row keeps the other picks, so that they can be dragged together, unless toggles are
+held (Drags before the press's listener, below); its release in the
 same row narrows the picks to that sheet, and only the release of a double click's second press
 activates it. Both act only on the pressed sheet, still in that row (#28). If a refresh during
 the press moved the sheet or showed another under its name, the release has no effect at all:
@@ -333,15 +336,34 @@ autoscroll needs nothing: no press is made while the button is held. A press mad
 scrolls that VCL paints only later, such as two resizes, that leave the rows where the list last
 saw them is not seen: the list cannot tell that the rows moved and came back (#305).
 
-Drags before the press's listener (#295). VCL recognizes a drag gesture within its handling of
-the pointer's motion (#264), so the gesture can come before its press's listener. After a
-rebuild, the tree no longer shows the row the press selected, and the gesture carried the picks
-the rebuild wrote instead. So no drag starts while presses are held: the press's listener decides
-the press, held, and the user drags again. A refresh that drops the picks a waiting selection
-superseded (#280) refuses many of these drags too, but it cannot see the press's selection while
-an earlier click's press is still held, and its rebuild then writes that click's pick. A
-selection key's or type-ahead's write that does not scroll holds nothing, so a gesture after it,
-before the press's listener, still drags the key's pick (#304).
+Drags before the press's listener (#295, #304, #318). VCL recognizes a drag gesture within its
+handling of the pointer's motion (#264), so the gesture can come before its press's listener.
+After a rebuild, the tree no longer shows the row the press selected, and the gesture carried the
+picks the rebuild wrote instead. So no drag starts while presses are held: the press's listener
+decides the press, held, and the user drags again. A refresh that drops the picks a waiting
+selection superseded (#280) refuses many of these drags too, but it cannot see the press's
+selection while an earlier click's press is still held, and its rebuild then writes that click's
+pick. A selection key's or type-ahead's pick made before the press was carried the same way: its
+queued write showed it over the press's row, or, before that write, the intake took nothing and
+the record held it (#304). So no drag starts while a toggle or range hold waits for its write or
+for its posted end either: a key or type-ahead that changes the picks or moves the cursor holds
+one until work posted once a write has shown them has run (`tree_key`, `type_ahead`). A write
+left undone for a newer change of the tree (#307) leaves the press's selection to the intake.
+Nor does a drag start while a selection write is queued, when the intake takes nothing, unless
+every change of the tree counted so far is accounted for, as by this press's own listener
+(#294): an earlier click's listener that ran between the press and the gesture left its pick in
+the record. A plain press handled while toggles are held picks its row alone, rather than keep
+other picks for a drag that the tree may not have shown when it handled the press. A press
+listener marks its press undecided, outside the rows and voided, before its first native call,
+so that a failure before it decides leaves no press: its gesture starts nothing, rather than
+carry the picks from before the press, and its release does nothing (#318). The gesture reads
+only Python state for these rules. They refuse where `main` dragged the pressed sheet: a drag in
+the moment after a key or type-ahead, also from a press whose listener ran before the key's
+write; one after a Shift+click's listener and before its write, which leaves the Shift press's
+change unaccounted; and one from the second of two presses handled before the first one's
+listener ran, whose own change neither listener's share covers. Still as on `main`, a refresh
+that keeps the rows and writes the picks between an earlier click's listener and the gesture
+writes that click's pick over the press's row, and the drag carries it (#323).
 
 Activation. A double click or Enter makes the sheet Calc's only selected tab and reads that back,
 because `setActiveSheet` keeps an existing group when the sheet belongs to it. Activation reads
@@ -848,7 +870,9 @@ class SheetList:
     such as a lock held at that moment, the drop's posted `_move` finds before anything moves:
     it checks the monitor, and `apply_order` repeats the whole preflight. A drag on stale rows
     is refused and posts its refresh, whose tab sample must not run in the listener (#264). No
-    drag starts while presses are held (#295, below).
+    drag starts while presses are held, while a toggle or range hold waits for its write or its
+    posted end, while a write is queued over a change of the tree that no listener took, or for a
+    press its listener has not decided (#295, #304, #318, below).
 
     Collaborators, each owning its own state: `_refreshes` decides when to refresh
     (`refresh_schedule`), `_tabs` follows Calc's tabs and the sidebar (`uno_tabs`, for which this
@@ -899,7 +923,9 @@ class SheetList:
       leaves a hold that holds Space as it is. While a deferred intake waits
       (`_deferred`, #291, read once per listener or key), the listener is held unless its
       toggle accounts for the rows that intake found (`_toggle_held`), and Ctrl+Space and the
-      cursor keys with Ctrl are held.
+      cursor keys with Ctrl are held. While a hold's write is queued or its end posted,
+      `start_drag` starts no drag, as for range presses (`_hold_ranges`, #304); while any hold
+      lasts, a plain press's listener does not keep the other picks for a drag.
     - Unowned changes (`_unowned` against `_accounted`, #294, read with `_deferred`): while the
       tree has changed in ways the list did not make and has not taken, beyond a press's own
       native share (none for a Ctrl press that VCL's selection engine skipped, which holds
@@ -987,10 +1013,10 @@ class SheetList:
         self._toggles_held: object | None = None
         self._toggles_release: object | None = None
         self._toggles_keys = True
-        # While set, a Shift or Ctrl+Shift press picks nothing, and no drag starts: a key or
-        # type-ahead moved the range anchor with the cursor, and the press may have been handled
-        # before the tree showed that cursor (#313, #326; `_hold_ranges`). `_ranges_release` is
-        # the hold whose end is posted.
+        # While set, a Shift or Ctrl+Shift press picks nothing: a key or type-ahead moved the
+        # range anchor with the cursor, and the press may have been handled before the tree
+        # showed that cursor (#313, #326; `_hold_ranges`). `_ranges_release` is the hold whose
+        # end is posted.
         self._ranges_held: object | None = None
         self._ranges_release: object | None = None
         # The tree's selected rows and the rows' order when the queued intake last deferred a
@@ -1465,8 +1491,9 @@ class SheetList:
         rows the press selected that the picks lack, so toggles are held too. A Ctrl key that
         leaves the cursor and the anchor on their row holds nothing unless it is refused
         (`tree_key`). A write that fails before it shows the cursor leaves the hold on until a
-        later one does. While the hold lasts, `start_drag` starts no drag: the write showed the
-        key's picks over any press made since the key (#304). Each hold is a new token.
+        later one does. While the hold waits for that write or for its posted end, `start_drag`
+        starts no drag: the write shows the key's picks over any press made since the key (#304).
+        Each hold is a new token.
         """
         self._ranges_held = object()
 

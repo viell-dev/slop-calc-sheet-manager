@@ -245,11 +245,13 @@ The four move shortcuts apply while the list has focus, without changing Calc's 
 configuration. In a cell, Alt+Down retains Calc's Data Select command.
 Ctrl+Shift with navigation adds a range to the existing selection.
 
-**Ranges after Ctrl keys.** <Unreleased /> After Ctrl with an arrow, Home or End key moves the
+**Ranges after keys.** <Unreleased /> After Ctrl with an arrow, Home or End key moves the
 keyboard cursor, a range made with Shift or Ctrl+Shift, by key or by click, starts at the cursor,
-where the list shows it. A Shift+click or Ctrl+Shift+click made so quickly after such a key that
-the list has not shown the cursor there yet picks nothing and clears the selection: click again
-([#313](https://github.com/viell-dev/slop-calc-sheet-manager/issues/313)).
+where the list shows it. A Shift+click or Ctrl+Shift+click made so quickly after such a key, after
+an arrow, Home, End, Page Up or Page Down key without Ctrl, or after a typed letter that moves to a
+sheet, that the list has not shown the cursor there yet picks nothing and clears the selection:
+click again ([#313](https://github.com/viell-dev/slop-calc-sheet-manager/issues/313),
+[#326](https://github.com/viell-dev/slop-calc-sheet-manager/issues/326)).
 
 **A renamed cursor row.** <Unreleased /> When another window renames the sheet under the keyboard
 cursor, keys keep moving from that row until the list shows the new name, and they do not select
@@ -324,6 +326,9 @@ out of view. So is a click that comes just as the panel's height changes and scr
 it can when the selection notice appears or goes. A drag does not start when you begin it just as
 the list redraws or scrolls its rows. Click or drag again ([#299](https://github.com/viell-dev/slop-calc-sheet-manager/issues/299),
 [#295](https://github.com/viell-dev/slop-calc-sheet-manager/issues/295)).
+Nor does one begun so quickly after a key or a typed letter that changed the selection or moved
+the keyboard cursor, or after another click, that the list has not shown that input yet: drag
+again ([#304](https://github.com/viell-dev/slop-calc-sheet-manager/issues/304)).
 
 **Undo and Redo of the list's moves.** <Unreleased since="0.0.8" /> Undo and Redo of a move the list
 made itself, by dragging, a move button, the menu or a shortcut, keep the picks and the view. The

@@ -19,6 +19,20 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   second sheet, and Move to Top then moved it. Keys now move from the row where the list showed
   the cursor, and do not select the renamed sheet until the list shows its new name
   ([#314](https://github.com/viell-dev/slop-calc-sheet-manager/issues/314)).
+- A Shift+click or Ctrl+Shift+click made so quickly after an arrow, Home, End, Page Up or Page Down
+  key without Ctrl, or after a typed letter that moves to a sheet, that the list has not shown the
+  keyboard cursor there yet now picks nothing and clears the selection, as after Ctrl with such a
+  key. LibreOffice's list ranged from the earlier cursor, and the list from the row the key or the
+  letter had moved to: a Shift+click made just before Down and handled after it also selected the
+  sheet below the earlier cursor, which you had not selected, and Move to Top then moved it
+  ([#326](https://github.com/viell-dev/slop-calc-sheet-manager/issues/326)).
+- A drag begun so quickly after a key or a typed letter that changed the selection or moved the
+  keyboard cursor, before the list had shown it, no longer drags the sheet that input selected
+  instead of the one you pressed, and one begun just after another click, before the list had
+  shown that click, no longer drags that click's sheet. Such a drag now does not start: drag
+  again ([#304](https://github.com/viell-dev/slop-calc-sheet-manager/issues/304)). Nor does a
+  drag whose press the list failed to handle, which dragged the sheets selected before the press
+  ([#318](https://github.com/viell-dev/slop-calc-sheet-manager/issues/318)).
 - The unit tests' simulated sheet list now runs the list's mouse handlers, keys, type-ahead and
   Move to Top through the extension's own mouse listener, key handler and move button listener,
   with their error guards, loaded from the extension's source. A LibreOffice failure inside a

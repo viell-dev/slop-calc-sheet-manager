@@ -7,7 +7,10 @@ its cursor for the next Shift or Ctrl+Shift press (`SvImpLBox::SelAllDestrAnch`,
 `ImpLBSelEng::CreateAnchor`, read in 26.8.2.2), as VCL's own Ctrl with a cursor key drops its
 anchor (`SelectionEngine::CursorPosChanging`). The list's anchor stayed behind at such a key, so a
 Ctrl+Shift+click added another range to the picks than the tree had shown: refused when the two
-ranges differed in size, and acted on when they did not.
+ranges differed in size, and acted on when they did not. A plain cursor key and type-ahead's jump
+move the anchor with the cursor as well, so a range click that the tree handles before their
+write, or whose listener runs after them, ranged in the list from another row than in the tree;
+like a Ctrl key, they hold range presses until a write has shown the cursor (#326).
 
 A key revalidated the picks, the cursor and the anchor against the sheets' names. When another
 window had renamed the cursor's sheet and the list had not refreshed yet, the cursor went, and the
