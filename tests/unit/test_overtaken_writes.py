@@ -890,18 +890,38 @@ def vcl_shift_click(owner: Any, first: str, last: str) -> None:
     owner.post(lambda: listen(owner, owner.mouse_released, event), "a mouse release")
 
 
-def test_an_assistive_selection_before_a_shift_clicks_listeners_is_taken() -> None:
+def test_an_assistive_selection_before_a_shift_clicks_listeners_is_not_shown_over() -> None:
     """#307's second row with Shift held: Alfa picked; a Shift+click on Delta, which the tree
     ranges natively from Alfa; Hotel selected alone through accessibility before the listeners.
     The write showed Alfa to Delta over Hotel, and Move to Top moved them, as on `main`. The
-    Shift press claims a change for each row of the record and of its range, and finds more: the
-    write leaves the tree as it is, and the intake takes Hotel."""
+    Shift press claims a change for each row of the record and of its range, and finds more,
+    which it cannot tell from a longer range of the tree's own: the write leaves the tree as it
+    is, and the picks go, with the notice."""
     owner = fresh()
     click(owner, row("Alfa"))
+    notices = len(owner.notices)
     vcl_shift_click(owner, "Alfa", "Delta")
     owner.tree.assistive_only("Hotel")
     owner.run_queue()
-    taken(owner, ["Hotel"], 0)
+    assert "Delta" not in picks(owner), "the range over the newer selection"
+    refused(owner, notices)
+
+
+def test_a_shift_click_before_keys_write_that_ranges_from_another_cursor_is_refused() -> None:
+    """Alfa clicked; Down three times, which put the list's cursor and anchor on Delta; a
+    Shift+click on Golf before the keys' write, which the tree ranges from its cursor, still on
+    Alfa. Its change goes beyond the Shift press's share, so the list does not take the tree's
+    range from Alfa, a row the keys left: the picks go, with the notice. `main` picks Delta to
+    Golf, and #326 decides to refuse this order with the range hold."""
+    owner = fresh()
+    click(owner, row("Alfa"))
+    notices = len(owner.notices)
+    for _ in range(3):
+        owner.tree_key(DOWN, 0)
+    vcl_shift_click(owner, "Alfa", "Golf")
+    owner.run_queue()
+    assert "Alfa" not in picks(owner), "the range from the cursor the keys left"
+    refused(owner, notices)
 
 
 @pytest.mark.parametrize("vcl", [False, True], ids=["simulated Shift press", "VCL's range"])

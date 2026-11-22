@@ -327,9 +327,9 @@ the list redraws or scrolls its rows. Click or drag again ([#299](https://github
 <Unreleased /> A selection made through assistive technology just after a click or key in the
 list, before the list has shown that input, is not replaced by what the input selected: the list
 keeps that selection, and commands act on it. Where the list cannot tell what you selected, after
-a Ctrl+click it refused, a Ctrl+double-click, a click held and released over another row, or a
-right click, it clears its selection instead, with the notice; the right click's menu opens for
-the clicked sheet alone. The list has then not shown its keyboard cursor where the click or key
+a Shift+click, a Ctrl+click it refused, a Ctrl+double-click, a click held and released over another
+row, or a right click, it clears its selection instead, with the notice; the right click's menu
+opens for the clicked sheet alone. The list has then not shown its keyboard cursor where the click or key
 moved it, so the next Shift+click or Ctrl+Shift+click picks nothing and clears the selection, as
 one made just after Ctrl with an arrow key does: click again. A click on another row just after a
 key still selects the row clicked, and the list then does not scroll to the key's selection
