@@ -21,7 +21,8 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   closes ([#316](https://github.com/viell-dev/slop-calc-sheet-manager/issues/316)).
 - A drag started on a sheet just after a Shift+click, Ctrl+click or Ctrl+Shift+click, before the
   list had shown that click, no longer carries the click's sheets instead of the one you pressed:
-  a drop moved sheets you were not dragging
+  a drop moved sheets you were not dragging. Such a drag now carries nothing, and the list clears
+  its selection with the notice; drag again
   ([#329](https://github.com/viell-dev/slop-calc-sheet-manager/issues/329)).
 - After Ctrl with an arrow, Home or End key moved the keyboard cursor, a Ctrl+Shift+click now
   adds the range from the cursor that the list shows at the click. The list added the range from

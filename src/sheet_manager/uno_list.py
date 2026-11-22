@@ -279,8 +279,9 @@ see as one. Every other input since the tree last showed the record left a nativ
 list reads otherwise (`_unread`): a refused toggle's, a held or a middle press's, a Ctrl press's
 that the tree does not show, as a Ctrl+double-click's second, a Shift press's beyond its share,
 which may be a range from another cursor than the list's, as before a key's write (#326), the native
-release of a click released over another row; and a right press, whose record may still match the
-picks for its menu. Then the record is unknown, and the intake settles it, dropping the picks with
+release of a click released over another row, a change counted between a Shift or Ctrl press's
+listener and its release's (#329); and a right press, whose record may still match the picks for
+its menu. Then the record is unknown, and the intake settles it, dropping the picks with
 the notice, and a right press's menu targets the pressed row alone (`_open_menu`). The intake is
 posted behind every listener queued before the write, so that a queued press's listener acts on its
 own change first, as on `main`, and its write then shows its picks. It takes at once, as a command
@@ -3299,6 +3300,12 @@ class SheetList:
             return
         row = press.row
         if row is None or press.modifiers & (SHIFT | MOD1):
+            if press.modifiers & (SHIFT | MOD1) and seen > before:
+                # Changed since the press's listener read the count, though this release selects
+                # nothing natively: another press handled meanwhile, a selection made through
+                # accessibility, or a native release that selects after all. The list cannot tell
+                # which, so the intake must not take the tree for it (#307, #329).
+                self._unread()
             self._queue_selection()
             return
         if self.geometry().row_at(event.Y) != row:

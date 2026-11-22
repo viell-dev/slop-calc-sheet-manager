@@ -1023,8 +1023,10 @@ def test_a_drag_pressed_before_a_clicks_release_listener_carries_the_pressed_she
     Delta's press listener. The release of a Shift, Ctrl or Ctrl+Shift click selects nothing
     natively, but its listener read the count as its own, so Delta's change counted as the
     click's, the write showed the click's picks over Delta, and the drag carried them. That
-    release now reads no count: the write finds Delta newer and leaves the tree as it is, and the
-    drag carries Delta, the sheet pressed."""
+    release now reads no count, so the write finds Delta newer and leaves the tree as it is, and
+    the drag carries Delta, the sheet pressed, or nothing (#329). After a plain click it carries
+    Delta. After the others the change counted before the release cannot be told from one the
+    release made, so the picks go, and it carries nothing."""
     owner = fresh()
     dragged = bind_drag(owner)
     click(owner, row("Golf"))
@@ -1033,7 +1035,29 @@ def test_a_drag_pressed_before_a_clicks_release_listener_carries_the_pressed_she
     native_press(owner, row("Delta"))
     run(owner, 2)  # The click's release listener and its write.
     owner.start_drag(object())
-    assert dragged == [["Delta"]]
+    assert dragged in ([["Delta"]], []), "the click's picks, not the sheet pressed"
+
+
+def test_a_native_selection_at_a_ctrl_clicks_release_is_not_taken() -> None:
+    """Every sheet picked with Ctrl+A; a Ctrl+click on Alfa deselects it natively, and its press
+    listener unpicks it. A release that then selected Alfa alone, as the simulated release does for
+    any press and VCL's does only for a plain one, and the write finds the tree changed: taking it
+    would pick Alfa, which the user just deselected. The release counted a change since the press's
+    listener, which it does not read, so the picks go, with the notice (fuzz9b over #329's first
+    fix)."""
+    owner = fresh()
+    click(owner, row("Alfa"))
+    owner.tree_key(A, MOD1)
+    owner.run_queue()
+    notices = len(owner.notices)
+    queued_click(owner, row("Alfa"), MOD1)
+    run(owner, 1)  # The press's listener.
+    assert "Alfa" not in picks(owner)
+    node = owner.tree.node("Alfa")
+    owner.tree.selected, owner.tree.cursor = [node], node
+    owner.run_queue()
+    assert "Alfa" not in picks(owner), "the sheet the user deselected"
+    refused(owner, notices)
 
 
 def test_a_ctrl_click_in_add_mode_whose_toggle_the_tree_does_not_show_is_not_taken() -> None:
