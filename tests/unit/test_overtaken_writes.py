@@ -123,7 +123,8 @@ def taken(owner: Any, names: list[str], notices: int) -> None:
 
 # An assistive selection between a key and its write (#307, the first row).
 
-ASSISTIVE = {
+# Each change and the rows the tree shows after it.
+ASSISTIVE: dict[str, tuple[Callable[[Any], None], list[str]]] = {
     "Echo alone": (only("Echo"), ["Echo"]),
     "Echo added": (add("Echo"), ["Alfa", "Echo"]),
     "cleared": (clear, []),

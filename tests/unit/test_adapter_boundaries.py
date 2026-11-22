@@ -110,6 +110,63 @@ def test_menu_command_runs_through_the_menu_and_reports_its_refusal(refusal: str
     assert owner.refresh.call_count == (1 if refusal else 0)
 
 
+@pytest.mark.parametrize(
+    "shown, targets",
+    [
+        pytest.param(("Alfa", "Echo"), ["Alfa", "Echo"], id="the tree shows the picks"),
+        pytest.param(None, ["Echo"], id="the record is unknown"),
+        pytest.param(("Alfa",), ["Echo"], id="the record is not the picks"),
+    ],
+)
+def test_a_right_presss_menu_targets_the_picks_only_while_the_tree_shows_them(
+    shown: tuple[str, ...] | None, targets: list[str]
+) -> None:
+    """Alfa and Echo picked, and a right press on Echo. The menu targets both only while the
+    record says the tree shows the picks; after the press's write failed partway or left a
+    newer change in the tree, it targets the pressed row alone (#257, #307)."""
+    picked = [Ref("Alfa", object()), Ref("Echo", object())]
+    opened: list[list[str]] = []
+
+    def show(peer: object, x: int, y: int, observed: object, names: list[str]) -> None:
+        opened.append(names)
+
+    owner = SimpleNamespace(
+        _input=1,
+        _context_input=1,
+        _context_target=picked[1],
+        _context_generation=0,
+        _monitor=SimpleNamespace(check=lambda: 0),
+        _disposed=False,
+        _busy=False,
+        _menu_context=False,
+        _observed=object(),
+        _selection=SimpleNamespace(picked=picked, names=lambda: ["Alfa", "Echo"]),
+        _shown=shown,
+        _generation=0,
+        _proven=0,
+        _activation_input=0,
+        _menu=SimpleNamespace(show=show),
+        peer=object(),
+        document=object(),
+        post=Mock(),
+    )
+
+    def snapshot(document: object) -> object:
+        return SimpleNamespace(sheets=[SimpleNamespace(name=name) for name in ("Alfa", "Echo")])
+
+    def current(ref: object) -> bool:
+        return True
+
+    open_menu = method(
+        "src/sheet_manager/uno_list.py",
+        "SheetList",
+        "_open_menu",
+        {"Ref": Ref, "snapshot": snapshot, "_current": current},
+    )
+    open_menu(owner, 10, 20, seen=1)
+    assert opened == [targets]
+
+
 @pytest.mark.parametrize("newer_context", [False, True])
 def test_superseded_context_only_clears_its_own_target(newer_context: bool) -> None:
     target = object()
