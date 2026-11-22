@@ -316,16 +316,22 @@ def test_a_ctrl_key_that_moves_nothing_holds_no_range_press(
     assert owner.notices == []
 
 
-def test_a_refused_ctrl_key_that_moves_nothing_holds_no_range_press() -> None:
-    """The same when the key is refused over a selection made through accessibility: Alfa picked,
-    Hotel selected that way, Ctrl+Home refused, its picks dropped with the notice; the cursor and
-    the anchor stay on Alfa, and a Shift+click on Charlie before the refusal's write acts."""
+def test_a_refused_ctrl_key_holds_range_presses_also_when_nothing_moves() -> None:
+    """Not so when the key is refused: Alfa picked, a Ctrl+click on Delta whose listener waits,
+    and Ctrl+Home, refused over that change, with the cursor and the anchor left on Alfa. The
+    untaken change is a press's, which moved the tree's cursor to Delta, so the tree's next range
+    starts there and the list's may not: a Ctrl+Shift+click on Charlie before the refusal's write
+    is refused too. Skipping the hold here let the list range from another row than the tree did
+    in the review's fuzzing (#325)."""
     owner = clicked("Alfa")
-    owner.tree.assistive_select("Hotel")
+    queued_click(owner, row("Delta"))
     owner.tree_key(HOME, MOD1)
-    queued_click(owner, row("Charlie"), SHIFT)
+    assert cursor(owner) == anchor(owner) == "Alfa" and owner._ranges_held is not None
+    assert owner.tree.cursor is owner.tree.node("Delta")
+    queued_click(owner, row("Charlie"), MOD1 | SHIFT)
     owner.run_queue()
-    assert picks(owner) == ["Alfa", "Bravo", "Charlie"] == owner.tree.shown()
+    assert picks(owner) == [] and owner.tree.shown() == []
+    assert move_to_top(owner) is None
 
 
 def test_a_ctrl_shift_click_after_a_shift_range_adds_as_before() -> None:

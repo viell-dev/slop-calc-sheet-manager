@@ -207,11 +207,11 @@ from the other anchor that happens to add as many rows is then added as on `main
 otherwise the press is refused (#321). A Shift or Ctrl+Shift press that the tree handles before
 such a key's write, or whose listener runs after the key although it was pressed before, ranges
 natively from the cursor the tree showed then, while the list would range from the anchor the
-key moved: a key that moves the cursor or the anchor holds range presses until a write has
-shown the cursor (`_hold_ranges`), and the listener of each that runs held refuses its range as
-a held toggle is, holding toggles too, since the tree shows rows the press selected that the
-picks lack. A refused range press moves the anchor to its row before the refusal's write shows
-the cursor there, so it holds range presses too. A plain press on a row the record does not
+key moved: a key that moves the cursor or the anchor, or is refused, holds range presses until a
+write has shown the cursor (`_hold_ranges`), and the listener of each that runs held refuses its
+range as a held toggle is, holding toggles too, since the tree shows rows the press selected
+that the picks lack. A refused range press moves the anchor to its row before the refusal's
+write shows the cursor, so it holds range presses too. A plain press on a row the record does not
 show leaves the tree showing that row alone, which takes at least one change for each row of
 `_shown` and one for its own, counted from when the tree showed `_shown` (`_shown_at`); its
 listener accounts for up to that many, so that a Ctrl press handled before that listener ran, as
@@ -242,7 +242,8 @@ Ctrl press in the few pixels left of a row's native hit area, which `RowGeometry
 the row by height alone though the engine changed nothing, unless the last accounting point is a
 write that overwrote exactly one change; and a Shift or Ctrl+Shift press that the range hold
 refuses (#313): one handled before the write of a Ctrl key with a cursor key that moved the
-cursor or the anchor, or of a refused range press, or whose listener runs after such a key;
+cursor or the anchor or was refused, or of a refused range press, or whose listener runs after
+such a key;
 one handled after that write whose listener VCL runs ahead of the hold's posted end; and, once,
 one made after a cursor write failed before it showed the cursor and left the hold on until a
 later write. Still as on `main`, an assistive change made after a key or
@@ -1460,8 +1461,8 @@ class SheetList:
         every such listener runs held, and `mouse_pressed` refuses its range as a held toggle is
         (`_toggle_held_off`): the tree shows rows the press selected that the picks lack, so
         toggles are held too. A Ctrl key that leaves the cursor and the anchor on their row holds
-        nothing (`tree_key`). A write that fails before it shows the cursor leaves the hold on
-        until a later one does. Each hold is a new token.
+        nothing unless it is refused (`tree_key`). A write that fails before it shows the cursor
+        leaves the hold on until a later one does. Each hold is a new token.
         """
         self._ranges_held = object()
 
@@ -2172,6 +2173,9 @@ class SheetList:
             name = names[max(0, min(len(names) - 1, target))]
             # A Ctrl key that leaves the cursor and the anchor on their row, as Ctrl+Home on the
             # first row does, leaves the tree's next range where the list's is: no range hold.
+            # With nothing untaken, a press handled since the last write changed nothing, and its
+            # listener, which runs before any later press's, moves the anchor where the tree's
+            # went.
             anchor = self._selection.anchor
             stays = cursor is not None and anchor is not None and cursor.name == anchor.name == name
             if modifiers & MOD1 and (deferred is not None or waiting):
@@ -2183,10 +2187,11 @@ class SheetList:
                 # for the write; the cursor moves, and the anchor with it, as at a refused press:
                 # the write leaves the tree no anchor, so its next range starts there. Range
                 # presses are held until the write shows the cursor (#313).
+                # A refused key holds also when the cursor and the anchor stay: the changes it
+                # found untaken may include a press's, which moved the tree's cursor (#325).
                 self._toggle_held_off(deferred, seen, waiting=waiting)
                 self._selection.cursor = self._selection.anchor = self._ref(name)
-                if not stays:
-                    self._hold_ranges()
+                self._hold_ranges()
                 self._queue_selection(scroll=True)
                 return
             if modifiers & MOD1 and not modifiers & SHIFT:
