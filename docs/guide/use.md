@@ -318,10 +318,11 @@ the list redraws or scrolls its rows. Click or drag again ([#299](https://github
 <Unreleased /> A selection made through assistive technology just after a click or key in the
 list, before the list has shown that input, is not replaced by what the input selected: the list
 keeps that selection, and commands act on it. When that selection matches what the list showed
-before the input, the list cannot tell it apart, and clears its selection instead, with the
-notice; so does a right click there, after its menu, which opens for the clicked sheet alone. A
-click on another row just after a key still selects the row clicked, and the list then does not
-scroll to the key's selection ([#307](https://github.com/viell-dev/slop-calc-sheet-manager/issues/307)). When
+before the input, or the list refused a Ctrl+click made with it, the list cannot tell what you
+selected, and clears its selection instead, with the notice; so does a right click there, after
+its menu, which opens for the clicked sheet alone. A click on another row just after a key still
+selects the row clicked, and the list then does not scroll to the key's selection
+([#307](https://github.com/viell-dev/slop-calc-sheet-manager/issues/307)). When
 LibreOffice fails to show the selection after you hold a click on a selected sheet and release it
 over another row, the list clears the selection too, rather than act on the row you released over
 ([#316](https://github.com/viell-dev/slop-calc-sheet-manager/issues/316)).

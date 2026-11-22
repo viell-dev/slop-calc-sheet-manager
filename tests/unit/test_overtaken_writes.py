@@ -273,8 +273,9 @@ def test_a_ctrl_shift_range_behind_a_refusal_is_not_shown_over_a_newer_selection
     so the Ctrl+Shift+click's listener found nothing unaccounted and added its range to the
     emptied picks: Move to Top moved Bravo to Delta, though the tree last showed Hotel alone. The
     refusal records that it saw changes besides its own, and the range's write, finding the tree
-    showing Hotel, writes nothing; the intake takes Hotel. The refused Ctrl+click told of its
-    refusal with the notice."""
+    showing Hotel, writes nothing. The tree may still show the refused toggle's own native change,
+    which the list could not interpret, so the record is unknown rather than taken: the picks go,
+    with the notice."""
     owner = fresh()
     click(owner, row("Bravo"))
     notices = len(owner.notices)
@@ -282,9 +283,29 @@ def test_a_ctrl_shift_range_behind_a_refusal_is_not_shown_over_a_newer_selection
     queued_click(owner, row("Delta"), MOD1 | SHIFT)
     owner.tree.assistive_only("Hotel")
     owner.run_queue()
-    assert picks(owner) == ["Hotel"] == owner.tree.shown()
-    assert len(owner.notices) == notices + 1
-    assert move_to_top(owner) == ["Hotel"]
+    assert picks(owner) == [] and owner.tree.shown() == []
+    assert len(owner.notices) > notices
+    assert move_to_top(owner) is None
+
+
+def test_a_refused_toggles_native_change_is_not_taken() -> None:
+    """Without assistive technology: a Ctrl+double-click on Foxtrot, a Ctrl+click on Bravo and a
+    Ctrl+Shift+click on Alfa, all handled before the first listener. The first listener is
+    refused, since the others' changes are counted with its own, and the range's write finds the
+    tree showing Foxtrot, which that refused toggle selected natively. Taking the tree would pick
+    Foxtrot, which the list's own reading of the double click toggles off; the picks go instead,
+    with the notice, where `main` moves Alfa and Bravo (a cost)."""
+    owner = fresh()
+    notices = len(owner.notices)
+    queued_click(owner, row("Foxtrot"))
+    queued_click(owner, row("Foxtrot"), clicks=2)
+    queued_click(owner, row("Bravo"))
+    queued_click(owner, row("Alfa"), MOD1 | SHIFT)
+    owner.run_queue()
+    assert "Foxtrot" not in picks(owner)
+    assert picks(owner) == [] and owner.tree.shown() == []
+    assert len(owner.notices) > notices
+    assert move_to_top(owner) is None
 
 
 def failed_down(owner: Any) -> None:
@@ -466,6 +487,21 @@ def test_two_quick_clicks_pick_the_second() -> None:
     owner.run_queue()
     assert picks(owner) == ["Echo"] == owner.tree.shown() and owner.notices == []
     assert move_to_top(owner) == ["Echo"]
+
+
+def test_a_ctrl_double_click_after_a_plain_click_toggles_twice() -> None:
+    """A click on Delta and a Ctrl+double-click on Charlie, all handled before the first
+    listener. The plain press's listener finds Charlie's toggle beyond its share; Charlie's first
+    listener then claims it as its own, and its second toggles Charlie off again, with no native
+    change. The write shows Delta, as on `main`: a mark left after Charlie's claim made the write
+    find the tree showing Charlie and leave it to the intake, which picked Charlie."""
+    owner = fresh()
+    queued_click(owner, row("Delta"), 0)
+    queued_click(owner, row("Charlie"))
+    queued_click(owner, row("Charlie"), clicks=2)
+    owner.run_queue()
+    assert picks(owner) == ["Delta"] == owner.tree.shown() and owner.notices == []
+    assert move_to_top(owner) == ["Delta"]
 
 
 def test_two_quick_ctrl_clicks_toggle_both_rows() -> None:

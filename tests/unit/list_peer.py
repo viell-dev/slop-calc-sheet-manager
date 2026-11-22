@@ -813,6 +813,7 @@ def sheet_list(book: Book, source: str = SOURCE) -> Any:
         _erased=None,
         _input_seen=0,
         _unclaimed=False,
+        _refused_over=False,
         _add_mode=False,
         _presses_held=None,
         _presses_release=None,

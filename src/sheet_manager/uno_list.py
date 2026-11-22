@@ -253,9 +253,15 @@ write shows it, and the deferred take then finds newer input and takes nothing. 
 record unknown instead, as a failed write does, let the next intake settle it at once, also a
 refresh's ahead of such a listener, which dropped the picks and held the listener: that refused
 #44's real-input sequence with a delayed refresh. The record is unknown only where the intake
-could not take the change: when the newer changes leave the tree showing the record itself, and
-for a right press's write, whose record may still match the picks; the intake then settles it,
-dropping the picks with the notice, and the menu targets the pressed row alone (`_open_menu`).
+could not take the change, or must not: when the newer changes leave the tree showing the record
+itself; for a right press's write, whose record may still match the picks; and when a refusal
+made the mark (`_refused_over`), since the tree may show the refused toggle's own native change,
+which the list could not interpret (#307's third row, and a Ctrl+double-click handled with other
+presses before the first listener). The intake then settles it, dropping the picks with the
+notice, and a right press's menu targets the pressed row alone (`_open_menu`). A Ctrl toggle
+whose own change is all that is unaccounted claims every change an earlier input left
+unclaimed, and ends the mark: a plain click's listener finds a quick Ctrl+click's toggle beyond
+its share, and that Ctrl+click's own listener then takes it.
 With the record unknown, a plain press has no share to count and claims none of the changes, so
 its own write checks the tree too. A complete write, a take, a settled record and a plain or
 Shift key or Ctrl+A, each newer than every change it read, end the mark; a write of no picks
@@ -1032,9 +1038,11 @@ class SheetList:
         # changes it did not claim, which may have come after its own native handling: a plain
         # press's beyond its share, a narrowing release's, or a refusal's besides its input's
         # own. A queued write then shows the picks only if the tree already shows them
-        # (`_overtaken`, #307).
+        # (`_overtaken`, #307). `_refused_over` says that a refusal made the mark: a refused
+        # toggle's own native change may be among those changes, so the tree is not taken.
         self._input_seen = 0
         self._unclaimed = False
+        self._refused_over = False
         # While set, a mouse listener maps its event only to a row that showed the same name in
         # every row list since the hold began: a rebuild may have put another sheet under the
         # pointer since the tree handled the press (#293; `_hold_presses`). `_presses_release` is
@@ -1558,7 +1566,7 @@ class SheetList:
         if self._accounted < start:
             self._erased = (start, start - self._accounted)
         self._accounted = self._shown_at = start
-        self._unclaimed = False
+        self._unclaimed = self._refused_over = False
 
     def _account(self, seen: int, *, shown: bool = False, partial: bool = False) -> None:
         """Account for the changes counted up to `seen` at a point that is not a write: the list
@@ -1566,16 +1574,18 @@ class SheetList:
         (#294). A write's record of the changes it overwrote goes: this point came after it.
 
         With `partial`, the point accounts for an input's own share, or for changes that a
-        refusal's write will show over, but does not set the selection after all of them: an
-        accepted Ctrl or Ctrl+Shift press, a plain press's share, a refusal. A change an earlier
-        input left unclaimed may then still be in the tree, and the record of it stays (#307).
+        refusal's write will show over, but does not set the selection after all of them: a
+        Ctrl+Shift press, a Ctrl press that takes an overwritten change or none, a plain press's
+        share, a refusal. A change an earlier input left unclaimed may then still be in the tree,
+        and the record of it stays (#307). A Ctrl press whose own change is all that is
+        unaccounted is not partial: it claims every change counted.
         """
         self._accounted = seen
         if shown:
             self._shown_at = seen
         self._erased = None
         if not partial:
-            self._unclaimed = False
+            self._unclaimed = self._refused_over = False
 
     def _follow_engine(self, event, hit: bool, add_mode: bool) -> bool:
         """Whether VCL's selection engine changed the selection for this press, which it handled
@@ -1642,7 +1652,7 @@ class SheetList:
         shown = (deferred is not None and bool(deferred[0])) or waiting
         self._account(seen, partial=True)
         if shown:
-            self._unclaimed = True
+            self._unclaimed = self._refused_over = True
         if self._selection.picked:
             self._drop_picks(native=shown)
         else:
@@ -2294,7 +2304,12 @@ class SheetList:
         if tree == [name for name in self.names() if name in wanted]:
             self._shown = shown
             return False
-        if shown is not None and tuple(tree) != shown and self._context_target is None:
+        if (
+            shown is not None
+            and tuple(tree) != shown
+            and self._context_target is None
+            and not self._refused_over
+        ):
             self._shown = shown
         self.post(self._take_overtaken, "taking the sheet list's newer selection")
         return True
@@ -2960,9 +2975,14 @@ class SheetList:
                         self._user_picks = True
                         if keys & MOD1:
                             # The tree shows exactly the picks now: the changes counted so far
-                            # are this press's own (#294). A change an earlier input left
-                            # unclaimed may still be shown with them (#307).
-                            self._account(seen, partial=True)
+                            # are this press's own (#294). A toggle whose own change is all that
+                            # was unaccounted claims every change an earlier input left
+                            # unclaimed, as a plain press's listener does when a Ctrl+click
+                            # came before it ran. After a range, a toggle the engine skipped or
+                            # one taking an overwritten change, such a change may still be
+                            # shown with the picks, and the record of it stays (#307).
+                            claimed = keys == MOD1 and 0 < own == unaccounted
+                            self._account(seen, partial=not claimed)
                         if keys == MOD1 and (not own or overwritten):
                             # The tree does not show the row this listener toggled: hold
                             # toggles, Space included, until the write shows it (#288).
