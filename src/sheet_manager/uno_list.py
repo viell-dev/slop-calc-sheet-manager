@@ -196,19 +196,19 @@ are, as after the list's own write, intake or refusal accounted since the press;
 twice is added once. That compares counts, not rows, so it relies on the list's anchor being the
 tree's. The list's writes leave the tree no anchor, and the tree makes one at its cursor, the
 list's, for its next range (`SvImpLBox::SelAllDestrAnch`, `ImpLBSelEng::CreateAnchor`, read in
-26.8.2.2). A press, a Ctrl+Space and a plain key set the list's anchor at the cursor, a Shift
-range keeps it at its start with every row up to the cursor picked, which the tree's range from
-the cursor adds to alike, and a Ctrl key with a cursor key moves the anchor with the cursor, as
-VCL's own handling of that key drops its anchor (#313). The two can still differ where the
-cursor moves alone otherwise: when a refresh drops the cursor's sheet and the write puts the
-cursor on the first pick, or when the tree moves its cursor without the list outside a press, as
-assistive technology might. A range from the other anchor that happens to add as many rows is then
-added as on `main`. A press that the tree handles before a key's write extends from the cursor
-the tree showed then, and the list from where the keys put it. That write shows the list's picks
-over the tree's range, so nothing is unaccounted when the listener runs, and it adds the range
-that the input gives, as for a press behind any key. A plain press on a row the record does not
-show leaves the tree showing that row alone, which takes at least one change for each row of
-`_shown` and one for its own, counted from when the tree showed `_shown` (`_shown_at`); its
+26.8.2.2). A plain or Ctrl press, Ctrl+Space and a plain key set the list's anchor at the
+cursor, a Shift range keeps it at its start with every row up to the cursor picked, which the
+tree's range from the cursor adds to alike, and a Ctrl key with a cursor key moves the anchor to
+the cursor, as VCL's own handling of that key drops its anchor (#313). They can still differ
+where the cursor moves alone otherwise: when a refresh drops the cursor's sheet and the write
+puts the cursor on the first pick, or when the tree moves its cursor without the list outside a
+press, as assistive technology might. A range from the other anchor that happens to add as many
+rows is then added as on `main`. A press that the tree handles before a key's write extends from
+the cursor the tree showed then, and the list from where the keys put it. That write shows the
+list's picks over the tree's range, so nothing is unaccounted when the listener runs, and it adds
+the range that the input gives, as for a press behind any key. A plain press on a row the record
+does not show leaves the tree showing that row alone, which takes at least one change for each
+row of `_shown` and one for its own, counted from when the tree showed `_shown` (`_shown_at`); its
 listener accounts for up to that many, so that a Ctrl press handled before that listener ran, as
 when the user clicks ahead while LibreOffice is busy, still sees its own change alone (#44). A
 write that lands between the press and its listener moves `_shown_at` past the press, and the
