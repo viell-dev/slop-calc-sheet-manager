@@ -36,7 +36,14 @@ the change drops every ref and voids any held press. Selection keys and control 
 which change no document, only compare with the monitor's `generation`, which does not consume
 pending notification evidence (#66). The keyboard cursor and `Selection.anchor`, which pointer
 and keyboard ranges share, are refs too: they survive ordinary rebuilds and are dropped by the
-same rules.
+same rules at every refresh.
+
+Between refreshes the cursor and the anchor are positions as well. The rows change only at a
+refresh, which drops every ref it cannot prove, so a cursor or anchor that has stopped proving its
+sheet since, as when another window renamed it, still has the name of the row where the user saw
+it. Keys move from that row and ranges start there until the next refresh (`revalidate`'s
+`keep_rows`, #314). Neither is ever picked or acted on: `ref` reuses only refs that are current,
+and every command acts on current picks.
 """
 
 from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -100,13 +107,18 @@ class Selection:
         toggle: bool = False,
         preserve: bool = False,
     ) -> None:
-        """Select a row or a range, keeping the range's starting sheet as an identity."""
+        """Select a row or a range, keeping the range's starting sheet as an identity.
+
+        A range starts at the anchor's row, or the cursor's, also when its sheet no longer has
+        that name: between refreshes it is the row the user saw it on (`revalidate`, #314). The
+        renamed sheet itself is not picked, since its ref is not current.
+        """
         target = self.ref(name, tokens, order)
         if target is None:
             return
         if extend:
             anchor = self.anchor or self.cursor or target
-            if not self._current(anchor) or anchor.name not in order:
+            if anchor.name not in order:
                 anchor = target
             self.anchor = anchor
             first, last = sorted((order.index(anchor.name), order.index(name)))
@@ -123,11 +135,20 @@ class Selection:
         self.take((item for item in order if item in names), tokens, order)
         self.cursor = target
 
-    def revalidate(self) -> bool:
-        """Drop every ref that no longer denotes its sheet under its name; True if any went."""
+    def revalidate(self, *, keep_rows: bool = False) -> bool:
+        """Drop every ref that no longer denotes its sheet under its name; True if any went.
+
+        With `keep_rows`, for a caller between refreshes, whose rows are still those the refs were
+        made against, only picks go: the cursor and the anchor stay as the rows the user saw them
+        on, even when their sheets were renamed since, and are not read (#314). A refresh, which
+        can change the rows, drops them too.
+        """
         picked = [ref for ref in self.picked if self._current(ref)]
-        cursor = self.cursor if self.cursor is None or self._current(self.cursor) else None
-        anchor = self.anchor if self.anchor is None or self._current(self.anchor) else None
+        if keep_rows:
+            cursor, anchor = self.cursor, self.anchor
+        else:
+            cursor = self.cursor if self.cursor is None or self._current(self.cursor) else None
+            anchor = self.anchor if self.anchor is None or self._current(self.anchor) else None
         dropped = len(picked) != len(self.picked)
         dropped = dropped or cursor is not self.cursor or anchor is not self.anchor
         self.picked, self.cursor, self.anchor = picked, cursor, anchor
