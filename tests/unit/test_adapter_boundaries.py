@@ -588,6 +588,7 @@ def test_a_refused_release_writes_a_picked_cursor_and_keeps_the_lists_own(
     owner = SimpleNamespace(
         _press=SimpleNamespace(
             row=1,
+            modifiers=0,  # A plain press, whose release can select natively (#329).
             name="Bravo",
             handle=SimpleNamespace(getName=Mock(side_effect=AssertionError("a handle read"))),
             generation=0,
@@ -602,7 +603,10 @@ def test_a_refused_release_writes_a_picked_cursor_and_keeps_the_lists_own(
         _show_selection=lambda: writes.append(selection.cursor),
     )
     released = method(
-        "src/sheet_manager/uno_list.py", "SheetList", "mouse_released", {"LEFT": 1, "RIGHT": 2}
+        "src/sheet_manager/uno_list.py",
+        "SheetList",
+        "mouse_released",
+        {"LEFT": 1, "RIGHT": 2, "SHIFT": 1, "MOD1": 2},
     )
     released(owner, SimpleNamespace(Buttons=1))
     result = cast(Ref | None, owner._selection.cursor)

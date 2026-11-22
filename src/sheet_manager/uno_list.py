@@ -257,8 +257,9 @@ on an idle machine (#294).
 Newer changes (#307). The count tells a queued write when the tree may show a change newer than the
 input whose picks it shows: an assistive selection made after a key or a press's native handling and
 before that write, which the write overwrote, and a command then acted on the input's picks. A key
-accounts for every change at once, and a press or release listener reads the count before any UNO
-call (`_input_seen`), so a change counted later came after that input. An input also marks changes
+accounts for every change at once, and a press listener, or a plain press's release listener, reads
+the count before any UNO call (`_input_seen`), so a change counted later came after that input; a
+release that selects nothing natively reads none as its own (#329). An input also marks changes
 it saw and did not claim (`_unclaimed`), since they may have come between its native handling and
 its listener: a plain or Shift press's beyond its share, a release's that narrows the picks to the
 pressed row, and a refusal's besides its input's own or a deferred intake's rows. A plain press's
@@ -304,11 +305,11 @@ waiting selection and writes the picks; a type-ahead picks and writes in its own
 write of the list's that lands between a press and its listener, a refusal's clearing one included,
 overwrites an assistive change made after that press, whose listener then acts on its press; a
 command run before the input's write, or while a press is held after it, acts on the input's picks;
-a press or release listener that picks nothing still reads the count, so a key's write after it
-shows the key's picks over a change counted before; a write of no picks, as after Ctrl+Space unpicks
-the last pick, clears a newer change with no notice; a change counted between a held click's native
-release and its listener is shown over; and a Shift press's share covers a change made after it that
-fits within it.
+a press or plain release listener that picks nothing still reads the count, so a key's write after
+it shows the key's picks over a change counted before; a write of no picks, as after Ctrl+Space
+unpicks the last pick, clears a newer change with no notice; a change counted between a held click's
+native release and its listener is shown over; and a Shift press's share covers a change made after
+it that fits within it.
 
 Pointer input. A left press picks at once and keeps the pressed sheet's handle. A plain press
 on a picked row keeps the other picks, so that they can be dragged together; its release in the
@@ -966,8 +967,8 @@ class SheetList:
       None, and the menu targets the pressed row alone.
     - The queued write of an input (`_flush_selection`) shows the picks over changes the tree
       shows that it cannot attribute to that input only if the tree already shows exactly the
-      picks (`_overtaken`, #307): those counted after the latest press or release listener read
-      the count (`_input_seen`) or after a key, and those an input saw without claiming them
+      picks (`_overtaken`, #307): those counted after the latest press or plain release listener
+      read the count (`_input_seen`) or after a key, and those an input saw without claiming them
       (`_unclaimed`). Otherwise it writes nothing, and the intake posted behind queued listeners
       takes whatever the tree shows only if every input since the tree last showed the record
       left it showing what the list read (`_Intake`); else `_shown` is None, and is settled.
@@ -1099,12 +1100,13 @@ class SheetList:
         # changes it overwrote that were unaccounted until then, while no other point has
         # accounted since (`_account_write`, `mouse_pressed`).
         self._erased: tuple[int, int] | None = None
-        # The count when the latest press or release listener read it: a change counted later
-        # came after that input. And whether an input since the tree last showed the picks found
-        # changes it did not claim, which may have come after its own native handling: a plain
-        # or Shift press's beyond its share, a narrowing release's, or a refusal's besides its
-        # input's own. A queued write then shows the picks only if the tree already shows them,
-        # and `_intake` says what the intake may then take (`_overtaken`, #307).
+        # The count when the latest press listener, or a plain press's release listener, read it:
+        # a change counted later came after that input. And whether an input since the tree last
+        # showed the picks found changes it did not claim, which may have come after its own
+        # native handling: a plain or Shift press's beyond its share, a narrowing release's, or a
+        # refusal's besides its input's own. A queued write then shows the picks only if the tree
+        # already shows them, and `_intake` says what the intake may then take (`_overtaken`,
+        # #307).
         self._input_seen = 0
         self._unclaimed = False
         self._intake = _Intake.CHANGES
@@ -1761,8 +1763,9 @@ class SheetList:
         and those a deferred intake found, may have come after a press still queued behind this
         one, and its listener may add picks before that write: the write then shows them only
         if the tree already does (`_unclaimed`, `_overtaken`, #307). Whatever the tree shows
-        then includes this toggle's own native change, which the list did not take, so the
-        intake does not take it either (`_unread`).
+        then includes a refused press's own native change, which the list did not take: the
+        press's listener leaves the tree to no intake (`_unread`), and a refused key changed
+        nothing natively.
 
         A right press over such changes is refused here too, though it toggles nothing: its
         write would show the older picks over them for the menu to act on, and the refusal's
@@ -1770,7 +1773,6 @@ class SheetList:
         """
         shown = (deferred is not None and bool(deferred[0])) or waiting
         self._account(seen, partial=True)
-        self._unread()
         if shown:
             self._unclaimed = True
         if self._selection.picked:
@@ -3238,10 +3240,14 @@ class SheetList:
             # press, and its gate on native cursor events, in place (#71).
             return
         # A change counted after this read came after the release, whose own native selection
-        # was counted before it (#307), and after the latest listener's read of the count.
+        # was counted before it (#307), and after the latest listener's read of the count. Only a
+        # plain press's release can select natively: the release of a Shift, Ctrl or Ctrl+Shift
+        # press, or of none, reads nothing as its own, so a change counted before it, such as a
+        # press handled meanwhile, still leaves the click's write to read the tree (#329).
         seen, before = self._unowned, self._input_seen
-        self._input_seen = max(before, seen)
         press, self._press = self._press, None
+        if press is not None and not press.modifiers & (SHIFT | MOD1):
+            self._input_seen = max(before, seen)
         if press is None or press.name is None:
             return
         # Not `check()`: its update needs the solar mutex, which this listener runs without, and

@@ -37,6 +37,7 @@ import pytest
 from tests.unit.list_peer import (
     DOWN,
     LEFT,
+    MIDDLE,
     MOD1,
     RIGHT,
     SHIFT,
@@ -44,11 +45,13 @@ from tests.unit.list_peer import (
     UP,
     A,
     Book,
+    bind_drag,
     click,
     cursor,
     key,
     listen,
     move_to_top,
+    native_press,
     picks,
     press,
     queued_click,
@@ -1005,3 +1008,103 @@ def test_a_shift_click_that_overtakes_a_keys_write_acts() -> None:
     owner.run_queue()
     assert owner.notices == []
     assert picks(owner) == ["Bravo", "Charlie", "Delta"] == owner.tree.shown()
+
+
+@pytest.mark.parametrize(
+    "modifiers",
+    [SHIFT, 0, MOD1, MOD1 | SHIFT],
+    ids=["Shift+click", "plain click", "Ctrl+click", "Ctrl+Shift+click"],
+)
+def test_a_drag_pressed_before_a_clicks_release_listener_carries_the_pressed_sheet(
+    modifiers: int,
+) -> None:
+    """#329: Golf picked; a click on Echo, whose press listener runs; Delta pressed to drag it,
+    which the tree selects; the click's release listener and its write; the drag gesture before
+    Delta's press listener. The release of a Shift, Ctrl or Ctrl+Shift click selects nothing
+    natively, but its listener read the count as its own, so Delta's change counted as the
+    click's, the write showed the click's picks over Delta, and the drag carried them. That
+    release now reads no count: the write finds Delta newer and leaves the tree as it is, and the
+    drag carries Delta, the sheet pressed."""
+    owner = fresh()
+    dragged = bind_drag(owner)
+    click(owner, row("Golf"))
+    queued_click(owner, row("Echo"), modifiers)
+    run(owner, 1)  # The click's press listener.
+    native_press(owner, row("Delta"))
+    run(owner, 2)  # The click's release listener and its write.
+    owner.start_drag(object())
+    assert dragged == [["Delta"]]
+
+
+def test_a_ctrl_click_in_add_mode_whose_toggle_the_tree_does_not_show_is_not_taken() -> None:
+    """Alfa clicked, and a Ctrl+Shift+click on Charlie, which adds Alfa to Charlie and starts the
+    engine's add mode. A Ctrl+click on Echo then only moves the tree's cursor, and the list picks
+    Echo for its write to show; Golf is added through accessibility before that write. Taking the
+    tree would drop Echo, which the user picked: the tree does not show the toggle as the list
+    read it, so the picks go, with the notice."""
+    owner = fresh()
+    click(owner, row("Alfa"))
+    queued_click(owner, row("Charlie"), MOD1 | SHIFT)
+    owner.run_queue()
+    assert picks(owner) == ["Alfa", "Bravo", "Charlie"] == owner.tree.shown()
+    notices = len(owner.notices)
+    queued_click(owner, row("Echo"), MOD1)
+    run(owner, 2)  # The Ctrl+click's listeners; its write is queued.
+    assert "Echo" in picks(owner) and "Echo" not in owner.tree.shown()
+    owner.tree.assistive_select("Golf")
+    owner.run_queue()
+    refused(owner, notices)
+
+
+def test_a_keys_write_after_an_unread_inputs_write_takes_the_newer_selection() -> None:
+    """Alfa picked; a Ctrl+double-click on Charlie, whose write shows Alfa with no change made
+    meanwhile; then Down, and Echo selected alone before its write. The double click's input did
+    not show as the list read it, but its complete write showed the picks over it, so the tree
+    is read as always again, and the intake takes Echo."""
+    owner = fresh()
+    click(owner, row("Alfa"))
+    queued_click(owner, row("Charlie"))
+    queued_click(owner, row("Charlie"), clicks=2)
+    owner.run_queue()
+    assert picks(owner) == ["Alfa"] == owner.tree.shown()
+    owner.tree_key(DOWN, 0)
+    owner.tree.assistive_only("Echo")
+    owner.run_queue()
+    taken(owner, ["Echo"], 0)
+
+
+def test_a_command_after_a_take_and_a_right_press_moves_the_taken_selection() -> None:
+    """Down, Echo selected alone before its write, which leaves the tree as it is, and the intake
+    takes Echo. A right press on Echo, and Move to Top before the right press's write: the tree
+    shows the picks, as the take found it, so the command moves Echo, as on `main`. Had the take
+    left the intake taking whatever the tree shows, the right press, whose record may still
+    match the picks for its menu, would have made the record unknown, and the command refused."""
+    owner = fresh()
+    click(owner, row("Alfa"))
+    owner.tree_key(DOWN, 0)
+    owner.tree.assistive_only("Echo")
+    owner.run_queue()
+    assert picks(owner) == ["Echo"] == owner.tree.shown()
+    record_menus(owner)
+    queued_click(owner, row("Echo"), 0, button=RIGHT)
+    run(owner, 1)  # The right press's listener; its write is queued.
+    assert move_to_top(owner) == ["Echo"] and owner.notices == []
+
+
+def test_a_command_after_an_unread_press_ahead_of_the_take_refuses() -> None:
+    """Alfa picked; Down; Echo selected alone before its write, which leaves the tree as it is for
+    the intake to take whatever it shows. A middle click on Charlie, whose listener VCL runs ahead
+    of that intake, selects Charlie natively, which the list does not read, and queues a write;
+    Move to Top before that write. The picks are Bravo, which the tree never showed, and no intake
+    can take the tree now: the record is unknown, so the command refuses rather than move Bravo."""
+    owner = fresh()
+    click(owner, row("Alfa"))
+    owner.tree_key(DOWN, 0)
+    owner.tree.assistive_only("Echo")
+    run(owner, 1)  # The key's write, which posts the intake.
+    node = owner.tree.node("Charlie")
+    owner.tree.selected, owner.tree.cursor = [node], node
+    line = owner.tree.line(row("Charlie"))
+    middle = SimpleNamespace(Buttons=MIDDLE, X=0, Y=line, Modifiers=0, ClickCount=1)
+    listen(owner, owner.mouse_pressed, middle)  # Ahead of the queued intake.
+    assert move_to_top(owner) is None, "Bravo, which the tree never showed, was moved"
