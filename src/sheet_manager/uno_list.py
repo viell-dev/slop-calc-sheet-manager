@@ -196,8 +196,25 @@ that record, and a write that overwrote more records more than one change: the p
 refused, since a take includes its toggle, which the listener would toggle again. A Ctrl+Shift
 press adds its range only when as many rows as it adds to the picks are unaccounted, or none
 are, as after the list's own write, intake or refusal accounted since the press; a range added
-twice is added once. That compares counts, not rows, so a range from another anchor that happens
-to add as many rows is added as on `main` (#313). A plain press on a row the record does not
+twice is added once. That compares counts, not rows, so it relies on the list's anchor being the
+tree's. A write of the list's leaves the tree no anchor when the tree showed a selected row
+(`SvImpLBox::SelAllDestrAnch`), and the tree then makes one at its cursor, the list's, for its
+next range (`ImpLBSelEng::CreateAnchor`, read in 26.8.2.2). A plain or Ctrl press, Ctrl+Space
+and a plain key set the list's anchor at the cursor; a Shift range keeps it at its start with
+every row up to the cursor picked, which the tree's range from the cursor adds to alike; and a
+Ctrl key with a cursor key moves the anchor to the cursor, as VCL's own handling of that key
+drops its anchor (#313). They can still differ where the cursor moves alone otherwise: when a
+refresh drops the cursor's sheet and the write puts the cursor on the first pick, or when the
+tree moves its cursor without the list outside a press, as assistive technology might. A range
+from the other anchor that happens to add as many rows is then added as on `main`, and
+otherwise the press is refused (#321). A Shift or Ctrl+Shift press that the tree handles before
+such a key's write, or whose listener runs after the key although it was pressed before, ranges
+natively from the cursor the tree showed then, while the list would range from the anchor the
+key moved: a key that moves the cursor or the anchor, or is refused, holds range presses until a
+write has shown the cursor (`_hold_ranges`), and the listener of each that runs held refuses its
+range as a held toggle is, holding toggles too, since the tree shows rows the press selected
+that the picks lack. A refused range press moves the anchor to its row before the refusal's
+write shows the cursor, so it holds range presses too. A plain press on a row the record does not
 show leaves the tree showing that row alone, which takes at least one change for each row of
 `_shown` and one for its own, counted from when the tree showed `_shown` (`_shown_at`); its
 listener accounts for up to that many, so that a Ctrl press handled before that listener ran, as
@@ -226,12 +243,15 @@ list's write that follows it, or after a write that failed partway; an assistive
 and reselection that cancel out, until two tab samples have found the tree showing the picks; a
 Ctrl press in the few pixels left of a row's native hit area, which `RowGeometry.row_at` maps to
 the row by height alone though the engine changed nothing, unless the last accounting point is a
-write that overwrote exactly one change; and, every time, a Ctrl+Shift press after Ctrl with a
-cursor key moved the tree's anchor, which is its cursor, away from the list's, unless both
-ranges add as many rows (#313). The listener's registration and its removal, beside the other
-listeners', are the only native calls added; the counts are Python state. Each notification
-crosses into Python, which makes a write that changes many rows take about 1.6 times as long:
-writing 1,000 picks took about 80 ms instead of 50 on an idle machine (#294).
+write that overwrote exactly one change; and a Shift or Ctrl+Shift press that the range hold
+refuses (#313): one handled before the write of a Ctrl key with a cursor key that moved the
+cursor or the anchor or was refused, or of a refused range press, or whose listener runs after
+such a key; one handled after that write whose listener VCL runs ahead of the hold's posted end;
+and, once, one made after a cursor write failed before it showed the cursor, or was overtaken
+(#307), and left the hold on until a later write. The listener's registration and its removal,
+beside the other listeners', are the only native calls added; the counts are Python state. Each
+notification crosses into Python, which makes a write that changes many rows take about 1.6
+times as long: writing 1,000 picks took about 80 ms instead of 50 on an idle machine (#294).
 
 Newer changes (#307). The count tells a queued write when the tree may show a change newer than
 the input whose picks it shows: an assistive selection made after a key or a press's native
@@ -266,16 +286,18 @@ With the record unknown, a plain press has no share to count and claims none of 
 its own write checks the tree too. A complete write, a take, a settled record and a plain or
 Shift key or Ctrl+A, each newer than every change it read, end the mark; a write of no picks
 only clears and is not checked; an open menu is left to the menu. A held press's write is
-checked, and the intake waits for its release. The costs where `main` acted correctly: an
-assistive change after an input that the input's picks already agree with, such as a row added
-through accessibility after Ctrl+A, replaces those picks with what the tree shows; and input
-judged by the count (Space, a Ctrl key, a press other than a plain one) after an overtaken
-write, which leaves unaccounted the changes that `main`'s write accounted for by overwriting
-them, is refused, as when a second press is handled natively after a key and before its write.
-Still as on `main` (#323): a refresh that runs while a queued write waits reads no waiting
-selection and writes the picks, a type-ahead picks and writes in its own queued work, and a write
-of the list's that lands between a press and its listener, a refusal's clearing one included,
-overwrites an assistive change made after that press, whose listener then acts on its press.
+checked, and the intake waits for its release. An overtaken write shows no cursor, so a range
+hold stays on until a later write does (#313): the tree still ranges from its older cursor. The
+costs where `main` acted correctly: an assistive change after an input that the input's picks
+already agree with, such as a row added through accessibility after Ctrl+A, replaces those
+picks with what the tree shows; and input judged by the count (Space, a Ctrl key, a press other
+than a plain one) after an overtaken write, which leaves unaccounted the changes that `main`'s
+write accounted for by overwriting them, is refused, as when a second press is handled natively
+after a key and before its write. Still as on `main` (#323): a refresh that runs while a queued
+write waits reads no waiting selection and writes the picks, a type-ahead picks and writes in its
+own queued work, and a write of the list's that lands between a press and its listener, a
+refusal's clearing one included, overwrites an assistive change made after that press, whose
+listener then acts on its press.
 
 Pointer input. A left press picks at once and keeps the pressed sheet's handle. A plain press
 on a picked row keeps the other picks, so that they can be dragged together; its release in the
@@ -385,7 +407,17 @@ position: catch only `DisposedException` from its getters and keep the last vali
 other errors. Selection keys are consumed before native handling, because forwarding a key can
 deliver it more than once; never return a key unconsumed after updating the owned cursor.
 Consumed key intent is recorded synchronously and the UI write coalesced, and native focus and
-selection are ignored while that write or a pointer gesture is pending.
+selection are ignored while that write or a pointer gesture is pending. Until the next refresh,
+the cursor and the range anchor keep their rows also when another window renamed their sheets:
+the key handler, the write it queues and a command's check of its picks revalidate the picks
+alone (`Selection.revalidate`'s `keep_rows`). Keys move from the row the user saw the cursor on, a
+range starts at the row of its anchor, and the write shows the cursor there, while the renamed
+sheet itself is not picked. Dropping the cursor at the key made it move from the first row and
+pick a sheet the user never moved to (#314). The refresh drops them as it drops picks, and its
+write then puts the cursor on the first pick; without one, the tree puts its cursor on its first
+visible row when it paints (`SvImpLBox::Paint`, measured on gtk3 and gen), and the list follows
+it. Either way the cursor leaves the renamed sheet's row then (#327). A refused release gives a
+cursor whose sheet is gone to a pick as well, which its write shows (Pointer input).
 
 Accessibility (#83). The tree's accessible name names the sheet Calc shows (`list_name`), from the
 refreshed rows that paint the arrow and never from the picks. It is set through the toolkit's
@@ -1007,6 +1039,11 @@ class SheetList:
         self._toggles_held: object | None = None
         self._toggles_release: object | None = None
         self._toggles_keys = True
+        # While set, a Shift or Ctrl+Shift press picks nothing: a Ctrl key moved the range anchor
+        # with the cursor, and the press may have been handled before the tree showed that
+        # cursor (#313; `_hold_ranges`). `_ranges_release` is the hold whose end is posted.
+        self._ranges_held: object | None = None
+        self._ranges_release: object | None = None
         # The tree's selected rows and the rows' order when the queued intake last deferred a
         # native selection, until that intake runs, or a drop or a refused toggle, after which
         # it takes nothing, ends the record (#291; `_take_tree_selection`, `_toggle_held_off`).
@@ -1403,9 +1440,10 @@ class SheetList:
     def _drop_picks(self, native: bool) -> None:
         """Drop the picks when the tree may show a newer selection than them (#257, #280).
 
-        The cursor still proves its sheet and stays, as an intake leaves it, and a range now
-        starts there. `native` is a selection the tree shows that the next write clears; the
-        notice tells of it, as of dropped picks the user made. Toggles are held (#288).
+        The cursor stays, as an intake leaves it, and a range now starts there; between refreshes
+        it can be the row of a sheet renamed since, which it marks but never picks (#314).
+        `native` is a selection the tree shows that the next write clears; the notice tells of
+        it, as of dropped picks the user made. Toggles are held (#288).
         """
         self._hold_toggles()
         self._tell_dropped(native)
@@ -1474,6 +1512,37 @@ class SheetList:
                 self._toggles_held = None
 
         self.post(release, "accepting toggles again")
+
+    def _hold_ranges(self) -> None:
+        """Hold range presses until work posted once a write has shown the cursor has run (#313).
+
+        A Ctrl key moves the list's range anchor with the cursor, and so does a refused range
+        press. The tree makes its next anchor at its own cursor, which shows the list's only once
+        the following write has run: a Shift or Ctrl+Shift press handled before then, also one
+        made before the key whose listener runs after it, ranges natively from the older cursor,
+        and the list from the newer. By the queue order that toggles rely on (`_hold_toggles`),
+        every such listener runs held, and `mouse_pressed` refuses its range as a held toggle is
+        (`_toggle_held_off`): the tree shows rows the press selected that the picks lack, so
+        toggles are held too. A Ctrl key that leaves the cursor and the anchor on their row holds
+        nothing unless it is refused (`tree_key`). A write that fails before it shows the cursor,
+        or that a newer change overtook (`_overtaken`, #307), leaves the hold on until a later one
+        does. Each hold is a new token.
+        """
+        self._ranges_held = object()
+
+    def _ranges_shown(self) -> None:
+        """The tree shows the list's cursor, as the list just wrote it: post the end of a range
+        hold, to run after every listener already queued (`_hold_ranges`)."""
+        held = self._ranges_held
+        if held is None or self._ranges_release is held:
+            return
+
+        def release() -> None:
+            if self._ranges_held is held:
+                self._ranges_held = None
+
+        self.post(release, "accepting ranges again")
+        self._ranges_release = held  # Once posted: the next write that shows the cursor retries.
 
     def _hold_presses(self, names: tuple[str | None, ...]) -> None:
         """Hold presses: a rebuild or a scroll may show another sheet in a row the user pressed.
@@ -1908,6 +1977,7 @@ class SheetList:
                 self._shown = ()
                 self._account_write(start)
                 self._toggles_shown()
+                self._ranges_shown()  # The list has no cursor left for the tree to show (#313).
                 return
             only = shown == (cursor.name,)  # Selecting the cursor's row then shows every pick.
             self._move_tree_cursor(
@@ -2069,7 +2139,8 @@ class SheetList:
         if self._press is None:
             self._take_tree_selection()
         unknown = self._shown is None
-        if self._selection.revalidate() or tuple(self._selection.names()) != self._shown:
+        revalidated = self._selection.revalidate(keep_rows=True)  # The cursor keeps its row (#314).
+        if revalidated or tuple(self._selection.names()) != self._shown:
             self._show_selection()
         return [] if unknown else list(self._selection.picked)
 
@@ -2126,6 +2197,7 @@ class SheetList:
             model.SelectionType = SINGLE
             try:
                 self.tree.select(self._nodes[index])
+                self._ranges_shown()  # The tree's cursor, where its next range starts (#313).
                 if shown is not None:
                     self._shown = shown
                     self._account_write(start)  # The write is complete (#294).
@@ -2147,7 +2219,11 @@ class SheetList:
         names = self.names()
         if not names or self._monitor.generation != self._proven:
             return
-        self._selection.revalidate()
+        # Picks that another window renamed since the refresh go. The cursor and the anchor stay
+        # on the rows the user saw them on, which the rows still show until that refresh: a key
+        # after another window renamed the cursor's sheet otherwise moved from the first row and
+        # picked a sheet the user never moved to (#314). The renamed sheet is not picked.
+        self._selection.revalidate(keep_rows=True)
         cursor = self._selection.cursor
         current = names.index(cursor.name) if cursor is not None and cursor.name in names else 0
         if code == A and modifiers == MOD1:
@@ -2184,19 +2260,42 @@ class SheetList:
             if target is None:
                 return
             name = names[max(0, min(len(names) - 1, target))]
+            # A Ctrl key that leaves the cursor and the anchor on their row, as Ctrl+Home on the
+            # first row does, leaves the tree's next range where the list's is: no range hold.
+            # With nothing untaken, a press handled since the last write changed nothing, and its
+            # listener, which runs before any later press's, moves the anchor where the tree's
+            # went.
+            anchor = self._selection.anchor
+            stays = cursor is not None and anchor is not None and cursor.name == anchor.name == name
             if modifiers & MOD1 and (deferred is not None or waiting):
                 # With Ctrl the key keeps the picks, and with Shift too it adds a range to
                 # them, while the tree showed a selection a queued intake has not taken, or a
                 # change the list has not taken before any intake looked: its write would show
                 # the older picks over that selection, or add to them, for a command to act on
                 # (#291, #294). As Ctrl+Space does, it drops any picks, holds toggles and asks
-                # for the write; the cursor moves.
+                # for the write; the cursor moves, and the anchor with it, as at a refused press:
+                # the write leaves the tree no anchor, so its next range starts there. Range
+                # presses are held until the write shows the cursor (#313).
+                # A refused key holds also when the cursor and the anchor stay: the changes it
+                # found untaken may include a press's, which moved the tree's cursor (#325).
                 self._toggle_held_off(deferred, seen, waiting=waiting)
-                self._selection.cursor = self._ref(name)
+                self._selection.cursor = self._selection.anchor = self._ref(name)
+                self._hold_ranges()
                 self._queue_selection(scroll=True)
                 return
             if modifiers & MOD1 and not modifiers & SHIFT:
-                self._selection.cursor = self._ref(name)
+                # The cursor moves and the range anchor with it, as VCL's own Ctrl with a cursor
+                # key drops its anchor (`SelectionEngine::CursorPosChanging`), so that the next
+                # range starts at the cursor. So does the tree's next range: the write this key
+                # queues leaves the tree no anchor, and the tree makes one at its cursor for the
+                # next Shift or Ctrl+Shift press (`SvImpLBox::SelAllDestrAnch`,
+                # `ImpLBSelEng::CreateAnchor`, read in 26.8.2.2). With the anchor left behind, a
+                # Ctrl+Shift+click added another range to the picks than the tree showed (#313).
+                # Until the write shows the cursor, the tree still ranges from the older one, so
+                # range presses handled before it are held (`_hold_ranges`).
+                self._selection.cursor = self._selection.anchor = self._ref(name)
+                if not stays:
+                    self._hold_ranges()
             else:
                 self._selection.choose(
                     name,
@@ -2244,7 +2343,9 @@ class SheetList:
             if self._monitor.check() != self._proven:
                 self.refresh()
             else:
-                self._selection.revalidate()
+                # The cursor keeps its row until the refresh, also when its sheet was renamed:
+                # the tree shows it where the next key moves from (#314).
+                self._selection.revalidate(keep_rows=True)
                 if self._overtaken():
                     return
                 self._show_selection()
@@ -2291,7 +2392,8 @@ class SheetList:
         release opens then targets the pressed row alone (`_open_menu`); the intake waits for the
         menu, and settles after it. The check also runs while the record is unknown, after a
         failed or an overtaken write: the input whose write would settle it may itself be
-        overtaken.
+        overtaken. An overtaken write shows no cursor, so a range hold stays on until a later
+        write does (`_hold_ranges`, #313).
         """
         if not self._selection.picked or self._menu_context:
             return False
@@ -2856,6 +2958,7 @@ class SheetList:
         seen, accounted, erased = self._unowned, self._accounted, self._erased
         unaccounted = seen - accounted
         add_mode, shown, shown_at = self._add_mode, self._shown, self._shown_at
+        ranges = self._ranges_held  # So is a range hold, whose end can run inside (#313).
         # A change counted after this read came after this press (#307). One run inside a later
         # UNO call of this listener, for a later press, read a larger count.
         self._input_seen = max(self._input_seen, seen)
@@ -2933,8 +3036,18 @@ class SheetList:
                 # listener (#44). The row is toggled as on `main`, against the picks that write
                 # showed, and toggles are held until this listener's write.
                 overwritten = own == 1 and unaccounted == 0 and erased == (accounted, 1)
-                if keys == MOD1 and (
-                    self._toggle_held(name, deferred) or (unaccounted != own and not overwritten)
+                # A Shift or Ctrl+Shift press that the tree handled before a Ctrl key's write
+                # showed the cursor ranged from the cursor the tree showed then, not from the
+                # anchor that key moved; so did one made before the key whose listener runs after
+                # it (#313). Its range is refused as a toggle is: the tree shows rows the press
+                # selected that the picks lack, so toggles stay held until the write shows them.
+                ranged = ranges is not None and bool(event.Modifiers & SHIFT)
+                if ranged or (
+                    keys == MOD1
+                    and (
+                        self._toggle_held(name, deferred)
+                        or (unaccounted != own and not overwritten)
+                    )
                 ):
                     # The tree toggled this row when the press happened, maybe against picks
                     # the list has dropped since or a tree that did not show them, so the list
@@ -2944,10 +3057,16 @@ class SheetList:
                     # nor keeps picks the user may have toggled off: they go, with the notice,
                     # and toggles stay held until the write shows the result. The cursor and the
                     # anchor move here, as a toggle's do.
-                    self._toggle_held_off(deferred, seen, waiting=unaccounted > own)
+                    self._toggle_held_off(deferred, seen, waiting=ranged or unaccounted > own)
                     target = self._ref(name)
                     if target is not None:
                         self._selection.cursor = self._selection.anchor = target
+                    if keys & SHIFT:
+                        # The tree kept its anchor at the range's start, and makes its next one at
+                        # this row only once the refusal's write shows the cursor here: until then
+                        # range presses are held, as after a Ctrl key (#313). A Ctrl press drops
+                        # the tree's anchor and moves its cursor here at once.
+                        self._hold_ranges()
                 else:
                     before = self._selection.picked
                     self._selection.choose(
@@ -2971,6 +3090,7 @@ class SheetList:
                         # `choose` rebound `picked` to a new list, so `before` is unchanged.
                         self._selection.picked = before
                         self._toggle_held_off(deferred, seen, waiting=True)
+                        self._hold_ranges()  # Its cursor moves before its write shows it (#313).
                     else:
                         self._user_picks = True
                         if keys & MOD1:
@@ -3052,7 +3172,9 @@ class SheetList:
             # the picks, never that late row (#71). A refresh that dropped it during the press
             # already gave it to a pick (`_apply_selection`); one dropped since then goes to the
             # pick under the pressed name, unless a refresh has dropped every pick since the
-            # press, or to the first, since this listener reads no handle for it.
+            # press, or to the first, since this listener reads no handle for it. The write below
+            # shows it there, so keys move from where the tree shows the cursor, unlike a key's
+            # own revalidation, which keeps the cursor's row until the refresh (#314).
             picks = self._selection.picked
             first = picks[0] if picks else None
             pressed = None

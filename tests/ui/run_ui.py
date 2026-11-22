@@ -82,6 +82,7 @@ from selection_checks import (  # noqa: E402
     check_click_activates,
     check_clicks_after_scrolls,
     check_ctrl_clicks_after_a_ctrl_shift_range,
+    check_ctrl_shift_click_after_ctrl_keys,
     check_ctrl_shift_selection,
     check_margin_drag_keeps_sidebar_docked,
     check_plain_click_ends_group,
@@ -135,6 +136,10 @@ def run_checks(lab, output, only=()):
         (
             "assistive_selection_then_ctrl_input",
             lambda: check_assistive_selection_then_ctrl_input(book),
+        ),
+        (
+            "ctrl_shift_click_after_ctrl_keys",
+            lambda: check_ctrl_shift_click_after_ctrl_keys(book),
         ),
         ("undo_own_move", lambda: check_undo_own_move(book)),
         ("drag_two_sheets_above_midpoint", lambda: check_drag_two_sheets(book, 0.25, 12)),

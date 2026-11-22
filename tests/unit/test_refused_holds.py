@@ -193,7 +193,7 @@ def test_a_refused_release_keeps_the_cursor_when_no_pick_survives() -> None:
     "keys,result",
     [
         pytest.param(((DOWN, 0),), ["India"], id="Down"),
-        pytest.param(((DOWN, SHIFT),), ["Bravo", "Hotel", "India"], id="Shift+Down"),
+        pytest.param(((DOWN, SHIFT),), ["Hotel", "India"], id="Shift+Down"),
         pytest.param(((DOWN, MOD1), (SPACE, MOD1)), ["Bravo", "India"], id="Ctrl+Down, Space"),
     ],
 )
@@ -201,7 +201,8 @@ def test_keys_after_a_refused_release_continue_from_the_kept_cursor(
     keys: tuple[tuple[int, int], ...], result: list[str]
 ) -> None:
     """Ordinary movement and selection after the refusal start where the user left the cursor,
-    Hotel, outside the picks; a range starts at the anchor the click on Bravo set."""
+    Hotel, outside the picks; a range starts there too, since Ctrl+Down moved the anchor with the
+    cursor, as VCL's own Ctrl with a cursor key drops its anchor (#313)."""
     owner = held_bravo()
     ctrl_down(owner)
     late_release(owner)

@@ -120,6 +120,8 @@ METHODS = (
     "_toggle_held",
     "_toggles_shown",
     "_toggle_held_off",
+    "_hold_ranges",  # From #313's fix on, as is the next.
+    "_ranges_shown",
     "_account_write",  # From #310's third round on, as are the next two.
     "_account",
     "_follow_engine",
@@ -802,6 +804,8 @@ def sheet_list(book: Book, source: str = SOURCE) -> Any:
         _toggles_held=None,
         _toggles_release=None,
         _toggles_keys=True,
+        _ranges_held=None,
+        _ranges_release=None,
         _deferred=None,
         _unowned=0,
         _accounted=0,

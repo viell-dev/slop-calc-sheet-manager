@@ -69,6 +69,7 @@ from selection_checks import (  # noqa: E402
     check_click_activates,
     check_clicks_after_scrolls,
     check_ctrl_clicks_after_a_ctrl_shift_range,
+    check_ctrl_shift_click_after_ctrl_keys,
     check_ctrl_shift_selection,
     check_margin_drag_keeps_sidebar_docked,
     check_viewed_sheet_name,
@@ -196,6 +197,10 @@ def checks_for(lab, book):
         (
             "assistive_selection_then_ctrl_input",
             lambda: check_assistive_selection_then_ctrl_input(book),
+        ),
+        (
+            "ctrl_shift_click_after_ctrl_keys",
+            lambda: check_ctrl_shift_click_after_ctrl_keys(book),
         ),
         ("viewed_sheet_name", lambda: check_viewed_sheet_name(book)),
         ("keys_stay_in_list", lambda: check_keys_stay_in_list(book)),

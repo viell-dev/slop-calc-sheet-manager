@@ -18,6 +18,20 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   it, though nobody picked it. The list now clears the picks with the selection notice, as after
   a refused held click. LibreOffice's tree has been seen to fail such a call only while a panel
   closes ([#316](https://github.com/viell-dev/slop-calc-sheet-manager/issues/316)).
+- After Ctrl with an arrow, Home or End key moved the keyboard cursor, a Ctrl+Shift+click now
+  adds the range from the cursor that the list shows at the click. The list added the range from
+  where the selection had started instead: the click was refused and cleared the selection, or,
+  when both ranges had as many rows, the list replaced the range it had shown with the other, and
+  Move to Top then moved sheets you had not selected. A Shift or Ctrl+Shift range made by key or
+  click after such keys also starts at the cursor now. A Shift+click or Ctrl+Shift+click made so
+  quickly after such a key that the list has not shown the cursor there yet picks nothing and
+  clears the selection, since LibreOffice's list still ranges from the earlier cursor then
+  ([#313](https://github.com/viell-dev/slop-calc-sheet-manager/issues/313)).
+- A key pressed just after another window renamed the sheet under the keyboard cursor, before the
+  list showed the new name, no longer moves from the first row of the list: Down selected the
+  second sheet, and Move to Top then moved it. Keys now move from the row where the list showed
+  the cursor, and do not select the renamed sheet until the list shows its new name
+  ([#314](https://github.com/viell-dev/slop-calc-sheet-manager/issues/314)).
 - The unit tests' simulated sheet list now runs the list's mouse handlers, keys, type-ahead and
   Move to Top through the extension's own mouse listener, key handler and move button listener,
   with their error guards, loaded from the extension's source. A LibreOffice failure inside a
@@ -29,17 +43,15 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   changes the unit tests, not the extension
   ([#312](https://github.com/viell-dev/slop-calc-sheet-manager/issues/312),
   [#320](https://github.com/viell-dev/slop-calc-sheet-manager/issues/320)).
-- A Ctrl+click, Ctrl+Shift+click, Space, Ctrl+Space, right click, or Ctrl with an arrow, Home,
-  End, Page Up or Page Down key, made just after rows were selected or cleared through assistive
-  technology, no longer acts against the list's earlier picks before the list has taken that
-  selection, within about a quarter of a second. Move to Top could then move a sheet you had just
-  deselected or replaced. The list now counts the changes to its selection that it did not make
-  itself, and such input picks nothing and clears the selection, with the selection notice:
-  select again. Two clicks or keys made so quickly that the list has not handled the first when
-  the second arrives can be refused in the same way, and so is a Ctrl+Shift+click after Ctrl with
-  an arrow key moved the cursor
-  ([#294](https://github.com/viell-dev/slop-calc-sheet-manager/issues/294),
-  [#313](https://github.com/viell-dev/slop-calc-sheet-manager/issues/313)).
+- A Ctrl+click, Ctrl+Shift+click, Space, Ctrl+Space, right click, or Ctrl with an arrow, Home or
+  End key, made just after rows were selected or cleared through assistive technology, no longer
+  acts against the list's earlier picks before the list has taken that selection, within about a
+  quarter of a second. Move to Top could then move a sheet you had just deselected or replaced.
+  The list now counts the changes to its selection that it did not make itself, and such input
+  picks nothing and clears the selection, with the selection notice: select again. Two clicks or
+  keys made so quickly that the list has not handled the first when the second arrives can be
+  refused in the same way
+  ([#294](https://github.com/viell-dev/slop-calc-sheet-manager/issues/294)).
 - When the list refuses a held click because the sheets changed during it, the keyboard cursor
   now stays where your keys moved it during the hold, also outside the picks, as long as the list
   can still identify that sheet. It returned to a picked sheet, so Ctrl+Space then toggled that
@@ -91,7 +103,7 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   whose change the list has not drawn yet, or on a selection made through assistive technology
   that the list has seen but not taken yet, also when several clicks come at once; Ctrl+Space
   on such a selection no longer picks the row you meant to deselect, and Ctrl with an arrow,
-  Home, End, Page Up or Page Down key no longer brings back the earlier picks over it. Such a
+  Home or End key no longer brings back the earlier picks over it. Such a
   toggle or key now picks nothing and clears the selection, with the selection notice, and until
   the list has redrawn, Ctrl+Space picks nothing either, also after arrow keys typed meanwhile:
   select again ([#291](https://github.com/viell-dev/slop-calc-sheet-manager/issues/291)).

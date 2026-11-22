@@ -43,6 +43,7 @@ from tests.unit.list_peer import (
     A,
     Book,
     click,
+    cursor,
     key,
     listen,
     move_to_top,
@@ -221,6 +222,31 @@ def test_a_ctrl_keys_write_goes_ahead_when_the_newer_change_leaves_the_picks_sho
     owner.run_queue()
     assert picks(owner) == ["Alfa"] == owner.tree.shown() and len(owner.notices) == notices
     assert move_to_top(owner) == ["Alfa"]
+
+
+def test_a_range_click_after_an_overtaken_ctrl_keys_write_is_refused() -> None:
+    """Delta clicked; Ctrl+Down twice moves the list's cursor and anchor to Foxtrot, and Alfa is
+    selected through accessibility before the keys' write. That write is overtaken and shows no
+    cursor; the intake takes Alfa and Delta. The tree still ranges from its cursor on Delta, so
+    the range hold stays on (#313), and a Shift+click on Bravo is refused, with the notice: had
+    the overtaken write ended the hold, the list would have picked Bravo to Foxtrot, ranging
+    from a cursor the tree never showed. The refusal's write shows the cursor on Bravo, and a
+    range from there then acts."""
+    owner = fresh()
+    click(owner, row("Delta"))
+    owner.tree_key(DOWN, MOD1)
+    owner.tree_key(DOWN, MOD1)
+    owner.tree.assistive_select("Alfa")
+    owner.run_queue()
+    assert picks(owner) == ["Alfa", "Delta"] == owner.tree.shown() and owner.notices == []
+    assert cursor(owner) == "Foxtrot" and owner.tree.cursor is owner.tree.node("Delta")
+    queued_click(owner, row("Bravo"), SHIFT)
+    owner.run_queue()
+    assert "Foxtrot" not in picks(owner), "a range from the cursor the tree never showed"
+    refused(owner, 0)
+    queued_click(owner, row("Delta"), MOD1 | SHIFT)
+    owner.run_queue()
+    assert picks(owner) == ["Bravo", "Charlie", "Delta"] == owner.tree.shown()
 
 
 @pytest.mark.parametrize("sampled", [False, True], ids=["no sample", "sampled"])
