@@ -39,13 +39,7 @@ relies on from Calc and the tree control:
   measured on #294.
 
 Posted work runs on `run_queue`, and a failure there ends only that work and is recorded, as
-LibreOffice's callback reports it. The mouse handlers run through the list's own mouse listener,
-`_Mouse`, which is loaded from the source with its guard, `_guarded` (`listen`): a failure inside a
-handler ends only that handler and is recorded in the same place, under the listener's name, and
-the listener still queues the selection write as it returns, as in LibreOffice (#312). Both
-record only a simulated native failure; any other exception is a defect of the list or of a test,
-which LibreOffice would report too, and it is raised. `queued_click` posts a click's mouse
-listeners there too, after
+LibreOffice's callback reports it. `queued_click` posts a click's mouse listeners there too, after
 the tree has handled the press and behind all the work already posted, the latest place VCL gives
 them (#269), so that work posted earlier, such as a refresh or the tab sample, runs between the
 native press and the list's listener (#85, #288). `bind_drag` binds the real `start_drag`, with
@@ -55,6 +49,13 @@ The refresh schedule's timers run on `retry`, which advances the fake clock. Mov
 through `queue_move` and `_move_selection`; the reorder layer's `apply_order` is replaced by
 `Book.apply`, which refuses a stale snapshot as `is_current` does and otherwise moves the planned
 sheets.
+
+The mouse handlers run through the list's own mouse listener, `_Mouse`, which is loaded from the
+source with its guard, `_guarded` (`listen`). As in LibreOffice, a failure inside a handler ends
+only that handler, and the listener still queues the selection write as it returns (#312). The
+failure is recorded where `run_queue` records one, under the listener's name. Both record only a
+simulated native failure: any other exception is a defect of the list or of a test, which
+LibreOffice would report too, and it is raised.
 
 The native checks are in `tests/integration` and `tests/ui`.
 """
