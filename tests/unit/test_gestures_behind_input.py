@@ -17,8 +17,9 @@ picks, and a drop moved them. No drag starts then.
 - While a write of the picks is pending, the intake takes nothing, so the gesture would carry the
   record: none starts unless every change of the tree counted so far is accounted for (#294), as
   after the listener of this press when it ran first.
-- A press listener marks its press undecided before its first native call, so that a failure
-  there leaves no press for the gesture or the release to act on (#318).
+- A press whose listener failed, wherever the failure fell, is left undecided by the mouse
+  listener's guard, so that neither the gesture nor the release acts on it (#318). Neither does
+  the gesture of a press during which the list dropped every pick.
 
 The real list runs over the simulated peer of `list_peer`, with `start_drag` bound and the
 document's checks stubbed (`bind_drag`).
@@ -39,6 +40,7 @@ from tests.unit.list_peer import (
     SPACE,
     A,
     Book,
+    NativeFailure,
     bind_drag,
     click,
     key,
@@ -48,6 +50,7 @@ from tests.unit.list_peer import (
     queued_click,
     release,
     sheet_list,
+    toggle_natively,
 )
 
 NAMES = ["Alfa", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel"]
@@ -237,6 +240,61 @@ def test_a_drag_after_a_failed_press_listener_drags_nothing(written: bool) -> No
     assert picks(owner) == ["Bravo"] == owner.tree.shown()
 
 
+def test_a_drag_after_a_press_listener_that_failed_after_deciding_drags_nothing() -> None:
+    """Bravo and Delta picked and Hotel selected through accessibility; a Ctrl+press on Delta,
+    which the tree deselects, and whose listener refuses it over Hotel's change. The refusal's
+    post of the notice fails before the picks are dropped, so the listener had decided the press
+    and kept Bravo and Delta, which the guard's write shows over the tree. Once the toggle hold
+    has ended, a drag carried them, Delta included, which the user had just deselected. The
+    guard leaves the failed press undecided wherever the failure fell, and no drag starts
+    (#330's review)."""
+    owner, dragged = clicked("Bravo")
+    queued_click(owner, row("Delta"))
+    owner.run_queue()
+    owner.tree.assistive_select("Hotel")
+    post = owner.post
+
+    def failing(work: Any, where: str) -> None:
+        if where == "telling that the selection was cleared":
+            raise NativeFailure("the notice's post")
+        post(work, where)
+
+    owner.post = failing
+    toggle_natively(owner, row("Delta"))
+    event = SimpleNamespace(
+        Buttons=LEFT, X=0, Y=owner.tree.line(row("Delta")), Modifiers=MOD1, ClickCount=1
+    )
+    listen(owner, owner.mouse_pressed, event)
+    owner.post = post
+    assert owner.failures == ["a mouse press"]
+    assert picks(owner) == ["Bravo", "Delta"], "the failure came before the picks were dropped"
+    owner.run_queue()
+    assert owner._toggles_held is None and owner.tree.shown() == ["Bravo", "Delta"]
+    owner.start_drag(object())
+    assert dragged == [], "dragged Delta, which the user had deselected"
+
+
+def test_a_drag_from_a_press_during_which_every_pick_was_dropped_drags_nothing() -> None:
+    """Bravo picked; a press on Delta, whose listener picks it, and then another window inserts a
+    sheet, so the refresh cannot prove the sheets and drops every pick while the press is held,
+    which voids it. Down, typed while the button is held, picks a row again, and once its write
+    and holds have ended the gesture comes: it carried the key's pick, which the tree did not show
+    when the user pressed. No drag starts for a voided press."""
+    owner, dragged = clicked("Bravo")
+    native_press(owner, row("Delta"))
+    run_until(owner, "a mouse press")
+    assert picks(owner) == ["Delta"]
+    owner.book.insert("India", 0)
+    owner.post(owner.refresh, "refreshing the sheet list")
+    owner.run_queue()
+    assert picks(owner) == [] and owner._press is not None and owner._press.voided
+    owner.tree_key(DOWN, 0)
+    owner.run_queue()
+    assert picks(owner) and owner._ranges_held is None and owner._toggles_held is None
+    owner.start_drag(object())
+    assert dragged == [], "dragged the key's pick"
+
+
 def test_a_click_after_a_failed_press_listener_acts() -> None:
     """Control: after the failed press's release, the next click picks its row, and a drag from
     it carries it."""
@@ -307,6 +365,36 @@ def test_a_drag_of_a_ctrl_click_carries_the_picks_it_added_to() -> None:
     owner, dragged = clicked("Bravo")
     queued_click(owner, row("Delta"))
     run_until(owner, "a mouse press")
+    owner.start_drag(object())
+    assert dragged == [["Bravo", "Delta"]]
+
+
+def test_a_drag_after_a_key_typed_while_the_button_is_held_drags_nothing() -> None:
+    """Bravo picked; a press on Delta, whose listener picks it, and Down typed while the button is
+    held, which picks Echo. The gesture before the key's write carried Echo, which the tree did
+    not show when the user pressed; the key's holds refuse it."""
+    owner, dragged = clicked("Bravo")
+    native_press(owner, row("Delta"))
+    run_until(owner, "a mouse press")
+    owner.tree_key(DOWN, 0)
+    assert picks(owner) == ["Echo"]
+    owner.start_drag(object())
+    assert dragged == [], "dragged the key's pick"
+
+
+def test_a_plain_press_on_a_picked_row_during_a_range_hold_keeps_the_picks() -> None:
+    """Control: Bravo and Delta picked; Ctrl+Down, which moves the cursor and holds range presses
+    but leaves the picks as the tree shows them, so toggles are not held; a press on Bravo, which
+    the tree shows selected, before the key's write. Its listener keeps both picks for a drag,
+    and the drag after the writes carries them."""
+    owner, dragged = clicked("Bravo")
+    queued_click(owner, row("Delta"))
+    owner.run_queue()
+    owner.tree_key(DOWN, MOD1)
+    assert owner._ranges_held is not None and owner._toggles_held is None
+    press_keeping(owner, "Bravo")
+    owner.run_queue()
+    assert picks(owner) == ["Bravo", "Delta"]
     owner.start_drag(object())
     assert dragged == [["Bravo", "Delta"]]
 

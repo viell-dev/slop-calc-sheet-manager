@@ -411,6 +411,21 @@ def test_a_range_click_before_a_type_aheads_jump_is_refused(modifiers: int) -> N
     assert move_to_top(owner) is None
 
 
+def test_a_range_click_before_shift_keys_write_acts() -> None:
+    """Shift keys hold no range presses (#326): Alfa clicked, Shift+Down twice, and a Ctrl+Shift+
+    click on Golf that the tree handles before the keys' write. The tree adds Alfa to Golf from
+    its cursor on Alfa, and the list adds the same range from its anchor, the range's start, with
+    every row up to the cursor picked: the click acts, with no notice (#330's review)."""
+    owner = clicked("Alfa")
+    for _ in range(2):
+        owner.tree_key(DOWN, SHIFT)
+    assert picks(owner) == ["Alfa", "Bravo", "Charlie"] and owner._ranges_held is None
+    queued_click(owner, row("Golf"), MOD1 | SHIFT)
+    owner.run_queue()
+    assert picks(owner) == NAMES[: row("Golf") + 1] == owner.tree.shown()
+    assert owner.notices == []
+
+
 def test_a_plain_key_holds_range_presses_also_when_nothing_moves() -> None:
     """Hotel clicked and End, which leaves the cursor and the anchor on Hotel, then a Ctrl+Shift+
     click on Foxtrot before the key's write. A plain key sets the whole selection over every change

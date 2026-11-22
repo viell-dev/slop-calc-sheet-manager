@@ -353,19 +353,24 @@ Nor does a drag start while a selection write is queued, when the intake takes n
 every change of the tree counted so far is accounted for, as by this press's own listener
 (#294): an earlier click's listener that ran between the press and the gesture left its pick in
 the record. A plain press handled while toggles are held picks its row alone, rather than keep
-other picks for a drag that the tree may not have shown when it handled the press. A press
-listener marks its press undecided, outside the rows and voided, before its first native call,
-so that a failure before it decides leaves no press: its gesture starts nothing, rather than
-carry the picks from before the press, and its release does nothing (#318). The gesture reads
-only Python state for these rules. They refuse where `main` dragged the pressed sheet: a drag in
-the moment after a key or type-ahead, also from a press whose listener ran before the key's
-write; one after a Shift+click's listener and before its write, which leaves the Shift press's
-change unaccounted; and one from the second of two presses handled before the first one's
-listener ran, whose own change neither listener's share covers. Still as on `main`, an earlier
-click's write that lands between the press and the gesture shows that click's picks over the
-press's row when the click's listeners ran after the tree handled the press, and the drag
-carries them (#329); so does a refresh that keeps the rows and writes the picks between an
-earlier click's listener and the gesture (#323).
+other picks for a drag that the tree may not have shown when it handled the press. A press whose
+listener fails, wherever the failure falls, is left undecided by the mouse listener's guard,
+outside the rows and voided (`press_failed`): its gesture starts nothing, rather than carry the
+picks that the guard's write shows over the press, and its release does nothing (#318). Neither
+does the gesture of a press during which the list dropped every pick. A key typed while the
+button is held, after the press's listener ran, holds the gesture as any key does, where `main`
+dragged the key's pick. The gesture reads only Python state for these rules. They refuse where
+`main` dragged the pressed sheet: a drag in the moment after a key or type-ahead, also from a
+press whose listener ran before the key's write; one after a refusal or a drop of picks, until
+its write's posted end; one after a Shift+click's listener and before its write, which leaves
+the Shift press's change unaccounted; and one from the second of two presses handled before the
+first one's listener ran, whose own change neither listener's share covers. Still as on `main`,
+a write that holds nothing and lands between the press and the gesture shows the earlier picks
+over the press's row, and the drag carries them: one of a key that leaves the picks as the tree
+shows them and holds no range presses, such as Ctrl+Home on the first row, Shift+End on the last
+or Shift+Up inside the picks, or one of an earlier click whose listeners have run. So does a
+click's write when its listeners ran after the tree handled the press (#329), and a refresh that
+keeps the rows and writes the picks between an earlier click's listener and the gesture (#323).
 
 Activation. A double click or Enter makes the sheet Calc's only selected tab and reads that back,
 because `setActiveSheet` keeps an existing group when the sheet belongs to it. Activation reads
@@ -575,12 +580,15 @@ def _current(ref: Ref) -> bool:
         return False
 
 
-def _guarded(where, function, *arguments):
+def _guarded(where, function, *arguments) -> bool:
+    """Run a listener's work: a failure is reported and ends that work alone. Returns whether the
+    work completed."""
     try:
-        return function(*arguments)
+        function(*arguments)
     except Exception:
         report(where)
-        return None
+        return False
+    return True
 
 
 @dataclass(frozen=True)
@@ -592,9 +600,16 @@ class _Press:
     name: str | None  # The sheet the pressed row showed,
     handle: Any  # and its handle at that moment: a refresh may put another sheet there.
     generation: int  # The structure generation when the button went down.
-    # The list dropped its picks while it was held, or its listener has not decided it (#318).
+    # The list dropped its picks while it was held, or its listener failed (`undecided`).
     voided: bool = False
     clicks: int = 1  # Native double-click count belongs to the press on some backends.
+
+    @classmethod
+    def undecided(cls, event, generation: int) -> "_Press":
+        """The press of a listener that failed: outside the rows and voided, so that its gesture
+        starts no drag and its release does nothing (#318)."""
+        modifiers, clicks = event.Modifiers, event.ClickCount
+        return cls(None, modifiers, None, None, generation, voided=True, clicks=clicks)
 
 
 @dataclass(frozen=True, eq=False)
@@ -652,16 +667,19 @@ class _Mouse(unohelper.Base, XMouseListener):
         self._owner = owner
 
     def mousePressed(self, event):
-        self._handle("a mouse press", self._owner.mouse_pressed, event)
+        if not self._handle("a mouse press", self._owner.mouse_pressed, event):
+            # The tree may show the press's selection, of which the failure, wherever it fell,
+            # left the list no record (#318).
+            _guarded("a mouse press", self._owner.press_failed, event)
 
     def mouseReleased(self, event):
         self._handle("a mouse release", self._owner.mouse_released, event)
 
-    def _handle(self, where, function, event):
+    def _handle(self, where, function, event) -> bool:
         # Posting or reading UNO can let queued observation run before the handler returns.
         self._owner._pointer_depth += 1
         try:
-            _guarded(where, function, event)
+            return _guarded(where, function, event)
         finally:
             self._owner._pointer_depth -= 1
             if not self._owner._pointer_depth:
@@ -2845,21 +2863,6 @@ class SheetList:
         add_mode, shown, shown_at = self._add_mode, self._shown, self._shown_at
         ranges = self._ranges_held  # So is a range hold, whose end can run inside (#313).
         toggles = self._toggles_held  # And a toggle hold, for a plain press (#304).
-        if event.Buttons & LEFT and not event.Buttons & RIGHT:
-            # Until this listener decides the press, it is an undecided one, outside the rows and
-            # voided, so that a native failure before then leaves no press to act on: the tree
-            # may show the press's selection, which the list has no record of. Its gesture
-            # starts no drag, rather than carry the picks the tree showed before (#318), and its
-            # release does nothing.
-            self._press = _Press(
-                None,
-                event.Modifiers,
-                None,
-                None,
-                self._monitor.generation,
-                voided=True,
-                clicks=event.ClickCount,
-            )
         self._input += 1
         self._tabs.note_input()
         self.claim_window()
@@ -3025,6 +3028,20 @@ class SheetList:
                             own_plain = shown_at + len(shown) + 1
                             self._account(max(self._accounted, min(seen, own_plain)))
                 self._queue_selection()
+
+    def press_failed(self, event) -> None:
+        """The left press whose listener failed is undecided (`_Mouse.mousePressed`, #318).
+
+        The tree selected, toggled or extended rows for it, which the list may not have taken: a
+        failure before the listener decided the press leaves no record of it, and one after can
+        leave picks it meant to change. The listener's guard queued the write of the picks, which
+        shows them over the press's rows. Until the release, the press is one outside the rows and
+        voided (`_Press.undecided`): its gesture starts no drag, which would carry those picks, and
+        its release does nothing; the intake, cursor events and tab observation wait for the
+        release, as during any held press. A right press keeps its own handling.
+        """
+        if event.Buttons & LEFT and not event.Buttons & RIGHT:
+            self._press = _Press.undecided(event, self._monitor.generation)
 
     def mouse_released(self, event) -> None:
         if event.Buttons & RIGHT:
