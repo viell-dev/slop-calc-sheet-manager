@@ -206,7 +206,14 @@ def test_space_on_an_assistive_selection_before_any_intake_picks_nothing(modifie
     key(owner, DOWN, MOD1)
     assert cursor(owner) == "Bravo" and picks(owner) == []
     owner.tree.assistive_select("Bravo")
-    key(owner, SPACE, modifiers)
+    if modifiers:
+        key(owner, SPACE, modifiers)
+    else:
+        # The key handler consumes a plain Space without giving it to the tree
+        # (`keys.route_key`), so this case calls `tree_key` itself, whose Space branch is the one
+        # that Ctrl+Space reaches.
+        owner.tree_key(SPACE, modifiers)
+        owner.run_queue()
     assert "Bravo" not in picks(owner), "Bravo, which the user deselected, was picked"
     assert picks(owner) == [] and owner.tree.shown() == []
     assert move_to_top(owner) is None
