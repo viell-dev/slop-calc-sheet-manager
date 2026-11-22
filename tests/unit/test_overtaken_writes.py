@@ -540,6 +540,7 @@ def test_a_right_press_over_a_newer_assistive_selection_targets_its_row_alone() 
 
     owner._open_menu = open_menu
     queued_click(owner, row("Echo"), 0, button=2)
+    run(owner, 1)  # The press's listener; its write and the release's listener are queued.
     owner.tree.assistive_only("Golf")
     owner.run_queue()
     assert opened == [["Echo"]]
