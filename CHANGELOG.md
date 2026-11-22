@@ -5,6 +5,27 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- A selection made through assistive technology just after a click or key in the sheet list,
+  before the list has shown that input, is no longer replaced by what the input selected. Move to
+  Top then moved the click's or key's sheets, though the selection showed last was another. The
+  list now keeps that selection, and commands act on it. Where it cannot tell what you selected,
+  it clears the selection with the selection notice instead: after Space or Ctrl+Space, a
+  Ctrl+click it refused, a Ctrl+double-click, a click released over another row, a right click,
+  whose menu opens for the clicked sheet alone, a click on a selected sheet, a double click or a
+  Shift+click that the list handled late, and a Shift+click whose range it cannot match, as one
+  made just after a key or a Ctrl+Shift+click. A click on a row just after a key still selects
+  the row clicked, and the list no longer scrolls to the key's selection over it
+  ([#307](https://github.com/viell-dev/slop-calc-sheet-manager/issues/307)).
+- A sheet list write that LibreOffice fails after you hold a click on the picked sheet and release
+  it over another row no longer leaves that row to be taken as a pick. Move to Top could then move
+  it, though nobody picked it. The list now clears the picks with the selection notice, as after
+  a refused held click. LibreOffice's tree has been seen to fail such a call only while a panel
+  closes ([#316](https://github.com/viell-dev/slop-calc-sheet-manager/issues/316)).
+- A drag started on a sheet just after a Shift+click, Ctrl+click or Ctrl+Shift+click, before the
+  list had shown that click, no longer carries the click's sheets instead of the one you pressed:
+  a drop moved sheets you were not dragging. Such a drag now carries nothing, and the list clears
+  its selection with the notice; drag again
+  ([#329](https://github.com/viell-dev/slop-calc-sheet-manager/issues/329)).
 - After Ctrl with an arrow, Home or End key moved the keyboard cursor, a Ctrl+Shift+click now
   adds the range from the cursor that the list shows at the click. The list added the range from
   where the selection had started instead: the click was refused and cleared the selection, or,

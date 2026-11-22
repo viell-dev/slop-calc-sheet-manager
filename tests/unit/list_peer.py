@@ -66,6 +66,7 @@ The native checks are in `tests/integration` and `tests/ui`.
 
 import _thread
 import ast
+import enum
 import functools
 import sys
 import time
@@ -157,6 +158,10 @@ METHODS = (
     "queue_input",
     "_queue_selection",
     "_flush_selection",
+    "_overtaken",  # From #307 on, as are the next three.
+    "_read_tree",
+    "_take_overtaken",
+    "_unread",
     "cursor_changed",
     "tree_selection_changed",
     "type_ahead",
@@ -773,6 +778,8 @@ def sheet_list(book: Book, source: str = SOURCE) -> Any:
         namespace["_OwnWrites"] = _load(source, others["_OwnWrites"], {"_thread": _thread})
     if "_PressHold" in others:  # A revision before #293 has none.
         namespace["_PressHold"] = _load(source, others["_PressHold"], {"dataclass": dataclass})
+    if "_Intake" in others:  # A revision before #307 has none.
+        namespace["_Intake"] = _load(source, others["_Intake"], {"enum": enum})
     tree, peer = Tree(faults), Peer(faults)
     owner = _Owner(
         source=source,
@@ -813,6 +820,9 @@ def sheet_list(book: Book, source: str = SOURCE) -> Any:
         _shown_at=0,
         _quiet=None,
         _erased=None,
+        _input_seen=0,
+        _unclaimed=False,
+        _intake=namespace["_Intake"].CHANGES if "_Intake" in namespace else None,
         _add_mode=False,
         _presses_held=None,
         _presses_release=None,
