@@ -398,18 +398,21 @@ def test_a_held_toggle_moves_the_range_anchor_with_the_cursor() -> None:
 
 def test_a_held_toggles_drop_holds_toggles_behind_a_release_already_posted() -> None:
     """Alfa and Bravo picked; Ctrl+Up's write fails, so toggles are held. A Ctrl+click adds
-    Charlie in the tree behind a queued write, which then shows Alfa and Bravo again and posts
-    the hold's release behind that click's listener. A Ctrl+click on Bravo, which the tree now
-    shows selected, queues behind the release. The first listener, still held, drops Alfa and
-    Bravo. Unless that drop holds toggles anew, the release then ends the hold, and the second
-    listener toggled Bravo against the empty picks: the row the user had just deselected."""
+    Charlie in the tree behind a refresh and a queued write. The refresh runs while that write
+    waits, so it shows Alfa and Bravo again and posts the hold's release behind that click's
+    listener. (The queued write itself would not show them over Charlie's toggle, which came
+    after the key, #307.) A Ctrl+click on Bravo, which the tree now shows selected, queues behind
+    the release. The first listener, still held, drops Alfa and Bravo. Unless that drop holds
+    toggles anew, the release then ends the hold, and the second listener toggled Bravo against
+    the empty picks: the row the user had just deselected."""
     owner = picked("Alfa", "Bravo")
     owner.faults.fail("select")
     key(owner, UP, MOD1)
     assert owner._shown is None and owner.tree.shown() == ["Alfa", "Bravo"]
+    post_refresh(owner)
     owner._queue_selection()
     queued_click(owner, row("Charlie"))
-    run_next(owner)  # The write: Alfa and Bravo shown, the release posted behind the click.
+    run_next(owner)  # The refresh: Alfa and Bravo shown, the release posted behind the click.
     assert owner.tree.shown() == ["Alfa", "Bravo"]
     queued_click(owner, row("Bravo"))
     owner.run_queue()

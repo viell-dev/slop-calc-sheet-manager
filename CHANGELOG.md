@@ -5,6 +5,27 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- A selection made through assistive technology just after a click or key in the sheet list,
+  before the list has shown that input, is no longer replaced by what the input selected. Move to
+  Top then moved the click's or key's sheets, though the selection showed last was another. The
+  list now keeps that selection, and commands act on it. Where it cannot tell what you selected,
+  it clears the selection with the selection notice instead: after Space or Ctrl+Space, a
+  Ctrl+click it refused, a Ctrl+double-click, a click released over another row, a right click,
+  whose menu opens for the clicked sheet alone, a click on a selected sheet, a double click or a
+  Shift+click that the list handled late, and a Shift+click whose range it cannot match, as one
+  made just after a key or a Ctrl+Shift+click. A click on a row just after a key still selects
+  the row clicked, and the list no longer scrolls to the key's selection over it
+  ([#307](https://github.com/viell-dev/slop-calc-sheet-manager/issues/307)).
+- A sheet list write that LibreOffice fails after you hold a click on the picked sheet and release
+  it over another row no longer leaves that row to be taken as a pick. Move to Top could then move
+  it, though nobody picked it. The list now clears the picks with the selection notice, as after
+  a refused held click. LibreOffice's tree has been seen to fail such a call only while a panel
+  closes ([#316](https://github.com/viell-dev/slop-calc-sheet-manager/issues/316)).
+- A drag started on a sheet just after a Shift+click, Ctrl+click or Ctrl+Shift+click, before the
+  list had shown that click, no longer carries the click's sheets instead of the one you pressed:
+  a drop moved sheets you were not dragging. Such a drag now carries nothing, and the list clears
+  its selection with the notice; drag again
+  ([#329](https://github.com/viell-dev/slop-calc-sheet-manager/issues/329)).
 - After Ctrl with an arrow, Home or End key moved the keyboard cursor, a Ctrl+Shift+click now
   adds the range from the cursor that the list shows at the click. The list added the range from
   where the selection had started instead: the click was refused and cleared the selection, or,
@@ -19,6 +40,20 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   second sheet, and Move to Top then moved it. Keys now move from the row where the list showed
   the cursor, and do not select the renamed sheet until the list shows its new name
   ([#314](https://github.com/viell-dev/slop-calc-sheet-manager/issues/314)).
+- A Shift+click or Ctrl+Shift+click made so quickly after an arrow, Home, End, Page Up or Page Down
+  key without Ctrl, or after a typed letter that moves to a sheet, that the list has not shown the
+  keyboard cursor there yet now picks nothing and clears the selection, as after Ctrl with such a
+  key. LibreOffice's list ranged from the earlier cursor, and the list from the row the key or the
+  letter had moved to: a Shift+click made just before Down and handled after it also selected the
+  sheet below the earlier cursor, which you had not selected, and Move to Top then moved it
+  ([#326](https://github.com/viell-dev/slop-calc-sheet-manager/issues/326)).
+- A drag begun so quickly after a key or a typed letter that changed the selection or moved the
+  keyboard cursor, before the list had shown it, no longer drags the sheet that input selected
+  instead of the one you pressed, and one begun just after another click, before the list had
+  shown that click, no longer drags that click's sheet. Such a drag now does not start: drag
+  again ([#304](https://github.com/viell-dev/slop-calc-sheet-manager/issues/304)). Nor does a
+  drag whose press the list failed to handle, which dragged the sheets selected before the press
+  ([#318](https://github.com/viell-dev/slop-calc-sheet-manager/issues/318)).
 - The unit tests' simulated sheet list now runs the list's mouse handlers, keys, type-ahead and
   Move to Top through the extension's own mouse listener, key handler and move button listener,
   with their error guards, loaded from the extension's source. A LibreOffice failure inside a

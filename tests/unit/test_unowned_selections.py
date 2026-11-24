@@ -101,8 +101,10 @@ def right_press(owner: Any, name: str) -> list[str]:
     `_open_menu` chooses them; the menu then closes without a command, as `_finish_menu` ends."""
     press(owner, row(name), RIGHT)
     owner.run_queue()
-    target = owner._context_target
-    targets = picks(owner) if target.name in picks(owner) else [target.name]
+    target, names = owner._context_target, picks(owner)
+    # As `_open_menu` chooses: the picks only while the record says the tree shows them (#307).
+    shown = owner._shown is not None and set(owner._shown) == set(names)
+    targets = names if shown and target.name in names else [target.name]
     owner._context_target = None
     owner._show_selection()
     owner.run_queue()
@@ -1166,7 +1168,8 @@ def test_a_write_that_lands_before_a_plain_press_listener_lets_its_share_cover_m
     plain share, counted from that write, covers Golf's change, and the Ctrl+click's listener takes
     it for its own: Charlie and Echo are picked, as on `main`, though the tree showed Echo and Golf.
     The list cannot tell that write from one before the press, as after a click on a selected row;
-    skipping the share after such writes refused #44's real-input sequence on gtk3."""
+    skipping the share after such writes refused #44's real-input sequence on gtk3. The Ctrl+click
+    then claims every change counted, so its write shows the picks too (#307)."""
     owner = picked("Alfa")
     plain_click_after_a_write_landed(owner, foreign=True)
     assert picks(owner) == ["Charlie", "Echo"] == owner.tree.shown()

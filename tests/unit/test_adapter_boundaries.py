@@ -1,6 +1,7 @@
 """Deterministic races and display guards; real UNO behaviour is checked in integration."""
 
 import _thread
+import enum
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import Mock
@@ -108,6 +109,63 @@ def test_menu_command_runs_through_the_menu_and_reports_its_refusal(refusal: str
     menu.run.assert_called_once_with(4, observed, ["Delta"], unchanged)
     assert shown == ([refusal] if refusal else [])
     assert owner.refresh.call_count == (1 if refusal else 0)
+
+
+@pytest.mark.parametrize(
+    "shown, targets",
+    [
+        pytest.param(("Alfa", "Echo"), ["Alfa", "Echo"], id="the tree shows the picks"),
+        pytest.param(None, ["Echo"], id="the record is unknown"),
+        pytest.param(("Alfa",), ["Echo"], id="the record is not the picks"),
+    ],
+)
+def test_a_right_presss_menu_targets_the_picks_only_while_the_tree_shows_them(
+    shown: tuple[str, ...] | None, targets: list[str]
+) -> None:
+    """Alfa and Echo picked, and a right press on Echo. The menu targets both only while the
+    record says the tree shows the picks; after the press's write failed partway or left a
+    newer change in the tree, it targets the pressed row alone (#257, #307)."""
+    picked = [Ref("Alfa", object()), Ref("Echo", object())]
+    opened: list[list[str]] = []
+
+    def show(peer: object, x: int, y: int, observed: object, names: list[str]) -> None:
+        opened.append(names)
+
+    owner = SimpleNamespace(
+        _input=1,
+        _context_input=1,
+        _context_target=picked[1],
+        _context_generation=0,
+        _monitor=SimpleNamespace(check=lambda: 0),
+        _disposed=False,
+        _busy=False,
+        _menu_context=False,
+        _observed=object(),
+        _selection=SimpleNamespace(picked=picked, names=lambda: ["Alfa", "Echo"]),
+        _shown=shown,
+        _generation=0,
+        _proven=0,
+        _activation_input=0,
+        _menu=SimpleNamespace(show=show),
+        peer=object(),
+        document=object(),
+        post=Mock(),
+    )
+
+    def snapshot(document: object) -> object:
+        return SimpleNamespace(sheets=[SimpleNamespace(name=name) for name in ("Alfa", "Echo")])
+
+    def current(ref: object) -> bool:
+        return True
+
+    open_menu = method(
+        "src/sheet_manager/uno_list.py",
+        "SheetList",
+        "_open_menu",
+        {"Ref": Ref, "snapshot": snapshot, "_current": current},
+    )
+    open_menu(owner, 10, 20, seen=1)
+    assert opened == [targets]
 
 
 @pytest.mark.parametrize("newer_context", [False, True])
@@ -280,6 +338,7 @@ def test_owned_navigation_accumulates_while_the_ui_queue_is_paused() -> None:
         _accounted=0,
         _hold_toggles=Mock(),  # A key's change holds presses until its write (#291).
         _hold_ranges=Mock(),  # A Ctrl key holds range presses until its write (#313).
+        _unread=Mock(),  # Space's toggle leaves the tree to no intake until its write (#307).
         _handles=handles,
         _page_rows=3,
         _selection_write_pending=False,
@@ -396,7 +455,12 @@ def test_failed_rebuild_releases_the_cursor_restoration_guard() -> None:
 
     owner._apply_selection = fail_restore
     owner._prove = Mock()
-    account_write = method("src/sheet_manager/uno_list.py", "SheetList", "_account_write", {})
+    account_write = method(
+        "src/sheet_manager/uno_list.py",
+        "SheetList",
+        "_account_write",
+        {"_Intake": source_class("src/sheet_manager/uno_list.py", "_Intake", {"enum": enum})},
+    )
 
     def account(start: int) -> None:
         account_write(owner, start)
@@ -525,19 +589,25 @@ def test_a_refused_release_writes_a_picked_cursor_and_keeps_the_lists_own(
     owner = SimpleNamespace(
         _press=SimpleNamespace(
             row=1,
+            modifiers=0,  # A plain press, whose release can select natively (#329).
             name="Bravo",
             handle=SimpleNamespace(getName=Mock(side_effect=AssertionError("a handle read"))),
             generation=0,
             voided=voided,
         ),
         _monitor=SimpleNamespace(generation=0),  # No `check()` in the listener (#284).
+        _unowned=0,  # The release reads the count, and nothing else of it (#307).
+        _input_seen=0,
         _pressed_sheet_in_place=Mock(return_value=False),
         _selection=selection,
         names=lambda: rows,
         _show_selection=lambda: writes.append(selection.cursor),
     )
     released = method(
-        "src/sheet_manager/uno_list.py", "SheetList", "mouse_released", {"LEFT": 1, "RIGHT": 2}
+        "src/sheet_manager/uno_list.py",
+        "SheetList",
+        "mouse_released",
+        {"LEFT": 1, "RIGHT": 2, "SHIFT": 1, "MOD1": 2},
     )
     released(owner, SimpleNamespace(Buttons=1))
     result = cast(Ref | None, owner._selection.cursor)

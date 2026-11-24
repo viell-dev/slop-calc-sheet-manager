@@ -7,7 +7,10 @@ its cursor for the next Shift or Ctrl+Shift press (`SvImpLBox::SelAllDestrAnch`,
 `ImpLBSelEng::CreateAnchor`, read in 26.8.2.2), as VCL's own Ctrl with a cursor key drops its
 anchor (`SelectionEngine::CursorPosChanging`). The list's anchor stayed behind at such a key, so a
 Ctrl+Shift+click added another range to the picks than the tree had shown: refused when the two
-ranges differed in size, and acted on when they did not.
+ranges differed in size, and acted on when they did not. A plain cursor key and type-ahead's jump
+move the anchor with the cursor as well, so a range click that the tree handles before their
+write, or whose listener runs after them, ranged in the list from another row than in the tree;
+like a Ctrl key, they hold range presses until a write has shown the cursor (#326).
 
 A key revalidated the picks, the cursor and the anchor against the sheets' names. When another
 window had renamed the cursor's sheet and the list had not refreshed yet, the cursor went, and the
@@ -20,6 +23,7 @@ the rows from the tree's anchor, made at its cursor when it has none, and whose 
 the tree no anchor.
 """
 
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -182,8 +186,10 @@ def test_a_range_click_before_the_ctrl_keys_write_is_refused(modifiers: int) -> 
 def test_a_range_click_before_a_refused_range_clicks_write_is_refused() -> None:
     """Alfa clicked; Ctrl+Down, and a Ctrl+Shift+click on Charlie handled before the key's write,
     which is refused and moves the list's cursor and anchor to Charlie. Before the refusal's write
-    shows that cursor, a Ctrl+Shift+click on Echo ranges natively from the tree's anchor, still
-    on Bravo. It is refused too: the list would have added Charlie to Echo (#313's fuzzing)."""
+    shows that cursor, a Ctrl+Shift+click on Echo ranges natively from the tree's anchor, which is
+    on Alfa, where the first range started: the key's write found that range in the tree and wrote
+    nothing (#307). It is refused too: the list would have added Charlie to Echo (#313's
+    fuzzing)."""
     owner = clicked("Alfa")
     owner.tree_key(DOWN, MOD1)
     queued_click(owner, row("Charlie"), MOD1 | SHIFT)
@@ -193,7 +199,8 @@ def test_a_range_click_before_a_refused_range_clicks_write_is_refused() -> None:
         if where == "a mouse release":
             break
     assert picks(owner) == [] and cursor(owner) == anchor(owner) == "Charlie"
-    assert owner.tree.cursor is not owner.tree.node("Charlie"), "the refusal's write ran"
+    assert any(where == "showing the selection" for _, where in owner.queue), "the write ran"
+    assert owner.tree.anchor is owner.tree.node("Alfa")
     queued_click(owner, row("Echo"), MOD1 | SHIFT)
     owner.run_queue()
     assert "Charlie" not in picks(owner), "a range from the anchor the tree did not have"
@@ -332,6 +339,129 @@ def test_a_refused_ctrl_key_holds_range_presses_also_when_nothing_moves() -> Non
     owner.run_queue()
     assert picks(owner) == [] and owner.tree.shown() == []
     assert move_to_top(owner) is None
+
+
+# After plain cursor keys and type-ahead (#326).
+
+
+def typed(owner: Any, char: str) -> None:
+    """A character typed in the list: its key handler queues the type-ahead (`queue_input`),
+    which runs when the queue next does."""
+    code = A + ord(char) - ord("a")
+    owner.key_handler.keyPressed(SimpleNamespace(KeyCode=code, Modifiers=0, KeyChar=char))
+
+
+@pytest.mark.parametrize("modifiers", [MOD1 | SHIFT, SHIFT], ids=["ctrl-shift", "shift"])
+def test_a_range_click_before_plain_keys_write_is_refused(modifiers: int) -> None:
+    """Alfa clicked; Down three times, and a Ctrl+Shift+click or Shift+click on Golf that the tree
+    handles before the keys' write. The tree ranges from its cursor, still on Alfa, while the keys
+    moved the list's anchor to Delta, and the listener picked Delta to Golf. That is what the input
+    asked for, since the keys came first, but the hold cannot tell that order from the next test's,
+    so the press is refused as after Ctrl keys: the picks go, with the notice."""
+    owner = clicked("Alfa")
+    for _ in range(3):
+        owner.tree_key(DOWN, 0)
+    queued_click(owner, row("Golf"), modifiers)
+    owner.run_queue()
+    assert picks(owner) == [] and owner.tree.shown() == []
+    assert len(owner.notices) == 1
+    assert move_to_top(owner) is None
+    # The refusal's write showed the cursor on Golf: a range from there acts.
+    assert cursor(owner) == anchor(owner) == "Golf" and owner._ranges_held is None
+    queued_click(owner, row("Echo"), MOD1 | SHIFT)
+    owner.run_queue()
+    assert picks(owner) == ["Echo", "Foxtrot", "Golf"] == owner.tree.shown()
+
+
+@pytest.mark.parametrize(
+    "modifiers,tree",
+    [
+        pytest.param(MOD1 | SHIFT, ["Alfa", "Bravo", "Charlie"], id="ctrl-shift"),
+        pytest.param(SHIFT, ["Charlie"], id="shift"),  # The simulated Shift press: its row.
+    ],
+)
+def test_a_range_click_whose_listener_runs_after_a_plain_key_is_refused(
+    modifiers: int, tree: list[str]
+) -> None:
+    """Alfa clicked; a Ctrl+Shift+click or Shift+click on Charlie, and Down typed before the press's
+    listener runs. Down moved the anchor to Bravo, and the listener picked Bravo and Charlie: not
+    the range the tree showed, and not the input's either, since the click came first. Bravo is a
+    sheet the user never selected. The press picks nothing, with the notice."""
+    owner = clicked("Alfa")
+    queued_click(owner, row("Charlie"), modifiers)
+    assert owner.tree.shown() == tree
+    owner.tree_key(DOWN, 0)
+    owner.run_queue()
+    assert "Bravo" not in picks(owner), "a range from the anchor the key moved"
+    assert picks(owner) == [] and owner.tree.shown() == []
+    assert len(owner.notices) == 1
+    assert move_to_top(owner) is None
+
+
+@pytest.mark.parametrize("modifiers", [MOD1 | SHIFT, SHIFT], ids=["ctrl-shift", "shift"])
+def test_a_range_click_before_a_type_aheads_jump_is_refused(modifiers: int) -> None:
+    """Alfa clicked; "e" typed, and a Ctrl+Shift+click or Shift+click on Golf that the tree handles
+    before the type-ahead runs. The tree ranges from its cursor on Alfa; the jump picks Echo and
+    moves the anchor there, and the listener, which runs after it, picked Echo to Golf, which the
+    tree never showed. The press picks nothing, with the notice."""
+    owner = clicked("Alfa")
+    typed(owner, "e")
+    queued_click(owner, row("Golf"), modifiers)
+    owner.run_queue()
+    assert "Echo" not in picks(owner), "a range from the anchor the jump moved"
+    assert picks(owner) == [] and owner.tree.shown() == []
+    assert len(owner.notices) == 1
+    assert move_to_top(owner) is None
+
+
+def test_a_range_click_whose_listener_runs_after_shift_keys_acts() -> None:
+    """Shift keys hold no range presses (#326): Alfa clicked; a Ctrl+Shift+click on Golf, which
+    the tree adds Alfa to Golf for from its cursor on Alfa, and Shift+Down twice typed before the
+    click's listener runs. The keys keep the anchor on Alfa, the range's start, with every row up
+    to the cursor picked, so the list adds the same range as the tree: the click acts, with no
+    notice. Holding range presses for Shift keys refused it (#330's review)."""
+    owner = clicked("Alfa")
+    queued_click(owner, row("Golf"), MOD1 | SHIFT)
+    for _ in range(2):
+        owner.tree_key(DOWN, SHIFT)
+    assert picks(owner) == ["Alfa", "Bravo", "Charlie"] and owner._ranges_held is None
+    owner.run_queue()
+    assert picks(owner) == NAMES[: row("Golf") + 1] == owner.tree.shown()
+    assert owner.notices == []
+
+
+def test_a_plain_key_holds_range_presses_also_when_nothing_moves() -> None:
+    """Hotel clicked and End, which leaves the cursor and the anchor on Hotel, then a Ctrl+Shift+
+    click on Foxtrot before the key's write. A plain key sets the whole selection over every change
+    counted so far, a press's whose listener waits included, so the tree's cursor may be another
+    row's; unlike a Ctrl key's, its hold is not skipped. The cost: this press, whose ranges agree,
+    is refused."""
+    owner = clicked("Hotel")
+    owner.tree_key(END, 0)
+    assert cursor(owner) == anchor(owner) == "Hotel" and owner._ranges_held is not None
+    queued_click(owner, row("Foxtrot"), MOD1 | SHIFT)
+    owner.run_queue()
+    assert picks(owner) == [] and owner.tree.shown() == []
+
+
+def test_range_clicks_after_plain_keys_and_type_ahead_act_once_shown() -> None:
+    """Control: a Shift+click or Ctrl+Shift+click after the keys' or the jump's write has shown the
+    cursor ranges from it, in the tree and in the list alike."""
+    owner = clicked("Alfa")
+    for _ in range(2):
+        key(owner, DOWN)
+    queued_click(owner, row("Echo"), MOD1 | SHIFT)
+    owner.run_queue()
+    assert picks(owner) == ["Charlie", "Delta", "Echo"] == owner.tree.shown()
+    assert owner.notices == []
+    owner = clicked("Alfa")
+    typed(owner, "f")
+    owner.run_queue()
+    assert picks(owner) == ["Foxtrot"] and owner._ranges_held is None
+    queued_click(owner, row("Hotel"), MOD1 | SHIFT)
+    owner.run_queue()
+    assert picks(owner) == ["Foxtrot", "Golf", "Hotel"] == owner.tree.shown()
+    assert owner.notices == []
 
 
 def test_a_ctrl_shift_click_after_a_shift_range_adds_as_before() -> None:
