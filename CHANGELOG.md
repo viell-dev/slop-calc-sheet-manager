@@ -310,11 +310,11 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   ([#187](https://github.com/viell-dev/slop-calc-sheet-manager/issues/187),
   [#189](https://github.com/viell-dev/slop-calc-sheet-manager/issues/189)).
 - Refresh the Debian 13 integration image digest and the checks image's Python to 3.12.16.
-- Update the development checks image and local Node.js pin together to 24.22.2, including
+- Update the development checks image and local Node.js pin together to 24.22.3, including
   the documentation container example.
 - Report unsupported rootless or UID-remapped Docker contexts before building the Linux lab
   ([#191](https://github.com/viell-dev/slop-calc-sheet-manager/issues/191)).
-- Update development tools to pytest 9.2.0, Ruff 0.17.4, types-PyYAML 6.0.12.20261103 and
+- Update development tools to pytest 9.2.0, Ruff 0.17.5, types-PyYAML 6.0.12.20261113 and
   nodeenv 1.12.0. These dependencies do not ship in the extension.
 - Correct contributor guidance in the list, menu and Show module docstrings: a single click
   picks without switching sheets, Hide alone dispatches synchronously, and Show is one of
