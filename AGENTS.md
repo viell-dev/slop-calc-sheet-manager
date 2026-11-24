@@ -105,9 +105,9 @@ where they can:
   and environment on `main` where practical. Fix what the change caused and what blocks, in the
   extension or the test harness; a failure that predates the change does not waive a required
   check. Record an unrelated failure that blocks nothing in an issue, with its inputs, versions,
-  and evidence, and defer its deeper diagnosis and repair. Never rerun a job until it is green, widen a
-  limit without understanding the failure, or let a skipped test, a swallowed failure, or a crashed
-  office pass as success.
+  and evidence, and defer its deeper diagnosis and repair. Never rerun a job until it is green,
+  widen a limit without understanding the failure, or let a skipped test, a swallowed failure, or a
+  crashed office pass as success.
 - Release readiness requires this automated evidence and the human usability gate in
   [RELEASING.md](RELEASING.md#human-release-testing). The release PR links the human report,
   coverage, remaining limits, and open-defect dispositions. Missing required human coverage or
@@ -308,13 +308,17 @@ cooldown does not delay Dependabot's security updates; they get the same checks 
   points. CONTRIBUTING.md owns setup, routine commands, and task entry points. The linked
   Development pages own native test procedures, docs/verification.md owns coverage and limits,
   and RELEASING.md owns release procedures. This file holds agent instructions
-  and non-obvious safeguards. Primary documents describe current state and how to work in the
-  repository, not a journal of past sessions; issues and PRs own decisions, progress and detailed
-  verification receipts. Keep a historical record only when a future reader needs rationale or
-  experiment results that Git history, issues, and PRs cannot serve, placed in a named `docs/`
-  subdirectory with the reason at its top. When session history or a stale historical record turns
-  up, fold still-current facts into the present-state document, move justified material into a
-  named record, and delete the rest.
+  and non-obvious safeguards. Primary documents describe the current state and
+  how to work in the repository, not a journal of past sessions. Stated status names the current
+  release, blockers, and pending decisions, links their issues or PRs, and replaces the previous
+  status. Issues and PRs own decisions, progress and detailed verification receipts; do not
+  duplicate their history here or create a replacement ledger.
+- **Historical records.** Keep one only when a future reader needs rationale or experiment results
+  that Git history, issues, and PRs cannot serve. Put it in a `docs/` subdirectory named for its
+  content, and state at its top why it is kept. On finding session history in a primary document, or
+  a record whose reason is missing or no longer holds, fix it as part of the current work: fold
+  still-current facts into the present-state description, move justified material to a record, and
+  delete the rest.
 - **Which version the guide describes** follows
   [About this site](docs/development/index.md#which-version-it-describes): the latest stable
   release, the newest test build while only prereleases exist, or the development version before
