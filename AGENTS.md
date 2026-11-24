@@ -23,6 +23,12 @@ checks, and pull request rules that apply to everyone; follow it and do not repe
   have read its code, issues, or documentation. Their reports from using the extension, directly or
   through other agents, are consumer reports: reproduce and investigate them without asking the
   reporter to diagnose the implementation.
+- Weigh every feature or enhancement request — including agents' own proposals, review suggestions,
+  and informal suggestions from the owner — on whether it belongs within the agreed scope and
+  whether its benefit justifies the complexity, tests, documentation, and maintenance it adds.
+  Record the reasoning on the issue and accept, narrow, or decline it (closing declined requests as
+  not planned with `Status: Won't Do`). Recommend a scope change in a `Needs: Owner` issue only
+  when a request outside the scope clearly justifies its cost, and do not implement it beforehand.
 
 ## Requests to the owner
 
@@ -97,10 +103,32 @@ where they can:
 ## Review
 
 Every pull request gets its author's review of the complete diff after the checks pass, trying
-inputs the tests do not cover. The author decides whether a separate reviewer is also needed,
+inputs the tests do not cover. Every review — author or independent — judges how the code is
+written as well as whether it works. The author decides whether a separate reviewer is also needed,
 weighing sensitivity, complexity, impact, and uncertainty, and records the choice in the
 "Verification" section. A small diff can still be high risk. For a pull request opened by a bot,
 such as Dependabot, the agent that merges it does the author review.
+
+- **Code quality and idioms.** Confirm the behaviour, then judge the code: readable, idiomatic for
+  Python and PyUNO, consistent in structure and naming, appropriately tested, and in line with
+  current best practices where reasonable. Working code that adds weak patterns still needs
+  changes. Check current LibreOffice and dependency documentation rather than remembered
+  conventions.
+- **Deliberate departures.** Departing from the cleaner or more idiomatic practice is acceptable
+  when a LibreOffice, dependency, or compatibility constraint makes it infeasible, or when the
+  chosen form is significantly faster based on measurement (benchmarks or profiling), not
+  assumption or a marginal gain. Explain the reason in a code comment at that site, naming the
+  constraint or measured difference and the condition for revisiting it where one exists. Treat an
+  unexplained departure as a finding.
+- **Weak precedents.** Look for the source of a weak pattern, not only its instance. If a pull
+  request faithfully copies merged code, examples, templates, or contributor and agent guidance
+  that teach the pattern, name the precedent as the defect. Fix the source in separate pull
+  requests before settling the original — one refactoring the precedent code and one updating the
+  guidance, as applicable — then either replace the original pull request on the corrected base or
+  refactor it in place, linking the pull requests so the history shows why it changed.
+- **Proportionate style findings.** Weigh style findings by scope and maturity: prefer established
+  practices with a clear benefit over churn for novelty, and keep each recommendation proportionate
+  to the code it touches.
 
 - **When to use independent review.** The maintainer decides whether another agent's perspective
   would materially improve confidence, considering complexity, sensitivity, impact, and uncertainty.
@@ -189,6 +217,41 @@ reconsider. The owner may report a defect themselves, in their own words.
     automated replies, and the absence of a ban do not establish it.
   - **Code.** Offer code only once code contributions are shown to be welcome, and stop when asked.
 
+## Security fixes and release-age gates
+
+[`.github/dependabot.yml`](.github/dependabot.yml) enforces a 7-day release-age cooldown on `pip`,
+`npm`, `github-actions`, and `docker` updates so that others can catch a compromised or broken
+release first. A published security advisory against a resolved dependency is a known risk and
+takes precedence over that cooldown and routine update batching, only for the versions the fix
+needs and only after checking that the fix is genuine.
+
+- Confirm that the advisory covers the resolved version, and that the fixed release comes from the
+  package's usual publisher and source and is identified as the fix by the advisory, changelog, or
+  release notes.
+- Apply the fix without waiting for the cooldown, at the closest level that works:
+  1. The vulnerable package has a fixed release within the declared range: update to it (for
+     example in `requirements-dev.txt`, `package.json`/`package-lock.json`, workflow pins, or `ci/`
+     base images).
+  2. The vulnerable package is transitive and its dependant has not yet adopted the fix: override
+     or pin it with the ecosystem's mechanism (such as npm `overrides` or a hash-pinned entry in
+     `requirements-dev.txt`) when the project's checks show it still works. Record the override,
+     its advisory, and its removal condition in a comment or the pull request. Once the dependant
+     releases a version that adopts the fix, update to it without waiting for the cooldown and
+     remove the override.
+  3. No working fixed version exists: track the advisory in
+     [#33](https://github.com/viell-dev/slop-calc-sheet-manager/issues/33) under
+     [Defects in LibreOffice](#defects-in-libreoffice).
+- Take the smallest version that resolves the advisory, normally its patch release. Unrelated
+  updates and later releases of the same package keep the normal cooldown.
+- Bypassing the cooldown moves its check to the agent. Decide whether the fix needs an independent
+  review of the diff between the current and fixed versions using the published package contents
+  rather than only the repository. For a widely used, actively maintained package with an
+  established release process, checking its release notes and diff may suffice; get an independent
+  review for a less widely used package, a recent change of maintainer or publishing method, or a
+  fix release carrying substantial unrelated changes.
+- Record the advisory, affected and fixed versions, dependency path, bypassed cooldown, and review
+  decision with its reason in the pull request. Ordinary required checks still apply.
+
 ## Public surfaces and documentation
 
 - **Sources of facts.** Each fact has one source, and every surface that repeats it must agree with
@@ -223,8 +286,13 @@ reconsider. The owner may report a defect themselves, in their own words.
   points. CONTRIBUTING.md owns setup, routine commands, and task entry points. The linked
   Development pages own native test procedures, docs/verification.md owns coverage and limits,
   and RELEASING.md owns release procedures. This file holds agent instructions
-  and non-obvious safeguards. Issues and PRs own decisions, progress and detailed verification
-  receipts; do not duplicate their history here or create a replacement ledger.
+  and non-obvious safeguards. Primary documents describe current state and how to work in the
+  repository, not a journal of past sessions; issues and PRs own decisions, progress and detailed
+  verification receipts. Keep a historical record only when a future reader needs rationale or
+  experiment results that Git history, issues, and PRs cannot serve, placed in a named `docs/`
+  subdirectory with the reason at its top. When session history or a stale historical record turns
+  up, fold still-current facts into the present-state document, move justified material into a
+  named record, and delete the rest.
 - **Which version the guide describes** follows
   [About this site](docs/development/index.md#which-version-it-describes): the latest stable
   release, the newest test build while only prereleases exist, or the development version before
@@ -342,8 +410,10 @@ enabling it; repository administration authority does not waive that approval.
   path from discovery, through installation and first use, to reporting a defect, and fix what no
   longer works or no longer agrees. Neither this check nor anything else in this file starts work
   by itself or schedules a recurring job.
-- Work in parallel with one branch, and one worktree of this repository, per agent. Commit and push
-  early, so that a stop for usage limits loses little.
+- Use a separate worktree for each independent branch; cooperating helpers may share an assigned
+  checkout with explicit scope and Git coordination, with the lead or assigned branch owner
+  committing and pushing. Commit and push early, and keep progress in the issue so that a stop for
+  usage limits loses little.
 
 ## Repository boundary
 
