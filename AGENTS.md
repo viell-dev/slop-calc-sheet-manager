@@ -14,7 +14,8 @@ checks, and pull request rules that apply to everyone; follow it and do not repe
   permissions. The agent assigned to a task makes the decisions the task needs, including questions
   an issue leaves open, and records each choice, its reasoning, and the rejected alternatives in the
   issue or pull request. Design questions are not put to the owner, and a setting is never changed
-  just to get a failing change merged.
+  just to get a failing change merged. A setting change with irreversible effects needs the owner's
+  express approval for that change; if its reversibility is uncertain, verify it first.
 - Agents carry assigned work through to the end: reproduction, implementation, tests,
   documentation, review, merge, and any release the release rules call for. Unfinished work and its
   dependencies are recorded in issues; the issue, not an agent's session, is the record of
@@ -23,12 +24,16 @@ checks, and pull request rules that apply to everyone; follow it and do not repe
   have read its code, issues, or documentation. Their reports from using the extension, directly or
   through other agents, are consumer reports: reproduce and investigate them without asking the
   reporter to diagnose the implementation.
-- Weigh every feature or enhancement request — including agents' own proposals, review suggestions,
-  and informal suggestions from the owner — on whether it belongs within the agreed scope and
-  whether its benefit justifies the complexity, tests, documentation, and maintenance it adds.
-  Record the reasoning on the issue and accept, narrow, or decline it (closing declined requests as
-  not planned with `Status: Won't Do`). Recommend a scope change in a `Needs: Owner` issue only
-  when a request outside the scope clearly justifies its cost, and do not implement it beforehand.
+- Weigh every feature or enhancement request, including agents' own proposals and review
+  suggestions, on two questions: does it belong within the agreed scope, and does its benefit
+  justify the complexity, dependencies, tests, documentation, and support it adds for as long as
+  the project is maintained? Record the reasoning on the issue and accept, narrow, or decline the
+  request, closing a declined one as not planned with `Status: Won't Do`.
+  - Weigh the owner's suggestions the same way; an assignment to handle such an issue includes that
+    judgement. Only an explicit instruction or scope decision from the owner commits the project to
+    an addition. When the intent is unclear, treat it as a suggestion and say so on the issue.
+  - Recommend a scope change in a `Needs: Owner` issue only when a request outside the scope clearly
+    justifies its cost, and do not implement it before the owner's decision.
 
 ## Requests to the owner
 
@@ -92,9 +97,17 @@ where they can:
   not evidence of LibreOffice's behaviour.
 - Where practical, show that a deliberately broken critical behaviour fails its check, and say so
   in the pull request.
-- A failed or intermittent check is classified from its artifacts and then fixed in the extension
-  or the test harness. Never rerun a job until it is green, widen a limit without understanding the
-  failure, or let a skipped test, a swallowed failure, or a crashed office pass as success.
+- Define the acceptance evidence before implementing. Triage a newly found input or review
+  suggestion before it widens the assignment, and never get a passing result by discarding
+  evidence, weakening a check, or changing random inputs.
+- A failed or intermittent check is classified from its artifacts: whether the change caused or
+  worsened it, and whether it blocks delivery or meaningful verification. Compare the same inputs
+  and environment on `main` where practical. Fix what the change caused and what blocks, in the
+  extension or the test harness; a failure that predates the change does not waive a required
+  check. Record an unrelated failure that blocks nothing in an issue, with its inputs, versions,
+  and evidence, and defer its deeper diagnosis and repair. Never rerun a job until it is green, widen a
+  limit without understanding the failure, or let a skipped test, a swallowed failure, or a crashed
+  office pass as success.
 - Release readiness requires this automated evidence and the human usability gate in
   [RELEASING.md](RELEASING.md#human-release-testing). The release PR links the human report,
   coverage, remaining limits, and open-defect dispositions. Missing required human coverage or
@@ -103,32 +116,40 @@ where they can:
 ## Review
 
 Every pull request gets its author's review of the complete diff after the checks pass, trying
-inputs the tests do not cover. Every review — author or independent — judges how the code is
-written as well as whether it works. The author decides whether a separate reviewer is also needed,
+inputs the tests do not cover. The author decides whether a separate reviewer is also needed,
 weighing sensitivity, complexity, impact, and uncertainty, and records the choice in the
 "Verification" section. A small diff can still be high risk. For a pull request opened by a bot,
 such as Dependabot, the agent that merges it does the author review.
 
-- **Code quality and idioms.** Confirm the behaviour, then judge the code: readable, idiomatic for
-  Python and PyUNO, consistent in structure and naming, appropriately tested, and in line with
-  current best practices where reasonable. Working code that adds weak patterns still needs
-  changes. Check current LibreOffice and dependency documentation rather than remembered
-  conventions.
-- **Deliberate departures.** Departing from the cleaner or more idiomatic practice is acceptable
-  when a LibreOffice, dependency, or compatibility constraint makes it infeasible, or when the
-  chosen form is significantly faster based on measurement (benchmarks or profiling), not
-  assumption or a marginal gain. Explain the reason in a code comment at that site, naming the
-  constraint or measured difference and the condition for revisiting it where one exists. Treat an
-  unexplained departure as a finding.
-- **Weak precedents.** Look for the source of a weak pattern, not only its instance. If a pull
-  request faithfully copies merged code, examples, templates, or contributor and agent guidance
-  that teach the pattern, name the precedent as the defect. Fix the source in separate pull
-  requests before settling the original — one refactoring the precedent code and one updating the
-  guidance, as applicable — then either replace the original pull request on the corrected base or
-  refactor it in place, linking the pull requests so the history shows why it changed.
-- **Proportionate style findings.** Weigh style findings by scope and maturity: prefer established
+Every review, the author's own or an independent one, judges how the code is written as well as
+whether it works:
+
+- **Code quality.** Confirm the behaviour, then judge the code: readable, idiomatic for Python and
+  PyUNO, or for Vue and VitePress in the guide, consistent in structure and naming, appropriately
+  tested, and in line with current best practices where reasonable. Working code that adds poor or
+  smelly patterns still needs changes. Check the current LibreOffice and dependency documentation
+  rather than remembered conventions.
+- **Deliberate departures.** A departure from the better practice is acceptable when a host,
+  dependency, or compatibility constraint makes that practice infeasible, or when the chosen form
+  is measured to be significantly faster; a marginal gain does not justify the inconsistency.
+  Explain the constraint or measured difference in a code comment at that site, with the condition
+  for revisiting it where one exists. Treat an unexplained departure as a finding.
+- **Profiling.** Support performance departures with profiles and benchmarks, and check from time
+  to time whether idiomatic code on hot paths costs more than expected. A finding that becomes a
+  regression gate gets an explicit limit and correctness assertions, as in
+  [Performance measurements](docs/verification.md#performance-measurements).
+- **Weak precedents.** Look for the source of a weak pattern, not only its instance. When a pull
+  request copies merged code, examples, templates, or guidance that teach the pattern, the
+  precedent is the defect, the submitter is not at fault, and the finding names the precedent.
+  Correct the source in separate pull requests before settling the original: one refactoring the
+  precedent code and one updating the guidance that taught it, as applicable. Then either replace
+  the original with a new pull request on the corrected base or refactor it in place. Link these
+  pull requests to each other so that the history shows why the original changed.
+- **Proportionate findings.** Weigh style findings by scope and maturity: prefer established
   practices with a clear benefit over churn for novelty, and keep each recommendation proportionate
   to the code it touches.
+
+Independent review and its record:
 
 - **When to use independent review.** The maintainer decides whether another agent's perspective
   would materially improve confidence, considering complexity, sensitivity, impact, and uncertainty.
@@ -219,32 +240,33 @@ reconsider. The owner may report a defect themselves, in their own words.
 
 ## Security fixes and release-age gates
 
-[`.github/dependabot.yml`](.github/dependabot.yml) enforces a 7-day release-age cooldown on `pip`,
-`npm`, `github-actions`, and `docker` updates so that others can catch a compromised or broken
-release first. A published security advisory against a resolved dependency is a known risk and
-takes precedence over that cooldown and routine update batching, only for the versions the fix
-needs and only after checking that the fix is genuine.
+[`.github/dependabot.yml`](.github/dependabot.yml) holds Dependabot's version updates back for a
+7-day cooldown, so that others can catch a compromised or broken release first. The cooldown guards
+against an unknown risk; a published advisory against a version in the dependency tree is a known
+one. Resolving the advisory takes precedence over the cooldown and over routine update batching,
+but only for the versions the fix needs, and only after checking that the fix is genuine. The
+cooldown does not delay Dependabot's security updates; they get the same checks before merging.
 
 - Confirm that the advisory covers the resolved version, and that the fixed release comes from the
   package's usual publisher and source and is identified as the fix by the advisory, changelog, or
   release notes.
 - Apply the fix without waiting for the cooldown, at the closest level that works:
-  1. The vulnerable package has a fixed release within the declared range: update to it (for
-     example in `requirements-dev.txt`, `package.json`/`package-lock.json`, workflow pins, or `ci/`
-     base images).
+  1. The vulnerable package has a fixed release within the project's or its dependant's declared
+     range: update to it, moving the exact pin where there is one (`requirements-dev.txt`,
+     `package.json` and its lockfile, workflow actions, `ci/` base images).
   2. The vulnerable package is transitive and its dependant has not yet adopted the fix: override
      or pin it with the ecosystem's mechanism (such as npm `overrides` or a hash-pinned entry in
-     `requirements-dev.txt`) when the project's checks show it still works. Record the override,
-     its advisory, and its removal condition in a comment or the pull request. Once the dependant
-     releases a version that adopts the fix, update to it without waiting for the cooldown and
-     remove the override.
-  3. No working fixed version exists: track the advisory in
-     [#33](https://github.com/viell-dev/slop-calc-sheet-manager/issues/33) under
-     [Defects in LibreOffice](#defects-in-libreoffice).
+     `requirements-dev.txt`) when the dependant's tests or the project's checks show it still
+     works. Record the override, its advisory, and its removal condition in a code comment or the
+     pull request. Once the dependant releases a version that adopts the fix, update to it, also
+     without waiting for the cooldown, and remove the override.
+  3. No working fixed version exists: track the advisory as blocked upstream or worked around in
+     the overview, [#33](https://github.com/viell-dev/slop-calc-sheet-manager/issues/33), as
+     [Defects in LibreOffice](#defects-in-libreoffice) describes.
 - Take the smallest version that resolves the advisory, normally its patch release. Unrelated
   updates and later releases of the same package keep the normal cooldown.
 - Bypassing the cooldown moves its check to the agent. Decide whether the fix needs an independent
-  review of the diff between the current and fixed versions using the published package contents
+  review of the change between the current and fixed versions, using the published package contents
   rather than only the repository. For a widely used, actively maintained package with an
   established release process, checking its release notes and diff may suffice; get an independent
   review for a less widely used package, a recent change of maintainer or publishing method, or a
