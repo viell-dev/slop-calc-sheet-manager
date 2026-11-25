@@ -255,9 +255,10 @@ the keyboard cursor, keys keep moving from that row until the list shows the new
 the first selected sheet, or, with none selected, to the first row in view
 ([#327](https://github.com/viell-dev/slop-calc-sheet-manager/issues/327)).
 
-**Repeated moves.** <Unreleased since="0.0.11" /> Hold or repeat a move shortcut to move the selection several
-places; each place is its own undo step. In a large workbook, LibreOffice can take longer for a move
-than the keys take to repeat: the list then drops the keys it cannot keep up with
+**Repeated moves.** <Unreleased since="0.0.11" /> Each completed move is one undo step. Hold or
+repeat Alt+Up or Alt+Down to move the selection one place at a time. The list drops repeat requests
+that arrive while a move is waiting, as when a large workbook takes longer for a move than the keys
+take to repeat
 ([#340](https://github.com/viell-dev/slop-calc-sheet-manager/issues/340)).
 
 **Move-button shortcuts.** <Unreleased since="0.0.4" /> Move shortcuts also apply while a move
@@ -296,7 +297,9 @@ A notice explains conservative clearing of a user-made selection. Pick the sheet
 the list itself handles it. The rows or their selection can change in between: the list redraws or
 scrolls, another window changes the sheets, or assistive technology selects rows. When the list can
 no longer tell which sheets you meant, it leaves that input undone rather than act on others, and
-usually clears its selection, with the notice. Repeat the click, key or drag. This can happen to:
+usually clears its selection, with the notice. Repeat the click, key or drag. Some closely timed
+input can still use earlier picks; see [Known issues](./known-issues.md#known-issues). Input can be
+refused in this way for:
 
 - a click, double click or right click just as the list redraws or scrolls its rows
   ([#293](https://github.com/viell-dev/slop-calc-sheet-manager/issues/293),

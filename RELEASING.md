@@ -35,7 +35,8 @@ mouse, keyboard, menus or a screen reader at human speed and up to 1,000 sheets,
   content, or breaks undo or recovery;
 - crashes or hangs LibreOffice;
 - makes a main task unusable, or is a regression that a person would notice;
-- breaks installation, updates or removal, or makes a safety statement untrue.
+- breaks installation, updates or removal, allows publication without the required release
+  evidence, or makes a safety statement untrue.
 
 A blocker the owner identified always blocks. Record a defect that needs an injected failure of a
 LibreOffice call, input or a programmatic selection within one pass of LibreOffice's event queue, or

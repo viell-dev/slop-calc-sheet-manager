@@ -20,8 +20,9 @@ precedes 0.1.0.
   focused document window as inactive
   ([#211](https://github.com/viell-dev/slop-calc-sheet-manager/issues/211)).
 - Holding or quickly repeating a move shortcut, or a move button, no longer opens an error message
-  for each key or click that arrives while an earlier move waits. The list drops those it cannot
-  keep up with, so a held key moves the sheets steadily, one undo step for each place
+  for each key or click that arrives while an earlier move waits. Each completed move is one undo
+  step. Holding Alt+Up or Alt+Down moves the selection one place at a time, and the list drops
+  repeat requests that arrive while a move is waiting
   ([#340](https://github.com/viell-dev/slop-calc-sheet-manager/issues/340)).
 - A sheet list that cannot open shows a message with what to do, instead of an empty deck
   ([#188](https://github.com/viell-dev/slop-calc-sheet-manager/issues/188)). A failed list refresh
@@ -36,11 +37,11 @@ precedes 0.1.0.
 
 **Selecting sheets**
 
-- Commands and drags no longer act on a sheet you did not select when the list redraws or scrolls,
-  another window changes the sheets, or assistive technology selects rows just as you click, press
-  a key or drag. When the list cannot tell which sheets you meant, it leaves that input undone and
-  usually clears its selection with the notice: select again. See
-  [When the list clears its selection](https://viell-dev.github.io/slop-calc-sheet-manager/guide/use.html#when-the-list-clears-its-selection)
+- The list now refuses more clicks, keys and drags when rows move or the selection changes before it
+  handles your input. If it clears the selection, pick the sheets again: see
+  [When the list clears its selection](https://viell-dev.github.io/slop-calc-sheet-manager/guide/use.html#when-the-list-clears-its-selection).
+  Some closely timed inputs can still use earlier picks: see
+  [Known issues](https://viell-dev.github.io/slop-calc-sheet-manager/guide/known-issues)
   ([#288](https://github.com/viell-dev/slop-calc-sheet-manager/issues/288),
   [#291](https://github.com/viell-dev/slop-calc-sheet-manager/issues/291),
   [#293](https://github.com/viell-dev/slop-calc-sheet-manager/issues/293),
@@ -53,23 +54,26 @@ precedes 0.1.0.
   [#329](https://github.com/viell-dev/slop-calc-sheet-manager/issues/329)).
 - The notice that the selection was cleared no longer names a sheet change when there was none, and
   refusals no longer advise refreshing the list, which refreshes itself.
-- A selection made through assistive technology is kept, or cleared with the notice, rather than
-  replaced by older picks
+- A queued selection write now checks for a newer selection made through assistive technology. It
+  can keep that selection or clear it with a notice. A refresh, typed letter or drag during the same
+  interval can still use earlier picks
   ([#265](https://github.com/viell-dev/slop-calc-sheet-manager/issues/265),
   [#280](https://github.com/viell-dev/slop-calc-sheet-manager/issues/280),
   [#307](https://github.com/viell-dev/slop-calc-sheet-manager/issues/307)).
-- When LibreOffice fails to show a selection in the list, the list clears it rather than act on rows
-  nobody picked ([#257](https://github.com/viell-dev/slop-calc-sheet-manager/issues/257),
+- When LibreOffice fails to show a selection in the list, the list now clears it rather than take
+  the rows left showing as picks. A failure while the list handles a press, just as that sheet is
+  replaced, is not covered ([#319](https://github.com/viell-dev/slop-calc-sheet-manager/issues/319))
+  ([#257](https://github.com/viell-dev/slop-calc-sheet-manager/issues/257),
   [#315](https://github.com/viell-dev/slop-calc-sheet-manager/issues/315),
   [#316](https://github.com/viell-dev/slop-calc-sheet-manager/issues/316)).
 - Ranges made after Ctrl with an arrow, Home or End key start at the keyboard cursor
   ([#313](https://github.com/viell-dev/slop-calc-sheet-manager/issues/313)); Shift with an arrow key
-  after them selects from there too. The cursor stays where
-  your keys moved it when the list refuses a held click, and keeps its row while another window
-  renames that sheet ([#71](https://github.com/viell-dev/slop-calc-sheet-manager/issues/71),
+  after them selects from there too. The cursor stays where your keys moved it when the list refuses
+  a held click, and keeps its row until the list shows another window's rename of that sheet ([#71](https://github.com/viell-dev/slop-calc-sheet-manager/issues/71),
   [#314](https://github.com/viell-dev/slop-calc-sheet-manager/issues/314)).
-- Double clicks, keys, drags and forwarded shortcuts no longer run inside a LibreOffice callback or
-  after their list or document has closed
+- Double-click activation is deferred until the mouse callback returns. Queued list actions check
+  that the list is still open. A forwarded Calc shortcut can still reach its original document view
+  after the sidebar closes, and is dropped if that view has closed or been replaced
   ([#264](https://github.com/viell-dev/slop-calc-sheet-manager/issues/264),
   [#269](https://github.com/viell-dev/slop-calc-sheet-manager/issues/269),
   [#282](https://github.com/viell-dev/slop-calc-sheet-manager/issues/282),

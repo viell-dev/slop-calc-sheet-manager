@@ -99,7 +99,7 @@ FIRST_PUBLISHED = {
         "reports when Find is empty",
         "a range made with Shift or Ctrl+Shift, by key or by click, starts at the cursor",
         "keys keep moving from that row until the list shows the new name",
-        "Hold or repeat a move shortcut to move the selection several places",
+        "Hold or repeat Alt+Up or Alt+Down to move the selection one place at a time",
         "LibreOffice shows a click or key in the list before the list itself handles it",
         "or clears it with the notice when it cannot tell which sheets it means",
     ),
