@@ -654,21 +654,33 @@ class Tree:
         elif new > old:
             mark(old, new - 1, False)
 
-    def press(self, line: int, modifiers: int = 0, clicks: int = 1, button: int = LEFT) -> None:
-        """A press on the labels at `line` as the tree handles it, before the list's listener runs
+    def press(
+        self,
+        line: int,
+        modifiers: int = 0,
+        clicks: int = 1,
+        button: int = LEFT,
+        x: int = LABEL_X,
+    ) -> None:
+        """A press at `line` as the tree handles it, before the list's listener runs
         (`SvImpLBox::MouseButtonDown`, `SelectionEngine::SelMouseButtonDown`).
 
         The tree ignores a middle press and gives the engine a left one alone (measured on #328
         with 26.8.3.1), which returns at once for a click count above 1 or with Alt (measured on
-        #294 with 26.8.2.2). A press outside the rows is not modelled: callers press rows.
+        #294 with 26.8.2.2). A press left of the rows' hit area, or below the rows with a modifier
+        or the right button, changes nothing, and a plain one below them deselects every row.
         """
         if button not in (LEFT, RIGHT):
             return
         index, nodes = line // self.height + self.start, self._installed()
+        if index >= len(nodes):
+            if button == LEFT and not modifiers:
+                self.deselect_all()
+            return
         node = nodes[index]
         if self.cursor is None:
             self.cursor = self.first_in_view()
-        if button == RIGHT or modifiers & MOD2 or clicks > 1:
+        if button == RIGHT or modifiers & MOD2 or clicks > 1 or x < HIT_X:
             return
         self.last = (line, modifiers)
         keys = modifiers & (SHIFT | MOD1)
@@ -1194,12 +1206,14 @@ def listen(owner: Any, handler: Callable[[Any], None], event: Any) -> None:
     )
 
 
-def press(owner: Any, row: int, button: int = LEFT, modifiers: int = 0) -> None:
+def press(
+    owner: Any, row: int, button: int = LEFT, modifiers: int = 0, clicks: int = 1, x: int = LABEL_X
+) -> None:
     """A press as the list's mouse listener runs it (`_Mouse.mousePressed`), on the line that shows
     the row at `row` now, at once after the tree handled it."""
     line = owner.tree.line(row)
-    owner.tree.press(line, modifiers, button=button)
-    event = SimpleNamespace(Buttons=button, X=LABEL_X, Y=line, Modifiers=modifiers, ClickCount=1)
+    owner.tree.press(line, modifiers, clicks, button, x)
+    event = SimpleNamespace(Buttons=button, X=x, Y=line, Modifiers=modifiers, ClickCount=clicks)
     listen(owner, owner.mouse_pressed, event)
 
 
@@ -1232,9 +1246,8 @@ def queued_click(
     the events carry its line in the view, as VCL's carry a position. `x` left of `HIT_X` is in
     the gutter, where the tree changes nothing (#342)."""
     line = owner.tree.line(row)
-    if owner.tree.getClosestNodeForLocation(x, line) is not None:
-        owner.tree.press(line, modifiers, clicks, button)
-        owner.tree.release()
+    owner.tree.press(line, modifiers, clicks, button, x)
+    owner.tree.release()
     pressed = SimpleNamespace(Buttons=button, X=x, Y=line, Modifiers=modifiers, ClickCount=clicks)
     released = SimpleNamespace(Buttons=button, X=x, Y=line, Modifiers=modifiers, ClickCount=clicks)
     owner.post(lambda: listen(owner, owner.mouse_pressed, pressed), "a mouse press")

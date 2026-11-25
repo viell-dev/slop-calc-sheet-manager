@@ -92,8 +92,10 @@ If Sheet Manager does not work in an environment where it is expected to, please
   pick the corrected range, <Unreleased /> as 0.0.10 does
   ([#349](https://github.com/viell-dev/slop-calc-sheet-manager/issues/349)).
 - **After a drag in 0.0.11.** The first Ctrl+click, Shift+click or Ctrl+Shift+click after a drag
-  clears the selection, with the notice. Click again, or click plainly first. After a drag of several
-  sheets that you cancel with Esc, only the dragged one stays picked. In both cases, <Unreleased />
+  clears the selection, with the notice. Click again, or click a sheet's name plainly first. A plain
+  click on a sheet's arrow or tab colour can pick the sheet in the row where the drag began instead:
+  check which sheets are highlighted before you move or rename any. After a drag of several sheets
+  that you cancel with Esc, only the dragged one stays picked. In all these cases, <Unreleased />
   later builds act as 0.0.10 does
   ([#356](https://github.com/viell-dev/slop-calc-sheet-manager/issues/356)).
 - **After renaming one sheet.** A picked sheet renamed by Rename Sheet, on Calc's tabs or in another

@@ -78,17 +78,25 @@ def check_drop_in_place_and_escape(book):
 
 
 def check_clicks_after_a_drag(book):
-    """A drag leaves its picks, and the next click with a modifier, or right click, acts (#356).
+    """A drag leaves its picks, and the next click with a modifier, in the gutter or of the right
+    button acts (#356).
 
     The plain press of a drag on a selected row leaves VCL's selection engine waiting for the
     button's release. After a drop it never comes, so the engine acts on the next release instead:
     it toggled off a Ctrl+click's row, selected a Shift+click's row alone, and left nothing after
     a Ctrl+Shift+click, and the list took that for someone else's selection and cleared its picks.
     After Esc the release comes, selects the pressed row alone, and the list kept only that one.
+    A press in the gutter is none of the engine's, so its release selects the row where the drag
+    began alone, and the list took that row for the clicked one.
     """
     evidence = {}
     picked, source, end = [NAMES[3], NAMES[4]], 4, 11
-    gestures = {"ctrl": ("Control_L",), "shift": ("Shift_L",), "both": ("Control_L", "Shift_L")}
+    gestures: dict[str, tuple[str, ...]] = {
+        "ctrl": ("Control_L",),
+        "shift": ("Shift_L",),
+        "both": ("Control_L", "Shift_L"),
+        "gutter": (),
+    }
     for how in ("dropped", "in_place", "cancelled"):
         for gesture, modifiers in (*gestures.items(), ("right", None)):
             before = book.order()
@@ -114,10 +122,14 @@ def check_clicks_after_a_drag(book):
                 book.document.getUndoManager().undo()
                 wait_until(lambda o=order: book.order() == o, f"{case}: the menu's move undone")
             else:
-                book.click(end, modifiers=modifiers)
+                if gesture == "gutter":
+                    book.pointer.click(8, view.row_point(book.tree, end)[1])
+                else:
+                    book.click(end, modifiers=modifiers)
                 first, last = sorted((order.index(NAMES[source]), end))
-                chosen = {order[end]} if gesture == "ctrl" else set(order[first : last + 1])
-                if gesture != "shift":
+                ranged = "Shift_L" in modifiers
+                chosen = set(order[first : last + 1]) if ranged else {order[end]}
+                if "Control_L" in modifiers:
                     chosen |= set(picked)
                 wanted = [name for name in order if name in chosen]
                 try:

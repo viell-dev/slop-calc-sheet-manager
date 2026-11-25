@@ -449,18 +449,19 @@ earlier click's write that lands after a press that changed nothing, on a row a 
 shown selected, shows that click's pick over it, and the drag carries it (#335).
 
 The release after a drag (#356). A plain press on a selected row leaves VCL's selection engine
-waiting for the button's release, which then selects that row alone (`WAIT_UPEVT`). A drag takes
-the button: after a drop VCL sees no release, and the engine goes on waiting, through any further
+waiting for the button's release, which then selects that row alone (`WAIT_UPEVT`). A drag takes the
+button: after a drop VCL sees no release, and the engine goes on waiting, through any further
 presses, until the next release of any button, on which it then acts with the latest press's
 position and modifiers (`SelectionEngine::SelMouseButtonUp`, read in 26.8.3.1; measured on gtk3 and
 gen): it deselects a Ctrl+click's row again, selects a Shift+click's row alone, and leaves nothing
-after a Ctrl+Shift+click. After Esc the release comes, and selects the pressed row alone. So a
-gesture, whether it starts a drag or not, marks the next release (`_drag_release`), whose listener
-reads every change counted so far as the release's own, rather than as one made since its press
-(#329), and its write shows the picks over it. A change made by someone else between that click's
-press and release is shown over too. When VCL handles both before the press's listener runs, as
-while LibreOffice is busy, the press finds the release's change besides its own, and a Ctrl or
-Ctrl+Shift press is refused.
+after a Ctrl+Shift+click. A press that the engine skips, as in the gutter, leaves it the drag's
+position: the release selects the row there. After Esc the release comes, and selects the pressed
+row alone. So a gesture, whether it starts a drag or not, marks the next release (`_drag_release`),
+whose listener reads every change counted so far as the release's own, rather than as one made since
+its press (#329) or as a row the tree shows and the list does not (#307), and its write shows the
+picks over it. A change made by someone else between that click's press and release is shown over
+too. When VCL handles both before the press's listener runs, as while LibreOffice is busy, the press
+finds the release's change besides its own, and a Ctrl or Ctrl+Shift press is refused.
 
 Activation. A double click or Enter makes the sheet Calc's only selected tab and reads that back,
 because `setActiveSheet` keeps an existing group when the sheet belongs to it. Activation reads
@@ -3515,10 +3516,11 @@ class SheetList:
             self._queue_selection()
             return
         self._selection.choose(press.name, self._handles, self.names())
-        if seen > self._accounted:
+        if seen > self._accounted and not after_drag:
             # The native release narrowed the tree to the pressed row before this listener ran,
             # and a change made since, such as through accessibility, is counted with it: the
-            # write shows the pressed sheet only if the tree does (`_overtaken`, #307).
+            # write shows the pressed sheet only if the tree does (`_overtaken`, #307). After a
+            # drag, the engine may have selected the row where that began, if it skipped this press.
             self._unclaimed = True
         self._queue_selection()
         if press.clicks == 2:
