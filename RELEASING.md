@@ -20,9 +20,9 @@ agreement and release conditions; the
 [release tracker](https://github.com/viell-dev/slop-calc-sheet-manager/issues/93) owns progress.
 Betas may deliver subsets of the fixes. A release candidate waits for the required focused
 human usability review and resolution of its blockers. Stable publication also requires the
-human-testing and defect-resolution gates below. The first stable 0.1.0 must be listed on
-extensions.libreoffice.org. Near readiness, prepare the listing material and an assigned owner
-issue with the exact account/sign-in actions before requesting access. Check the tracker before
+human-testing and defect-resolution gates below. The GitHub release comes first; the owner then
+publishes the extensions.libreoffice.org entry from the [listing material](listing/README.md)
+([#339](https://github.com/viell-dev/slop-calc-sheet-manager/issues/339)). Check the tracker before
 either stage; a prepared package or merged preparation PR does not settle readiness.
 
 ### What blocks a candidate or stable release
@@ -53,8 +53,8 @@ The constraint comes from the installed extension's version comparison, not from
 extensions.libreoffice.org. GitHub can host SemVer tags, and a directory listing may contain only
 stable builds, but neither changes how LibreOffice compares a manually installed test OXT with
 the next stable OXT. Every published build, stable or test, gets a GitHub release with its OXT
-and checksum. The first stable 0.1.0 also requires the extension-directory listing agreed in
-[#120](https://github.com/viell-dev/slop-calc-sheet-manager/issues/120).
+and checksum. The extension-directory listing follows the first stable release
+([#339](https://github.com/viell-dev/slop-calc-sheet-manager/issues/339)).
 
 `extension/description.xml` is the only source of the extension version. Use exactly three plain
 dotted numbers, without a `v` prefix, leading zeroes, suffixes, or build metadata. When reserving
@@ -72,7 +72,9 @@ build's progress towards its target release, measured against that release's agr
   polish.
 - **rc** (release candidate): only for a build intended to become the target release. The stable
   release then differs from the last candidate only in its version number and in the changelog
-  and documentation that name versions. Any other change needs another candidate first.
+  and documentation that name versions. Any other change to the package, or to what its users are
+  told about its behaviour, needs another candidate first; maintainers' procedures and the directory
+  listing's material do not.
 - **stable:** an ordinary release. It is always chosen explicitly; it is never inferred from a
   version number or an empty target, and the workflow defaults to `alpha`.
 
