@@ -407,8 +407,7 @@ def narrowing_release(owner: Any, name: str, assistive: Callable[[Any], None] | 
     owner.run_queue()
     press(owner, row(name))
     owner.run_queue()
-    pressed = owner.tree._installed()[row(name)]
-    owner.tree.selected, owner.tree.cursor = [pressed], pressed
+    owner.tree.release()
     if assistive is not None:
         assistive(owner)
     line = owner.tree.line(row(name))
@@ -637,13 +636,14 @@ def test_a_right_press_over_a_newer_assistive_selection_targets_its_row_alone() 
 
 
 def held_foxtrot_released_over_bravo(owner: Any, call: str | None = None) -> None:
-    """Foxtrot, the one pick, pressed again and released over Bravo, which the simulated tree's
-    native release selects; the list accepts the release and queues its write, whose `call`
-    fails once if given."""
+    """Foxtrot, the one pick, pressed again, and Bravo scrolled under the held pointer, which the
+    tree's native release then selects; the list accepts the release and queues its write, whose
+    `call` fails once if given."""
     press(owner, row("Foxtrot"))
     owner.run_queue()
     if call is not None:
         owner.faults.fail(call)
+    owner.tree.waiting = owner.tree.line(row("Bravo"))  # The press's position shows Bravo now.
     release(owner, row("Bravo"))
 
 
@@ -691,12 +691,7 @@ def test_a_failed_write_after_keys_during_the_hold_leaves_the_pressed_row_to_no_
     key(owner, DOWN)
     assert picks(owner) == ["Golf"] == owner.tree.shown()
     owner.faults.fail("getModel")
-    pressed = owner.tree._installed()[row("Foxtrot")]
-    owner.tree.selected, owner.tree.cursor = [pressed], pressed
-    event = SimpleNamespace(
-        Buttons=LEFT, X=LABEL_X, Y=owner.tree.line(row("Bravo")), Modifiers=0, ClickCount=1
-    )
-    listen(owner, owner.mouse_released, event)
+    release(owner, row("Bravo"))
     owner.run_queue()
     assert owner.faults.failed == ["getModel"]
     assert move_to_top(owner) is None
@@ -713,18 +708,18 @@ def test_an_accepted_release_over_another_row_still_shows_its_pick() -> None:
 
 
 def test_a_failed_repeat_with_nothing_else_counted_keeps_the_record() -> None:
-    """Control: Foxtrot pressed again and released in its own row, where the native release
-    changes nothing. With nothing counted since the tree showed Foxtrot, the write keeps the
-    record, so a failure at its first call leaves Foxtrot shown and picked, as before."""
+    """Control: Foxtrot pressed again, which changes nothing in the tree. With nothing counted
+    since the tree showed Foxtrot, the press's write keeps the record, so a failure at its first
+    call leaves Foxtrot shown and picked, as before."""
     owner = fresh()
     click(owner, row("Foxtrot"))
-    press(owner, row("Foxtrot"))
-    owner.run_queue()
     owner.faults.fail("getModel")
-    release(owner, row("Foxtrot"))
+    press(owner, row("Foxtrot"))
     owner.run_queue()
     assert owner.faults.failed == ["getModel"]
     assert owner._shown == ("Foxtrot",)
+    release(owner, row("Foxtrot"))
+    owner.run_queue()
     assert move_to_top(owner) == ["Foxtrot"] and owner.notices == []
 
 
@@ -795,10 +790,10 @@ def test_a_newer_change_back_to_the_record_after_the_write_is_taken(
 
 
 def native_release_over_bravo(owner: Any) -> None:
-    """The native release of a press on a row the tree showed selected, as the simulated tree
-    models it: the row under the pointer, Bravo, selected alone."""
-    node = owner.tree._installed()[row("Bravo")]
-    owner.tree.selected, owner.tree.cursor = [node], node
+    """The native release of a press on a row the tree showed selected, which selects the row at
+    the press's position alone: Bravo, scrolled under the held pointer."""
+    owner.tree.waiting = owner.tree.line(row("Bravo"))
+    owner.tree.release()
 
 
 def release_listener_over_bravo(owner: Any) -> None:
@@ -868,14 +863,6 @@ def press_listener_on(owner: Any, name: str, modifiers: int = 0) -> None:
     listen(owner, owner.mouse_pressed, down)
 
 
-def vcl_release_of(owner: Any, name: str) -> None:
-    """VCL's native release of a plain press on a selected row: every row deselected and the
-    pressed one selected, wherever the pointer is (`seleng.cxx`, read in 26.8.2.2)."""
-    owner.tree.selected = []
-    node = owner.tree.node(name)
-    owner.tree.selected, owner.tree.cursor = [node], node
-
-
 @pytest.mark.parametrize(
     "picked, pressed",
     [
@@ -883,18 +870,18 @@ def vcl_release_of(owner: Any, name: str) -> None:
         pytest.param(["Alfa", "Charlie"], "Charlie", id="one of two picks"),
     ],
 )
-@pytest.mark.parametrize("vcl", [False, True], ids=["the simulated release", "VCL's release"])
+@pytest.mark.parametrize("scrolled", [False, True], ids=["in place", "Bravo scrolled in"])
 @pytest.mark.parametrize("assistive", [True, False], ids=["Echo added", "control"])
 def test_a_quick_click_on_a_pick_released_over_another_row_leaves_no_row_of_its_release_to_take(
-    picked: list[str], pressed: str, vcl: bool, assistive: bool
+    picked: list[str], pressed: str, scrolled: bool, assistive: bool
 ) -> None:
     """F2 in another order (#324's second review, N1): a press on a picked row and its release over
     Bravo, both handled before the press's listener, so that listener's own read includes the
     release's native selection; both listeners; Echo added through accessibility before the
     write. The press kept the picks, and the release found nothing counted since, so the intake
-    took the tree: Bravo and Echo after the simulated release, which selects the row under the
-    pointer, though nobody picked Bravo; Charlie and Echo after VCL's, which selects the pressed
-    row, though the click kept Alfa. A plain press that keeps the picks while changes are
+    took the tree: Charlie and Echo after the native release, which selects the pressed row, though
+    the click kept Alfa, or Bravo and Echo after one that found Bravo scrolled under the pointer,
+    though nobody picked Bravo. A plain press that keeps the picks while changes are
     unaccounted is not read as the tree shows it: the picks go, with the notice. Without the
     assistive change the write shows the picks, as on `main`."""
     owner = fresh()
@@ -904,10 +891,11 @@ def test_a_quick_click_on_a_pick_released_over_another_row_leaves_no_row_of_its_
         owner.run_queue()
     assert picks(owner) == picked
     notices = len(owner.notices)
-    if vcl:
-        vcl_release_of(owner, pressed)
-    else:
+    owner.tree.press(owner.tree.line(row(pressed)))
+    if scrolled:
         native_release_over_bravo(owner)
+    else:
+        owner.tree.release()
     press_listener_on(owner, pressed)
     release_listener_over_bravo(owner)
     if not assistive:
@@ -959,20 +947,6 @@ def test_an_assistive_selection_before_a_double_clicks_listeners_drops_the_picks
     refused(owner, notices)
 
 
-def vcl_shift_click(owner: Any, first: str, last: str) -> None:
-    """A Shift+click on `last` as VCL handles it, ranging from its anchor at `first`: the rows
-    from `first` to `last` selected and the others deselected, where the simulated Shift press
-    selects its row alone (`queued_click`, #328). Its listeners are queued as `queued_click`
-    queues them."""
-    nodes = owner.tree._installed()
-    owner.tree.selected = nodes[row(first) : row(last) + 1]
-    owner.tree.cursor, owner.tree.add_mode = nodes[row(last)], False
-    line = owner.tree.line(row(last))
-    event = SimpleNamespace(Buttons=LEFT, X=LABEL_X, Y=line, Modifiers=SHIFT, ClickCount=1)
-    owner.post(lambda: listen(owner, owner.mouse_pressed, event), "a mouse press")
-    owner.post(lambda: listen(owner, owner.mouse_released, event), "a mouse release")
-
-
 def test_an_assistive_selection_before_a_shift_clicks_listeners_is_not_shown_over() -> None:
     """#307's second row with Shift held: Alfa picked; a Shift+click on Delta, which the tree
     ranges natively from Alfa; Hotel selected alone through accessibility before the listeners.
@@ -983,7 +957,7 @@ def test_an_assistive_selection_before_a_shift_clicks_listeners_is_not_shown_ove
     owner = fresh()
     click(owner, row("Alfa"))
     notices = len(owner.notices)
-    vcl_shift_click(owner, "Alfa", "Delta")
+    queued_click(owner, row("Delta"), SHIFT)
     owner.tree.assistive_only("Hotel")
     owner.run_queue()
     assert "Delta" not in picks(owner), "the range over the newer selection"
@@ -1001,27 +975,21 @@ def test_a_shift_click_before_keys_write_that_ranges_from_another_cursor_is_refu
     notices = len(owner.notices)
     for _ in range(3):
         owner.tree_key(DOWN, 0)
-    vcl_shift_click(owner, "Alfa", "Golf")
+    queued_click(owner, row("Golf"), SHIFT)
     owner.run_queue()
     assert "Alfa" not in picks(owner), "the range from the cursor the keys left"
     refused(owner, notices)
 
 
-@pytest.mark.parametrize("vcl", [False, True], ids=["simulated Shift press", "VCL's range"])
-def test_a_quick_click_and_shift_click_pick_the_range(vcl: bool) -> None:
+def test_a_quick_click_and_shift_click_pick_the_range() -> None:
     """Control: Alfa picked; a click on Charlie and a Shift+click on Foxtrot, both handled
     natively before the first listener. The plain press's listener finds the Shift press's
     change beyond its share, and the Shift press's listener claims it: its write shows Charlie to
-    Foxtrot, as on `main`, whether the tree selected Foxtrot alone, as the simulated Shift press
-    does, or the range, as VCL's does (F7). Unclaimed, the write found the simulated tree
-    showing Foxtrot alone and took it."""
+    Foxtrot, as on `main` (F7)."""
     owner = fresh()
     click(owner, row("Alfa"))
     queued_click(owner, row("Charlie"), 0)
-    if vcl:
-        vcl_shift_click(owner, "Charlie", "Foxtrot")
-    else:
-        queued_click(owner, row("Foxtrot"), SHIFT)
+    queued_click(owner, row("Foxtrot"), SHIFT)
     owner.run_queue()
     wanted = NAMES[row("Charlie") : row("Foxtrot") + 1]
     assert picks(owner) == wanted == owner.tree.shown() and owner.notices == []
@@ -1086,7 +1054,7 @@ def test_a_shift_click_that_overtakes_a_keys_write_is_refused() -> None:
     click(owner, row("Alfa"))
     notices = len(owner.notices)
     owner.tree_key(DOWN, 0)
-    vcl_shift_click(owner, "Alfa", "Delta")
+    queued_click(owner, row("Delta"), SHIFT)
     owner.run_queue()
     assert "Bravo" not in picks(owner), "a range from the anchor Down moved"
     assert picks(owner) == [] == owner.tree.shown()
@@ -1123,11 +1091,11 @@ def test_a_drag_pressed_before_a_clicks_release_listener_carries_the_pressed_she
 
 def test_a_native_selection_at_a_ctrl_clicks_release_is_not_taken() -> None:
     """Every sheet picked with Ctrl+A; a Ctrl+click on Alfa deselects it natively, and its press
-    listener unpicks it. A release that then selected Alfa alone, as the simulated release does for
-    any press and VCL's does only for a plain one, and the write finds the tree changed: taking it
-    would pick Alfa, which the user just deselected. The release counted a change since the press's
-    listener, which it does not read, so the picks go, with the notice (fuzz9b over #329's first
-    fix)."""
+    listener unpicks it. Alfa then selected alone before the release's listener, as through
+    accessibility or by the native release of a press that VCL handled meanwhile, and the write
+    finds the tree changed: taking it would pick Alfa, which the user just deselected. The release
+    counted a change since the press's listener, which it does not read, so the picks go, with the
+    notice (fuzz9b over #329's first fix)."""
     owner = fresh()
     click(owner, row("Alfa"))
     owner.tree_key(A, MOD1)
@@ -1302,52 +1270,25 @@ def test_a_row_toggled_with_space_before_an_assistive_change_is_not_taken(
     assert move_to_top(owner) is None
 
 
-def vcl_shift_press(owner: Any, name: str) -> None:
-    """A Shift press as VCL's engine handles it, its listeners queued: without an anchor every row
-    is deselected and one is made at the cursor, or at the pressed row; with one, the rows from
-    the anchor to the old cursor leave and those from the anchor to the pressed row are selected
-    (`SelectionEngine::SelMouseButtonDown`, `SvImpLBox::SetAnchorSelection`, read in 26.8.2.2)."""
-    tree = owner.tree
-    nodes = tree._installed()
-    node = nodes[row(name)]
-    if tree.anchor is None:
-        tree.selected = []
-        tree.anchor = tree.cursor if tree.cursor is not None else node
-        keep: list[Any] = []
-    else:
-        anchor = nodes.index(tree.anchor)
-        old = nodes.index(tree.cursor) if tree.cursor is not None else anchor
-        low, high = sorted((anchor, old))
-        keep = [item for item in tree.selected if item not in nodes[low : high + 1]]
-    low, high = sorted((nodes.index(tree.anchor), row(name)))
-    wanted = keep + [item for item in nodes[low : high + 1] if item not in keep]
-    tree.selected = [item for item in nodes if item in wanted]
-    tree.cursor, tree.add_mode = node, False
-    event = SimpleNamespace(
-        Buttons=LEFT, X=LABEL_X, Y=owner.tree.line(row(name)), Modifiers=SHIFT, ClickCount=1
-    )
-    owner.post(lambda: listen(owner, owner.mouse_pressed, event), "a mouse press")
-    owner.post(lambda: listen(owner, owner.mouse_released, event), "a mouse release")
-
-
 def test_a_range_press_after_an_overtaken_write_whose_take_waits_is_held() -> None:
     """#324's second review, N3, from its fuzz325b record over VCL's anchor: Shift+Down, which
-    picks Bravo; a Shift+click on Foxtrot before the key's write, which the tree, with no anchor,
-    selects alone and anchors there; that write is overtaken, and the press's listener queues its
-    own write, so the intake that follows finds a write waiting and takes nothing. A Shift+click
-    on Charlie then, before that write, ranges natively from Foxtrot, while the list's anchor is
-    on Bravo: its listener picked Bravo and Charlie, rows the tree did not show. The overtaken
-    write's intake holds range presses whether or not it takes, so that listener is refused."""
+    picks Bravo; a Shift+click on Foxtrot before the key's write, which the tree, with no cursor
+    yet, ranges and anchors at its first row; that write is overtaken, and the press's listener
+    queues its own write, so the intake that follows finds a write waiting and takes nothing. A
+    Shift+click on Charlie then, before that write, ranges natively from Alfa, while the list's
+    anchor is on Bravo: its listener picked Bravo and Charlie, not the range the tree showed. The
+    overtaken write's intake holds range presses whether or not it takes, so that listener is
+    refused."""
     owner = fresh()
     owner.tree_key(DOWN, SHIFT)
-    vcl_shift_press(owner, "Foxtrot")
+    queued_click(owner, row("Foxtrot"), SHIFT)
     run(owner, 3)  # The key's write, then the Shift press's listeners.
     assert [where for _work, where in owner.queue] == [
         "taking the sheet list's newer selection",
         "showing the selection",
     ]
-    vcl_shift_press(owner, "Charlie")
-    assert owner.tree.shown() == ["Charlie", "Delta", "Echo", "Foxtrot"]
+    queued_click(owner, row("Charlie"), SHIFT)
+    assert owner.tree.shown() == ["Alfa", "Bravo", "Charlie"]
     run(owner, 3)  # The intake, the first press's write, and the second press's listener.
     assert picks(owner) == [], "a range from the list's anchor, which the tree did not show"
     owner.run_queue()

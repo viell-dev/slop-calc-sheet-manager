@@ -441,7 +441,7 @@ class List:
             if self.careful and not proved:
                 self.selection.clear()
             else:
-                self.selection.carry(renamed)
+                self.selection.carry(renamed, {})
         self.proven = generation
         self.rows = self.book.names()
         self.handles = [self.book.handle(name) for name in self.rows]

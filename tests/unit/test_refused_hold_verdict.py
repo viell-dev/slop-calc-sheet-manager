@@ -51,8 +51,8 @@ SHOWN: dict[str, dict[str, Any]] = {
     "renamed": {
         "setup": ["Alfa", "Bravo"],
         "wanted": ["Alfa", "Bravo"],
-        "held": 6,
-        "toggled": ["Alfa"],
+        "held": 7,
+        "toggled": ["Alfa", "Bravo", "Hotel 2"],
         "order": RENAMED,
     },
 }
@@ -121,8 +121,8 @@ def test_the_repeat_target_is_the_cursor_heard_when_the_button_went_up() -> None
 
 
 def test_a_refresh_that_hands_the_cursor_to_another_pick_fails_the_renamed_case() -> None:
-    """Hotel's rename dropped the cursor during the hold, and the first pick, Alfa, took it."""
-    seen = record("renamed", held=0, after=[0], toggled=["Bravo"])
+    """Hotel's rename dropped the cursor during the hold, and the pressed pick, Bravo, took it."""
+    seen = record("renamed", held=6, after=[6], toggled=["Alfa"])
     _, problems = verdict()("renamed", seen)
     assert problems == [
         "the cursor was not on the case's row when the button went up",
@@ -269,11 +269,11 @@ class Office:
 
     def sheet(self, name: str) -> Any:
         def rename(new: str) -> None:
-            # The refresh drops the cursor of a renamed sheet: the pressed pick takes it.
+            # The refresh keeps the cursor on the row of a renamed sheet.
             self.step()
             self.order[self.order.index(name)] = new
             if self.cursor == name:
-                self.cursor = NAMES[1] if NAMES[1] in self.picked else self.selection()[0]
+                self.cursor = new
             self.show_cursor()
 
         return SimpleNamespace(setName=rename)
@@ -323,8 +323,8 @@ def test_a_correct_run_of_each_case_passes(case: str) -> None:
 
 
 def test_the_renamed_case_needs_the_cursor_heard_on_hotel_after_the_key() -> None:
-    """Ctrl+Down never reached the list: Bravo kept the cursor through Hotel's rename, so the
-    rename dropped nothing, and the record alone would look like a correct run."""
+    """Ctrl+Down never reached the list: Bravo kept the cursor through Hotel's rename, which then
+    shows nothing about a renamed cursor."""
     with pytest.raises(AssertionError, match="the cursor on Hotel"):
         Office("renamed", keys=False).run()
 

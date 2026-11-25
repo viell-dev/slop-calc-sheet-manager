@@ -73,6 +73,8 @@ from selection_checks import (  # noqa: E402
     check_ctrl_shift_click_after_ctrl_keys,
     check_ctrl_shift_selection,
     check_margin_drag_keeps_sidebar_docked,
+    check_ranges_after_renames,
+    check_shift_clicks_adjust_a_range,
     check_viewed_sheet_name,
 )
 from winput import RIGHT, WinInput  # noqa: E402
@@ -191,6 +193,8 @@ def checks_for(lab, book):
             lambda: check_margin_drag_keeps_sidebar_docked(book),
         ),
         ("ctrl_shift_selection", lambda: check_ctrl_shift_selection(book)),
+        ("shift_clicks_adjust_a_range", lambda: check_shift_clicks_adjust_a_range(book)),
+        ("ranges_after_renames", lambda: check_ranges_after_renames(book)),
         ("ctrl_clicks_in_the_gutter", lambda: check_ctrl_clicks_in_the_gutter(book)),
         (
             "ctrl_clicks_after_a_ctrl_shift_range",

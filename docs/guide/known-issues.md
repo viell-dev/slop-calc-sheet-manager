@@ -87,12 +87,17 @@ If Sheet Manager does not work in an environment where it is expected to, please
   click and another click or key before it are still waiting can carry the sheet that they picked
   instead of the one you pressed; it has been seen only in simulation, and one Undo restores the order
   ([#335](https://github.com/viell-dev/slop-calc-sheet-manager/issues/335)).
+- **Correcting a range in 0.0.11.** After a range made with Shift, a Shift+click further in, or on
+  the other side of its start, clears the selection, with the notice. Click again
+  ([#349](https://github.com/viell-dev/slop-calc-sheet-manager/issues/349)).
+  <Unreleased /> Such a click picks the corrected range, as before 0.0.11.
 - **After renaming one sheet.** A picked sheet renamed by Rename Sheet, on Calc's tabs or in another
   window leaves the list's selection. If it was under the keyboard cursor, the cursor leaves its row
   too ([#327](https://github.com/viell-dev/slop-calc-sheet-manager/issues/327)).
   <Unreleased since="0.0.11" /> The first Shift+click or Ctrl+Shift+click after that can then be
   refused: the list clears its selection, with the notice. Click again, or start the range with a
   plain click ([#321](https://github.com/viell-dev/slop-calc-sheet-manager/issues/321)).
+  <Unreleased /> The cursor keeps its row, under the new name, and the next range starts there.
 - **Large lists.** The list rebuilds after changes. During rapid sheet switches the active-sheet
   marker, and <Unreleased since="0.0.9" /> the list's accessible name, can lag. LibreOffice's tree
   control cannot update a single row in place, so the rebuild stays; the measurements and that

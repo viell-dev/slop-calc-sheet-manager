@@ -119,7 +119,7 @@ def refresher(change: str) -> Any:
         _tabs=SimpleNamespace(refreshed=Mock()),
         _input=0,
         _monitor=SimpleNamespace(check=lambda: 1 if change == "generation" else 0),
-        _identities_kept=Mock(return_value=change != "generation"),
+        _renames_elsewhere=Mock(return_value=None if change == "generation" else {}),
         _selection=SimpleNamespace(
             carry=Mock(return_value=False), names=lambda: ["Alfa"], picked=[object()]
         ),

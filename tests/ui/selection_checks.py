@@ -14,7 +14,7 @@ import time
 import sheet_list_view as view
 import uno
 from focus_checks import CursorProbe
-from workbook import NAMES, wait_until
+from workbook import NAMES, PressProbe, wait_until
 from xinput import Pointer
 
 from sheet_manager.sheet_list import list_name
@@ -175,6 +175,104 @@ def check_ctrl_shift_selection(book):
     assert shift == NAMES[3:6], evidence
     # The list's own selection: Calc's tabs are not grouped and the active sheet stays.
     assert book.active() == NAMES[1] and book.calc_tabs() == [NAMES[1]], evidence
+    return evidence
+
+
+class NativeRange(PressProbe):
+    """What the tree shows when its mouse listeners hear a press, before the list's has run."""
+
+    def __init__(self, book):
+        super().__init__()
+        self.book = book
+        self.shown = None
+
+    def mousePressed(self, event):
+        super().mousePressed(event)
+        self.shown = self.book.selection()
+
+
+def check_shift_clicks_adjust_a_range(book):
+    """Shift+clicks after a range move its end and keep its start, inwards and across it (#349).
+
+    After the list's write of a range, the tree has no range anchor and its cursor on the range's
+    end, so the next Shift+click selects natively from there, for a moment, what the list then
+    replaces with the range from its own anchor. Each click waits for the list's picks to settle.
+    """
+    evidence = {}
+    book.click(3)
+    wait_until(lambda: book.selection() == [NAMES[3]], "a click to pick Delta")
+    for end in (6, 4, 5, 1, 2, 7, 3):
+        book.click(end, modifiers=("Shift_L",))
+        first, last = sorted((3, end))
+        wanted = NAMES[first : last + 1]
+        try:
+            wait_until(lambda w=wanted: book.selection() == w, f"Delta to {NAMES[end]}")
+        except AssertionError as error:
+            error.add_note(f"The list shows {book.selection()}; earlier ends: {evidence}")
+            raise
+        time.sleep(0.5)
+        evidence[NAMES[end]] = book.selection()
+        assert evidence[NAMES[end]] == wanted, evidence
+    return evidence
+
+
+RANGES_AFTER_RENAMES = {
+    # The clicks, the sheet then renamed through the API, the range click and the rows it picks.
+    "the_pick": ([(2, ())], 2, 5, ("Shift_L",), [2, 3, 4, 5]),
+    "one_of_two": ([(1, ()), (4, ("Control_L",))], 4, 6, ("Shift_L",), [4, 5, 6]),
+    "added_to_one_of_two": (
+        [(1, ()), (4, ("Control_L",))],
+        4,
+        6,
+        ("Control_L", "Shift_L"),
+        [1, 4, 5, 6],
+    ),
+    "inside_a_range": ([(5, ()), (1, ("Shift_L",))], 4, 2, ("Control_L", "Shift_L"), [1, 2, 3, 5]),
+}
+
+
+def check_ranges_after_renames(book):
+    """A range click after a rename of a picked sheet starts at the keyboard cursor, which keeps
+    its row, and picks what the tree showed (#321, #327).
+
+    The refresh drops the renamed pick. The cursor left its row, and the list had no start for
+    the next range, or another than the tree's: it refused the click or picked the renamed sheet
+    again. Each case waits until the list shows the new name, and records what the tree itself
+    showed at the click, which `NativeRange` reads before the list's listener runs.
+    """
+    sheets = book.document.getSheets()
+    native = NativeRange(book)
+    evidence = {}
+    book.tree.addMouseListener(native)
+    try:
+        for case, (clicks, renamed, end, modifiers, rows) in RANGES_AFTER_RENAMES.items():
+            for row, held in clicks:
+                book.click(row, modifiers=held)
+                time.sleep(0.6)  # No double click, and the list's write has run.
+            before = book.selection()
+            assert NAMES[renamed] in before, f"{case}: {before}"
+            name = f"{NAMES[renamed]} 2"
+            sheets.getByIndex(renamed).setName(name)
+            try:
+                wait_until(
+                    lambda n=name: n in view.names(book.tree) and n not in book.selection(),
+                    f"{case}: the list to show the new name and drop the pick",
+                )
+                time.sleep(1.0)
+                order = book.order()
+                wanted = [order[row] for row in rows]
+                book.click(end, modifiers=modifiers)
+                wait_until(lambda w=wanted: book.selection() == w, f"{case}: {wanted}")
+                time.sleep(1.0)
+                evidence[case] = {"tree": native.shown, "list": book.selection()}
+                assert evidence[case] == {"tree": wanted, "list": wanted}, evidence
+            finally:
+                sheets.getByIndex(renamed).setName(NAMES[renamed])
+                wait_until(
+                    lambda: view.names(book.tree) == NAMES, f"{case}: the list with its old name"
+                )
+    finally:
+        book.tree.removeMouseListener(native)
     return evidence
 
 

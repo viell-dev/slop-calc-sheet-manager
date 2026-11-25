@@ -7,9 +7,9 @@ its own picks back. The tree's native release has already moved its cursor to th
 pointer before the list's mouse listener runs (#70). The list ignores native cursor events while
 the press is held, so its own cursor is still where the user put it: on the pressed sheet, on a
 newer typed pick, or wherever the keys took it, also outside the picks. The refusal keeps that
-cursor while it is still its sheet, and Ctrl+Space then toggles the row the user sees it on. Only
-a cursor whose sheet is gone falls back to a surviving pick, preferring the pressed sheet while
-the press still identifies it.
+cursor while it is still its sheet, and Ctrl+Space then toggles the row the user sees it on. A
+refresh during the hold keeps a cursor whose sheet another window renamed on that row (#327), and
+only a cursor whose sheet is gone falls back to a surviving pick.
 
 The real list runs over the simulated peer of `list_peer`. Showing a cursor outside the picks
 takes a write that selects the cursor's row and then clears the selection before adding the
@@ -104,9 +104,7 @@ def late_release(owner: Any, row: int = PRESSED) -> None:
     listener and is recorded as "a mouse release", as the list's own listener guard reports it
     (`list_peer.listen`).
     """
-    node = owner.tree._installed()[row]
-    owner.tree.selected, owner.tree.cursor = [node], node
-    focus_event(owner, row)
+    owner.tree.release()
     release(owner, row)
     owner.run_queue()
 
@@ -228,15 +226,13 @@ def test_another_buttons_release_leaves_the_held_left_press_and_its_gate() -> No
     assert picks(owner) == ["Bravo"] and cursor(owner) == "Hotel"
 
 
-@pytest.mark.parametrize("unpicked,lost", [(False, "Bravo"), (True, "Alfa")])
-def test_a_refresh_during_the_hold_gives_a_lost_cursor_to_the_pressed_pick(
-    unpicked: bool, lost: str
-) -> None:
+@pytest.mark.parametrize("unpicked", [False, True])
+def test_a_refresh_during_the_hold_keeps_a_renamed_cursor_on_its_row(unpicked: bool) -> None:
     """Alfa and Bravo are picked, and Bravo is held while another window moves it. Ctrl+Down
     takes the cursor to Hotel, and another window renames Hotel before the release. The refresh
-    drops Hotel's ref while Bravo is still held and gives the cursor to the pressed sheet, which
-    merely moved, or to the first pick once Ctrl+Space has unpicked Bravo. The refusal keeps the
-    cursor that refresh wrote, as it would have chosen it itself."""
+    keeps the cursor on that row, and so does the refusal, also once Ctrl+Space has unpicked
+    Bravo: the next Ctrl+Space picks the renamed sheet (#327). The refresh gave the cursor to the
+    pressed sheet, or to the first pick, while the user saw it elsewhere."""
     owner = sheet_list(Book(list(NAMES)))
     click(owner, 0)
     queued_click(owner, PRESSED)
@@ -251,20 +247,21 @@ def test_a_refresh_during_the_hold_gives_a_lost_cursor_to_the_pressed_pick(
     assert cursor(owner) == "Hotel"
     owner.book.rename("Hotel", "Hotel 2")
     refresh_now(owner)
-    assert cursor(owner) == lost and shown_cursor(owner) == lost
+    assert cursor(owner) == "Hotel 2" and shown_cursor(owner) == "Hotel 2"
     refused = owner._selection.cursor
     late_release(owner)
-    assert picks(owner) == (["Alfa"] if unpicked else ["Alfa", "Bravo"])
-    assert owner._selection.cursor is refused and shown_cursor(owner) == lost
+    kept = ["Alfa"] if unpicked else ["Alfa", "Bravo"]
+    assert picks(owner) == kept
+    assert owner._selection.cursor is refused and shown_cursor(owner) == "Hotel 2"
     key(owner, SPACE, MOD1)
-    assert picks(owner) == ([] if unpicked else ["Alfa"])
+    assert picks(owner) == [*kept, "Hotel 2"]
 
 
 def test_a_voided_press_gives_its_same_name_replacement_no_cursor_preference() -> None:
     """Bravo, held, is replaced under its name, and the refresh drops every pick and voids the
     press. Ctrl+A then picks every sheet, the replacement Bravo among them, and Ctrl+End puts
-    the cursor on Lima, which another window renames before the release. Neither that refresh
-    nor the refusal may give the cursor to the replacement for the pressed sheet's name: the
+    the cursor on Lima, which another window renames, and the button goes up before the refresh.
+    The refusal may not give the cursor to the replacement for the pressed sheet's name: the
     first pick takes it, and Ctrl+Space unpicks Alfa."""
     owner = sheet_list(Book(list(NAMES)))
     click(owner, PRESSED)
@@ -277,37 +274,10 @@ def test_a_voided_press_gives_its_same_name_replacement_no_cursor_preference() -
     key(owner, END, MOD1)
     assert cursor(owner) == "Lima"
     owner.book.rename("Lima", "Lima 2")
-    refresh_now(owner)
-    assert cursor(owner) == "Alfa"
     late_release(owner)
     assert cursor(owner) == "Alfa" and shown_cursor(owner) == "Alfa"
     key(owner, SPACE, MOD1)
     assert picks(owner) == NAMES[1:-1]
-
-
-def test_a_sheet_renamed_to_the_pressed_name_gets_no_cursor_preference() -> None:
-    """While Bravo is held, others rename it to Bravo 2 and then Charlie to Bravo, one refresh
-    each, so the proof holds and the press is not voided. Ctrl+A picks the renamed Charlie under
-    the pressed name, and a rename of Lima drops the cursor. The press's handle reports Bravo 2,
-    so the pick named Bravo is another sheet: the first pick takes the cursor."""
-    owner = sheet_list(Book(list(NAMES)))
-    click(owner, 0)
-    queued_click(owner, PRESSED)
-    owner.run_queue()
-    press(owner, PRESSED)
-    owner.run_queue()
-    owner.book.rename("Bravo", "Bravo 2")
-    refresh_now(owner)
-    owner.book.rename("Charlie", "Bravo")
-    refresh_now(owner)
-    key(owner, A, MOD1)
-    key(owner, END, MOD1)
-    owner.book.rename("Lima", "Lima 2")
-    refresh_now(owner)
-    assert not owner._press.voided
-    assert cursor(owner) == "Alfa"
-    late_release(owner)
-    assert cursor(owner) == "Alfa" and shown_cursor(owner) == "Alfa"
 
 
 def test_a_refused_release_before_a_refresh_proves_the_change_picks_nothing() -> None:
@@ -432,9 +402,9 @@ def test_work_run_inside_the_listeners_write_keeps_its_cursor() -> None:
 def test_a_voided_press_gives_a_sheet_under_its_name_no_cursor_preference() -> None:
     """Charlie, held, is deleted, so its handle turns to Bravo, which another window then renames
     Charlie: the press's handle reports the pressed name again. The refresh drops every pick and
-    voids the press. Ctrl+A picks every sheet and Ctrl+End moves the cursor to Lima, which a
-    rename drops. The pick under the pressed name is the renamed Bravo, not the pressed sheet, so
-    the first pick takes the cursor, and the refusal keeps it."""
+    voids the press. Ctrl+A picks every sheet and Ctrl+End moves the cursor to Lima, which another
+    window renames, and the button goes up before the refresh. The pick under the pressed name is
+    the renamed Bravo, not the pressed sheet, so the refusal gives the cursor to the first pick."""
     owner = sheet_list(Book(list(NAMES)))
     click(owner, 2)
     press(owner, 2)
@@ -446,8 +416,6 @@ def test_a_voided_press_gives_a_sheet_under_its_name_no_cursor_preference() -> N
     key(owner, A, MOD1)
     key(owner, END, MOD1)
     owner.book.rename("Lima", "Lima 2")
-    refresh_now(owner)
-    assert cursor(owner) == "Alfa"
     late_release(owner, 2)
     assert cursor(owner) == "Alfa" and shown_cursor(owner) == "Alfa"
 

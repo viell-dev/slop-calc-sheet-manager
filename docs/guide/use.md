@@ -252,7 +252,8 @@ the keyboard cursor, a range made with Shift or Ctrl+Shift, by key or by click, 
 **A renamed cursor row.** <Unreleased since="0.0.11" /> When another window renames the sheet under
 the keyboard cursor, keys keep moving from that row until the list shows the new name
 ([#314](https://github.com/viell-dev/slop-calc-sheet-manager/issues/314)). The cursor then moves to
-the first selected sheet, or, with none selected, to the first row in view
+the first selected sheet, or, with none selected, to the first row in view.
+<Unreleased /> It stays on that row, under the new name
 ([#327](https://github.com/viell-dev/slop-calc-sheet-manager/issues/327)).
 
 **Repeated moves.** <Unreleased since="0.0.11" /> Each completed move is one undo step. Hold or

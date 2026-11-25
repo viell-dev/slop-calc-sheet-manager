@@ -18,9 +18,9 @@ key moved from the first row, picking a sheet the user had never moved to. The r
 at a refresh, so the cursor and the anchor keep their rows until then; the renamed sheet itself is
 never picked, since its ref no longer proves it (#28).
 
-The real list runs over the simulated peer of `list_peer`, whose native Ctrl+Shift press adds
-the rows from the tree's anchor, made at its cursor when it has none, and whose `select` leaves
-the tree no anchor.
+The real list runs over the simulated peer of `list_peer`, whose native range presses select from
+the tree's anchor, made at its cursor when it has none, and whose `select` and `clearSelection`
+leave the tree no anchor when it showed a selected row.
 """
 
 from types import SimpleNamespace
@@ -46,6 +46,7 @@ from tests.unit.list_peer import (
     cursor,
     key,
     move_to_top,
+    paint,
     picks,
     queued_click,
     sheet_list,
@@ -224,15 +225,9 @@ def test_a_ctrl_click_behind_a_refused_range_click_does_not_toggle_against_its_r
     assert move_to_top(owner) is None
 
 
-@pytest.mark.parametrize(
-    "modifiers,tree",
-    [
-        pytest.param(MOD1 | SHIFT, ["Alfa", "Bravo", "Charlie"], id="ctrl-shift"),
-        pytest.param(SHIFT, ["Charlie"], id="shift"),  # The simulated Shift press: its row.
-    ],
-)
+@pytest.mark.parametrize("modifiers", [MOD1 | SHIFT, SHIFT], ids=["ctrl-shift", "shift"])
 def test_a_range_click_whose_listener_runs_after_ctrl_keys_is_refused(
-    modifiers: int, tree: list[str]
+    modifiers: int,
 ) -> None:
     """Alfa clicked; a Ctrl+Shift+click or Shift+click on Charlie, which the tree handles from its
     cursor on Alfa, and Ctrl+Down three times typed before the press's listener runs, as when
@@ -240,7 +235,7 @@ def test_a_range_click_whose_listener_runs_after_ctrl_keys_is_refused(
     ranged from Delta, a sheet the user never selected; it picks nothing, with the notice."""
     owner = clicked("Alfa")
     queued_click(owner, row("Charlie"), modifiers)
-    assert owner.tree.shown() == tree
+    assert owner.tree.shown() == ["Alfa", "Bravo", "Charlie"]
     for _ in range(3):
         owner.tree_key(DOWN, MOD1)
     owner.run_queue()
@@ -287,16 +282,19 @@ def test_a_range_click_behind_a_ctrl_shift_click_the_count_refuses_is_refused() 
 def test_a_write_without_a_cursor_ends_the_range_hold() -> None:
     """Alfa clicked; Ctrl+Down, and a sheet inserted before the key's write. The refresh that write
     asks for cannot prove the sheets, so it drops the picks and the cursor, and its write shows no
-    cursor: that write ends the hold, and a later Shift+click acts. Without it the hold stayed, and
-    the next range click was refused, however late (#325's review)."""
+    cursor: that write ends the hold. VCL's next paint puts the tree's cursor on the first row,
+    which the list follows, and a later Shift+click ranges from there. Without it the hold stayed,
+    and the next range click was refused, however late (#325's review)."""
     owner = clicked("Alfa")
     owner.tree_key(DOWN, MOD1)
     owner.book.insert("India", 3)
     owner.run_queue()
     assert cursor(owner) is None and owner._ranges_held is None
+    paint(owner)
+    assert cursor(owner) == "Alfa"
     queued_click(owner, row("Charlie"), SHIFT)
     owner.run_queue()
-    assert picks(owner) == ["Charlie"] == owner.tree.shown()
+    assert picks(owner) == ["Alfa", "Bravo", "Charlie"] == owner.tree.shown()
 
 
 @pytest.mark.parametrize(
@@ -373,15 +371,9 @@ def test_a_range_click_before_plain_keys_write_is_refused(modifiers: int) -> Non
     assert picks(owner) == ["Echo", "Foxtrot", "Golf"] == owner.tree.shown()
 
 
-@pytest.mark.parametrize(
-    "modifiers,tree",
-    [
-        pytest.param(MOD1 | SHIFT, ["Alfa", "Bravo", "Charlie"], id="ctrl-shift"),
-        pytest.param(SHIFT, ["Charlie"], id="shift"),  # The simulated Shift press: its row.
-    ],
-)
+@pytest.mark.parametrize("modifiers", [MOD1 | SHIFT, SHIFT], ids=["ctrl-shift", "shift"])
 def test_a_range_click_whose_listener_runs_after_a_plain_key_is_refused(
-    modifiers: int, tree: list[str]
+    modifiers: int,
 ) -> None:
     """Alfa clicked; a Ctrl+Shift+click or Shift+click on Charlie, and Down typed before the press's
     listener runs. Down moved the anchor to Bravo, and the listener picked Bravo and Charlie: not
@@ -389,7 +381,7 @@ def test_a_range_click_whose_listener_runs_after_a_plain_key_is_refused(
     sheet the user never selected. The press picks nothing, with the notice."""
     owner = clicked("Alfa")
     queued_click(owner, row("Charlie"), modifiers)
-    assert owner.tree.shown() == tree
+    assert owner.tree.shown() == ["Alfa", "Bravo", "Charlie"]
     owner.tree_key(DOWN, 0)
     owner.run_queue()
     assert "Bravo" not in picks(owner), "a range from the anchor the key moved"
@@ -562,9 +554,10 @@ def test_a_commands_check_of_its_picks_keeps_the_renamed_cursors_row() -> None:
     assert picks(owner) == ["Delta"]
 
 
-def test_the_refresh_then_drops_the_renamed_cursor() -> None:
-    """Control: the refresh drops the cursor and the anchor as it drops picks, and its write puts
-    the cursor on the first pick, as on `main`. Two Ctrl+clicks on Delta leave both on it."""
+def test_the_refresh_keeps_the_renamed_cursor_and_anchor_on_their_row() -> None:
+    """Two Ctrl+clicks on Delta leave the cursor and the anchor there, and another window renames
+    it. The refresh keeps both on its row, as keys before it do, and the tree shows the cursor
+    there. It dropped them, and its write put the cursor on the first pick (#327)."""
     owner = clicked("Alfa")
     for _ in range(2):
         queued_click(owner, row("Delta"))
@@ -572,8 +565,10 @@ def test_the_refresh_then_drops_the_renamed_cursor() -> None:
     assert picks(owner) == ["Alfa"] and cursor(owner) == anchor(owner) == "Delta"
     owner.book.rename("Delta", "Juliett")
     refresh(owner)
-    assert picks(owner) == ["Alfa"] and cursor(owner) == "Alfa"
-    assert anchor(owner) is None
+    assert picks(owner) == ["Alfa"] and cursor(owner) == anchor(owner) == "Juliett"
+    assert owner.tree.cursor.DataValue == "Juliett" and owner.notices == []
+    key(owner, DOWN)
+    assert picks(owner) == ["Echo"]
 
 
 def test_a_key_after_a_rename_of_another_sheet_acts_as_before() -> None:
@@ -584,17 +579,9 @@ def test_a_key_after_a_rename_of_another_sheet_acts_as_before() -> None:
     assert picks(owner) == ["Delta"]
 
 
-@pytest.mark.parametrize(
-    "modifiers,tree,wanted",
-    [
-        pytest.param(SHIFT, ["Echo"], ["Delta", "Echo"], id="shift"),
-        pytest.param(
-            MOD1 | SHIFT, ["Charlie", "Delta", "Echo"], ["Delta", "Echo"], id="ctrl-shift"
-        ),
-    ],
-)
+@pytest.mark.parametrize("modifiers", [SHIFT, MOD1 | SHIFT], ids=["shift", "ctrl-shift"])
 def test_a_range_click_after_a_rename_of_its_anchors_sheet_starts_at_its_row(
-    modifiers: int, tree: list[str], wanted: list[str]
+    modifiers: int,
 ) -> None:
     """Charlie clicked, then renamed by another window; a Shift+click or a Ctrl+Shift+click on
     Echo ranges from Charlie's row, as the tree's from its cursor there, without the renamed
@@ -603,12 +590,12 @@ def test_a_range_click_after_a_rename_of_its_anchors_sheet_starts_at_its_row(
     owner = clicked("Charlie")
     owner.book.rename("Charlie", RENAMED)
     queued_click(owner, row("Echo"), modifiers)
-    assert owner.tree.shown() == tree  # The simulated plain Shift press selects its row alone.
+    assert owner.tree.shown() == ["Charlie", "Delta", "Echo"]
     owner.run_queue()
-    assert picks(owner) == wanted and owner.tree.shown() == wanted
+    assert picks(owner) == ["Delta", "Echo"] == owner.tree.shown()
     assert owner.notices == []
     refresh(owner)
-    assert move_to_top(owner) == wanted
+    assert move_to_top(owner) == ["Delta", "Echo"]
 
 
 def test_revalidation_between_refreshes_keeps_the_cursors_and_anchors_rows() -> None:

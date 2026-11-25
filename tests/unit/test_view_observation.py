@@ -231,13 +231,13 @@ def test_refresh_seeds_the_new_proof_before_a_subsequent_tab_change(kept: bool) 
     owner._observed, owner.rows, owner._nodes = observed, rows, [object()]
     owner._monitor.generation = 1
     owner._monitor.check = lambda: 1
-    owner._identities_kept = Mock(return_value=kept)
+    owner._renames_elsewhere = Mock(return_value={} if kept else None)
     owner._drop_all_picks = Mock(return_value=True)
 
     def selected_names() -> list[str]:
         return []
 
-    def carry(renamed: Any) -> bool:
+    def carry(renamed: Any, elsewhere: Any) -> bool:
         return False
 
     owner._selection = SimpleNamespace(carry=carry, names=selected_names, picked=[])
@@ -743,7 +743,7 @@ def drag_list() -> tuple[Any, Any, Any, list[Any]]:
     bind("_prove", {"Snapshot": Any})
     name_or_none = function(SOURCE, "_name_or_none", {"Any": Any})
     bind(
-        "_identities_kept",
+        "_renames_elsewhere",
         {
             "Snapshot": Any,
             "Mapping": Mapping,

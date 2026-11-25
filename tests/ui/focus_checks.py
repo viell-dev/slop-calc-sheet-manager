@@ -382,9 +382,9 @@ def _refused_hold(book, case, probe, press, marks) -> dict[str, Any]:
         elif case == "repeat":
             book.lab.input.repeat("Down", ("Control_L",))
         elif case == "renamed":
-            # Ctrl+Down takes the cursor to Hotel, and Hotel's rename then drops that cursor
-            # in a refresh while Bravo is still held. Only a cursor heard on Hotel after the
-            # key shows that the rename is what dropped it.
+            # Ctrl+Down takes the cursor to Hotel, and a refresh while Bravo is still held finds
+            # Hotel renamed: the cursor keeps its row (#327). Only a cursor heard on Hotel after
+            # the key shows that it was there.
             keyed = len(probe.heard)
             book.lab.input.tap("Down", ("Control_L",), pause=0.5)
             hotel = order.index(NAMES[7])
@@ -449,7 +449,7 @@ def _verdict(case, seen):
         "unpicked": order[bravo + 1],
         "other_pick": NAMES[3],
         "repeat": order[held] if held is not None and 0 <= held < len(order) else None,
-        "renamed": NAMES[1],  # Hotel's ref is gone: the pressed pick takes the cursor.
+        "renamed": order[bravo + 1],  # Hotel under its new name.
     }[case]
     setup = {"other_pick": [NAMES[1], NAMES[3]], "renamed": [NAMES[0], NAMES[1]]}
     row = order.index(cursor) if cursor in order else None
@@ -503,10 +503,10 @@ def check_selected_press_cursor(book):
     hear that move after the button went up, from a cursor its own input left elsewhere, or it
     proves nothing (`_verdict`). The list then puts back its own cursor: Bravo's, a newer typed
     pick's, or wherever the keyboard took it during the hold, also outside the picks and with
-    the X server's own timed repeat (#71). When a refresh during the hold drops that cursor, as
-    a rename of the sheet it was heard on does, the pressed sheet takes it. Ctrl+Space then
-    toggles exactly the row the cursor is on. Every case runs before the check fails, so that
-    one run shows which of them a change breaks; a gesture that cannot be made fails at once.
+    the X server's own timed repeat (#71), and also on a sheet that a refresh during the hold
+    finds renamed (#327). Ctrl+Space then toggles exactly the row the cursor is on. Every case
+    runs before the check fails, so that one run shows which of them a change breaks; a gesture
+    that cannot be made fails at once.
     """
     accessible = book.tree.getProperty("XAccessible").getAccessibleContext()
     probe, press, marks = CursorProbe(), PressProbe(), []

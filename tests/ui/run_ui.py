@@ -88,7 +88,9 @@ from selection_checks import (  # noqa: E402
     check_ctrl_shift_selection,
     check_margin_drag_keeps_sidebar_docked,
     check_plain_click_ends_group,
+    check_ranges_after_renames,
     check_selection_notice,
+    check_shift_clicks_adjust_a_range,
     check_tab_selection_sync,
     check_viewed_sheet_name,
 )
@@ -127,6 +129,8 @@ def run_checks(lab, output, only=()):
         ("click_activates", lambda: check_click_activates(book)),
         ("margin_drag_keeps_sidebar_docked", lambda: check_margin_drag_keeps_sidebar_docked(book)),
         ("ctrl_shift_selection", lambda: check_ctrl_shift_selection(book)),
+        ("shift_clicks_adjust_a_range", lambda: check_shift_clicks_adjust_a_range(book)),
+        ("ranges_after_renames", lambda: check_ranges_after_renames(book)),
         ("viewed_sheet_name", lambda: check_viewed_sheet_name(book)),
         ("row_paint_scroll", lambda: check_row_paint_scroll(book)),
         ("document_colors", lambda: check_document_colors(book)),

@@ -55,6 +55,7 @@ def native_picks() -> tuple[Any, Any, list[Callable[[], None]]]:
         _hold_toggles=Mock(),
         _presses_held=None,
         _ranges_held=None,  # No Ctrl key has moved the anchor (#313).
+        _range_start=None,
         _toggles_shown=Mock(),  # A take shows exactly the picks it gives.
         _user_picks=True,
         selected_names=lambda: live.picks,
