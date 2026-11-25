@@ -43,7 +43,7 @@ def show_refusal(context: Any, document: Any, observed: Snapshot, targets: list[
         if not targets:
             return tr("None of these sheets is hidden.")
         if not is_current(document, observed) or not set(targets) <= _handles(observed).keys():
-            return tr("The sheet list has changed. Refresh it and try again.")
+            return tr("The sheet list has changed. Check it and try again.")
         if document.isReadonly():
             return tr("This document is read-only.")
         if document.isProtected():
@@ -75,7 +75,7 @@ def show_sheets(context: Any, document: Any, observed: Snapshot, names: list[str
         targets = hidden_targets(observed, names)
     except Exception as error:
         return Result(
-            "refused", tr("The sheet list has changed. Refresh it and try again."), 0, str(error)
+            "refused", tr("The sheet list has changed. Check it and try again."), 0, str(error)
         )
     reason = show_refusal(context, document, observed, targets)
     if reason:

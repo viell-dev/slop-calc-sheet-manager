@@ -8,8 +8,8 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 ## 0.0.11 - 2026-11-25
 
 First release candidate for the stable release 0.1.0, following the 0.0.10 usability review. It
-fixes the move buttons that could stay disabled, makes quick or unusual input safer, and improves
-Rename Sheets for screen readers. Requires LibreOffice 26.2.1 or later with Python support. A
+fixes the move buttons that could stay disabled and the error messages after held move shortcuts,
+makes quick or unusual input safer, and improves Rename Sheets for screen readers. Requires LibreOffice 26.2.1 or later with Python support. A
 [short human check of this candidate](https://github.com/viell-dev/slop-calc-sheet-manager/issues/337)
 precedes 0.1.0.
 
@@ -18,6 +18,10 @@ precedes 0.1.0.
 - The move buttons no longer stay disabled while sheets are picked when LibreOffice treats the
   focused document window as inactive
   ([#211](https://github.com/viell-dev/slop-calc-sheet-manager/issues/211)).
+- Holding or quickly repeating a move shortcut, or a move button, no longer opens an error message
+  for each key or click that arrives while an earlier move waits. The list drops those it cannot
+  keep up with, so a held key moves the sheets steadily, one undo step for each place
+  ([#340](https://github.com/viell-dev/slop-calc-sheet-manager/issues/340)).
 - A sheet list that cannot open shows a message with what to do, instead of an empty deck
   ([#188](https://github.com/viell-dev/slop-calc-sheet-manager/issues/188)). A failed list refresh
   is retried, and the panel closes fully when part of its clean-up fails
@@ -46,6 +50,8 @@ precedes 0.1.0.
   [#318](https://github.com/viell-dev/slop-calc-sheet-manager/issues/318),
   [#326](https://github.com/viell-dev/slop-calc-sheet-manager/issues/326),
   [#329](https://github.com/viell-dev/slop-calc-sheet-manager/issues/329)).
+- The notice that the selection was cleared no longer names a sheet change when there was none, and
+  refusals no longer advise refreshing the list, which refreshes itself.
 - A selection made through assistive technology is kept, or cleared with the notice, rather than
   replaced by older picks
   ([#265](https://github.com/viell-dev/slop-calc-sheet-manager/issues/265),
@@ -56,7 +62,8 @@ precedes 0.1.0.
   [#315](https://github.com/viell-dev/slop-calc-sheet-manager/issues/315),
   [#316](https://github.com/viell-dev/slop-calc-sheet-manager/issues/316)).
 - Ranges made after Ctrl with an arrow, Home or End key start at the keyboard cursor
-  ([#313](https://github.com/viell-dev/slop-calc-sheet-manager/issues/313)). The cursor stays where
+  ([#313](https://github.com/viell-dev/slop-calc-sheet-manager/issues/313)); Shift with an arrow key
+  after them selects from there too. The cursor stays where
   your keys moved it when the list refuses a held click, and keeps its row while another window
   renames that sheet ([#71](https://github.com/viell-dev/slop-calc-sheet-manager/issues/71),
   [#314](https://github.com/viell-dev/slop-calc-sheet-manager/issues/314)).

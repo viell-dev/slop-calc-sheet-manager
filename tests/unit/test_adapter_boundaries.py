@@ -2,6 +2,7 @@
 
 import _thread
 import enum
+from collections.abc import Callable
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import Mock
@@ -209,6 +210,7 @@ def test_move_request_keeps_its_snapshot_refs_and_proof_while_queued() -> None:
     owner = SimpleNamespace(
         _disposed=False,
         _busy=False,
+        _move_queued=False,
         _input=0,
         _observed=original_snapshot,
         _selection=SimpleNamespace(picked=[object()]),  # A queued navigation callback is behind.
@@ -229,6 +231,63 @@ def test_move_request_keeps_its_snapshot_refs_and_proof_while_queued() -> None:
     queued[0]()
     assert seen == [("top", original_snapshot, (original_ref,), 7)]
     assert owner._input == 1
+
+
+def test_a_move_request_made_while_another_waits_is_dropped() -> None:
+    """Keys typed during a move arrive together after it. A second one captured the proof that the
+    first was about to change, and refused with a message for each key (#340)."""
+    queued: list[Callable[[], None]] = []
+    moved: list[str] = []
+
+    def post(work: Callable[[], None], where: str) -> None:
+        queued.append(work)
+
+    def move(action: str, observed: object, picks: object, proof: object) -> None:
+        assert not owner._move_queued, "a request from the move itself would be lost"
+        moved.append(action)
+
+    owner = SimpleNamespace(
+        _disposed=False,
+        _busy=False,
+        _move_queued=False,
+        _input=0,
+        _observed=object(),
+        _selection=SimpleNamespace(picked=[object()]),
+        _press=None,
+        _take_tree_selection=Mock(),
+        _shown=(),
+        _proven=7,
+        post=post,
+        _move_selection=move,
+        _tabs=SimpleNamespace(note_input=Mock()),
+        claim_window=Mock(),
+    )
+    request = method(
+        "src/sheet_manager/uno_list.py", "SheetList", "queue_move", {"ACTIONS": ("up", "down")}
+    )
+    request(owner, "down")
+    request(owner, "down")
+    request(owner, "up")
+    assert len(queued) == 1 and owner._input == 1
+    queued.pop()()
+    assert moved == ["down"]
+    request(owner, "up")
+    queued.pop()()
+    assert moved == ["down", "up"], "the next request acts again"
+
+    # Neither a refusal, a failed move nor a failed post leaves the moves dead.
+    def fail(*_: object) -> None:
+        raise RuntimeError("injected failure")
+
+    owner._move_selection = fail
+    request(owner, "up")
+    with pytest.raises(RuntimeError, match="injected"):
+        queued.pop()()
+    assert not owner._move_queued
+    owner.post = fail
+    with pytest.raises(RuntimeError, match="injected"):
+        request(owner, "up")
+    assert not owner._move_queued
 
 
 def test_failed_move_releases_busy_and_refreshes() -> None:
