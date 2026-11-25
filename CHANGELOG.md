@@ -8,10 +8,12 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 - A Shift+click that shortens a range, or moves it to the other side of its start, picks the
   corrected range again. 0.0.11 cleared the selection
   ([#349](https://github.com/viell-dev/slop-calc-sheet-manager/issues/349)).
-- After one picked sheet is renamed, the keyboard cursor stays on its row, and a Shift+click or
+- After one picked sheet is renamed, the keyboard cursor keeps its row, and a Shift+click or
   Ctrl+Shift+click starts there rather than being refused
   ([#321](https://github.com/viell-dev/slop-calc-sheet-manager/issues/321),
   [#327](https://github.com/viell-dev/slop-calc-sheet-manager/issues/327)).
+- A Ctrl+click after a Ctrl+Shift+click and a middle click adds its sheet rather than clear the
+  selection ([#328](https://github.com/viell-dev/slop-calc-sheet-manager/issues/328)).
 
 ## 0.0.11 - 2026-11-25
 

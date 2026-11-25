@@ -653,10 +653,12 @@ class Tree:
         """A press on the labels at `line` as the tree handles it, before the list's listener runs
         (`SvImpLBox::MouseButtonDown`, `SelectionEngine::SelMouseButtonDown`).
 
-        The engine handles every button but the right one, and returns at once for a click count
-        above 1 or with Alt (measured on #294 with 26.8.2.2). A press outside the rows is not
-        modelled: callers press rows.
+        The tree ignores a middle press and gives the engine a left one alone (measured on #328
+        with 26.8.3.1), which returns at once for a click count above 1 or with Alt (measured on
+        #294 with 26.8.2.2). A press outside the rows is not modelled: callers press rows.
         """
+        if button not in (LEFT, RIGHT):
+            return
         self.waiting = None
         index, nodes = line // self.height + self.start, self._installed()
         node = nodes[index]
@@ -1214,7 +1216,7 @@ def queued_click(
     line = owner.tree.line(row)
     if owner.tree.getClosestNodeForLocation(x, line) is not None:
         owner.tree.press(line, modifiers, clicks, button)
-        if button != RIGHT:
+        if button == LEFT:
             owner.tree.release()
     pressed = SimpleNamespace(Buttons=button, X=x, Y=line, Modifiers=modifiers, ClickCount=clicks)
     released = SimpleNamespace(Buttons=button, X=x, Y=line, Modifiers=modifiers, ClickCount=clicks)

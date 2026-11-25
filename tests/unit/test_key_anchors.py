@@ -280,12 +280,12 @@ def test_a_range_click_behind_a_ctrl_shift_click_the_count_refuses_is_refused() 
 
 
 def test_a_write_without_a_cursor_ends_the_range_hold() -> None:
-    """Alfa clicked; Ctrl+Down, and a sheet inserted before the key's write. The refresh that write
+    """Bravo clicked; Ctrl+Down, and a sheet inserted before the key's write. The refresh that write
     asks for cannot prove the sheets, so it drops the picks and the cursor, and its write shows no
     cursor: that write ends the hold. VCL's next paint puts the tree's cursor on the first row,
     which the list follows, and a later Shift+click ranges from there. Without it the hold stayed,
     and the next range click was refused, however late (#325's review)."""
-    owner = clicked("Alfa")
+    owner = clicked("Bravo")
     owner.tree_key(DOWN, MOD1)
     owner.book.insert("India", 3)
     owner.run_queue()

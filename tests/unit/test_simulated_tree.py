@@ -7,7 +7,7 @@ compared with real input on gtk3 and gen (#321's and #349's measurements).
 
 import pytest
 
-from tests.unit.list_peer import MOD1, RIGHT, SHIFT, Faults, NodeModel, Tree
+from tests.unit.list_peer import MIDDLE, MOD1, RIGHT, SHIFT, Faults, NodeModel, Tree
 
 NAMES = ["Alfa", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot"]
 CTRL_SHIFT = MOD1 | SHIFT
@@ -116,13 +116,15 @@ def test_a_ctrl_shift_press_adds_from_the_cursor_and_starts_add_mode() -> None:
     assert heard == [0, 1]
 
 
-def test_a_right_press_and_a_later_click_of_a_double_click_change_nothing() -> None:
+def test_a_right_or_middle_press_and_a_double_clicks_second_press_change_nothing() -> None:
     made = tree("Bravo")
     made.press(NAMES.index("Delta"), button=RIGHT)
+    made.press(NAMES.index("Delta"), button=MIDDLE)
+    made.press(NAMES.index("Delta"), CTRL_SHIFT, button=MIDDLE)
     made.press(NAMES.index("Delta"), clicks=2)
     made.press(NAMES.index("Delta"), MOD1, clicks=2)
     made.release()
-    assert made.shown() == ["Bravo"] and cursor(made) == "Bravo"
+    assert made.shown() == ["Bravo"] and cursor(made) == "Bravo" and not made.add_mode
 
 
 @pytest.mark.parametrize("selected, kept", [(True, False), (False, True)])

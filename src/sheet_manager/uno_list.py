@@ -175,34 +175,33 @@ refresh that shows a waiting selection again restores the counts from before it
 (`_show_native`). The press listener and the key handler read the count, with the record and what
 the engine's add mode and the plain share need, once, before any UNO call.
 
-VCL's selection engine handles a press of any button but the right one before its listener runs
-(`SelectionEngine::SelMouseButtonDown`, `SvImpLBox::MouseButtonDown`, read in 26.8.2.2; add mode
-and the click counts measured with real input on gtk3 and gen, #294). It changes nothing for a
-click count above 1, as for a double or triple click's later presses, with Alt, or off a row, the
-gutter left of the rows' native hit area included (#342). A
+VCL's selection engine handles a press of the left button alone before its listener runs
+(`SelectionEngine::SelMouseButtonDown`, `SvImpLBox::MouseButtonDown`, read in 26.8.3.1; add mode,
+the click counts and the middle button measured with real input on gtk3 and gen, #294, #328). It
+changes nothing for a click count above 1, as for a double or triple click's later presses, with
+Alt, or off a row, the gutter left of the rows' native hit area included (#342). A
 Ctrl press toggles its row, except in add mode, which a Ctrl+Shift press starts and a plain or a
-Shift press ends, of any button but the right one: there a Ctrl press on an unselected row only
-moves the cursor. A Ctrl+Shift press adds the rows from the tree's own anchor that it did not
-show, and removes none, and a right press changes nothing. The listener follows add mode from
-the presses it handles, in the order they came (`_follow_engine`), and judges a row unselected
-by the picks. So a Ctrl press whose own share is one change toggles only when that is all that
-is unaccounted, and then accounts for it; one whose share is none toggles only when nothing is,
-and holds toggles, Space included, until its write, since the tree did not toggle the row. So
-does one whose share is one when nothing is unaccounted and the last accounting point is a
-complete write or a rebuild's model that overwrote exactly one change: that change was this
-press's own, which the write erased, as when VCL runs a plain click's listener before it handles
-the next press and that listener's write lands between the press and its listener (#44). Any
-other accounting point since, such as a take, a key that sets the selection or a refusal, clears
-that record, and a write that overwrote more records more than one change: the press is then
-refused, since a take includes its toggle, which the listener would toggle again. A Ctrl+Shift
-press adds its range only when as many rows as it adds to the picks are unaccounted, or none
-are, as after the list's own write, intake or refusal accounted since the press; a range added
-twice is added once. That compares counts, not rows, so it relies on the list's anchor being the
-tree's. A write of the list's leaves the tree no anchor when the tree showed a selected row
-(`SvImpLBox::SelAllDestrAnch`), and the tree then makes one at its cursor, the list's, for its
-next range (`ImpLBSelEng::CreateAnchor`, read in 26.8.2.2). A plain or Ctrl press, Ctrl+Space
-and a plain key set the list's anchor at the cursor; a Shift range keeps it at its start with
-every row up to the cursor picked, which the tree's range from the cursor adds to alike; and a
+Shift press ends: there a Ctrl press on an unselected row only moves the cursor. A Ctrl+Shift press
+adds the rows from the tree's own anchor that it did not show, and removes none, and a right or
+middle press changes nothing. The listener follows add mode from the presses it handles, in the
+order they came (`_follow_engine`), and judges a row unselected by the picks. So a Ctrl press whose
+own share is one change toggles only when that is all that is unaccounted, and then accounts for it;
+one whose share is none toggles only when nothing is, and holds toggles, Space included, until its
+write, since the tree did not toggle the row. So does one whose share is one when nothing is
+unaccounted and the last accounting point is a complete write or a rebuild's model that overwrote
+exactly one change: that change was this press's own, which the write erased, as when VCL runs a
+plain click's listener before it handles the next press and that listener's write lands between the
+press and its listener (#44). Any other accounting point since, such as a take, a key that sets the
+selection or a refusal, clears that record, and a write that overwrote more records more than one
+change: the press is then refused, since a take includes its toggle, which the listener would toggle
+again. A Ctrl+Shift press adds its range only when as many rows as it adds to the picks are
+unaccounted, or none are, as after the list's own write, intake or refusal accounted since the
+press; a range added twice is added once. That compares counts, not rows, so it relies on the list's
+anchor being the tree's. A write of the list's leaves the tree no anchor when the tree showed a
+selected row (`SvImpLBox::SelAllDestrAnch`), and the tree then makes one at its cursor, the list's,
+for its next range (`ImpLBSelEng::CreateAnchor`, read in 26.8.2.2). A plain or Ctrl press,
+Ctrl+Space and a plain key set the list's anchor at the cursor; a Shift range keeps it at its start
+with every row up to the cursor picked, which the tree's range from the cursor adds to alike; and a
 Ctrl key with a cursor key moves the anchor to the cursor, as VCL's own handling of that key
 drops its anchor (#313). A refresh that drops a pick, whose row a range from the older anchor may
 include, drops the anchor too (#321). A range press of a list without an anchor starts at
@@ -286,8 +285,8 @@ tree shows; a release that narrows the picks, or that nothing was counted with s
 listener. Then the intake takes whatever the tree shows, also the record itself, which an intake
 that takes changes alone would not see as one. Every other input since the tree last showed the
 record left the tree showing otherwise than the list reads it (`_unread`): Space and Ctrl+Space,
-whose toggle the tree shows only at their write; a refused toggle's native change, a held or a
-middle press's, a Ctrl press's that the tree does not show, as a Ctrl+double-click's second, a
+whose toggle the tree shows only at their write; a refused toggle's native change, a held
+press's, a Ctrl press's that the tree does not show, as a Ctrl+double-click's second, a
 Shift press's beyond its share, which may be a range from another cursor than the list's, as before
 a key's write (#326), or whose range in the tree is not the picks (#349), the native release of a
 click released over another row, also one handled before the listener of a plain press that kept the
@@ -1809,14 +1808,21 @@ class SheetList:
         """Whether VCL's selection engine changed the selection for this press, which it handled
         before the listener ran, and the engine's add mode after it, as the list follows it.
 
-        `SvImpLBox::MouseButtonDown` passes every press but a right one that lands on a row to
+        `SvImpLBox::MouseButtonDown` passes a left press that lands on a row to
         `SelectionEngine::SelMouseButtonDown`, which returns at once for a click count above 1
-        or with Alt. A Ctrl+Shift press starts add mode, and a plain or a Shift press ends it
-        (read in 26.8.2.2; add mode measured on gtk3 and gen, #294). `add_mode` is the mode the
+        or with Alt; a middle press it ignores, and a right one changes nothing. A Ctrl+Shift
+        press starts add mode, and a plain or a Shift press ends it (read in 26.8.3.1; add mode
+        and the middle button measured on gtk3 and gen, #294, #328). `add_mode` is the mode the
         listener read before its UNO calls: a listener run inside them, for a later press, may
         have changed it since, and its change stands.
         """
-        if event.Buttons & RIGHT or event.ClickCount != 1 or event.Modifiers & MOD2 or not hit:
+        if (
+            not event.Buttons & LEFT
+            or event.Buttons & RIGHT
+            or event.ClickCount != 1
+            or event.Modifiers & MOD2
+            or not hit
+        ):
             return False
         if self._add_mode == add_mode:
             keys = event.Modifiers & (SHIFT | MOD1)

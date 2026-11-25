@@ -1168,21 +1168,36 @@ def test_a_command_after_a_take_and_a_right_press_moves_the_taken_selection() ->
 
 def test_a_command_after_an_unread_press_ahead_of_the_take_refuses() -> None:
     """Alfa picked; Down; Echo selected alone before its write, which leaves the tree as it is for
-    the intake to take whatever it shows. A middle click on Charlie, whose listener VCL runs ahead
-    of that intake, selects Charlie natively, which the list does not read, and queues a write;
-    Move to Top before that write. The picks are Bravo, which the tree never showed, and no intake
-    can take the tree now: the record is unknown, so the command refuses rather than move Bravo."""
+    the intake to take whatever it shows. A middle press on Charlie, which the tree ignores and
+    the list does not read, whose listener VCL runs ahead of that intake, queues a write; Move to
+    Top before that write. The picks are Bravo, which the tree never showed, and no intake can
+    take the tree now: the record is unknown, so the command refuses rather than move Bravo."""
     owner = fresh()
     click(owner, row("Alfa"))
     owner.tree_key(DOWN, 0)
     owner.tree.assistive_only("Echo")
     run(owner, 1)  # The key's write, which posts the intake.
-    node = owner.tree.node("Charlie")
-    owner.tree.selected, owner.tree.cursor = [node], node
-    line = owner.tree.line(row("Charlie"))
-    middle = SimpleNamespace(Buttons=MIDDLE, X=LABEL_X, Y=line, Modifiers=0, ClickCount=1)
-    listen(owner, owner.mouse_pressed, middle)  # Ahead of the queued intake.
+    press(owner, row("Charlie"), button=MIDDLE)  # Ahead of the queued intake.
     assert move_to_top(owner) is None, "Bravo, which the tree never showed, was moved"
+
+
+def test_a_shrunk_ranges_native_rows_are_not_taken() -> None:
+    """Charlie to Golf picked, and a Shift+click on Delta, which the tree ranges from Golf, its
+    cursor, so that it shows Delta to Golf while the list picks Charlie and Delta (#349). Hotel is
+    added through accessibility before the write, which then leaves the tree as it is. Taking it
+    would pick Echo to Golf, which the user just left out: the picks go, with the notice."""
+    owner = fresh()
+    click(owner, row("Charlie"))
+    queued_click(owner, row("Golf"), SHIFT)
+    owner.run_queue()
+    notices = len(owner.notices)
+    queued_click(owner, row("Delta"), SHIFT)
+    assert owner.tree.shown() == NAMES[row("Delta") : row("Golf") + 1]
+    run(owner, 2)  # Its listeners.
+    assert picks(owner) == ["Charlie", "Delta"]
+    owner.tree.assistive_select("Hotel")
+    owner.run_queue()
+    refused(owner, notices)
 
 
 def test_a_row_a_refused_ctrl_space_meant_to_toggle_off_is_not_taken() -> None:

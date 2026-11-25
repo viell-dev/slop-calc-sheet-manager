@@ -15,7 +15,7 @@ import sheet_list_view as view
 import uno
 from focus_checks import CursorProbe
 from workbook import NAMES, PressProbe, wait_until
-from xinput import Pointer
+from xinput import MIDDLE, Pointer
 
 from sheet_manager.sheet_list import list_name
 from sheet_manager.uno_calc import select_tabs
@@ -446,16 +446,22 @@ def check_ctrl_clicks_after_a_ctrl_shift_range(book):
 
     After a Ctrl+Shift+click, VCL's selection engine stays in add mode until a plain or Shift
     click, and a Ctrl+click on an unselected row then only moves the tree's cursor: it selects
-    nothing (measured with 26.8.2.2 on gtk3 and gen). The second and third presses of a quick
-    triple click change nothing either, since the engine handles only a click count of 1. The
-    list counts the tree's changes that it did not make, and must expect no change from these
-    presses: before that, it refused each of them and cleared the selection.
+    nothing (measured with 26.8.2.2 on gtk3 and gen). A middle click leaves add mode, since the
+    tree ignores it (measured with 26.8.3.1); the list took it to end add mode (#328). The second
+    and third presses of a quick triple click change nothing either, since the engine handles
+    only a click count of 1. The list counts the tree's changes that it did not make, and must
+    expect no change from these presses: before that, it refused each of them and cleared the
+    selection.
     """
     evidence = {}
     book.click(0)
     wait_until(lambda: book.selection() == [NAMES[0]], "a click to pick Alfa")
     book.click(2, modifiers=("Control_L", "Shift_L"))
     wait_until(lambda: book.selection() == NAMES[:3], "a Ctrl+Shift+click range to Charlie")
+    book.pointer.click(*book.point(6), button=MIDDLE)
+    time.sleep(0.5)
+    evidence["middle_click"] = book.selection()
+    assert evidence["middle_click"] == NAMES[:3], evidence
     book.click(4, modifiers=("Control_L",))
     wait_until(lambda: book.selection() == [*NAMES[:3], NAMES[4]], "a Ctrl+click adding Echo")
     evidence["unselected_in_add_mode"] = book.selection()

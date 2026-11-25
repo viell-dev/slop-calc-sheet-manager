@@ -48,8 +48,10 @@ from tests.unit.list_peer import (
     click,
     key,
     listen,
+    move_to_top,
     native_press,
     picks,
+    press,
     queued_click,
     release,
     sheet_list,
@@ -402,6 +404,35 @@ def test_a_click_after_a_failed_press_listener_acts() -> None:
     native_press(owner, row("Echo"))
     owner.start_drag(object())
     assert dragged == [["Echo"]]
+
+
+@pytest.mark.parametrize("announced", [True, False], ids=["announced", "not announced"])
+@pytest.mark.parametrize("modifiers", [0, MOD1], ids=["plain", "ctrl"])
+@pytest.mark.parametrize("released", [False, True], ids=["held", "released"])
+def test_a_failed_press_listener_on_a_replaced_sheet_picks_no_replacement(
+    announced: bool, modifiers: int, released: bool
+) -> None:
+    """Another window replaces Hotel under its name, and a press on its row selects it in the tree,
+    which still shows the old row, before its listener fails (#319). The guard's write finds the
+    structure changed and refreshes, and the intake took the replacement, which Move to Top then
+    moved. The press's announced cursor move makes that refresh clear the tree; without one, the
+    undecided press (#318) makes it mark the record unknown."""
+    owner = sheet_list(Book(list(NAMES)))
+    if not announced:
+        owner.tree.cursor_listener = None
+    owner.book.replace("Hotel")
+    owner.faults.fail("getNodeRect")
+    press(owner, row("Hotel"), modifiers=modifiers)
+    assert owner.failures == ["a mouse press"] and owner.tree.shown() == ["Hotel"]
+    owner.run_queue()
+    if released:
+        release(owner, row("Hotel"))
+        owner.run_queue()
+        owner._take_tree_selection(defer=True, tick=True)
+        owner.run_queue()
+    assert move_to_top(owner) is None
+    owner.retry()
+    assert move_to_top(owner) is None and owner.book.moved == []
 
 
 # Controls and costs.

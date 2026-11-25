@@ -45,7 +45,7 @@ def _libraries():
     return x11, xtst
 
 
-LEFT, RIGHT, WHEEL_UP, WHEEL_DOWN = 1, 3, 4, 5
+LEFT, MIDDLE, RIGHT, WHEEL_UP, WHEEL_DOWN = 1, 2, 3, 4, 5
 
 
 class XInput:
