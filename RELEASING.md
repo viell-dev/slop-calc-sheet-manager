@@ -306,7 +306,7 @@ same inputs.
 2. Confirm that the tag is at the failed run's exact commit, that the plan's `target_commitish`,
    `tag_name`, `stage` and `target` match it and the run's inputs, and that no release or draft has
    the version. The second command must print nothing; it lists drafts only for an account with
-   push access:
+   push access. If there is a draft, the previous paragraph applies instead:
 
    ```sh
    gh api REPO/git/ref/tags/VERSION --jq .object.sha
@@ -322,15 +322,18 @@ same inputs.
    jq .release plan.json | gh api REPO/releases --method POST --input - > draft.json
    ```
 
-5. Upload both files with `gh release upload VERSION FILE FILE.sha256`. The draft must list exactly
-   those two, each with GitHub's digest equal to the built file's:
+   `ID` in the next steps is its `id`.
+5. Upload both files. The draft must then list exactly those two, each with GitHub's digest equal to
+   the built file's:
 
    ```sh
+   gh release upload VERSION FILE FILE.sha256 --repo viell-dev/slop-calc-sheet-manager
    gh api REPO/releases/ID/assets --jq '.[] | [.name, .digest] | @tsv'
    ```
 
-6. Publish with the workflow's final call; `make_latest` is `false` for a prerelease and `true` for
-   a stable release. The release event then runs **Pages**:
+6. Publish with the workflow's final call; `make_latest` is `false` for a prerelease, and for a
+   stable release while a newer one is published, and otherwise `true`. The release event then runs
+   **Pages**:
 
    ```sh
    gh api REPO/releases/ID --method PATCH -F draft=false -f make_latest=false

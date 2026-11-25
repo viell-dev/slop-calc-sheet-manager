@@ -5,11 +5,20 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+## 0.0.12 - 2026-11-26
+
+Second release candidate for the stable release 0.1.0. It replaces 0.0.11, which could clear the
+selection when a range was corrected and after a drag, and after a drag could pick a sheet that was
+not clicked. Requires LibreOffice 26.2.1 or later with Python support. A
+[short human check of this candidate](https://github.com/viell-dev/slop-calc-sheet-manager/issues/337)
+precedes 0.1.0.
+
 - A Shift+click that shortens a range, or moves it to the other side of its start, picks the
   corrected range again. 0.0.11 cleared the selection
   ([#349](https://github.com/viell-dev/slop-calc-sheet-manager/issues/349)).
 - After one picked sheet is renamed, the keyboard cursor keeps its row, and a Shift+click or
-  Ctrl+Shift+click starts there rather than being refused
+  Ctrl+Shift+click starts there rather than being refused. One made when no range has started, as
+  after the list cleared its selection, starts at the keyboard cursor too
   ([#321](https://github.com/viell-dev/slop-calc-sheet-manager/issues/321),
   [#327](https://github.com/viell-dev/slop-calc-sheet-manager/issues/327)).
 - After a drag, a Ctrl+click, Shift+click or Ctrl+Shift+click acts again, a click on an arrow or a tab

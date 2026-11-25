@@ -103,6 +103,11 @@ FIRST_PUBLISHED = {
         "LibreOffice shows a click or key in the list before the list itself handles it",
         "or clears it with the notice when it cannot tell which sheets it means",
     ),
+    "0.0.12": (
+        "it stays on that row, under the new name",
+        "After a picked sheet is renamed",
+        "a move shortcut does nothing",
+    ),
 }
 
 
