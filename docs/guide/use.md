@@ -260,6 +260,11 @@ the renamed sheet until then
 the new name, the cursor moves to the first selected sheet, or, with none selected, to the first
 row in view ([#327](https://github.com/viell-dev/slop-calc-sheet-manager/issues/327)).
 
+**Repeated moves.** <Unreleased /> Hold or repeat a move shortcut to move the selection several
+places; each place is its own undo step. In a large workbook, LibreOffice can take longer for a move
+than the keys take to repeat: the list then drops the keys it cannot keep up with
+([#340](https://github.com/viell-dev/slop-calc-sheet-manager/issues/340)).
+
 **Move-button shortcuts.** <Unreleased since="0.0.4" /> Move shortcuts also apply while a move
 button has focus.
 

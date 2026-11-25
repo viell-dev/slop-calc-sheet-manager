@@ -41,7 +41,7 @@ def _handles(observed: Snapshot) -> dict[str, Any]:
 
 
 def _stale() -> str:
-    return tr("The sheet list has changed. Refresh it and try again.")
+    return tr("The sheet list has changed. Check it and try again.")
 
 
 def rename_refusal(context: Any, document: Any, observed: Snapshot, targets: list[str]) -> str:
@@ -89,7 +89,7 @@ def preflight(context: Any, document: Any, observed: Snapshot, plan: Plan) -> st
         return _stale()
     try:
         if plan_renames(names, plan.renames) != plan:
-            return tr("The rename plan is invalid. Refresh it and try again.")
+            return tr("The rename plan is invalid. Check the list and try again.")
     except ValueError as error:
         return str(error)
     if not plan.steps:

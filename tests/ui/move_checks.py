@@ -13,7 +13,7 @@ from typing import cast
 import sheet_list_view as view
 from button_pixels import capture as capture_disabled_buttons
 from drag_checks import drag
-from workbook import MOVES, NAMES, wait_until
+from workbook import MOVES, NAMES, native_dialog, wait_until
 
 from sheet_manager.reorder import Action, Sheet, target_order
 from sheet_manager.uno_calc import select_tabs
@@ -78,6 +78,51 @@ def check_move_controls(book, shortcuts, buttons=False):
         book.document.getUndoManager().undo()
         wait_until(lambda b=before: book.order() == b, "one undo to restore the order")
         wait_until(lambda b=before: view.names(book.tree) == b, "the restored list order")
+    return evidence
+
+
+def check_repeated_move_shortcut(book):
+    """Repeated and held shortcuts move one step at a time and never open a message (#340).
+
+    Keys that arrive while a move runs are delivered together after it. The list drops those that
+    come while another request waits, so the number of steps depends on the machine's speed; each
+    one that ran must be one place and one undo step.
+    """
+    evidence = {}
+    before, history = book.order(), book.undo_titles()
+    gestures = {
+        "taps": lambda: [
+            book.lab.input.tap("Down", modifiers=("Alt_L",), pause=0) for _ in range(6)
+        ],
+        "held": lambda: book.lab.input.repeat("Down", modifiers=("Alt_L",), seconds=1.3),
+    }
+    for gesture, run in gestures.items():
+        book.click(2)
+        wait_until(lambda: book.selection() == [NAMES[2]], "the sheet to move picked")
+        run()
+        steps, last = -1, 0.0
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline:  # Until no further move has come for a while.
+            count = len(book.undo_titles()) - len(history)
+            if count != steps:
+                steps, last = count, time.monotonic()
+            elif time.monotonic() - last > 1.5:
+                break
+            time.sleep(0.2)
+        dialog = native_dialog(book)
+        evidence[gesture] = {"steps": steps, "dialog": dialog, "order": book.order()[:30]}
+        if dialog:
+            book.lab.screenshot(f"repeated-move-{gesture}")
+        assert not dialog and steps >= 1, evidence
+        expected = [name for name in before if name != NAMES[2]]
+        expected.insert(2 + steps, NAMES[2])
+        assert book.order() == expected, evidence
+        assert book.undo_titles() == ["Move Sheets"] * steps + history, evidence
+        wait_until(lambda: book.selection() == [NAMES[2]], "the moved sheet to stay picked")
+        for _ in range(steps):
+            book.document.getUndoManager().undo()
+        wait_until(lambda: view.names(book.tree) == before, "the undone moves in the list")
+        wait_until(lambda: book.order() == before, "the original order")
     return evidence
 
 

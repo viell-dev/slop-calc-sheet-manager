@@ -63,6 +63,7 @@ from move_checks import (  # noqa: E402
     check_move_edges_and_refusal,
     check_move_focus_and_queued_navigation,
     check_moves_after_inactive_frame,
+    check_repeated_move_shortcut,
     check_undo_own_move,
 )
 from native_help import check_header as check_header_help  # noqa: E402
@@ -118,6 +119,7 @@ def run_checks(lab, output, only=()):
         ("move_menu", lambda: check_move_controls(book, False)),
         ("move_buttons", lambda: check_move_controls(book, False, buttons=True)),
         ("move_shortcuts", lambda: check_move_controls(book, True)),
+        ("repeated_move_shortcut", lambda: check_repeated_move_shortcut(book)),
         ("moves_after_inactive_frame", lambda: check_moves_after_inactive_frame(book)),
         ("move_edges_and_refusal", lambda: check_move_edges_and_refusal(book)),
         ("move_focus_and_queued_navigation", lambda: check_move_focus_and_queued_navigation(book)),

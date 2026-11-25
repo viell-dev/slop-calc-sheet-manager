@@ -1070,6 +1070,10 @@ class SheetList:
     - `_activating` (the list's own `setActiveSheet`) makes Calc's report of that switch the
       list's own, so it is not followed. `_busy` also defers timed refreshes and refuses moves
       and drags.
+    - `_move_queued` drops a move request from a button or a shortcut while an earlier one waits
+      to run. Keys typed during a move are delivered together after it, and the second captured
+      the proof that the first was about to change, so a held shortcut opened a refusal message
+      for each such key (#340). The posted work clears it before it moves or refuses.
 
     Disposal. `dispose` closes the posting queue, the refresh schedule and the tab observer
     first, then `_cleanup` releases the listeners and controls in reverse creation order.
@@ -1190,6 +1194,7 @@ class SheetList:
         self._generation = 0
         self._user_picks = False  # Whether the picks came from the user rather than from Calc.
         self._busy = False
+        self._move_queued = False  # A move request posted and not yet run (`queue_move`).
         self._claim_pending = False  # A posted activation of this window (`claim_window`).
         self._menu = SheetMenu(context, frame, self.document, self.controller)
         self._keys = ListKeyHandler(self, Shortcuts(context, self.document))
@@ -2965,7 +2970,7 @@ class SheetList:
                 reason = permission.reason
             elif self._monitor.generation != self._proven:
                 # Enablement must not consume pending undo/modify identity evidence (#66).
-                reason = tr("The sheet list has changed. Refresh it and try again.")
+                reason = tr("The sheet list has changed. Check it and try again.")
             else:
                 for action in ACTIONS:
                     try:
@@ -2980,8 +2985,11 @@ class SheetList:
         self._moves.update(states)
 
     def queue_move(self, action: str) -> None:
-        """Capture the shown selection now; queued work never adopts later picks or proof."""
-        if self._disposed or self._busy or action not in ACTIONS:
+        """Capture the shown selection now; queued work never adopts later picks or proof.
+
+        A request made while another waits is dropped, as one made during a move is (#340).
+        """
+        if self._disposed or self._busy or self._move_queued or action not in ACTIONS:
             return
         if self._press is None:
             # Native navigation may already have changed the tree while its posted selection
@@ -2994,7 +3002,17 @@ class SheetList:
         # saw that one: refuse, and let the refresh this asks for show the picks (#257).
         observed = self._observed if self._shown is not None else None
         picks, proof = tuple(self._selection.picked), self._proven
-        self.post(lambda: self._move_selection(action, observed, picks, proof), "moving sheets")
+
+        def move() -> None:
+            self._move_queued = False
+            self._move_selection(action, observed, picks, proof)
+
+        self._move_queued = True  # Before posting: the work may run before `post` returns.
+        try:
+            self.post(move, "moving sheets")
+        except BaseException:
+            self._move_queued = False
+            raise
 
     def _move_selection(self, action, observed, picks, proof) -> None:
         if self._disposed or self._busy:
@@ -3005,7 +3023,7 @@ class SheetList:
             or proof != self._monitor.check()
             or any(not _current(p) for p in picks)
         ):
-            reason = tr("The sheet list has changed. Refresh it and try again.")
+            reason = tr("The sheet list has changed. Check it and try again.")
         elif not picks:
             reason = tr("Select sheets to move.")
         if reason or observed is None:

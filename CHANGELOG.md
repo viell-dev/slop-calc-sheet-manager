@@ -5,6 +5,10 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Holding or quickly repeating a move shortcut, or a move button, no longer opens an error message
+  for each key that arrives while an earlier move is waiting. Such a request is dropped, so a held
+  key moves the sheets steadily, one undo step for each place. Refusals no longer advise refreshing
+  the list, which refreshes itself ([#340](https://github.com/viell-dev/slop-calc-sheet-manager/issues/340)).
 - A selection made through assistive technology just after a click or key in the sheet list,
   before the list has shown that input, is no longer replaced by what the input selected. Move to
   Top then moved the click's or key's sheets, though the selection showed last was another. The

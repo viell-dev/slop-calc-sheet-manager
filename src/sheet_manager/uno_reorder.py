@@ -199,12 +199,12 @@ def _preflight(
     try:
         if plan.before != observed.sheets or not is_current(document, observed):
             return Availability(
-                False, tr("The sheet list has changed. Refresh it and try again.")
+                False, tr("The sheet list has changed. Check it and try again.")
             ), plan
         # Validate against the canonical (cached) plan, including indices and scenario blocks.
         if plan_order(observed.sheets, plan.target) != plan:
             return Availability(
-                False, tr("The move plan is invalid. Refresh it and try again.")
+                False, tr("The move plan is invalid. Check the list and try again.")
             ), plan
         permission = plan_availability(move_availability(context, document), plan)
         if not permission.allowed:
@@ -469,7 +469,7 @@ def apply_order(context: Any, document: Any, observed: Snapshot, plan: Plan) -> 
     monitor = observed.monitor
     with monitor.own_move() as clear:
         if not clear:
-            return Result("refused", tr("The sheet list has changed. Refresh it and try again."))
+            return Result("refused", tr("The sheet list has changed. Check it and try again."))
         # One step of undo history has no room for the markers' group; such a move stays
         # unmarked, and its Undo and Redo invalidate as any other.
         ends = _Ends(context, monitor, tr("Move Sheets")) if permission.undo_steps >= 2 else None

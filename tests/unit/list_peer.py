@@ -336,7 +336,7 @@ class Book:
         )
         if not current:
             return SimpleNamespace(
-                status="refused", message="The sheet list has changed. Refresh it and try again."
+                status="refused", message="The sheet list has changed. Check it and try again."
             )
         for move in plan.moves:
             self.move(move.name, move.index)
@@ -800,6 +800,7 @@ def sheet_list(book: Book, source: str = SOURCE) -> Any:
         controller=book,
         _disposed=False,
         _busy=False,
+        _move_queued=False,
         _monitor=Monitor(book),
         _proven=book.generation,
         _generation=0,
