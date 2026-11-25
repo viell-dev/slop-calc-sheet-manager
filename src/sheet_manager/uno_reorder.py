@@ -86,11 +86,12 @@ class Availability:
     reason: str = ""
     detail: str = ""
     undo_steps: int = 0
+    in_place: bool = False  # Not allowed only because there is nothing to move.
 
 
 @dataclass(frozen=True)
 class Result:
-    status: Literal["done", "refused", "failed-restored", "failed-not-restored"]
+    status: Literal["done", "unchanged", "refused", "failed-restored", "failed-not-restored"]
     message: str
     moves: int = 0
     detail: str = ""  # Diagnostic text; the UI presents the translated message.
@@ -270,7 +271,7 @@ def plan_availability(permission: Availability, plan: Plan) -> Availability:
             False, tr("Increase undo history to at least two steps before moving these sheets.")
         )
     if not plan.moves:
-        return Availability(False, tr("The sheets are already in that position."))
+        return Availability(False, tr("The sheets are already in that position."), in_place=True)
     return permission
 
 
@@ -463,7 +464,8 @@ def apply_order(context: Any, document: Any, observed: Snapshot, plan: Plan) -> 
     # The plan to apply can differ from the one asked for: never longer, to the same target.
     permission, plan = _preflight(context, document, observed, plan)
     if not permission.allowed:
-        return Result("refused", permission.reason, detail=permission.detail)
+        status = "unchanged" if permission.in_place else "refused"
+        return Result(status, permission.reason, detail=permission.detail)
     # All callers get the own-move exception, including callers without a sheet-list view.
     # It covers unlock notifications too, and excludes pre-existing locks/quiet states.
     monitor = observed.monitor

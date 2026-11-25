@@ -180,6 +180,19 @@ def test_a_native_failure_in_move_to_top_ends_only_that_press() -> None:
     assert owner.failures == ["a move button"]
 
 
+def test_move_to_top_of_a_sheet_at_the_top_says_nothing_but_refuses_a_stale_order() -> None:
+    """Alfa, at the top, picked: Move to Top leaves it there, with no message and no undo step
+    (#353). Another window then moves it down, and before the list refreshes Move to Top finds an
+    order that the list does not show: it refuses, with its message, and the list is refreshed."""
+    owner = sheet_list(Book(list(NAMES)))
+    click(owner, 0)
+    assert move_to_top(owner) == ["Alfa"] and owner.errors == []
+    owner.book.move("Alfa", 2)
+    assert move_to_top(owner) is None and len(owner.errors) == 1
+    assert owner.names() == owner.book.names() and owner.book.names()[2] == "Alfa"
+    assert move_to_top(owner) == ["Alfa"] and owner.book.names()[0] == "Alfa"
+
+
 def test_keys_and_move_to_top_raise_what_no_native_call_raises() -> None:
     """As for the mouse listeners, an exception that is not a simulated native failure is raised
     out of the key handler and the move button's listener, and nothing is recorded."""

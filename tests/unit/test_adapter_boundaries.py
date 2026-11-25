@@ -322,6 +322,55 @@ def test_failed_move_releases_busy_and_refreshes() -> None:
     assert not owner._busy and refreshed == [True]
 
 
+@pytest.mark.parametrize(
+    "status, message",
+    [("unchanged", "in place"), ("done", "Sheets moved."), ("refused", "The list has changed.")],
+)
+def test_a_move_with_nowhere_to_go_updates_the_list_and_says_nothing(
+    status: str, message: str
+) -> None:
+    """As when a held shortcut reaches the end of the list: the buttons and the list are brought up
+    to date as by any move, and no message takes the keys that still come (#353). A refusal keeps
+    its message."""
+
+    def current(ref: object) -> bool:
+        return True
+
+    def plan(sheets: object, names: list[str], action: str) -> object:
+        return SimpleNamespace(moves=())
+
+    def apply(*arguments: Any) -> object:
+        return SimpleNamespace(status=status, message=message)
+
+    owner = SimpleNamespace(
+        _disposed=False,
+        _busy=False,
+        _monitor=SimpleNamespace(check=lambda: 7),
+        _update_moves=Mock(),
+        context=object(),
+        document=object(),
+        peer=object(),
+        refresh=Mock(),
+        tree=Mock(),
+    )
+    show = Mock()
+    move = method(
+        "src/sheet_manager/uno_list.py",
+        "SheetList",
+        "_move_selection",
+        {
+            "_current": current,
+            "plan_move": plan,
+            "apply_order": apply,
+            "show_error": show,
+            "tr": str,
+        },
+    )
+    move(owner, "up", SimpleNamespace(sheets=()), (SimpleNamespace(name="Alfa"),), 7)
+    assert not owner._busy and owner.refresh.called and owner._update_moves.called
+    assert owner.tree.setFocus.called and show.called == (status == "refused")
+
+
 def test_move_enablement_does_not_consume_pending_identity_evidence() -> None:
     def translate(text: str) -> str:
         return text

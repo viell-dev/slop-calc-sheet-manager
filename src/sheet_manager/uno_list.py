@@ -3063,6 +3063,8 @@ class SheetList:
             self._busy = False
             self.refresh()
         self.tree.setFocus()
+        if result.status == "unchanged":
+            return  # As when a held shortcut reaches the end of the list (#353).
         if result.status != "done" or result.message != tr("Sheets moved."):
             show_error(self.peer, tr("Sheet Manager"), result.message)
 
