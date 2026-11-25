@@ -129,6 +129,10 @@ class Workbook:
     def point(self, index, fraction=0.5):
         return view.row_point(self.tree, index, fraction)
 
+    def show_row(self, index):
+        """Scroll the row into view, also if a refresh replaces the rows meanwhile."""
+        view.row_rect(self.tree, index)
+
     def first_visible(self):
         rect = view.row_rect(self.tree, 0, scroll=False)
         return max(0, -(rect.Y - 3) // self.tree.getProperty("RowHeight"))

@@ -77,7 +77,7 @@ def check_drop_in_place_and_escape(book):
 
 def check_autoscroll(book):
     book.click(0)
-    book.tree.makeNodeVisible(book.nodes()[0])
+    book.show_row(0)
     time.sleep(0.3)
     first = book.first_visible()
     height = book.tree.getOutputSize().Height
@@ -110,7 +110,7 @@ def check_autoscroll(book):
 
 
 def check_wheel(book):
-    book.tree.makeNodeVisible(book.nodes()[0])
+    book.show_row(0)
     time.sleep(0.3)
     first = book.first_visible()
     x, y = book.point(3)

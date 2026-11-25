@@ -182,7 +182,7 @@ def check_row_paint_scroll(book, horizontal=False, prefix="row-paint-"):
         evidence[name] = json.loads(checked.stdout)
 
     try:
-        tree.makeNodeVisible(book.nodes()[0])
+        book.show_row(0)
         book.click(2)
         picked = book.selection()
         capture("initial")
@@ -210,7 +210,7 @@ def check_row_paint_scroll(book, horizontal=False, prefix="row-paint-"):
         capture("wheel-down")
         book.pointer.wheel(90, 200, False, 1)
         capture("wheel-up")
-        tree.makeNodeVisible(book.nodes()[0])
+        book.show_row(0)
         time.sleep(0.3)
         x = tree.getOutputSize().Width - 7
         book.pointer.press(x, 20)
@@ -224,12 +224,12 @@ def check_row_paint_scroll(book, horizontal=False, prefix="row-paint-"):
         book.pointer.release()
         time.sleep(0.4)
         capture("thumb-up")
-        tree.makeNodeVisible(book.nodes()[-1])
+        book.show_row(-1)
         time.sleep(0.4)
         capture("last-row")
         # Like a font/DPI change, VCL may choose a height larger than the model requested.
         tree.setProperty("RowHeight", original_height + 4)
-        tree.makeNodeVisible(book.nodes()[0])
+        book.show_row(0)
         tree.invalidate(0)
         time.sleep(0.4)
         capture("native-height-change")
