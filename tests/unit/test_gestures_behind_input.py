@@ -48,12 +48,13 @@ from tests.unit.list_peer import (
     click,
     key,
     listen,
+    move_to_top,
     native_press,
     picks,
+    press,
     queued_click,
     release,
     sheet_list,
-    toggle_natively,
 )
 
 NAMES = ["Alfa", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel"]
@@ -147,7 +148,7 @@ def test_a_drag_from_a_row_the_tree_showed_selected_across_a_keys_write_drags_no
     queued_click(owner, row("Delta"))
     owner.run_queue()
     owner.tree_key(DOWN, modifiers)
-    press_keeping(owner, "Bravo")
+    native_press(owner, row("Bravo"))
     run_until(owner, "showing the selection")
     assert owner.tree.shown() == shown
     owner.start_drag(object())
@@ -190,20 +191,6 @@ def test_a_drag_across_a_type_aheads_jump_drags_the_pressed_sheet_or_nothing(
     assert dragged == ([] if jumped else [["Delta"]])
 
 
-def press_keeping(owner: Any, name: str) -> None:
-    """A plain press as VCL's selection engine handles it: on a row the tree shows selected it
-    changes nothing and waits for a drag (`SelectionEngine::SelMouseButtonDown`), and on another
-    row it selects that row alone. Its listener is queued."""
-    node = owner.tree.node(name)
-    if node not in owner.tree.selected:
-        owner.tree.selected = [node]
-    owner.tree.cursor = node
-    event = SimpleNamespace(
-        Buttons=LEFT, X=LABEL_X, Y=owner.tree.line(row(name)), Modifiers=0, ClickCount=1
-    )
-    owner.post(lambda: listen(owner, owner.mouse_pressed, event), "a mouse press")
-
-
 def test_a_press_before_keys_write_does_not_keep_their_picks_for_a_drag() -> None:
     """Echo picked; Home and Shift+Down pick Alfa and Bravo, and the user presses Bravo, which the
     tree, still showing Echo, selects alone, before the keys' write. The press's listener ran
@@ -213,7 +200,7 @@ def test_a_press_before_keys_write_does_not_keep_their_picks_for_a_drag() -> Non
     owner, dragged = clicked("Echo")
     owner.tree_key(HOME, 0)
     owner.tree_key(DOWN, SHIFT)
-    press_keeping(owner, "Bravo")
+    native_press(owner, row("Bravo"))
     owner.run_queue()
     assert picks(owner) == ["Bravo"] == owner.tree.shown()
     owner.start_drag(object())
@@ -227,7 +214,7 @@ def test_a_press_on_a_picked_row_after_the_keys_write_keeps_the_picks_for_a_drag
     key(owner, HOME)
     key(owner, DOWN, SHIFT)
     assert picks(owner) == ["Alfa", "Bravo"] == owner.tree.shown()
-    press_keeping(owner, "Bravo")
+    native_press(owner, row("Bravo"))
     owner.run_queue()
     owner.start_drag(object())
     assert dragged == [["Alfa", "Bravo"]]
@@ -270,7 +257,6 @@ def test_a_drag_across_the_write_of_a_key_that_holds_nothing_drags_the_pressed_s
 @pytest.mark.parametrize(
     "picked,earlier,modifiers,pressed",
     [
-        pytest.param("Hotel", "Hotel", 0, "Golf", id="a-click-on-the-pick"),
         pytest.param("Delta", "Charlie", 0, "Bravo", id="a-click-on-another-row"),
         pytest.param("Delta", "Charlie", MOD1, "Bravo", id="a-ctrl-click"),
     ],
@@ -290,6 +276,22 @@ def test_a_drag_across_an_earlier_clicks_write_drags_the_pressed_sheet(
     run_until(owner, "showing the selection")
     owner.start_drag(object())
     assert dragged == [[pressed]], "dragged the earlier click's picks"
+
+
+def test_a_drag_across_the_write_of_a_click_on_the_pick_drags_nothing() -> None:
+    """As above, but the click was on Hotel, the pick: the tree's own release selected Hotel anew,
+    so the write finds changes that the click's listeners saw and did not claim. It is left
+    undone, and the record, which the tree does not show, is unknown: the drag's check drops the
+    picks, with the notice, and the user drags again."""
+    owner, dragged = clicked("Hotel")
+    queued_click(owner, row("Hotel"), 0)
+    run_until(owner, "a mouse release")
+    native_press(owner, row("Golf"))
+    run_until(owner, "showing the selection")
+    owner.start_drag(object())
+    assert dragged == []
+    owner.run_queue()
+    assert len(owner.notices) == 1 and picks(owner) == ["Golf"] == owner.tree.shown()
 
 
 @pytest.mark.parametrize(
@@ -317,9 +319,7 @@ def test_a_drag_after_a_failed_press_listener_drags_nothing(written: bool) -> No
     read of where the rows show. The listener's guard queues the write of the picks. A drag before
     that write carried Bravo, the record, and one after it Bravo too, which the write had put back
     over the tree's Delta. The listener had decided nothing, so no drag starts; the release does
-    nothing either. The native release selects Delta again after the write, a change newer than any
-    input's, so the next write leaves it to the intake (#307), which takes Delta: the sheet the
-    user clicked, and what the tree shows."""
+    nothing either, in the tree too, and Bravo stays picked, as the tree shows it."""
     owner, dragged = clicked("Bravo")
     native_press(owner, row("Delta"))
     owner.faults.fail("getNodeRect")
@@ -333,7 +333,7 @@ def test_a_drag_after_a_failed_press_listener_drags_nothing(written: bool) -> No
     owner.run_queue()
     release(owner, row("Delta"))
     owner.run_queue()
-    assert picks(owner) == ["Delta"] == owner.tree.shown()
+    assert picks(owner) == ["Bravo"] == owner.tree.shown()
 
 
 def test_a_drag_after_a_press_listener_that_failed_after_deciding_drags_nothing() -> None:
@@ -356,7 +356,7 @@ def test_a_drag_after_a_press_listener_that_failed_after_deciding_drags_nothing(
         post(work, where)
 
     owner.post = failing
-    toggle_natively(owner, row("Delta"))
+    owner.tree.press(owner.tree.line(row("Delta")), MOD1)
     event = SimpleNamespace(
         Buttons=LEFT, X=LABEL_X, Y=owner.tree.line(row("Delta")), Modifiers=MOD1, ClickCount=1
     )
@@ -404,6 +404,35 @@ def test_a_click_after_a_failed_press_listener_acts() -> None:
     native_press(owner, row("Echo"))
     owner.start_drag(object())
     assert dragged == [["Echo"]]
+
+
+@pytest.mark.parametrize("announced", [True, False], ids=["announced", "not announced"])
+@pytest.mark.parametrize("modifiers", [0, MOD1], ids=["plain", "ctrl"])
+@pytest.mark.parametrize("released", [False, True], ids=["held", "released"])
+def test_a_failed_press_listener_on_a_replaced_sheet_picks_no_replacement(
+    announced: bool, modifiers: int, released: bool
+) -> None:
+    """Another window replaces Hotel under its name, and a press on its row selects it in the tree,
+    which still shows the old row, before its listener fails (#319). The guard's write finds the
+    structure changed and refreshes, and the intake took the replacement, which Move to Top then
+    moved. The press's announced cursor move makes that refresh clear the tree; without one, the
+    undecided press (#318) makes it mark the record unknown."""
+    owner = sheet_list(Book(list(NAMES)))
+    if not announced:
+        owner.tree.cursor_listener = None
+    owner.book.replace("Hotel")
+    owner.faults.fail("getNodeRect")
+    press(owner, row("Hotel"), modifiers=modifiers)
+    assert owner.failures == ["a mouse press"] and owner.tree.shown() == ["Hotel"]
+    owner.run_queue()
+    if released:
+        release(owner, row("Hotel"))
+        owner.run_queue()
+        owner._take_tree_selection(defer=True, tick=True)
+        owner.run_queue()
+    assert move_to_top(owner) is None
+    owner.retry()
+    assert move_to_top(owner) is None and owner.book.moved == []
 
 
 # Controls and costs.
@@ -487,7 +516,7 @@ def test_a_plain_press_on_a_picked_row_during_a_range_hold_keeps_the_picks() -> 
     owner.run_queue()
     owner.tree_key(DOWN, MOD1)
     assert owner._ranges_held is not None and owner._toggles_held is None
-    press_keeping(owner, "Bravo")
+    native_press(owner, row("Bravo"))
     owner.run_queue()
     assert picks(owner) == ["Bravo", "Delta"]
     owner.start_drag(object())

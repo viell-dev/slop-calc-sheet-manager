@@ -55,6 +55,7 @@ def native_picks() -> tuple[Any, Any, list[Callable[[], None]]]:
         _hold_toggles=Mock(),
         _presses_held=None,
         _ranges_held=None,  # No Ctrl key has moved the anchor (#313).
+        _range_start=None,
         _toggles_shown=Mock(),  # A take shows exactly the picks it gives.
         _user_picks=True,
         selected_names=lambda: live.picks,
@@ -84,7 +85,10 @@ def native_picks() -> tuple[Any, Any, list[Callable[[], None]]]:
     unread = method(SOURCE, "SheetList", "_unread", {"_Intake": INTAKE})
     owner._unread = lambda: unread(owner)
     engine = method(
-        SOURCE, "SheetList", "_follow_engine", {"RIGHT": 2, "MOD1": 2, "MOD2": 4, "SHIFT": 1}
+        SOURCE,
+        "SheetList",
+        "_follow_engine",
+        {"LEFT": 1, "RIGHT": 2, "MOD1": 2, "MOD2": 4, "SHIFT": 1},
     )
 
     def follow_engine(event: Any, hit: bool, add_mode: bool) -> bool:

@@ -136,8 +136,8 @@ def test_space_after_a_lost_proof_and_before_its_release_picks_nothing() -> None
 @pytest.mark.parametrize(
     "names, renamed, toggled, after",
     [
-        pytest.param(("Bravo",), "Bravo", "Bravo", None, id="the only pick"),
-        pytest.param(("Bravo", "Delta"), "Bravo", "Bravo", "Delta", id="a pick off the cursor"),
+        pytest.param(("Bravo",), "Bravo", "Bravo", "Zulu", id="the only pick"),
+        pytest.param(("Bravo", "Delta"), "Bravo", "Bravo", "Zulu", id="a pick off the cursor"),
         pytest.param(("Bravo", "Delta"), "Delta", "Bravo", "Bravo", id="the other pick"),
         pytest.param(
             ("Bravo", "Delta"), "Bravo", "Delta", "Delta", id="the other pick, on the cursor"
@@ -156,9 +156,9 @@ def test_a_rename_elsewhere_before_a_toggles_listener_picks_nothing(
     other pick, the listener toggled it off, as it should; held, it drops that pick with the
     notice, and the result is the same. The rebuild changed the renamed row's name, which holds
     presses on that row (#293): a press there cannot be told from one on another sheet moved
-    into the row, so it moves no cursor, which stays where the refresh's write put it. A press on
-    the other pick's row, which kept its name, moves the cursor there, as a held toggle does.
-    `after` is where the cursor ends."""
+    into the row, so its listener moves no cursor. The cursor is on the pressed row in either
+    case: the tree announces the press's move before the listener runs, and the refresh keeps the
+    cursor on a renamed row (#327). `after` is where the cursor ends."""
     owner = picked(*names)
     owner.book.rename(renamed, "Zulu")
     post_refresh(owner)
@@ -205,10 +205,10 @@ def unknown_after_a_partial_write() -> tuple[Any, str]:
 
 
 def unknown_after_a_write_with_no_effect() -> tuple[Any, str]:
-    """A press on Alfa, Shift+Down while it is held, and the release, whose write of Alfa alone
-    fails at `select` with no effect. The tree still shows Alfa, the pick, but the record is
-    unknown."""
-    owner = sheet_list(Book(list(NAMES)))
+    """Alfa picked and pressed again, Shift+Down while it is held, and the release, which selects
+    Alfa alone in the tree and whose write of Alfa fails at `select` with no effect. The tree still
+    shows Alfa, the pick, but the record is unknown."""
+    owner = picked("Alfa")
     press(owner, row("Alfa"))
     owner.run_queue()
     key(owner, DOWN, SHIFT)
@@ -548,14 +548,16 @@ def test_an_intake_that_takes_a_native_selection_ends_the_hold() -> None:
 def test_a_press_that_does_not_toggle_still_picks_while_toggles_are_held(modifiers: int) -> None:
     """A plain or Shift press sets the picks, and Ctrl+Shift adds a range to them, rather than
     toggling a row, so a drop before the listener cannot invert it: after a lost proof, a press on
-    Delta still picks Delta."""
+    Delta still picks Delta, and a range press the rows from Bravo, where the tree's cursor was
+    and its range started (#321)."""
     owner = picked("Bravo")
     owner.book.replace("Echo")
     post_refresh(owner)
     queued_click(owner, row("Delta"), modifiers)
     owner.run_queue()
-    assert picks(owner) == ["Delta"] and owner.tree.shown() == ["Delta"]
-    assert move_to_top(owner) == ["Delta"]
+    wanted = ["Bravo", "Charlie", "Delta"] if modifiers else ["Delta"]
+    assert picks(owner) == wanted == owner.tree.shown()
+    assert move_to_top(owner) == wanted
 
 
 def test_a_toggle_that_added_a_row_before_a_drop_changes_no_pick() -> None:

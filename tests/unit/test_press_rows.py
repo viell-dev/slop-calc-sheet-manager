@@ -601,7 +601,7 @@ def test_a_rebuild_that_cannot_keep_the_scroll_position_holds_every_row(call: st
     owner.run_queue()
     assert owner.faults.failed == [call]
     assert in_view(owner)[1] == "Bravo"
-    assert picks(owner) == [] and cursor(owner) is None
+    assert picks(owner) == [] and move_to_top(owner) is None
 
 
 def test_a_restored_position_that_cannot_be_read_holds_every_row() -> None:

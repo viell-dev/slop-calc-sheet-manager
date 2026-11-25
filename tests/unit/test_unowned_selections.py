@@ -476,18 +476,18 @@ def test_a_plain_press_below_the_rows_leaves_add_mode() -> None:
     assert picks(owner) == ["Alfa", "Bravo", "Charlie", "Echo"] == owner.tree.shown()
 
 
-def test_a_middle_click_ends_add_mode() -> None:
-    """A middle press reaches the engine as a left one does, and a plain one ends add mode
-    (`SvImpLBox::MouseButtonDown`, read in 26.8.2.2), though the list ignores the button; its
-    write shows the picks again. A Ctrl+click on the unselected Echo then selects it natively,
-    and its listener, expecting that change, adds Echo, as on `main`."""
+def test_a_middle_click_leaves_add_mode() -> None:
+    """The tree ignores a middle press (`SvImpLBox::MouseButtonDown`; measured with real input on
+    gtk3 and gen), so add mode stays. The list took it to end add mode and refused the Ctrl+click
+    on the unselected Echo, which changes nothing natively; its listener adds Echo."""
     owner = ranged_to_charlie()
     queued_click(owner, row("Delta"), 0, button=MIDDLE)
     owner.run_queue()
-    assert not owner._add_mode and owner.tree.shown() == ["Alfa", "Bravo", "Charlie"]
+    assert owner._add_mode and owner.tree.shown() == ["Alfa", "Bravo", "Charlie"]
     queued_click(owner, row("Echo"))
     owner.run_queue()
     assert picks(owner) == ["Alfa", "Bravo", "Charlie", "Echo"] == owner.tree.shown()
+    assert owner.notices == []
 
 
 def test_a_shift_click_ends_add_mode() -> None:

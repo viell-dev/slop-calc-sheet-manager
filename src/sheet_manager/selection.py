@@ -19,7 +19,9 @@ comes from refs. The list proves its refs at every refresh against
 deleted, and checks as a second line that its retained handles still map one to one onto the
 sheets with at most one rename (`structure_kept`). If either fails, every ref is dropped, since
 none can be proved; otherwise each ref stays while its handle still reports its name, so a
-renamed pick drops out and a moved one stays (#28).
+renamed pick drops out and a moved one stays (#28). The cursor and the anchor are never acted on,
+so they follow the one rename that others may have made: `Selection.carry` gives them its new
+name, with the same token, which must report it (#327).
 
 The list's own batch rename (`uno_rename`) is the one change that renames several sheets and
 keeps their refs. After it has verified the result, at the generation the refs were proved at,
@@ -35,15 +37,15 @@ acting on the document through held handles, the list brings the generation up t
 the change drops every ref and voids any held press. Selection keys and control enablement,
 which change no document, only compare with the monitor's `generation`, which does not consume
 pending notification evidence (#66). The keyboard cursor and `Selection.anchor`, which pointer
-and keyboard ranges share, are refs too: they survive ordinary rebuilds and are dropped by the
-same rules at every refresh.
+and keyboard ranges share, are refs too: they survive ordinary rebuilds and are dropped at a
+refresh that cannot prove the sheets.
 
 Between refreshes the cursor and the anchor are positions as well. The rows change only at a
-refresh, which drops every ref it cannot prove, so a cursor or anchor that has stopped proving its
-sheet since, as when another window renamed it, still has the name of the row where the user saw
-it. Keys move from that row and ranges start there until the next refresh (`revalidate`'s
-`keep_rows`, #314). Neither is ever picked or acted on: `ref` reuses only refs that are current,
-and every command acts on current picks.
+refresh, which drops every ref it cannot prove and renames the others to their rows, so a cursor
+or anchor that has stopped proving its sheet since, as when another window renamed it, still has
+the name of the row where the user saw it. Keys move from that row and ranges start there until the
+next refresh (`revalidate`'s `keep_rows`, #314). Neither is ever picked or acted on: `ref` reuses
+only refs that are current, and every command acts on current picks.
 """
 
 from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -141,7 +143,7 @@ class Selection:
         With `keep_rows`, for a caller between refreshes, whose rows are still those the refs were
         made against, only picks go: the cursor and the anchor stay as the rows the user saw them
         on, even when their sheets were renamed since, and are not read (#314). A refresh, which
-        can change the rows, drops them too.
+        can change the rows, gives them their new names first (`carry`) and drops those it cannot.
         """
         picked = [ref for ref in self.picked if self._current(ref)]
         if keep_rows:
@@ -154,12 +156,14 @@ class Selection:
         self.picked, self.cursor, self.anchor = picked, cursor, anchor
         return dropped
 
-    def carry(self, renamed: Mapping[str, str]) -> bool:
+    def carry(self, renamed: Mapping[str, str], elsewhere: Mapping[str, str]) -> bool:
         """After the list's own verified rename, give each renamed sheet's refs the new name.
 
-        `renamed` maps old names to new ones. A carried ref keeps its token, and stays only while
-        that token reports exactly the new name; every ref is then revalidated as usual. True if
-        any ref went.
+        `renamed` maps old names to new ones, and `elsewhere` the names after it, if another
+        window renamed a sheet in place since: only the cursor and the anchor follow that one, as
+        rows (#327), while a pick of that sheet goes. A carried ref keeps its token, and stays
+        only while that token reports exactly the new name; every ref is then revalidated as
+        usual. True if any ref went.
         """
         carried: dict[int, Ref] = {}
 
@@ -168,9 +172,16 @@ class Selection:
                 return ref
             return carried.setdefault(id(ref), Ref(renamed[ref.name], ref.token, ref.position))
 
+        def follow(ref: Ref | None) -> Ref | None:
+            if ref is None:
+                return None
+            ref = carry(ref)
+            if ref.name not in elsewhere:
+                return ref
+            return Ref(elsewhere[ref.name], ref.token, ref.position)
+
         self.picked = [carry(ref) for ref in self.picked]
-        self.cursor = None if self.cursor is None else carry(self.cursor)
-        self.anchor = None if self.anchor is None else carry(self.anchor)
+        self.cursor, self.anchor = follow(self.cursor), follow(self.anchor)
         return self.revalidate()
 
     def clear(self) -> bool:

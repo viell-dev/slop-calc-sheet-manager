@@ -79,6 +79,11 @@ def gesture(owner: Any, pressed: str, kind: str) -> list[Any]:
     if kind == "plain":
         queued_click(owner, row(pressed), 0)
     elif kind == "double":
+        queued_click(owner, row(pressed), 0)
+        queued_click(owner, row(pressed), 0, clicks=2)
+    elif kind == "held":
+        native_press(owner, row(pressed))
+    elif kind == "second":  # The second click of a double click whose first came earlier.
         queued_click(owner, row(pressed), 0, clicks=2)
     else:
         queued_click(owner, row(pressed), 0, button=RIGHT)
@@ -116,7 +121,14 @@ def down_from_delta(owner: Any) -> None:
     owner.tree_key(DOWN, 0)
 
 
-@pytest.mark.parametrize("kind", KINDS)
+@pytest.mark.parametrize(
+    "kind",
+    [
+        pytest.param("held", id="press"),
+        pytest.param("second", id="double click"),
+        pytest.param("right", id="right click"),
+    ],
+)
 @pytest.mark.parametrize(
     "keys, pressed, scrolled_in",
     [
@@ -128,12 +140,13 @@ def test_a_keys_write_that_scrolls_before_a_presss_listener_acts_on_no_other_she
     keys: Callable[[Any], None], pressed: str, scrolled_in: str, kind: str
 ) -> None:
     """Four rows fit, showing Alfa to Delta. A key moves the cursor below the view, and before
-    its queued write runs the user clicks `pressed`'s line, the row the tree shows selected, so
+    its queued write runs the user presses `pressed`'s line, the row the tree shows selected, so
     the press leaves the tree's selection as it was. The write shows the cursor, which scrolls the
-    list to Echo to Hotel, and the listener mapped the line to `scrolled_in`: the click picked
+    list to Echo to Hotel, and the listener mapped the line to `scrolled_in`: the press picked
     it, the double click activated it and the right click opened its menu. The write holds presses
-    when it scrolls, so the press is refused. A press that selects another row before the write
-    leaves the write nothing to show (#307, the next test)."""
+    when it scrolls, so the press is refused. A press that selects another row before the write,
+    or a release that selects its row again, leaves the write nothing to show (#307, the next
+    test)."""
     owner = top()
     keys(owner)
     recorded = gesture(owner, pressed, kind)
@@ -150,16 +163,18 @@ def test_a_keys_write_that_scrolls_before_a_presss_listener_acts_on_no_other_she
     "keys, pressed",
     [
         pytest.param(end, "Charlie", id="End"),
+        pytest.param(alfa_then_end, "Alfa", id="End, on the selected row"),
         pytest.param(down_from_delta, "Bravo", id="Down past the view"),
+        pytest.param(down_from_delta, "Delta", id="Down past the view, on the selected row"),
     ],
 )
 def test_a_press_that_selects_its_row_before_a_keys_write_acts_on_it(
     keys: Callable[[Any], None], pressed: str, kind: str
 ) -> None:
-    """As above, but the click on `pressed`'s line selects that row in the tree before the
-    key's write runs. The write would show the key's pick over a change made after the key, so it
-    leaves the tree to the intake and does not scroll (#307). The click's listener then maps its
-    line to the row the user pressed, and acts on it, with no notice."""
+    """As above, but the click on `pressed`'s line selects that row in the tree, anew if it was
+    selected, before the key's write runs. The write would show the key's pick over a change made
+    after the key, so it leaves the tree to the intake and does not scroll (#307). The click's
+    listener then maps its line to the row the user pressed, and acts on it, with no notice."""
     owner = top()
     keys(owner)
     notices = len(owner.notices)
@@ -172,13 +187,13 @@ def test_a_press_that_selects_its_row_before_a_keys_write_acts_on_it(
 
 
 def test_a_refused_press_after_a_keys_scroll_clears_the_keys_pick_with_the_notice() -> None:
-    """Alfa clicked, and End picked Hotel; the click on Alfa's line before the write is refused.
+    """Alfa clicked, and End picked Hotel; the press on Alfa's line before the write is refused.
     The write replaced the tree's Alfa with Hotel and scrolled, so the picks go, with the notice,
     as a press held across a rebuild drops them (#293). The cursor stays on Hotel."""
     owner = top()
     alfa_then_end(owner)
     notices = len(owner.notices)
-    queued_click(owner, row("Alfa"), 0)
+    native_press(owner, row("Alfa"))
     owner.run_queue()
     assert picks(owner) == [] and owner.tree.shown() == []
     assert len(owner.notices) == notices + 1
@@ -258,7 +273,7 @@ def test_a_keys_write_whose_scroll_fails_leaves_the_press_alone() -> None:
     owner = top()
     alfa_then_end(owner)
     owner.faults.fail("makeNodeVisible")
-    queued_click(owner, row("Alfa"), 0)
+    native_press(owner, row("Alfa"))
     owner.run_queue()
     assert owner.faults.failed == ["makeNodeVisible"]
     assert in_view(owner) == NAMES[:4]

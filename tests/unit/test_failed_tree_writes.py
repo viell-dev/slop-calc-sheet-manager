@@ -769,9 +769,7 @@ def test_a_held_press_over_a_lost_proof_keeps_its_native_row_from_the_intake() -
     The refresh's clear and the queued write's clear both fail, and a drag then starts. The
     tree's Bravo row must not be taken for the replacement."""
     owner = sheet_list(Book(list(NAMES)))
-    node = owner.tree.node("Bravo")
-    owner.tree.selected, owner.tree.cursor = [node], node  # The native press, before its listener.
-    press(owner, 1)  # The listener: the press is held, its write queued.
+    press(owner, 1)  # The press and its listener: the press is held, its write queued.
     replacement = owner.book.replace("Bravo")
     owner.faults.fail("clearSelection", times=2)
     with pytest.raises(NativeFailure):
@@ -888,8 +886,6 @@ def test_rows_left_selected_after_dropped_picks_are_cleared_before_the_next_clic
     assert picks(owner) == [] and len(owner.notices) == notices + 1
     assert owner.tree.shown() == [], "A row the list does not hold stayed selected"
     assert owner._shown == () and cursor(owner) == "Delta"
-    node = owner.tree.node("Charlie")
-    owner.tree.selected = [*owner.tree.selected, node]  # The native Ctrl+press toggles it on.
     press(owner, 2, modifiers=MOD1)
     owner.run_queue()
     release(owner, 2)
@@ -934,13 +930,7 @@ def bravo_superseded_by_a_failed_reshow() -> Any:
 
 
 def ctrl_click_bravo(owner: Any) -> None:
-    """A native Ctrl+click on Bravo: the tree toggles the row before the listener runs."""
-    node = owner.tree.node("Bravo")
-    if node in owner.tree.selected:
-        owner.tree.selected = [item for item in owner.tree.selected if item is not node]
-    else:
-        owner.tree.selected = [*owner.tree.selected, node]
-    owner.tree.cursor = node
+    """A Ctrl+click on Bravo: the tree toggles the row before the listener runs."""
     press(owner, 1, modifiers=MOD1)
     owner.run_queue()
     release(owner, 1)

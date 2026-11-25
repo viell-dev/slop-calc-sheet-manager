@@ -14,6 +14,24 @@ relies on from Calc and the tree control:
   26.8.2.2); `addSelection` and an assistive selection add a node without moving the cursor;
   `clearSelection` keeps the cursor; `getNodeRect` refuses a node outside the installed model,
   as LibreOffice documents;
+- the tree handles presses and releases as VCL's selection engine does (`Tree.press` and
+  `Tree.release`; `SelectionEngine::SelMouseButtonDown` and `SelMouseButtonUp`,
+  `SvImpLBox::MouseButtonDown`, `SetCursor` and `SetAnchorSelection`, read in 26.8.3.1; add mode,
+  the click counts and the range measured on #294). A plain press on a selected row changes
+  nothing; its release, unless a drag began, then selects that row alone, at the press's position
+  wherever the pointer is. A plain press on another row selects it alone, and no other release
+  changes a selection. A Shift press without an anchor deselects every row, makes the anchor at
+  the cursor and selects the range from there, and one with an anchor moves the range's end. A
+  Ctrl press drops the anchor and toggles its row, or in add mode only moves the cursor to an
+  unselected one. A Ctrl+Shift press starts add mode and moves the end of the range from the
+  anchor, made at the cursor if there is none. Without a cursor, a press first puts it on the
+  first row in view, as a paint does. The cursor's moves are announced inside the call that makes
+  them, so the list hears of a press's before its listener runs, except in add mode, where a press
+  that only moves the cursor announces nothing (heard with real input on #321). Deselecting every
+  row, by `clearSelection`, by `select` before it selects or by a press, drops the anchor only if
+  a row was selected (`SvImpLBox::SelAllDestrAnch`); assistive selections keep it. A model
+  replaced while the engine has an anchor leaves the engine believing that it still does
+  (`Tree.anchored`; `SvImpLBox::Clear`);
 - the tree scrolls as `SvImpLBox` does (`MakeVisible`, `FillView` and `AdjustScrollBars`, read
   in 26.8.2.2) once a test sets how many rows fit (`Tree.visible`; by default every row fits and
   nothing scrolls): a new data model shows from its first row, `makeNodeVisible` leaves a row
@@ -33,10 +51,8 @@ relies on from Calc and the tree control:
 - the toolkit's selection listener, which the list counts with (#294), is notified once per row
   whose selection changes, synchronously inside the call that changes it, whoever makes it: an
   assistive selection, the native part of a click, or the list's own tree calls. Every change
-  of `Tree.selected` notifies, so a test or probe that sets it directly is a native change. A
-  native Ctrl+Shift press adds the rows from the tree's anchor, its cursor when it has none, to
-  the pressed row and removes none, and the second press of a double click changes nothing, as
-  measured on #294.
+  of `Tree.selected` notifies, so a test or probe that sets it directly is a native change. The
+  second press of a double click changes nothing, as measured on #294.
 
 Posted work runs on `run_queue`, and a failure there ends only that work and is recorded, as
 LibreOffice's callback reports it. `queued_click` posts a click's mouse listeners there too, after
@@ -73,7 +89,7 @@ import sys
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
-from types import SimpleNamespace
+from types import CodeType, SimpleNamespace
 from typing import Any, cast
 
 from sheet_manager.keys import (
@@ -114,6 +130,7 @@ METHODS = (
     "_ref",
     "refresh",
     "_refresh",
+    "_renames_elsewhere",  # From #321's fix on; before it, the next one.
     "_identities_kept",
     "_prove",
     "_drop_all_picks",
@@ -134,7 +151,7 @@ METHODS = (
     "_show_native",
     "_name_viewed",
     "_select",
-    "_fallback_cursor",  # Only revisions that keep a refused hold's cursor (#71).
+    "_fallback_cursor",  # Only revisions from #71's fix until #327's.
     "_apply_selection",
     "_show_selection",
     "_write_outside_refresh",
@@ -416,6 +433,7 @@ class ControlModel:
         faults = self._tree.faults
         faults.check("DataModel")
         self._tree.data = data
+        # `SvImpLBox::Clear`; the selection engine is not told (`anchored`).
         self._tree.selected, self._tree.cursor, self._tree.anchor = [], None, None
         self._tree.start = 0  # `SvImpLBox::Clear`: the new rows show from the first.
         faults.check("DataModel installed")
@@ -443,11 +461,17 @@ class Tree:
         self.listener: Callable[[], None] | None = None
         self.notified = 0
         self._selected = Selected(self)
-        self.anchor: Node | None = None  # The native range anchor, while it has one.
+        self.anchor: Node | None = None  # The native range anchor (`SvImpLBox::m_pAnchor`),
+        self.anchored = False  # and whether the selection engine made one (`HAS_ANCH`).
         # Whether VCL's selection engine is in add mode: after a Ctrl+Shift press, until a plain
         # or a Shift press (`SelectionEngine::SelMouseButtonDown`).
         self.add_mode = False
+        # The line of a plain press on a selected row, which the engine leaves to its release
+        # (`WAIT_UPEVT`).
+        self.waiting: int | None = None
         self.cursor: Node | None = None
+        # `ACTIVE_DESCENDANT_CHANGED`, which the list observes.
+        self.cursor_listener: Callable[[int], None] | None = None
         self.model = ControlModel(self)
         self.focused = 0
         self.visible: int | None = None  # Rows that fit in the view; None: all of them.
@@ -505,6 +529,10 @@ class Tree:
         """The position in the view of the row at `row`, as a mouse event's position."""
         return (row - self.start) * self.height
 
+    def first_in_view(self) -> Node | None:
+        nodes = self._installed()
+        return nodes[self.start] if nodes else None
+
     def _own(self, node: Any, call: str) -> Node:
         if not any(node is item for item in self._installed()):
             raise NativeFailure(f"{call}: the node is not in the installed model")
@@ -523,11 +551,14 @@ class Tree:
     def select(self, node: Any) -> None:
         self.faults.check("select")
         assert self.model.SelectionType == "SINGLE", "Only the cursor write selects one row"
-        self.selected = []  # Every row is deselected before the node is looked up.
-        self.anchor = None
+        self.deselect_all()  # Every row is deselected before the node is looked up.
         self.faults.check("select cleared")
         own = self._own(node, "select")
-        self.selected, self.cursor = [own], own
+        self._mark(own, True)
+        if own is not self.cursor:  # `SvImpLBox::EntrySelected` in single selection mode.
+            old, self.cursor = self.cursor, own
+            self._announce_cursor()
+            self._move_range(old, own)
         self.faults.check("select done")
 
     def addSelection(self, node: Any) -> None:
@@ -539,8 +570,138 @@ class Tree:
 
     def clearSelection(self) -> None:
         self.faults.check("clearSelection")
-        self.selected = []
+        self.deselect_all()
         self.faults.check("clearSelection done")
+
+    def deselect_all(self, engine: bool = False) -> None:
+        """`SvImpLBox::SelAllDestrAnch`: nothing, if nothing is selected; otherwise the anchor goes
+        too. The selection engine's own call (`engine`) leaves it to the engine to note that."""
+        if not self.selected:
+            return
+        self.selected, self.anchor = [], None
+        self.anchored = self.anchored and engine
+
+    def _is_selected(self, node: Node) -> bool:
+        return any(node is item for item in self.selected)
+
+    def _mark(self, node: Node, select: bool) -> None:
+        """`SvTreeListBox::Select`: the row's selection, which the listener hears of if it
+        changes."""
+        if self._is_selected(node) != select:
+            kept = [item for item in self.selected if item is not node]
+            self.selected = [*kept, node] if select else kept
+
+    def _set_cursor(self, node: Node, select: bool = True) -> None:
+        """`SvImpLBox::SetCursor` in multiple selection mode, as the selection engine calls it:
+        the cursor moves, its row is selected unless the engine is in add mode, and the range
+        from the anchor, if any, follows it."""
+        if node is self.cursor and self._is_selected(node):
+            return
+        old, self.cursor = self.cursor, node
+        if select and not self.add_mode:
+            self._mark(node, True)
+        if not (select and self.add_mode):
+            self._announce_cursor()
+        self._move_range(old, node)
+
+    def _announce_cursor(self) -> None:
+        """Tell accessibility of the row the cursor is on (`ListboxTreeFocus`), inside the call
+        that moved it: nothing for a press in add mode that only moves the cursor."""
+        if self.cursor_listener is not None and self.cursor is not None:
+            index = next(i for i, item in enumerate(self._installed()) if item is self.cursor)
+            self.cursor_listener(index)
+
+    def paint_cursor(self) -> None:
+        """`SvImpLBox::Paint` puts the cursor of a tree that has none on its first row in view
+        (measured on #327 with 26.8.2.2)."""
+        if self.cursor is None:
+            self.cursor = self.first_in_view()
+            self._announce_cursor()
+
+    def _move_range(self, old_cursor: Node | None, new_cursor: Node) -> None:
+        """`SvImpLBox::SetAnchorSelection`: move the end of the range that starts at the anchor
+        from the old cursor to the new one, a row at a time as VCL selects and deselects them."""
+        if self.anchor is None or old_cursor is None:
+            return
+        nodes = self._installed()
+
+        def mark(first: int, last: int, select: bool = True) -> None:
+            for node in nodes[first : last + 1]:
+                self._mark(node, select)
+
+        anchor, old, new = (
+            next(i for i, item in enumerate(nodes) if item is node)
+            for node in (self.anchor, old_cursor, new_cursor)
+        )
+        if old > anchor or (old == anchor and new > anchor):
+            if new > old:
+                mark(old, new)
+            elif new < anchor:
+                mark(anchor, old, False)
+                mark(new, anchor)
+            elif new < old:
+                mark(new + 1, old, False)
+        elif new < old:
+            mark(new, old)
+        elif new > anchor:
+            mark(old, anchor, False)
+            mark(anchor, new)
+        elif new > old:
+            mark(old, new - 1, False)
+
+    def press(self, line: int, modifiers: int = 0, clicks: int = 1, button: int = LEFT) -> None:
+        """A press on the labels at `line` as the tree handles it, before the list's listener runs
+        (`SvImpLBox::MouseButtonDown`, `SelectionEngine::SelMouseButtonDown`).
+
+        The tree ignores a middle press and gives the engine a left one alone (measured on #328
+        with 26.8.3.1), which returns at once for a click count above 1 or with Alt (measured on
+        #294 with 26.8.2.2). A press outside the rows is not modelled: callers press rows.
+        """
+        if button not in (LEFT, RIGHT):
+            return
+        self.waiting = None
+        index, nodes = line // self.height + self.start, self._installed()
+        node = nodes[index]
+        if self.cursor is None:
+            self.cursor = self.first_in_view()
+        if button == RIGHT or modifiers & MOD2 or clicks > 1:
+            return
+        keys = modifiers & (SHIFT | MOD1)
+        if keys == SHIFT | MOD1:
+            self.add_mode = True
+        elif keys != MOD1:
+            self.add_mode = False
+        if keys == MOD1:
+            self.anchor, self.anchored = (None, False) if self.anchored else (self.anchor, False)
+            toggled_off = self._is_selected(node)
+            if toggled_off:
+                self._mark(node, False)
+            self._set_cursor(node, select=not toggled_off)
+            return
+        if keys:
+            if not self.anchored:
+                if not self.add_mode:
+                    self.deselect_all(engine=True)
+                self.anchor, self.anchored = self.cursor, True
+        elif self._is_selected(node):
+            self.waiting = line
+            return
+        else:
+            self.deselect_all(engine=True)
+            self.anchored = False
+        self._set_cursor(node)
+
+    def release(self) -> None:
+        """The release of the latest press as the tree handles it (`SelMouseButtonUp`): after a
+        plain press on a selected row, the row at that press's position is selected alone."""
+        line, self.waiting = self.waiting, None
+        if line is None:
+            return
+        index, nodes = line // self.height + self.start, self._installed()
+        self.deselect_all(engine=True)
+        self.anchored = False
+        if index < len(nodes):
+            self._set_cursor(nodes[index])
 
     def makeNodeVisible(self, node: Any) -> None:
         """`SvImpLBox::MakeVisible`: a row in view stays where it is (`IsEntryInView`); any
@@ -677,9 +838,13 @@ def _class_methods(source: str, name: str) -> dict[str, ast.FunctionDef]:
     return {node.name: node for node in owner.body if isinstance(node, ast.FunctionDef)}
 
 
+@functools.cache
+def _compiled(source: str, node: ast.AST) -> CodeType:
+    return compile(ast.Module(body=[cast(ast.stmt, node)], type_ignores=[]), source, "exec")
+
+
 def _load(source: str, node: ast.AST, namespace: dict[str, Any]) -> Any:
-    module = ast.Module(body=[cast(ast.stmt, node)], type_ignores=[])
-    exec(compile(module, source, "exec"), namespace)
+    exec(_compiled(source, node), namespace)
     return namespace[cast(Any, node).name]
 
 
@@ -821,6 +986,7 @@ def sheet_list(book: Book, source: str = SOURCE) -> Any:
         _toggles_release=None,
         _toggles_keys=True,
         _ranges_held=None,
+        _range_start=None,
         _ranges_release=None,
         _deferred=None,
         _unowned=0,
@@ -920,6 +1086,11 @@ def sheet_list(book: Book, source: str = SOURCE) -> Any:
             setattr(owner, name, _load(source, methods[name], dict(namespace)).__get__(owner))
     if "tree_selection_changed" in methods:  # `_Selections`, as `_initialize` registers it.
         tree.listener = lambda: owner.tree_selection_changed()
+
+    def cursor_moved(index: int) -> None:  # `_Cursor`, as `_initialize` registers it.
+        focus_event(owner, index)
+
+    tree.cursor_listener = cursor_moved
     # The key handler that the list registers while it has the focus, which it always has here,
     # and the move buttons' action listener, which requests a move as `_initialize` passes it.
     owner.owns_keys = owner.owns_tree_keys = lambda: True
@@ -1006,53 +1177,22 @@ def listen(owner: Any, handler: Callable[[Any], None], event: Any) -> None:
 
 def press(owner: Any, row: int, button: int = LEFT, modifiers: int = 0) -> None:
     """A press as the list's mouse listener runs it (`_Mouse.mousePressed`), on the line that shows
-    the row at `row` now."""
+    the row at `row` now, at once after the tree handled it."""
     line = owner.tree.line(row)
+    owner.tree.press(line, modifiers, button=button)
     event = SimpleNamespace(Buttons=button, X=LABEL_X, Y=line, Modifiers=modifiers, ClickCount=1)
     listen(owner, owner.mouse_pressed, event)
 
 
 def release(owner: Any, row: int, button: int = LEFT) -> None:
-    """The tree's native release selects the row under the pointer before the listener runs."""
+    """The release of the latest press, with the pointer over the row at `row`: the tree handles
+    it before the listener runs (`Tree.release`)."""
     if button == LEFT:
-        node = owner.tree._installed()[row]
-        owner.tree.selected, owner.tree.cursor = [node], node
+        owner.tree.release()
     event = SimpleNamespace(
         Buttons=button, X=LABEL_X, Y=owner.tree.line(row), Modifiers=0, ClickCount=1
     )
     listen(owner, owner.mouse_released, event)
-
-
-def toggle_natively(owner: Any, row: int) -> None:
-    """A Ctrl+press as the tree handles it (`SelectionEngine::SelMouseButtonDown`): a selected
-    row is deselected; an unselected one is selected, except in add mode, where the engine only
-    moves the cursor (`SvImpLBox::SetCursor`; measured on #294 with 26.8.2.2). The cursor moves
-    to the row and the range anchor goes."""
-    node = owner.tree._installed()[row]
-    if node in owner.tree.selected:
-        owner.tree.selected = [item for item in owner.tree.selected if item is not node]
-    elif not owner.tree.add_mode:
-        owner.tree.selected = [*owner.tree.selected, node]
-    owner.tree.cursor = node
-    owner.tree.anchor = None
-
-
-def extend_natively(owner: Any, row: int) -> None:
-    """A Ctrl+Shift press as the tree handles it: the rows from the anchor, made at the cursor if
-    there is none, to the pressed row are added, none removed, and the cursor moves there."""
-    tree = owner.tree
-    nodes = tree._installed()
-    node = nodes[row]
-    if tree.anchor is None:
-        tree.anchor = tree.cursor if tree.cursor is not None else node
-    start = next((index for index, item in enumerate(nodes) if item is tree.anchor), row)
-    first, last = sorted((start, row))
-    tree.selected = [
-        *tree.selected,
-        *(item for item in nodes[first : last + 1] if item not in tree.selected),
-    ]
-    tree.cursor = node
-    tree.add_mode = True
 
 
 def queued_click(
@@ -1063,41 +1203,21 @@ def queued_click(
     button: int = LEFT,
     x: int = LABEL_X,
 ) -> None:
-    """A click as LibreOffice delivers it (#85, #269, #288): the tree handles the press at once,
-    and the press's and the release's listeners are queued behind all the work already posted,
-    which `run_queue` then runs in order. That is the latest place VCL gives them. VCL can also
-    run them earlier, in the place of a callback event of the window still queued, since it adds
-    them to that event (`VCLXWindowImpl::callBackAsync`); this does not model that. With Ctrl
-    alone the tree toggles the row as the engine does (`toggle_natively`), and the release changes
-    no native selection; with Ctrl and Shift it adds the range from its anchor
-    (`extend_natively`) and enters add mode. Otherwise the row is selected alone, as a plain or
-    Shift press on an unselected row selects it in the tree, and add mode ends. `clicks` is the
-    native click count: above 1, as for a double or triple click's later clicks, the engine
-    returns at once and changes nothing (#310's review; measured on #294 with 26.8.2.2), except
-    that a plain one still selects its row alone, as the first click already did, which the
-    tests of #293 rely on. Alt (`MOD2`) makes the engine return at once too. Every button but the
-    right one reaches the engine, a middle press as a left one does; a right click changes no
-    native selection (`SvImpLBox::MouseButtonDown` in 26.8.2.2). `row` is the pressed row's
-    index as the tree shows it when the user presses; the events carry its line in the view, as
-    VCL's carry a position. `x` left of `HIT_X` is in the gutter, where the tree changes nothing
-    (#342)."""
-    if (
-        button == RIGHT
-        or modifiers & MOD2
-        or (modifiers & MOD1 and clicks > 1)
-        or owner.tree.getClosestNodeForLocation(x, owner.tree.line(row)) is None
-    ):
-        pass
-    elif modifiers == MOD1:
-        toggle_natively(owner, row)
-    elif modifiers == MOD1 | SHIFT:
-        extend_natively(owner, row)
-    else:
-        node = owner.tree._installed()[row]
-        owner.tree.selected, owner.tree.cursor = [node], node
-        owner.tree.anchor = None
-        owner.tree.add_mode = owner.tree.add_mode and clicks > 1
+    """A click as LibreOffice delivers it (#85, #269, #288): the tree handles the press and the
+    release at once (`Tree.press`, `Tree.release`), and their listeners are queued behind all the
+    work already posted, which `run_queue` then runs in order. That is the latest place VCL gives
+    them. VCL can also run them earlier, in the place of a callback event of the window still
+    queued, since it adds them to that event (`VCLXWindowImpl::callBackAsync`); this does not
+    model that. `clicks` is the native click count: above 1, as for a double or triple click's
+    later clicks, the engine returns at once and changes nothing (#310's review; measured on #294
+    with 26.8.2.2). `row` is the pressed row's index as the tree shows it when the user presses;
+    the events carry its line in the view, as VCL's carry a position. `x` left of `HIT_X` is in
+    the gutter, where the tree changes nothing (#342)."""
     line = owner.tree.line(row)
+    if owner.tree.getClosestNodeForLocation(x, line) is not None:
+        owner.tree.press(line, modifiers, clicks, button)
+        if button == LEFT:
+            owner.tree.release()
     pressed = SimpleNamespace(Buttons=button, X=x, Y=line, Modifiers=modifiers, ClickCount=clicks)
     released = SimpleNamespace(Buttons=button, X=x, Y=line, Modifiers=modifiers, ClickCount=clicks)
     owner.post(lambda: listen(owner, owner.mouse_pressed, pressed), "a mouse press")
@@ -1135,7 +1255,9 @@ def record_menus(owner: Any) -> list[str | None]:
 
 
 def paint(owner: Any) -> None:
-    """VCL paints the tree, as after it scrolled or changed: the list's paint listener runs."""
+    """VCL paints the tree, as after it scrolled or changed: the list's paint listener runs. The
+    paint gives a tree without a cursor one (`Tree.paint_cursor`)."""
+    owner.tree.paint_cursor()
     owner.paint_rows()
 
 
@@ -1199,11 +1321,9 @@ def bind_drag(owner: Any) -> list[list[str]]:
 def native_press(owner: Any, row: int) -> None:
     """A plain press as the tree handles it at once, its listener queued behind the work already
     posted (`queued_click` without the release, which waits while the button is held)."""
-    node = owner.tree._installed()[row]
-    owner.tree.selected, owner.tree.cursor = [node], node
-    event = SimpleNamespace(
-        Buttons=LEFT, X=LABEL_X, Y=owner.tree.line(row), Modifiers=0, ClickCount=1
-    )
+    line = owner.tree.line(row)
+    owner.tree.press(line)
+    event = SimpleNamespace(Buttons=LEFT, X=LABEL_X, Y=line, Modifiers=0, ClickCount=1)
     owner.post(lambda: listen(owner, owner.mouse_pressed, event), "a mouse press")
 
 
