@@ -30,6 +30,16 @@ ARG TEST_GID=1000
 RUN if ! getent group "$TEST_GID"; then groupadd --gid "$TEST_GID" tester; fi \
     && useradd --create-home --uid "$TEST_UID" --gid "$TEST_GID" tester
 
+# LibreOffice 26.8.3's Extension Manager refuses plain HTTP update feeds (#344), so
+# `tests/ui/update_dialog.py` serves its loopback feed over HTTPS with this certificate. It is made
+# for this image, trusted only inside it, and kept out of /opt/ci-metadata, which goes to artifacts.
+RUN mkdir /opt/lab-tls && openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
+        -subj "/CN=Sheet Manager test lab" -addext "subjectAltName=IP:127.0.0.1" \
+        -keyout /opt/lab-tls/key.pem -out /opt/lab-tls/cert.pem \
+    && chown -R "$TEST_UID:$TEST_GID" /opt/lab-tls \
+    && cp /opt/lab-tls/cert.pem /usr/local/share/ca-certificates/sheet-manager-lab.crt \
+    && update-ca-certificates
+
 ENV LANG=C.UTF-8 GDK_BACKEND=x11 SAL_USE_VCLPLUGIN=gtk3
 USER tester
 WORKDIR /work

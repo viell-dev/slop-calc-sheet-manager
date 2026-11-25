@@ -3,6 +3,10 @@
 GTK's weld manager is not exposed through Toolkit top windows. gen exposes the same
 deployment dialogs through public UNO accessibility; input still uses real XTEST events.
 Only the selected test extension is checked, keeping bundled extensions off the network.
+
+The loopback feed is served over HTTPS with the certificate that `ci/Dockerfile` makes for the test
+image: LibreOffice 26.8.3 reports "Error reading data from the Internet" for a plain HTTP feed in
+this dialog and sends no request (#344). Published feeds and downloads use HTTPS.
 """
 
 import argparse
@@ -10,6 +14,7 @@ import functools
 import http.server
 import json
 import shutil
+import ssl
 import sys
 import tempfile
 import threading
@@ -46,6 +51,9 @@ BUTTON = uno.getConstantByName("com.sun.star.accessibility.AccessibleRole.PUSH_B
 CHECKBOX = uno.getConstantByName("com.sun.star.accessibility.AccessibleRole.CHECK_BOX")
 TEXT = uno.getConstantByName("com.sun.star.accessibility.AccessibleRole.TEXT")
 PANEL = uno.getConstantByName("com.sun.star.accessibility.AccessibleRole.PANEL")
+
+
+LAB_TLS = Path("/opt/lab-tls")
 
 
 class Closed(unohelper.Base, XDialogClosedListener):
@@ -216,9 +224,12 @@ def exercise(program, package, output, result, backtrace):
     server = http.server.ThreadingHTTPServer(
         ("127.0.0.1", 0), functools.partial(Server, directory=str(root))
     )
+    tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    tls.load_cert_chain(LAB_TLS / "cert.pem", LAB_TLS / "key.pem")
+    server.socket = tls.wrap_socket(server.socket, server_side=True)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
-    url = f"http://127.0.0.1:{server.server_port}"
+    url = f"https://127.0.0.1:{server.server_port}"
     older = output / "older.oxt"
     fixture(package, older, current, minimum, url + "/updates.xml")
     fixture(package, root / "newer.oxt", newer, minimum, url + "/updates.xml")
