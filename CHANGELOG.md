@@ -60,6 +60,9 @@ precedes 0.1.0.
   ([#265](https://github.com/viell-dev/slop-calc-sheet-manager/issues/265),
   [#280](https://github.com/viell-dev/slop-calc-sheet-manager/issues/280),
   [#307](https://github.com/viell-dev/slop-calc-sheet-manager/issues/307)).
+- After one picked sheet is renamed, the first Shift+click or Ctrl+Shift+click can be refused and clear
+  the selection, which 0.0.10 did not do. Click again
+  ([#321](https://github.com/viell-dev/slop-calc-sheet-manager/issues/321)).
 - When LibreOffice fails to show a selection in the list, the list now clears it rather than take
   the rows left showing as picks. A failure while the list handles a press, just as that sheet is
   replaced, is not covered ([#319](https://github.com/viell-dev/slop-calc-sheet-manager/issues/319))
