@@ -85,7 +85,10 @@ def native_picks() -> tuple[Any, Any, list[Callable[[], None]]]:
     unread = method(SOURCE, "SheetList", "_unread", {"_Intake": INTAKE})
     owner._unread = lambda: unread(owner)
     engine = method(
-        SOURCE, "SheetList", "_follow_engine", {"RIGHT": 2, "MOD1": 2, "MOD2": 4, "SHIFT": 1}
+        SOURCE,
+        "SheetList",
+        "_follow_engine",
+        {"LEFT": 1, "RIGHT": 2, "MOD1": 2, "MOD2": 4, "SHIFT": 1},
     )
 
     def follow_engine(event: Any, hit: bool, add_mode: bool) -> bool:

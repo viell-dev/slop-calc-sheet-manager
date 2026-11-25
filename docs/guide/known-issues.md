@@ -92,7 +92,7 @@ If Sheet Manager does not work in an environment where it is expected to, please
   pick the corrected range, <Unreleased /> as 0.0.10 does
   ([#349](https://github.com/viell-dev/slop-calc-sheet-manager/issues/349)).
 - **After renaming one sheet.** A picked sheet renamed by Rename Sheet, on Calc's tabs or in another
-  window leaves the list's selection. In 0.0.11 and earlier, the keyboard cursor leaves its row too
+  window leaves the list's selection. Up to 0.0.11, the keyboard cursor leaves its row too
   ([#327](https://github.com/viell-dev/slop-calc-sheet-manager/issues/327)), and in 0.0.11 the first
   Shift+click or Ctrl+Shift+click after that can be refused: the list clears its selection, with the
   notice. Click again, or start the range with a plain click
