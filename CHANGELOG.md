@@ -9,7 +9,8 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 First release candidate for the stable release 0.1.0, following the 0.0.10 usability review. It
 fixes the move buttons that could stay disabled and the error messages after held move shortcuts,
-makes quick or unusual input safer, and improves Rename Sheets for screen readers. Requires LibreOffice 26.2.1 or later with Python support. A
+makes quick or unusual input safer, and improves Rename Sheets for screen readers. Requires
+LibreOffice 26.2.1 or later with Python support. A
 [short human check of this candidate](https://github.com/viell-dev/slop-calc-sheet-manager/issues/337)
 precedes 0.1.0.
 

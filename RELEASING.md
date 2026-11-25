@@ -392,9 +392,9 @@ Screenshots, accessibility trees, HTTP requests and both office lifecycles are r
 artifacts. This runs after the UI suite in each routine and full-sweep Linux UI job.
 
 The dialog check uses **gen** because its public UNO accessibility tree exposes the deployment
-dialogs; GTK's native weld manager is absent from Toolkit top windows in this lab. Its loopback feed
-uses HTTPS, with a certificate that only the test image trusts: LibreOffice 26.8.3 refuses plain HTTP
-there ([#344](https://github.com/viell-dev/slop-calc-sheet-manager/issues/344)). It invokes
+dialogs; GTK's native weld manager is absent from Toolkit top windows in this lab. Its loopback
+feed uses HTTPS, with a certificate that only the test image trusts: LibreOffice 26.8.3 refuses
+plain HTTP there ([#344](https://github.com/viell-dev/slop-calc-sheet-manager/issues/344)). It invokes
 the selected extension's **Check for Updates** context command, which uses the same update
 queue without checking bundled extensions against external services. The fixture keeps the full
 built package payload and changes only its version, minimum and loopback update URL. Production

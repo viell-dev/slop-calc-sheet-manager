@@ -17,8 +17,8 @@ Hidden, protected, and scenario sheets have those states written beside their na
 also shown for read-only workbooks and follows the sidebar when it resizes, docks, or undocks.
 
 **Colours.** <Unreleased since="0.0.9" /> The list follows LibreOffice's document background
-colour. Text and dividers stay readable, including when a custom scheme would otherwise give the text and
-background the same colour. Selected rows keep the platform's selection and text colours
+colour. Text and dividers stay readable, including when a custom scheme would otherwise give the text
+and background the same colour. Selected rows keep the platform's selection and text colours
 together; if the new background hides the selection, the list uses a distinct selection colour
 with readable text. <Unreleased since="0.0.10" /> This adjustment keeps the native selection's
 tint where possible. Sheet-tab colour squares keep their assigned colours. Appearance changes
@@ -193,8 +193,8 @@ the end of a proposal can trigger a warning as you type, for example at `Bob'` o
 ordinary name.
 
 **Replace All** <Unreleased since="0.0.11" /> reports when Find is empty, when there are no matches,
-or when the search matches but the replacement leaves every proposed name unchanged. It reports the first
-affected sheet and reason if the replacement leaves a refused proposal. If you repeat the same
+or when the search matches but the replacement leaves every proposed name unchanged. It reports the
+first affected sheet and reason if the replacement leaves a refused proposal. If you repeat the same
 replacement and the first press already replaced every match, the conflict stays available on
 the button. If the sheets changed since the dialog opened, **Rename** gives the refusal and asks
 you to cancel and try again. Pressing **Rename** again while it has focus and the reason is the
