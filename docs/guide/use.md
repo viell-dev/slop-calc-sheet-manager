@@ -253,7 +253,7 @@ the keyboard cursor, a range made with Shift or Ctrl+Shift, by key or by click, 
 the keyboard cursor, keys keep moving from that row until the list shows the new name
 ([#314](https://github.com/viell-dev/slop-calc-sheet-manager/issues/314)). Up to 0.0.11,
 the cursor then moves to the first selected sheet, or, with none selected, to the first row in view.
-Since then, <Unreleased /> it stays on that row, under the new name
+Since then, <Unreleased since="0.0.12" /> it stays on that row, under the new name
 ([#327](https://github.com/viell-dev/slop-calc-sheet-manager/issues/327)).
 
 **Repeated moves.** <Unreleased since="0.0.11" /> Each completed move is one undo step. Hold or
@@ -261,7 +261,7 @@ repeat Alt+Up or Alt+Down to move the selection one place at a time. The list dr
 that arrive while a move is waiting, as when a large workbook takes longer for a move than the keys
 take to repeat
 ([#340](https://github.com/viell-dev/slop-calc-sheet-manager/issues/340)).
-At the end of the list, <Unreleased /> a move shortcut does nothing
+At the end of the list, <Unreleased since="0.0.12" /> a move shortcut does nothing
 ([#353](https://github.com/viell-dev/slop-calc-sheet-manager/issues/353)).
 
 **Move-button shortcuts.** <Unreleased since="0.0.4" /> Move shortcuts also apply while a move
@@ -349,5 +349,8 @@ tab selection that each window of the workbook had just before
 ([#91](https://github.com/viell-dev/slop-calc-sheet-manager/issues/91)).
 
 The list keeps its range anchor through ordinary refreshes while that sheet identity remains
-valid. Large lists can take longer to refresh. See [Known issues](./known-issues.md) for
+valid. After a picked sheet is renamed, <Unreleased since="0.0.12" /> the next range starts at the
+keyboard cursor instead. So does a range when the list has no anchor, as after it cleared its
+selection; LibreOffice then puts the cursor on the first row in view. Large lists can take longer
+to refresh. See [Known issues](./known-issues.md) for
 refresh costs and the limits of detecting changes made by macros.

@@ -127,7 +127,7 @@ Linux:
 
 To build without installing development tools, run `python tools/build.py` (or
 `& 'C:\Program Files\LibreOffice\program\python.exe' tools/build.py` on a Windows machine with
-only LibreOffice's Python). This writes `dist/sheet-manager-0.0.11.oxt` and its `.oxt.sha256` file.
+only LibreOffice's Python). This writes `dist/sheet-manager-0.0.12.oxt` and its `.oxt.sha256` file.
 The version comes only from `extension/description.xml`. Packaging uses explicit file lists,
 sorted ZIP members, fixed timestamps and permissions, LF text, and uncompressed members so that
 different zlib versions cannot change the result. Add new shipped modules to the allowlist in

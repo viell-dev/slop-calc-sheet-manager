@@ -89,14 +89,14 @@ If Sheet Manager does not work in an environment where it is expected to, please
   ([#335](https://github.com/viell-dev/slop-calc-sheet-manager/issues/335)).
 - **Correcting a range in 0.0.11.** After a range made with Shift, a Shift+click further in, or on
   the other side of its start, clears the selection, with the notice. Click again. Later builds
-  pick the corrected range, <Unreleased /> as 0.0.10 does
+  pick the corrected range, <Unreleased since="0.0.12" /> as 0.0.10 does
   ([#349](https://github.com/viell-dev/slop-calc-sheet-manager/issues/349)).
 - **After a drag in 0.0.11.** The first Ctrl+click, Shift+click or Ctrl+Shift+click after a drag
   clears the selection, with the notice. Click again, or click a sheet's name plainly first. A plain
   click on a sheet's arrow or tab colour can pick the sheet in the row where the drag began instead:
   check which sheets are highlighted before you move or rename any. After a drag of several sheets
-  that you cancel with Esc, only the dragged one stays picked. In all these cases, <Unreleased />
-  later builds act as 0.0.10 does
+  that you cancel with Esc, only the dragged one stays picked.
+  In all these cases, <Unreleased since="0.0.12" /> later builds act as 0.0.10 does
   ([#356](https://github.com/viell-dev/slop-calc-sheet-manager/issues/356)).
 - **After renaming one sheet.** A picked sheet renamed by Rename Sheet, on Calc's tabs or in another
   window leaves the list's selection. Up to 0.0.11, the keyboard cursor leaves its row too
@@ -104,7 +104,11 @@ If Sheet Manager does not work in an environment where it is expected to, please
   Shift+click or Ctrl+Shift+click after that can be refused: the list clears its selection, with the
   notice. Click again, or start the range with a plain click
   ([#321](https://github.com/viell-dev/slop-calc-sheet-manager/issues/321)). In later builds,
-  <Unreleased /> the cursor keeps its row, under the new name, and the next range starts there.
+  <Unreleased since="0.0.12" /> the cursor keeps its row, and the next range starts there, also when
+  another picked sheet was renamed.
+- **A sheet moved into a range.** After you select a range, if another window, Calc's tabs or Undo
+  move a sheet into it, a Ctrl+Shift+click can be refused and clear the selection. Click again
+  ([#352](https://github.com/viell-dev/slop-calc-sheet-manager/issues/352)).
 - **Large lists.** The list rebuilds after changes. During rapid sheet switches the active-sheet
   marker, and <Unreleased since="0.0.9" /> the list's accessible name, can lag. LibreOffice's tree
   control cannot update a single row in place, so the rebuild stays; the measurements and that
