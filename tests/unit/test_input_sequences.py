@@ -1,11 +1,14 @@
 """Sequences of clicks and keys over the simulated tree, whose presses follow VCL's (#328).
 
 At human speed, each input's work has run and VCL has painted before the next: the list must then
-pick exactly what the gestures mean, with no notice, and the tree must show it. That is checked
-against a plain model of the gestures, for every pair of inputs and for random longer sequences.
-0.0.11 cleared the selection at a Shift+click that shrank or crossed a range, and no test saw it,
-because the simulated Shift press selected its row alone (#349); other range presses were refused
-after another window renamed a picked sheet (#321).
+pick exactly what the gestures mean, with no notice, and the tree must show it. The inputs are
+clicks, selection keys, drags dropped in place or cancelled, and renames by another window. That is
+checked against a plain model of the gestures, for every pair of inputs and for random longer
+sequences. 0.0.11 cleared the selection at a Shift+click that shrank or crossed a range, and no test
+saw it, because the simulated Shift press selected its row alone (#349); after a drag, it cleared
+the selection at any click with a modifier, because VCL's engine acted on that click's release as
+on the drag's (#356); and other range presses were refused after another window renamed a picked
+sheet (#321).
 
 While LibreOffice is busy, the listeners and the list's posted work lag behind what the tree has
 handled. The list may then refuse an input, with the notice unless there was nothing to clear, but
@@ -34,13 +37,17 @@ from tests.unit.list_peer import (
     UP,
     A,
     Book,
+    bind_drag,
     changed,
+    drag,
     key,
     move_to_top,
     paint,
     picks,
+    press,
     queued_click,
     record_activations,
+    release,
     sheet_list,
 )
 
@@ -53,7 +60,8 @@ KEYS = [
     (SPACE, MOD1),
     (A, MOD1),
 ]
-Input = tuple[str, int, int]  # "click" a row, "key" a code or "rename" a row; the modifiers.
+# "click", "drag" or "cancel" (a drag) a row, "key" a code or "rename" a row; the modifiers.
+Input = tuple[str, int, int]
 
 
 def inputs(rows: int) -> list[Input]:
@@ -61,6 +69,7 @@ def inputs(rows: int) -> list[Input]:
         *(("click", row, modifiers) for row in range(rows) for modifiers in CLICKS),
         *(("key", code, modifiers) for code, modifiers in KEYS),
         *(("rename", row, 0) for row in range(rows)),
+        *((kind, row, 0) for kind in ("drag", "cancel") for row in range(rows)),
     ]
 
 
@@ -79,6 +88,9 @@ class Gestures:
             if at in self.picked:
                 self.picked.remove(at)
                 self.anchor = None
+            return
+        if kind in ("drag", "cancel") and at in self.picked:
+            self.cursor = self.anchor = at  # The picks stay, so that they are dragged together.
             return
         if kind == "key" and at == A:
             self.picked = set(range(self.rows))
@@ -105,15 +117,25 @@ class Gestures:
 def opened(rows: int) -> Any:
     owner = sheet_list(Book([f"Sheet {row}" for row in range(rows)]))
     record_activations(owner)
+    bind_drag(owner)
     paint(owner)
     return owner
 
 
-def give(owner: Any, kind: str, at: int, modifiers: int) -> None:
-    if kind == "click":
+def give(owner: Any, kind: str, at: int, modifiers: int, lag: bool = False) -> None:
+    """The input; with `lag`, a click whose release VCL handles before its press's listener runs,
+    rather than after the press's work has, as a person's comes."""
+    if kind == "click" and lag:
         queued_click(owner, at, modifiers)
+    elif kind == "click":
+        press(owner, at, modifiers=modifiers)
+        owner.run_queue()
+        release(owner, at)
+        owner.run_queue()
     elif kind == "key":
         key(owner, at, modifiers)
+    elif kind in ("drag", "cancel"):
+        drag(owner, at, cancel=kind == "cancel")
     else:
         sheet = owner.book.sheets[at]
         owner.book.rename(sheet.name, sheet.name + "'")
@@ -129,10 +151,10 @@ def settle(owner: Any) -> None:
     owner.run_queue()
 
 
-def check_settled(sequence: tuple[Input, ...], rows: int) -> None:
+def check_settled(sequence: tuple[Input, ...], rows: int, lag: bool = False) -> None:
     owner, wanted = opened(rows), Gestures(rows)
     for step, (kind, at, modifiers) in enumerate(sequence):
-        give(owner, kind, at, modifiers)
+        give(owner, kind, at, modifiers, lag)
         settle(owner)
         wanted.give(kind, at, modifiers)
         names = [owner.book.names()[row] for row in sorted(wanted.picked)]
@@ -166,8 +188,13 @@ def test_every_range_after_a_rename_of_a_picked_sheet_is_picked() -> None:
 def test_random_longer_sequences_at_human_speed_pick_what_they_mean(seed: int) -> None:
     draws = random.Random(seed)
     for _ in range(100):
-        sequence = draws.choices(inputs(8), k=draws.randint(3, 9))
-        check_settled(tuple(sequence), 8)
+        sequence = tuple(draws.choices(inputs(8), k=draws.randint(3, 9)))
+        check_settled(sequence, 8)
+        # Quick clicks, but not after a drag, whose effect on a later release (#356) the list then
+        # cannot tell from that click's press: it refuses.
+        check_settled(
+            tuple(item for item in sequence if item[0] not in ("drag", "cancel")), 8, True
+        )
 
 
 def refusals(owner: Any) -> list[str]:
@@ -216,7 +243,7 @@ def test_lagging_input_acts_as_at_human_speed_or_is_refused(seed: int) -> None:
             draws.choice(inputs(8)) if draws.random() < 0.9 else ("recolour", draws.randrange(8), 0)
             for _ in range(draws.randint(2, 5))
         ]
-        sequence = [item for item in sequence if item[0] != "rename"]
+        sequence = [item for item in sequence if item[0] not in ("rename", "drag", "cancel")]
         lagging, prompt = opened(8), opened(8)
         for owner in (lagging, prompt):
             give(owner, "click", 3, 0)
@@ -230,7 +257,7 @@ def test_lagging_input_acts_as_at_human_speed_or_is_refused(seed: int) -> None:
                     continue
                 if kind == "key":
                     owner.run_queue()
-                give(owner, kind, at, modifiers)
+                give(owner, kind, at, modifiers, lag=True)
             run_some(lagging, draws)
             settle(prompt)
         settle(lagging)

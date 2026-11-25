@@ -12,6 +12,9 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   Ctrl+Shift+click starts there rather than being refused
   ([#321](https://github.com/viell-dev/slop-calc-sheet-manager/issues/321),
   [#327](https://github.com/viell-dev/slop-calc-sheet-manager/issues/327)).
+- After a drag, a Ctrl+click, Shift+click or Ctrl+Shift+click acts again, and after a drag of several
+  sheets that Esc cancels, they all stay picked. 0.0.11 cleared the selection, and kept only the
+  dragged sheet ([#356](https://github.com/viell-dev/slop-calc-sheet-manager/issues/356)).
 - A move shortcut does nothing once the sheets are at that end of the list, as when it is held. It
   opened an error message ([#353](https://github.com/viell-dev/slop-calc-sheet-manager/issues/353)).
 - A Ctrl+click after a Ctrl+Shift+click and a middle click adds its sheet rather than clear the

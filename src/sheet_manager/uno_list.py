@@ -448,6 +448,20 @@ picks after an assistive selection replaced them keeps the others for its drag (
 earlier click's write that lands after a press that changed nothing, on a row a write had just
 shown selected, shows that click's pick over it, and the drag carries it (#335).
 
+The release after a drag (#356). A plain press on a selected row leaves VCL's selection engine
+waiting for the button's release, which then selects that row alone (`WAIT_UPEVT`). A drag takes
+the button: after a drop VCL sees no release, and the engine goes on waiting, through any further
+presses, until the next release of any button, on which it then acts with the latest press's
+position and modifiers (`SelectionEngine::SelMouseButtonUp`, read in 26.8.3.1; measured on gtk3 and
+gen): it deselects a Ctrl+click's row again, selects a Shift+click's row alone, and leaves nothing
+after a Ctrl+Shift+click. After Esc the release comes, and selects the pressed row alone. So a
+gesture, whether it starts a drag or not, marks the next release (`_drag_release`), whose listener
+reads every change counted so far as the release's own, rather than as one made since its press
+(#329), and its write shows the picks over it. A change made by someone else between that click's
+press and release is shown over too. When VCL handles both before the press's listener runs, as
+while LibreOffice is busy, the press finds the release's change besides its own, and a Ctrl or
+Ctrl+Shift press is refused.
+
 Activation. A double click or Enter makes the sheet Calc's only selected tab and reads that back,
 because `setActiveSheet` keeps an existing group when the sheet belongs to it. Activation reads
 the handle's current name and visibility first, because Calc sends the activation of a hidden
@@ -1151,6 +1165,9 @@ class SheetList:
         # run: its cursor, where the list's last write, or VCL's paint of a tree without one, put
         # it. None from a rebuild until then (#349).
         self._range_start: int | None = None
+        # A drag took the button of its press: VCL's engine may act on the next release of a
+        # button, which is a later press's after a drop, as on that one's (#356).
+        self._drag_release = False
         # The tree's selected rows and the rows' order when the queued intake last deferred a
         # native selection, until that intake runs, or a drop or a refused toggle, after which
         # it takes nothing, ends the record (#291; `_take_tree_selection`, `_toggle_held_off`).
@@ -3404,6 +3421,13 @@ class SheetList:
             self._press = _Press.undecided(event, self._monitor.generation)
 
     def mouse_released(self, event) -> None:
+        after_drag, self._drag_release = self._drag_release, False
+        if after_drag:
+            # VCL's engine waited for the release that a drag took, or did not make a click of,
+            # and may have acted on this one instead: the list reads what it changed as this
+            # release's own, and the write shows the picks over it (#356).
+            self._input_seen = max(self._input_seen, self._unowned)
+            self._queue_selection()  # Ahead of a right release's menu.
         if event.Buttons & RIGHT:
             # Open on release on every platform, so that the release cannot pick an item.
             x, y, seen = event.X, event.Y, self._context_input
@@ -3703,6 +3727,7 @@ class SheetList:
 
     def start_drag(self, event) -> None:
         press, self._press = self._press, None  # A drag is not a click.
+        self._drag_release = True
         if self._busy or self._drag is not None or self._observed is None:
             return
         if self._presses_held is not None:

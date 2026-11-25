@@ -8,7 +8,9 @@ bottom edge, and with the wheel.
 
 import time
 
-from workbook import NAMES, wait_until
+import sheet_list_view as view
+from workbook import MOVES, NAMES, wait_until
+from xinput import RIGHT
 
 from sheet_manager.reorder import Sheet, target_order
 from sheet_manager.uno_calc import select_tabs
@@ -72,6 +74,64 @@ def check_drop_in_place_and_escape(book):
     cancelled = book.order() == before and book.undo_titles() == undo_before
     evidence = {"dropped_in_place_unchanged": in_place, "escape_unchanged": cancelled}
     assert in_place and cancelled, evidence
+    return evidence
+
+
+def check_clicks_after_a_drag(book):
+    """A drag leaves its picks, and the next click with a modifier, or right click, acts (#356).
+
+    The plain press of a drag on a selected row leaves VCL's selection engine waiting for the
+    button's release. After a drop it never comes, so the engine acts on the next release instead:
+    it toggled off a Ctrl+click's row, selected a Shift+click's row alone, and left nothing after
+    a Ctrl+Shift+click, and the list took that for someone else's selection and cleared its picks.
+    After Esc the release comes, selects the pressed row alone, and the list kept only that one.
+    """
+    evidence = {}
+    picked, source, end = [NAMES[3], NAMES[4]], 4, 11
+    gestures = {"ctrl": ("Control_L",), "shift": ("Shift_L",), "both": ("Control_L", "Shift_L")}
+    for how in ("dropped", "in_place", "cancelled"):
+        for gesture, modifiers in (*gestures.items(), ("right", None)):
+            before = book.order()
+            book.click(3)
+            book.click(source, modifiers=("Control_L",))
+            wait_until(lambda: book.selection() == picked, "two rows selected")
+            target = source if how == "in_place" else 8
+            drag(book, source, target, 0.75, cancel=how == "cancelled")
+            order = before
+            if how == "dropped":
+                wait_until(lambda b=before: book.order() != b, "the drop to move the sheets")
+                order = book.order()
+            time.sleep(0.6)
+            case = f"{how}_{gesture}"
+            evidence[case] = {"after_drag": book.selection(), "order": order[:12]}
+            assert evidence[case]["after_drag"] == [n for n in order if n in picked], evidence
+            if modifiers is None:
+                entries = book.entries(picked)
+                book.pointer.click(*book.point(order.index(picked[1])), button=RIGHT)
+                book.choose(MOVES["bottom"], entries)
+                wanted = [n for n in order if n not in picked] + [n for n in order if n in picked]
+                wait_until(lambda w=wanted: book.order() == w, f"{case}: both picks at the bottom")
+                book.document.getUndoManager().undo()
+                wait_until(lambda o=order: book.order() == o, f"{case}: the menu's move undone")
+            else:
+                book.click(end, modifiers=modifiers)
+                first, last = sorted((order.index(NAMES[source]), end))
+                chosen = {order[end]} if gesture == "ctrl" else set(order[first : last + 1])
+                if gesture != "shift":
+                    chosen |= set(picked)
+                wanted = [name for name in order if name in chosen]
+                try:
+                    wait_until(lambda w=wanted: book.selection() == w, f"{case}: {wanted}")
+                except AssertionError as error:
+                    error.add_note(f"The list shows {book.selection()}; {evidence}")
+                    raise
+                time.sleep(1.0)
+                evidence[case]["after_click"] = book.selection()
+                assert evidence[case]["after_click"] == wanted, evidence
+            if how == "dropped":
+                book.document.getUndoManager().undo()
+            wait_until(lambda b=before: view.names(book.tree) == b, f"{case}: the order restored")
+            time.sleep(0.6)
     return evidence
 
 
