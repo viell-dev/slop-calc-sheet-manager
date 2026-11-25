@@ -167,8 +167,8 @@ class Office:
         sheets = SimpleNamespace(moveByName=self.move, getByName=self.sheet)
         keyboard = SimpleNamespace(tap=self.tap, repeat=self.repeat)
         self.book = SimpleNamespace(
-            tree=SimpleNamespace(makeNodeVisible=self.step),
-            nodes=lambda: list(range(len(self.order))),
+            tree=None,
+            show_row=self.step,
             first_visible=lambda: 0,
             click=self.click,
             selection=self.selection,

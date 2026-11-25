@@ -48,7 +48,7 @@ def check_clicks_after_scrolls(book):
     write note the position, not how soon they do.
     """
     tree = book.tree
-    tree.makeNodeVisible(book.nodes()[0])
+    book.show_row(0)
     time.sleep(0.3)
     first = book.first_visible()
     x, y = view.row_point(tree, first + 2, scroll=False)
@@ -77,7 +77,7 @@ def check_clicks_after_scrolls(book):
         "clicked_after_end": book.selection(),
     }
     assert wheeled > first and again > wheeled and bottom > again, evidence
-    tree.makeNodeVisible(book.nodes()[0])
+    book.show_row(0)
     return evidence
 
 

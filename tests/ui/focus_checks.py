@@ -346,7 +346,7 @@ def _refused_hold(book, case, probe, press, marks) -> dict[str, Any]:
     event can come between them. `marks` receives when the moved rows were read and when the
     button went up.
     """
-    book.tree.makeNodeVisible(book.nodes()[0])
+    book.show_row(0)
     wait_until(lambda: book.first_visible() == 0, "the list at its top")
     if case == "renamed":
         book.click(0)
