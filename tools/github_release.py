@@ -60,6 +60,8 @@ LEGACY_PACKAGE_DIGESTS = {
 }
 
 
+# `gh` reports GitHub's answer to a refused request on stderr, which goes to the log uncaptured: a
+# failed command's exception does not show it (#346).
 def api(path: str, *, method: str = "GET", data: dict[str, object] | None = None) -> Any:
     command = ["gh", "api", path, "--method", method]
     if data is not None:
@@ -68,7 +70,7 @@ def api(path: str, *, method: str = "GET", data: dict[str, object] | None = None
         command,
         input=json.dumps(data) if data is not None else None,
         text=True,
-        capture_output=True,
+        stdout=subprocess.PIPE,
         check=True,
     )
     return json.loads(result.stdout) if result.stdout.strip() else None
@@ -78,7 +80,7 @@ def paginated(path: str) -> list[dict[str, Any]]:
     result = subprocess.run(
         ["gh", "api", path, "--paginate", "--slurp"],
         text=True,
-        capture_output=True,
+        stdout=subprocess.PIPE,
         check=True,
     )
     pages = cast(list[list[dict[str, Any]]], json.loads(result.stdout))

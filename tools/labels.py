@@ -20,8 +20,9 @@ REPOSITORY = "viell-dev/slop-calc-sheet-manager"
 
 
 def gh(*arguments: str) -> str:
+    # Not stderr, where `gh` says what GitHub refused: the exception does not show it (#346).
     return subprocess.run(
-        ["gh", *arguments], check=True, capture_output=True, text=True, encoding="utf-8"
+        ["gh", *arguments], check=True, stdout=subprocess.PIPE, text=True, encoding="utf-8"
     ).stdout
 
 

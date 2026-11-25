@@ -3,17 +3,20 @@
 import hashlib
 import io
 import json
+import subprocess
 import sys
 import zipfile
+from collections.abc import Callable
 from dataclasses import asdict, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from unittest.mock import Mock
 
 import pytest
 import yaml
 
 from tools import github_release as cli
+from tools import labels
 from tools.build import ROOT, build, version
 from tools.ci_policy import ROUTINE, SWEEP
 from tools.release_data import STAGES, PublishedBuild, release_title, version_parts
@@ -42,6 +45,33 @@ STAGE_REQUESTS = [
 
 def target_for(kind: str) -> str:
     return {"": "", "minor": next_minor(), "major": next_major()}[kind]
+
+
+@pytest.mark.parametrize(
+    "request_github",
+    [
+        lambda: cli.api("repos/example/releases", method="POST", data={"draft": True}),
+        lambda: cli.paginated("repos/example/tags"),
+        lambda: labels.gh("api", "repos/example/labels"),
+    ],
+    ids=["api", "paginated", "labels"],
+)
+def test_a_refused_request_shows_what_github_answered(
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+    request_github: Callable[[], object],
+) -> None:
+    run = cast(Callable[..., subprocess.CompletedProcess[str]], subprocess.run)
+    refusal = "import sys; sys.exit('gh: We had issues producing the response (HTTP 502)')"
+
+    def refuse(command: list[str], **options: Any) -> subprocess.CompletedProcess[str]:
+        assert command[0] == "gh"
+        return run([sys.executable, "-c", refusal], **options)
+
+    monkeypatch.setattr(subprocess, "run", refuse)
+    with pytest.raises(subprocess.CalledProcessError):
+        request_github()
+    assert "gh: We had issues producing the response (HTTP 502)" in capfd.readouterr().err
 
 
 def test_ci_gate_requires_exact_commit_and_main_push_for_publication(
