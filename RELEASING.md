@@ -292,7 +292,53 @@ against a rebuild of the tagged commit, and publishing it. Never use `--clobber`
 asset. If its content is wrong or uncertain, abandon the draft/tag and prepare a higher version.
 An older stalled draft may be completed even after a higher version has been published: feeds
 sort by version, so the recovered build enters history without replacing the newest offer.
-If publication succeeded but Pages failed, rerun **Pages** on `main`; do not republish.
+
+A run can also fail between reserving the tag and creating the draft, as 0.0.11's did during a
+GitHub outage ([receipts](https://github.com/viell-dev/slop-calc-sheet-manager/issues/93)). The
+run's log says what GitHub answered. A maintainer may then create the draft that the workflow would
+have created, from the dry run's plan, if each of these steps succeeds. Record the results in the
+release tracker; if any step fails or is uncertain, abandon the tag and prepare a higher version.
+In the commands, `REPO` is `repos/viell-dev/slop-calc-sheet-manager`, and `plan.json` is the
+`release-plan.json` from the artifact of the successful manual dry run on the same commit with the
+same inputs.
+
+1. Wait until [GitHub's status](https://www.githubstatus.com/) is good again.
+2. Confirm that the tag is at the failed run's exact commit, that the plan's `target_commitish`,
+   `tag_name`, `stage` and `target` match it and the run's inputs, and that no release or draft has
+   the version. The second command must print nothing; it lists drafts only for an account with
+   push access:
+
+   ```sh
+   gh api REPO/git/ref/tags/VERSION --jq .object.sha
+   gh api 'REPO/releases?per_page=100' --paginate --jq '.[] | select(.tag_name == "VERSION") | .id'
+   ```
+
+3. Build the package from a clean checkout of the tag with `python tools/build.py`. It must be
+   byte-identical to the dry run's OXT, and its checksum file to the dry run's.
+4. Create the draft, and compare its title, `draft`, `prerelease`, `target_commitish` and notes with
+   the plan:
+
+   ```sh
+   jq .release plan.json | gh api REPO/releases --method POST --input - > draft.json
+   ```
+
+5. Upload both files with `gh release upload VERSION FILE FILE.sha256`. The draft must list exactly
+   those two, each with GitHub's digest equal to the built file's:
+
+   ```sh
+   gh api REPO/releases/ID/assets --jq '.[] | [.name, .digest] | @tsv'
+   ```
+
+6. Publish with the workflow's final call; `make_latest` is `false` for a prerelease and `true` for
+   a stable release. The release event then runs **Pages**:
+
+   ```sh
+   gh api REPO/releases/ID --method PATCH -F draft=false -f make_latest=false
+   ```
+
+If publication succeeded but Pages failed, rerun **Pages** on `main`; do not republish. A Pages
+deployment can also report success without being served, so check the live feeds, `releases.json`
+and the guide's notice; if they stay old for more than a few minutes, rerun **Pages** on `main`.
 
 The tag/draft/upload/publish sequence has mock coverage; each actual publication still needs the
 live verification above. Keep this recovery procedure open during publication. If the reserved
