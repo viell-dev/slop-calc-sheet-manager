@@ -643,7 +643,7 @@ def held_foxtrot_released_over_bravo(owner: Any, call: str | None = None) -> Non
     owner.run_queue()
     if call is not None:
         owner.faults.fail(call)
-    owner.tree.waiting = owner.tree.line(row("Bravo"))  # The press's position shows Bravo now.
+    owner.tree.last = (owner.tree.line(row("Bravo")), 0)  # The press's position shows Bravo now.
     release(owner, row("Bravo"))
 
 
@@ -792,7 +792,7 @@ def test_a_newer_change_back_to_the_record_after_the_write_is_taken(
 def native_release_over_bravo(owner: Any) -> None:
     """The native release of a press on a row the tree showed selected, which selects the row at
     the press's position alone: Bravo, scrolled under the held pointer."""
-    owner.tree.waiting = owner.tree.line(row("Bravo"))
+    owner.tree.last = (owner.tree.line(row("Bravo")), 0)
     owner.tree.release()
 
 

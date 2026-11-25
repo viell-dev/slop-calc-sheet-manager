@@ -182,14 +182,35 @@ def test_superseded_context_only_clears_its_own_target(newer_context: bool) -> N
     assert owner._context_target is (target if newer_context else None)
 
 
-def test_right_release_keeps_the_press_intent_before_newer_keyboard_input() -> None:
-    owner = SimpleNamespace(_input=5, _context_input=3, _open_menu=Mock(), post=Mock())
+@pytest.mark.parametrize("after_drag", [False, True])
+def test_right_release_keeps_the_press_intent_before_newer_keyboard_input(
+    after_drag: bool,
+) -> None:
+    """After a drag, VCL may act on this release as on the drag's, so the write that shows the
+    picks over what it changed comes ahead of the menu (#356)."""
+    order: list[str] = []
+
+    def post(callback: Any, where: str) -> None:
+        order.append(where)
+        callback()
+
+    owner = SimpleNamespace(
+        _input=5,
+        _context_input=3,
+        _drag_release=after_drag,
+        _unowned=4,
+        _input_seen=1,
+        _open_menu=Mock(),
+        _queue_selection=lambda: order.append("write"),
+        post=post,
+    )
     release = method(
         "src/sheet_manager/uno_list.py", "SheetList", "mouse_released", {"RIGHT": 2, "LEFT": 1}
     )
     release(owner, SimpleNamespace(Buttons=2, X=10, Y=20))
-    owner.post.call_args.args[0]()
     owner._open_menu.assert_called_once_with(10, 20, seen=3)
+    assert order == (["write"] if after_drag else []) + ["the sheet tab menu"]
+    assert owner._input_seen == (4 if after_drag else 1) and not owner._drag_release
 
 
 def test_move_request_keeps_its_snapshot_refs_and_proof_while_queued() -> None:
@@ -708,6 +729,7 @@ def test_a_refused_release_writes_a_picked_cursor_and_keeps_the_lists_own(
         _monitor=SimpleNamespace(generation=0),  # No `check()` in the listener (#284).
         _unowned=0,  # The release reads the count, and nothing else of it (#307).
         _input_seen=0,
+        _drag_release=False,
         _pressed_sheet_in_place=Mock(return_value=False),
         _selection=selection,
         names=lambda: rows,

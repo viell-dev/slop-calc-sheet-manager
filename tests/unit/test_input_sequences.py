@@ -1,11 +1,15 @@
 """Sequences of clicks and keys over the simulated tree, whose presses follow VCL's (#328).
 
 At human speed, each input's work has run and VCL has painted before the next: the list must then
-pick exactly what the gestures mean, with no notice, and the tree must show it. That is checked
-against a plain model of the gestures, for every pair of inputs and for random longer sequences.
-0.0.11 cleared the selection at a Shift+click that shrank or crossed a range, and no test saw it,
-because the simulated Shift press selected its row alone (#349); other range presses were refused
-after another window renamed a picked sheet (#321).
+pick exactly what the gestures mean, with no notice, and the tree must show it. The inputs are
+clicks on the labels, in the gutter and below the rows, with any button, selection keys, drags
+dropped in place or cancelled, and renames by another window. That is checked against a plain model
+of the gestures, for every pair of inputs and for random longer sequences. 0.0.11 cleared the
+selection at a Shift+click that shrank or crossed a range, and no test saw it, because the simulated
+Shift press selected its row alone (#349); after a drag, it cleared the selection at any click with
+a modifier and took the row where the drag began at one in the gutter, because VCL's engine acted on
+that click's release as on the drag's (#356); and other range presses were refused after another
+window renamed a picked sheet (#321).
 
 While LibreOffice is busy, the listeners and the list's posted work lag behind what the tree has
 handled. The list may then refuse an input, with the notice unless there was nothing to clear, but
@@ -27,20 +31,30 @@ import pytest
 from tests.unit.list_peer import (
     DOWN,
     END,
+    HIT_X,
     HOME,
+    LABEL_X,
+    LEFT,
+    MIDDLE,
     MOD1,
+    RIGHT,
     SHIFT,
     SPACE,
     UP,
     A,
     Book,
+    bind_drag,
     changed,
+    drag,
     key,
     move_to_top,
     paint,
     picks,
+    press,
     queued_click,
     record_activations,
+    record_menus,
+    release,
     sheet_list,
 )
 
@@ -53,14 +67,25 @@ KEYS = [
     (SPACE, MOD1),
     (A, MOD1),
 ]
-Input = tuple[str, int, int]  # "click" a row, "key" a code or "rename" a row; the modifiers.
+# A row and the modifiers, or a key's code and its own. "cancel" is a drag that Esc ends.
+Input = tuple[str, int, int]
+# Clicks that leave the picks and the cursor as they are.
+IDLE = ("below", "right", "middle")
 
 
 def inputs(rows: int) -> list[Input]:
     return [
-        *(("click", row, modifiers) for row in range(rows) for modifiers in CLICKS),
+        *(
+            (kind, row, modifiers)
+            for kind in ("click", "gutter")
+            for row in range(rows)
+            for modifiers in CLICKS
+        ),
+        *(("below", rows, modifiers) for modifiers in CLICKS),
+        *((kind, row, 0) for kind in ("double", "right", "middle") for row in range(rows)),
         *(("key", code, modifiers) for code, modifiers in KEYS),
         *(("rename", row, 0) for row in range(rows)),
+        *((kind, row, 0) for kind in ("drag", "cancel") for row in range(rows)),
     ]
 
 
@@ -74,11 +99,16 @@ class Gestures:
     anchor: int | None = None
 
     def give(self, kind: str, at: int, modifiers: int) -> None:
+        if kind in IDLE:
+            return
         if kind == "rename":
             # A renamed pick goes, and the next range starts at the cursor, which stays.
             if at in self.picked:
                 self.picked.remove(at)
                 self.anchor = None
+            return
+        if kind in ("drag", "cancel") and at in self.picked:
+            self.cursor = self.anchor = at  # The picks stay, so that they are dragged together.
             return
         if kind == "key" and at == A:
             self.picked = set(range(self.rows))
@@ -105,15 +135,37 @@ class Gestures:
 def opened(rows: int) -> Any:
     owner = sheet_list(Book([f"Sheet {row}" for row in range(rows)]))
     record_activations(owner)
+    record_menus(owner)
+    opened_menu = owner._open_menu
+
+    def open_menu(*arguments: Any, **keywords: Any) -> None:
+        opened_menu(*arguments, **keywords)
+        owner._context_target = None  # As when the menu closes.
+
+    owner._open_menu = open_menu
+    bind_drag(owner)
     paint(owner)
     return owner
 
 
-def give(owner: Any, kind: str, at: int, modifiers: int) -> None:
-    if kind == "click":
-        queued_click(owner, at, modifiers)
+def give(owner: Any, kind: str, at: int, modifiers: int, lag: bool = False) -> None:
+    """The input; with `lag`, a click whose release VCL handles before its press's listener runs,
+    rather than after the press's work has, as a person's comes."""
+    if kind in ("click", "gutter", "double", *IDLE):
+        button = {"right": RIGHT, "middle": MIDDLE}.get(kind, LEFT)
+        x = HIT_X - 1 if kind == "gutter" else LABEL_X
+        for clicks in (1, 2) if kind == "double" else (1,):
+            if lag:
+                queued_click(owner, at, modifiers, clicks, button, x)
+                continue
+            press(owner, at, button, modifiers, clicks, x)
+            owner.run_queue()
+            release(owner, at, button)
+            owner.run_queue()
     elif kind == "key":
         key(owner, at, modifiers)
+    elif kind in ("drag", "cancel"):
+        drag(owner, at, cancel=kind == "cancel")
     else:
         sheet = owner.book.sheets[at]
         owner.book.rename(sheet.name, sheet.name + "'")
@@ -129,10 +181,10 @@ def settle(owner: Any) -> None:
     owner.run_queue()
 
 
-def check_settled(sequence: tuple[Input, ...], rows: int) -> None:
+def check_settled(sequence: tuple[Input, ...], rows: int, lag: bool = False) -> None:
     owner, wanted = opened(rows), Gestures(rows)
     for step, (kind, at, modifiers) in enumerate(sequence):
-        give(owner, kind, at, modifiers)
+        give(owner, kind, at, modifiers, lag)
         settle(owner)
         wanted.give(kind, at, modifiers)
         names = [owner.book.names()[row] for row in sorted(wanted.picked)]
@@ -144,6 +196,16 @@ def check_settled(sequence: tuple[Input, ...], rows: int) -> None:
 def test_every_pair_of_inputs_at_human_speed_picks_what_it_means() -> None:
     for pair in itertools.product(inputs(4), repeat=2):
         check_settled(pair, 4)
+
+
+def test_every_input_after_a_drag_of_picked_rows_acts_on_the_picks() -> None:
+    """Two picked rows, a drag of either, and any input: VCL's engine still waits for the release
+    that the drag took, and acts on the next one, whichever press that ends (#356)."""
+    for first, second in itertools.permutations(range(3), 2):
+        for how, source in itertools.product(("drag", "cancel"), (first, second)):
+            start = (("click", first, 0), ("click", second, MOD1), (how, source, 0))
+            for item in inputs(3):
+                check_settled((*start, item), 3)
 
 
 def test_every_range_corrected_by_shift_clicks_is_picked() -> None:
@@ -166,8 +228,13 @@ def test_every_range_after_a_rename_of_a_picked_sheet_is_picked() -> None:
 def test_random_longer_sequences_at_human_speed_pick_what_they_mean(seed: int) -> None:
     draws = random.Random(seed)
     for _ in range(100):
-        sequence = draws.choices(inputs(8), k=draws.randint(3, 9))
-        check_settled(tuple(sequence), 8)
+        sequence = tuple(draws.choices(inputs(8), k=draws.randint(3, 9)))
+        check_settled(sequence, 8)
+        # Quick clicks, but not after a drag, whose effect on a later release (#356) the list then
+        # cannot tell from that click's press: it refuses.
+        check_settled(
+            tuple(item for item in sequence if item[0] not in ("drag", "cancel")), 8, True
+        )
 
 
 def refusals(owner: Any) -> list[str]:
@@ -216,7 +283,7 @@ def test_lagging_input_acts_as_at_human_speed_or_is_refused(seed: int) -> None:
             draws.choice(inputs(8)) if draws.random() < 0.9 else ("recolour", draws.randrange(8), 0)
             for _ in range(draws.randint(2, 5))
         ]
-        sequence = [item for item in sequence if item[0] != "rename"]
+        sequence = [item for item in sequence if item[0] not in ("rename", "drag", "cancel")]
         lagging, prompt = opened(8), opened(8)
         for owner in (lagging, prompt):
             give(owner, "click", 3, 0)
@@ -230,7 +297,7 @@ def test_lagging_input_acts_as_at_human_speed_or_is_refused(seed: int) -> None:
                     continue
                 if kind == "key":
                     owner.run_queue()
-                give(owner, kind, at, modifiers)
+                give(owner, kind, at, modifiers, lag=True)
             run_some(lagging, draws)
             settle(prompt)
         settle(lagging)

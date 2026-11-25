@@ -7,7 +7,7 @@ compared with real input on gtk3 and gen (#321's and #349's measurements).
 
 import pytest
 
-from tests.unit.list_peer import MIDDLE, MOD1, RIGHT, SHIFT, Faults, NodeModel, Tree
+from tests.unit.list_peer import HIT_X, MIDDLE, MOD1, RIGHT, SHIFT, Faults, NodeModel, Tree
 
 NAMES = ["Alfa", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot"]
 CTRL_SHIFT = MOD1 | SHIFT
@@ -61,6 +61,47 @@ def test_the_release_of_a_press_with_a_modifier_changes_nothing(modifiers: int) 
     shown, notified = made.shown(), made.notified
     made.release()
     assert made.shown() == shown and made.notified == notified
+
+
+@pytest.mark.parametrize(
+    "modifiers, pressed, released",
+    [
+        (0, ["Echo"], ["Echo"]),
+        (MOD1, ["Bravo", "Delta", "Echo"], ["Bravo", "Delta"]),
+        (SHIFT, ["Delta", "Echo"], ["Echo"]),
+        (CTRL_SHIFT, ["Bravo", "Delta", "Echo"], []),
+    ],
+)
+def test_a_release_that_a_drag_took_is_acted_on_at_the_next_one(
+    modifiers: int, pressed: list[str], released: list[str]
+) -> None:
+    """The press of a drag on a selected row, whose release never comes, and a press on Echo: the
+    engine still waits, and acts on that press's release, with its position and modifiers (#356)."""
+    made = tree("Bravo", "Delta")
+    made.press(NAMES.index("Delta"))
+    made.press(NAMES.index("Echo"), modifiers)
+    assert made.shown() == pressed
+    made.release()
+    assert made.shown() == released and cursor(made) == "Echo"
+    made.release()
+    assert made.shown() == released, "it waited only once"
+
+
+@pytest.mark.parametrize("how", ["right", "middle", "gutter", "below", "second click"])
+def test_a_release_whose_press_the_engine_skipped_acts_on_the_drags(how: str) -> None:
+    made = tree("Bravo", "Delta")
+    made.press(NAMES.index("Delta"))
+    if how in ("right", "middle"):
+        made.press(NAMES.index("Echo"), button=RIGHT if how == "right" else MIDDLE)
+    elif how == "gutter":
+        made.press(NAMES.index("Echo"), x=HIT_X - 1)
+    elif how == "below":
+        made.press(len(NAMES))
+    else:
+        made.press(NAMES.index("Echo"), clicks=2)
+    assert made.shown() == ([] if how == "below" else ["Bravo", "Delta"])
+    made.release()
+    assert made.shown() == ["Delta"], "the row of the drag's press"
 
 
 def test_a_held_presss_release_selects_the_row_scrolled_to_its_position() -> None:

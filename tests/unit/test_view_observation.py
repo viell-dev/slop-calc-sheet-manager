@@ -907,6 +907,7 @@ def click_list() -> tuple[Any, Any, Any, list[Any]]:
     owner._activating, owner._activation_input = False, 0
     # The release's read of the count, against what is accounted for (#307).
     owner._unowned = owner._input_seen = owner._accounted = 0
+    owner._drag_release = False
     owner._unclaimed = False
     owner._intake = INTAKE.CHANGES
     bind("_unread", {"_Intake": INTAKE})

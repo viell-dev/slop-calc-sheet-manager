@@ -31,6 +31,7 @@ sys.path[:0] = [str(HERE), str(ROOT / "tests" / "integration"), str(ROOT / "src"
 from check_loop import run_named  # noqa: E402
 from drag_checks import (  # noqa: E402
     check_autoscroll,
+    check_clicks_after_a_drag,
     check_drag_two_sheets,
     check_drop_in_place_and_escape,
     check_wheel,
@@ -153,6 +154,7 @@ def run_checks(lab, output, only=()):
         ("drag_two_sheets_above_midpoint", lambda: check_drag_two_sheets(book, 0.25, 12)),
         ("drag_two_sheets_below_midpoint", lambda: check_drag_two_sheets(book, 0.75, 13)),
         ("drop_in_place_and_escape", lambda: check_drop_in_place_and_escape(book)),
+        ("clicks_after_a_drag", lambda: check_clicks_after_a_drag(book)),
         ("autoscroll", lambda: check_autoscroll(book)),
         ("wheel", lambda: check_wheel(book)),
         ("clicks_after_scrolls", lambda: check_clicks_after_scrolls(book)),
