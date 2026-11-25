@@ -16,8 +16,8 @@ in the left gutter marks the viewed sheet.
 Hidden, protected, and scenario sheets have those states written beside their names. The deck is
 also shown for read-only workbooks and follows the sidebar when it resizes, docks, or undocks.
 
-<Unreleased since="0.0.9" /> The list follows LibreOffice's document background colour. Text and
-dividers stay readable, including when a custom scheme would otherwise give the text and
+**Colours.** <Unreleased since="0.0.9" /> The list follows LibreOffice's document background
+colour. Text and dividers stay readable, including when a custom scheme would otherwise give the text and
 background the same colour. Selected rows keep the platform's selection and text colours
 together; if the new background hides the selection, the list uses a distinct selection colour
 with readable text. <Unreleased since="0.0.10" /> This adjustment keeps the native selection's
@@ -184,16 +184,16 @@ name is refused when it:
   `ss`, or the dotted and dotless i (`I`, `İ`, `i`, `ı`).
 
 With a screen reader, move to **Sheets** with Alt+S and use the arrow keys to hear each refused
-proposal and its reason. <Unreleased /> **New name** reports the selected proposal's refusal
-while you edit. If that proposal is valid and another is refused, the field gives the first
+proposal and its reason. <Unreleased since="0.0.11" /> **New name** reports the selected proposal's
+refusal while you edit. If that proposal is valid and another is refused, the field gives the first
 affected sheet and its reason. Clearing **New name** leaves the empty-name reason on its preview
 row. As you start typing again, the field can repeat a refusal on another row. An apostrophe at
 the end of a proposal can trigger a warning as you type, for example at `Bob'` on the way to
 `Bob's`. When the proposal becomes valid and no other row is refused, the field returns to its
 ordinary name.
 
-<Unreleased /> **Replace All** reports when Find is empty, when there are no matches, or when the
-search matches but the replacement leaves every proposed name unchanged. It reports the first
+**Replace All** <Unreleased since="0.0.11" /> reports when Find is empty, when there are no matches,
+or when the search matches but the replacement leaves every proposed name unchanged. It reports the first
 affected sheet and reason if the replacement leaves a refused proposal. If you repeat the same
 replacement and the first press already replaced every match, the conflict stays available on
 the button. If the sheets changed since the dialog opened, **Rename** gives the refusal and asks
@@ -245,20 +245,15 @@ The four move shortcuts apply while the list has focus, without changing Calc's 
 configuration. In a cell, Alt+Down retains Calc's Data Select command.
 Ctrl+Shift with navigation adds a range to the existing selection.
 
-**Ranges after keys.** <Unreleased /> After Ctrl with an arrow, Home or End key moves the
-keyboard cursor, a range made with Shift or Ctrl+Shift, by key or by click, starts at the cursor,
-where the list shows it. A Shift+click or Ctrl+Shift+click made so quickly after such a key, after
-an arrow, Home, End, Page Up or Page Down key without Ctrl, or after a typed letter that moves to a
-sheet, that the list has not shown the cursor there yet picks nothing and clears the selection:
-click again ([#313](https://github.com/viell-dev/slop-calc-sheet-manager/issues/313),
-[#326](https://github.com/viell-dev/slop-calc-sheet-manager/issues/326)).
+**Ranges after keys.** <Unreleased since="0.0.11" /> After Ctrl with an arrow, Home or End key moves
+the keyboard cursor, a range made with Shift or Ctrl+Shift, by key or by click, starts at the cursor
+([#313](https://github.com/viell-dev/slop-calc-sheet-manager/issues/313)).
 
-**A renamed cursor row.** <Unreleased /> When another window renames the sheet under the keyboard
-cursor, keys keep moving from that row until the list shows the new name, and they do not select
-the renamed sheet until then
-([#314](https://github.com/viell-dev/slop-calc-sheet-manager/issues/314)). Once the list shows
-the new name, the cursor moves to the first selected sheet, or, with none selected, to the first
-row in view ([#327](https://github.com/viell-dev/slop-calc-sheet-manager/issues/327)).
+**A renamed cursor row.** <Unreleased since="0.0.11" /> When another window renames the sheet under
+the keyboard cursor, keys keep moving from that row until the list shows the new name
+([#314](https://github.com/viell-dev/slop-calc-sheet-manager/issues/314)). The cursor then moves to
+the first selected sheet, or, with none selected, to the first row in view
+([#327](https://github.com/viell-dev/slop-calc-sheet-manager/issues/327)).
 
 **Move-button shortcuts.** <Unreleased since="0.0.4" /> Move shortcuts also apply while a move
 button has focus.
@@ -291,59 +286,38 @@ LibreOffice's sheet handles can change which sheet they refer to after a deletio
 its selection when it cannot establish that the picked sheets are still the same ones. This
 includes inserting or deleting sheets, undo and redo, and some macro or unrecorded changes.
 A notice explains conservative clearing of a user-made selection. Pick the sheets again before acting.
-<Unreleased /> A selection made through assistive technology that the list has not taken yet is
-cleared the same way ([#265](https://github.com/viell-dev/slop-calc-sheet-manager/issues/265)), and
-so is the selection when LibreOffice fails to show it in the list
-([#257](https://github.com/viell-dev/slop-calc-sheet-manager/issues/257)).
-<Unreleased /> A Ctrl+click or Ctrl+Space made as the list clears its selection, or drops a
-picked sheet that another window renamed, picks nothing, and the next toggle acts. Before the list
-shows its selection again after such a failure, a toggle also clears the selection, with the
-notice
-([#288](https://github.com/viell-dev/slop-calc-sheet-manager/issues/288)).
-<Unreleased /> A selection made through assistive technology that the list has not taken yet is
-also cleared, with the picks it replaced, when a sheet is renamed or moved first
-([#280](https://github.com/viell-dev/slop-calc-sheet-manager/issues/280)). A Ctrl+click made
-just after a selection key, before the list shows that key's change, picks nothing and clears
-the selection, with the notice. So do a Ctrl+click, Ctrl+Space, and Ctrl with an arrow, Home or
-End key on such a selection once the list has seen it, also when several Ctrl+clicks come at
-once. Select again; the next toggle acts
-([#291](https://github.com/viell-dev/slop-calc-sheet-manager/issues/291)).
-<Unreleased /> They do so too just after rows were selected or cleared through assistive
-technology, before the list has looked at that selection, and so do a Ctrl+Shift+click, Space
-and a right click: the list counts the changes to its selection that it did not make itself. A
-right click there opens the menu for the clicked sheet alone
-([#294](https://github.com/viell-dev/slop-calc-sheet-manager/issues/294)).
-<Unreleased /> A click in the list just as the list redraws its rows, as it does when another window
-moves, inserts, deletes or renames a sheet, is refused if the redraw changed the clicked row,
-rather than act on the sheet that the redraw put under the pointer. So is a Shift+click on any
-row, and a click on any row when the redraw moved the top row or scrolled the list, as it does
-when the list gets shorter while scrolled to its end. A refused right click opens no menu, and a
-refused left click clears the selection, with the notice when you had made it. Click again
-([#293](https://github.com/viell-dev/slop-calc-sheet-manager/issues/293)).
-<Unreleased /> A click is refused in the same way when the list scrolls just after it, before the
-list has handled it: by the mouse wheel or the scroll bar, or by a key that moves the selection
-out of view. So is a click that comes just as the panel's height changes and scrolls the list, as
-it can when the selection notice appears or goes. A drag does not start when you begin it just as
-the list redraws or scrolls its rows. Click or drag again ([#299](https://github.com/viell-dev/slop-calc-sheet-manager/issues/299),
-[#295](https://github.com/viell-dev/slop-calc-sheet-manager/issues/295)).
-Nor does one begun so quickly after a key or a typed letter that changed the selection or moved
-the keyboard cursor, or after another click, that the list has not shown that input yet: drag
-again ([#304](https://github.com/viell-dev/slop-calc-sheet-manager/issues/304)).
-<Unreleased /> A selection made through assistive technology just after a click or key in the
-list, before the list has shown that input, is not replaced by what the input selected: the list
-keeps that selection, and commands act on it. Where the list cannot tell what you selected, it
-clears its selection instead, with the notice: after Space or Ctrl+Space, a Ctrl+click it refused,
-a Ctrl+double-click, a click released over another row, a right click, whose menu opens for the
-clicked sheet alone, a click on a selected sheet, a double click or a Shift+click that the list
-handled late, and a Shift+click whose range it cannot match, as one made just after a key or a
-Ctrl+Shift+click. The list has then not shown its keyboard cursor where the click or key moved it,
-so the next Shift+click or Ctrl+Shift+click picks nothing and clears the selection, as one made
-just after Ctrl with an arrow key does: click again. A click on another row just after a key still
-selects the row clicked, and the list then does not scroll to the key's selection
-([#307](https://github.com/viell-dev/slop-calc-sheet-manager/issues/307)). When
-LibreOffice fails to show the selection after you hold a click on a selected sheet and release it
-over another row, the list clears the selection too, rather than act on the row you released over
-([#316](https://github.com/viell-dev/slop-calc-sheet-manager/issues/316)).
+
+**Quick input.** <Unreleased since="0.0.11" /> LibreOffice shows a click or key in the list before
+the list itself handles it. The rows or their selection can change in between: the list redraws or
+scrolls, another window changes the sheets, or assistive technology selects rows. When the list can
+no longer tell which sheets you meant, it leaves that input undone rather than act on others, and
+usually clears its selection, with the notice. Repeat the click, key or drag. This can happen to:
+
+- a click, double click or right click just as the list redraws or scrolls its rows
+  ([#293](https://github.com/viell-dev/slop-calc-sheet-manager/issues/293),
+  [#299](https://github.com/viell-dev/slop-calc-sheet-manager/issues/299));
+- a Shift+click or Ctrl+Shift+click made before the list has shown where a key or a typed letter
+  moved the keyboard cursor
+  ([#313](https://github.com/viell-dev/slop-calc-sheet-manager/issues/313),
+  [#326](https://github.com/viell-dev/slop-calc-sheet-manager/issues/326));
+- a drag begun before the list has shown the click, key or typed letter just before it, or just as
+  the rows move ([#295](https://github.com/viell-dev/slop-calc-sheet-manager/issues/295),
+  [#304](https://github.com/viell-dev/slop-calc-sheet-manager/issues/304),
+  [#329](https://github.com/viell-dev/slop-calc-sheet-manager/issues/329));
+- a Ctrl+click, Ctrl+Space, right click, or Ctrl with a navigation key just as the list drops picks,
+  just after another click or key that the list has not handled, or just after a selection made
+  through assistive technology
+  ([#288](https://github.com/viell-dev/slop-calc-sheet-manager/issues/288),
+  [#291](https://github.com/viell-dev/slop-calc-sheet-manager/issues/291),
+  [#294](https://github.com/viell-dev/slop-calc-sheet-manager/issues/294)).
+
+**Selections made through assistive technology.** <Unreleased since="0.0.11" /> The list takes such
+a selection, or clears it with the notice when it cannot tell which sheets it means, as when a sheet
+is renamed, moved or replaced at that moment
+([#265](https://github.com/viell-dev/slop-calc-sheet-manager/issues/265),
+[#280](https://github.com/viell-dev/slop-calc-sheet-manager/issues/280),
+[#307](https://github.com/viell-dev/slop-calc-sheet-manager/issues/307)). See
+[Known issues](./known-issues.md#known-issues) for the remaining exceptions.
 
 **Undo and Redo of the list's moves.** <Unreleased since="0.0.8" /> Undo and Redo of a move the list
 made itself, by dragging, a move button, the menu or a shortcut, keep the picks and the view. The

@@ -5,8 +5,7 @@ identifies the build this guide describes. Work towards 0.1.0 is limited to fixe
 the existing feature set. The [release tracker](https://github.com/viell-dev/slop-calc-sheet-manager/issues/93)
 owns progress, and the [release goal](https://github.com/viell-dev/slop-calc-sheet-manager/issues/120)
 owns the scope agreement and release conditions.
-[Usability review preparation](https://github.com/viell-dev/slop-calc-sheet-manager/issues/130)
-tracks the new focused human review required before a release candidate or stable publication.
+A person must try a candidate before the stable release; the tracker links that request.
 
 ## What Sheet Manager includes
 

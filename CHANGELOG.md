@@ -5,353 +5,92 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
-- A selection made through assistive technology just after a click or key in the sheet list,
-  before the list has shown that input, is no longer replaced by what the input selected. Move to
-  Top then moved the click's or key's sheets, though the selection showed last was another. The
-  list now keeps that selection, and commands act on it. Where it cannot tell what you selected,
-  it clears the selection with the selection notice instead: after Space or Ctrl+Space, a
-  Ctrl+click it refused, a Ctrl+double-click, a click released over another row, a right click,
-  whose menu opens for the clicked sheet alone, a click on a selected sheet, a double click or a
-  Shift+click that the list handled late, and a Shift+click whose range it cannot match, as one
-  made just after a key or a Ctrl+Shift+click. A click on a row just after a key still selects
-  the row clicked, and the list no longer scrolls to the key's selection over it
-  ([#307](https://github.com/viell-dev/slop-calc-sheet-manager/issues/307)).
-- A sheet list write that LibreOffice fails after you hold a click on the picked sheet and release
-  it over another row no longer leaves that row to be taken as a pick. Move to Top could then move
-  it, though nobody picked it. The list now clears the picks with the selection notice, as after
-  a refused held click. LibreOffice's tree has been seen to fail such a call only while a panel
-  closes ([#316](https://github.com/viell-dev/slop-calc-sheet-manager/issues/316)).
-- A drag started on a sheet just after a Shift+click, Ctrl+click or Ctrl+Shift+click, before the
-  list had shown that click, no longer carries the click's sheets instead of the one you pressed:
-  a drop moved sheets you were not dragging. Such a drag now carries nothing, and the list clears
-  its selection with the notice; drag again
-  ([#329](https://github.com/viell-dev/slop-calc-sheet-manager/issues/329)).
-- After Ctrl with an arrow, Home or End key moved the keyboard cursor, a Ctrl+Shift+click now
-  adds the range from the cursor that the list shows at the click. The list added the range from
-  where the selection had started instead: the click was refused and cleared the selection, or,
-  when both ranges had as many rows, the list replaced the range it had shown with the other, and
-  Move to Top then moved sheets you had not selected. A Shift or Ctrl+Shift range made by key or
-  click after such keys also starts at the cursor now. A Shift+click or Ctrl+Shift+click made so
-  quickly after such a key that the list has not shown the cursor there yet picks nothing and
-  clears the selection, since LibreOffice's list still ranges from the earlier cursor then
-  ([#313](https://github.com/viell-dev/slop-calc-sheet-manager/issues/313)).
-- A key pressed just after another window renamed the sheet under the keyboard cursor, before the
-  list showed the new name, no longer moves from the first row of the list: Down selected the
-  second sheet, and Move to Top then moved it. Keys now move from the row where the list showed
-  the cursor, and do not select the renamed sheet until the list shows its new name
-  ([#314](https://github.com/viell-dev/slop-calc-sheet-manager/issues/314)).
-- A Shift+click or Ctrl+Shift+click made so quickly after an arrow, Home, End, Page Up or Page Down
-  key without Ctrl, or after a typed letter that moves to a sheet, that the list has not shown the
-  keyboard cursor there yet now picks nothing and clears the selection, as after Ctrl with such a
-  key. LibreOffice's list ranged from the earlier cursor, and the list from the row the key or the
-  letter had moved to: a Shift+click made just before Down and handled after it also selected the
-  sheet below the earlier cursor, which you had not selected, and Move to Top then moved it
-  ([#326](https://github.com/viell-dev/slop-calc-sheet-manager/issues/326)).
-- A drag begun so quickly after a key or a typed letter that changed the selection or moved the
-  keyboard cursor, before the list had shown it, no longer drags the sheet that input selected
-  instead of the one you pressed, and one begun just after another click, before the list had
-  shown that click, no longer drags that click's sheet. Such a drag now does not start: drag
-  again ([#304](https://github.com/viell-dev/slop-calc-sheet-manager/issues/304)). Nor does a
-  drag whose press the list failed to handle, which dragged the sheets selected before the press
-  ([#318](https://github.com/viell-dev/slop-calc-sheet-manager/issues/318)).
-- The unit tests' simulated sheet list now runs the list's mouse handlers, keys, type-ahead and
-  Move to Top through the extension's own mouse listener, key handler and move button listener,
-  with their error guards, loaded from the extension's source. A LibreOffice failure inside a
-  press's or a release's handler, a key or a Move to Top is then reported and ends only that
-  input, and the list still queues its selection write after a mouse handler, as in LibreOffice.
-  The failure escaped to the test instead, so tests caught it themselves and randomized checks
-  built on the simulation stopped at such a sequence without judging it. A key the key handler
-  never gives the list, such as a plain Space, can no longer reach it in these tests. This
-  changes the unit tests, not the extension
-  ([#312](https://github.com/viell-dev/slop-calc-sheet-manager/issues/312),
-  [#320](https://github.com/viell-dev/slop-calc-sheet-manager/issues/320)).
-- A Ctrl+click, Ctrl+Shift+click, Space, Ctrl+Space, right click, or Ctrl with an arrow, Home or
-  End key, made just after rows were selected or cleared through assistive technology, no longer
-  acts against the list's earlier picks before the list has taken that selection, within about a
-  quarter of a second. Move to Top could then move a sheet you had just deselected or replaced.
-  The list now counts the changes to its selection that it did not make itself, and such input
-  picks nothing and clears the selection, with the selection notice: select again. Two clicks or
-  keys made so quickly that the list has not handled the first when the second arrives can be
-  refused in the same way
-  ([#294](https://github.com/viell-dev/slop-calc-sheet-manager/issues/294)).
-- When the list refuses a held click because the sheets changed during it, the keyboard cursor
-  now stays where your keys moved it during the hold, also outside the picks, as long as the list
-  can still identify that sheet. It returned to a picked sheet, so Ctrl+Space then toggled that
-  sheet instead; the picks were already kept. Releasing another mouse button while the left one
-  is held no longer ends the held click
-  ([#71](https://github.com/viell-dev/slop-calc-sheet-manager/issues/71)).
-- A sheet list write that LibreOffice fails right after the list refused a held click no longer
-  leaves the row the button went up over to be taken as a pick. Move to Top could then move that
-  sheet, or one that replaced the pressed sheet under its name, which nobody picked. The list now
-  clears the picks with the selection notice and commands act on no sheets until you pick again.
-  LibreOffice's tree has been seen to fail such a call only while a panel closes
-  ([#315](https://github.com/viell-dev/slop-calc-sheet-manager/issues/315)).
-- A click, double click or right click in the sheet list no longer acts on another sheet than the
-  one you clicked when the list scrolls before it handles the click: by the mouse wheel or the
-  scroll bar, or by a key such as End or Down that moved the selection out of view just before.
-  The list took the sheet scrolled under the pointer: a double click could go to it, and the
-  right-click menu could delete it. Such a click is now refused, as a click during a redraw is,
-  and so is a click that comes just as the panel's height changes and scrolls the list. Click
-  again ([#299](https://github.com/viell-dev/slop-calc-sheet-manager/issues/299)).
-- A drag started in the sheet list just as the list redraws its rows, as it does when another
-  window moves a sheet, no longer drags the sheets that were selected before instead of the
-  sheet you pressed. Such a drag, and one started just as the list scrolls, now does not start:
-  drag again ([#295](https://github.com/viell-dev/slop-calc-sheet-manager/issues/295)).
-- The real-input lab's Rename Sheets dialog now calibrates with the sheet list's method, which
-  takes the offset only from two reports of one point's own moves. When every report came later
-  than the 0.3-second quiet time, the dialog could credit the previous point's pair of reports to
-  the point being tried, and click 551 pixels beside its controls. Its points' rows are now
-  15 pixels apart instead of 3, because the moves of points that close can pair falsely; the
-  method now refuses points closer than 15 pixels. This changes the test runner, not the
-  extension ([#300](https://github.com/viell-dev/slop-calc-sheet-manager/issues/300)).
-- The real-input lab now tries points down the sheet list's accessible area before scanning the
-  window, after waiting until the list is laid out, and a new workbook's calibration takes about
-  a second. In gtk3, the area of a newly opened workbook was 21 pixels above the list, and when
-  the first point was the pointer entering the list, it was not reported; either way the window's
-  scan took 12 to 18 seconds per workbook. That scan also moved the pointer along the window's top
-  row. In gtk3, in a window the lab had just placed, accessible places lay 25 pixels above where
-  they lay after such moves, and without them a real click at the native sheet tab's accessible
-  place hit the scroll bar; the cause is not established
-  ([#309](https://github.com/viell-dev/slop-calc-sheet-manager/issues/309)). The lab now moves the
-  pointer along that row after a calibration while the list's accessible place lies more than 10
-  pixels from the calibrated one. Each session's results record its calibrations, with the
-  check that made them. This changes the test runner, not the extension
-  ([#301](https://github.com/viell-dev/slop-calc-sheet-manager/issues/301)).
-- A selection made in the list through assistive technology is no longer replaced by the list's
-  earlier picks when another window renames or moves a sheet before the list has taken it; Move
-  to Top then moved the earlier picks. The list now clears both, with the selection notice, and
-  you select again ([#280](https://github.com/viell-dev/slop-calc-sheet-manager/issues/280)).
-- A Ctrl+click that deselects a sheet no longer picks it when it comes just after a selection key
-  whose change the list has not drawn yet, or on a selection made through assistive technology
-  that the list has seen but not taken yet, also when several clicks come at once; Ctrl+Space
-  on such a selection no longer picks the row you meant to deselect, and Ctrl with an arrow,
-  Home or End key no longer brings back the earlier picks over it. Such a
-  toggle or key now picks nothing and clears the selection, with the selection notice, and until
-  the list has redrawn, Ctrl+Space picks nothing either, also after arrow keys typed meanwhile:
-  select again ([#291](https://github.com/viell-dev/slop-calc-sheet-manager/issues/291)).
-- A click, Ctrl+click, Shift+click, double click or right click in the sheet list no longer acts
-  on another sheet than the one you clicked when the list redraws its rows at that moment, as it
-  does when another window moves, inserts, deletes or renames a sheet. The list handled the
-  click only after the redraw and took the sheet then in that row: Move to Top could move a sheet
-  you never clicked, a double click could go to it, and the right-click menu could delete it.
-  This also happened on a row the redraw kept when the redraw scrolled the list, as it does when
-  the list gets shorter while scrolled to its end. At such a moment, a click on a row that the
-  redraw changed, on any row when it scrolled the list, and a Shift+click on any row, are now
-  refused: a refused right click opens no menu, and a refused left click clears the list's
-  selection, with the selection notice when you had made it. Click again
-  ([#293](https://github.com/viell-dev/slop-calc-sheet-manager/issues/293)).
-- The real-input lab's calibration of the sheet list now lets the list's reports of a point stop
-  before it moves the pointer a second time, moves it toward the list's middle, and tries another
-  point when that move goes unreported. Before, it waited 10 seconds and failed the session. gtk3
-  drops a move made before it has finished with the previous report: beside other busy processes,
-  one gtk3 calibration in five failed. The offset now comes only from two reports that belong to
-  one point's two moves. A late report of an earlier point can no longer shift it, and reports
-  that never follow the moves fail with the points tried. The Windows desktop checks use the same
-  calibration. This changes the test runner, not the extension
-  ([#298](https://github.com/viell-dev/slop-calc-sheet-manager/issues/298)).
-- A Ctrl+click or Ctrl+Space that deselects a sheet in the list no longer picks that sheet
-  instead when the list drops picks at the same moment, as it does when another window inserts
-  or deletes a sheet or renames a picked one; Move to Top then moved the sheet you had just
-  deselected. Until the list shows its picks again, such a toggle picks nothing and the list
-  redraws its selection: toggle again. The same applies after LibreOffice fails a write to the
-  list's tree, where the toggle also clears any other picks, with the selection notice, so that a
-  command cannot act on sheets the list may not have shown
-  ([#288](https://github.com/viell-dev/slop-calc-sheet-manager/issues/288)).
-- A click's or a selection key's queued list update, and a sheet tab menu command chosen just
-  before the document or the sidebar closes, now do nothing once the list is closed. Before, they
-  reported a failure on stderr, and after only the sidebar closed the chosen command or Help still
-  ran, although the list could no longer show why it refused or what failed
-  ([#285](https://github.com/viell-dev/slop-calc-sheet-manager/issues/285)).
-- A shortcut typed in the list just before the sidebar closes still reaches the document, now
-  Save and Save As too. One typed just before the document closes is dropped, as LibreOffice
-  drops its own, and one typed just before it reloads is dropped too, instead of reporting a
-  failure or running on the reloaded document
-  ([#285](https://github.com/viell-dev/slop-calc-sheet-manager/issues/285)).
-- A click's release in the list and the start of a drag no longer check the document's sheet
-  structure themselves. They run while LibreOffice lets other programs change the document, and
-  such a check could then keep an outdated sheet count, so that a later deletion went unnoticed.
-  They now rely on the changes the document has reported, and the activation, selection update
-  or move that follows checks the structure before it acts
-  ([#284](https://github.com/viell-dev/slop-calc-sheet-manager/issues/284)).
-- Enter, type-ahead and the keyboard menu key no longer report a failure on stderr when the
-  document or the sidebar closes between the key and its queued work, which now does nothing
-  once the list is closed ([#282](https://github.com/viell-dev/slop-calc-sheet-manager/issues/282)).
-- A double click in the list now activates its sheet after the mouse listener returns, as Enter
-  already did: LibreOffice runs that listener without the global lock that reading Calc's
-  selected tabs needs ([#269](https://github.com/viell-dev/slop-calc-sheet-manager/issues/269)).
-- A sheet list write that LibreOffice fails partway no longer leaves part of it to be taken as
-  the picks. Afterwards the list keeps its picks only if it shows exactly them. Otherwise it
-  cannot tell part of its write from a selection made since, such as through assistive
-  technology, so it clears the picks with the selection notice and commands act on no sheets
-  until you pick again; a selection made that way in between is cleared too. A selection made
-  through assistive technology just before the list lost track of which sheet is which, as when a
-  sheet is replaced under its own name, or before a refresh that then failed, is cleared the same
-  way rather than taken for another sheet or replaced by older picks. LibreOffice's tree has been
-  seen to fail such a call only while a panel closes
-  ([#257](https://github.com/viell-dev/slop-calc-sheet-manager/issues/257),
-  [#265](https://github.com/viell-dev/slop-calc-sheet-manager/issues/265)).
-- On Linux, a test session's forced stop now also stops a LibreOffice `soffice.bin` that outlives
-  its launcher: one whose `oosplash` launcher was killed, or that `oosplash` had started but not
-  yet taken over when it was told to stop, as at its first-start restart. Both were measured with
-  LibreOffice 26.8.2.2; such an office kept running after the stop. The launcher is paused, with
-  each of its threads stopped, while its processes are listed, and the stall receipt and a forced
-  shutdown's results record what the stop saw of each. This changes the test runner, not the
-  extension ([#266](https://github.com/viell-dev/slop-calc-sheet-manager/issues/266)).
-- The painted soak now fails a session whose end it first sees after the session's 180-second
-  limit, as when the soak's own process was not scheduled across that limit, instead of recording
-  the runner's own status, which let a session that ended late pass. This changes the test
-  runner, not the extension
-  ([#275](https://github.com/viell-dev/slop-calc-sheet-manager/issues/275)).
-- Give each CI job that runs LibreOffice time to keep the stacks of a stall at any point in a
-  run of its measured length: routine CI's Linux job and the release sweep's Linux gtk3 jobs now
-  have 60 minutes instead of 45, the sweep's headless Linux jobs 35 instead of 30, and its
-  Windows integration job 40 instead of 25. The macOS integration runner now ends at a
-  30-minute deadline, recording a stall with the test client's stacks, within the command's
-  33-minute limit. This changes CI and the test helpers, not the extension
-  ([#244](https://github.com/viell-dev/slop-calc-sheet-manager/issues/244)).
-- The stall watch now waits for LibreOffice's gdb wrapper after an interrupt because its stack
-  collector reports that it sent one, rather than by reading the start of its own receipt text,
-  so rewording that text can no longer drop the wait and the wrapper's recorded exit status. This
-  changes the test runner, not the extension
-  ([#267](https://github.com/viell-dev/slop-calc-sheet-manager/issues/267)).
-- On Windows, a test document close that was posted to LibreOffice's main thread before the
-  stall watch recorded a stall no longer starts when that thread reaches it, so it cannot change
-  the office while its stacks are being taken; the close helper then fails as after any stall.
-  This changes the test runner, not the extension
-  ([#261](https://github.com/viell-dev/slop-calc-sheet-manager/issues/261)).
-- The painted soak now removes every session directory an earlier soak left in its output before
-  its first session, so that a shorter soak's artifact no longer carries an earlier, longer
-  soak's sessions. It follows no symbolic link there. This changes the test runner, not the
-  extension ([#268](https://github.com/viell-dev/slop-calc-sheet-manager/issues/268)).
-- A drag begun on sheet list rows that are out of date is still refused, but the list now
-  refreshes after LibreOffice's drag-gesture callback returns rather than inside it, so that the
-  refresh's reading of Calc's selected tabs no longer runs in that callback
-  ([#264](https://github.com/viell-dev/slop-calc-sheet-manager/issues/264)).
-- Make the integration check for assistive selection verify that the list takes the pick, using
-  Move to Top with stable rows and after a rebuilding refresh
-  ([#251](https://github.com/viell-dev/slop-calc-sheet-manager/issues/251)).
-- Known issues now says the sheet list keeps rebuilding its rows after a sheet switch or tab
-  colour change, and why
-  ([#22](https://github.com/viell-dev/slop-calc-sheet-manager/issues/22)).
-- When Replace All finds matching text but changes no proposed names, Rename Sheets explains
-  this in the status and through the button's accessible name
-  ([#259](https://github.com/viell-dev/slop-calc-sheet-manager/issues/259)).
-- Fail a test session that stops making progress for 15 minutes instead of waiting for the CI
-  job's time limit without evidence: the runner records the stall, tries to save the test
-  client's and LibreOffice's stacks, stops the LibreOffice launcher it started (on Windows, with
-  its whole process tree), and records what it tried and saw. Such a session then ends without the
-  wait for queued UNO releases or a terminate request, as after a stalled main-thread callback. A
-  soak session that reaches its 180-second limit during startup or its checks records the stall
-  too. The soak empties each session's directory before the session starts, and its summary
-  points there instead of judging stalls
-  ([#45](https://github.com/viell-dev/slop-calc-sheet-manager/issues/45)).
-- End each LibreOffice test session only after the office has run the UNO releases the test
-  process sent before the session's end. An office asked to terminate while it still ran them,
-  as after the 1,000-sheet check, could crash at exit in a LibreOffice bridge thread, with or
-  without the extension. Releases sent during that wait are not covered, such as from a document
-  that a failed check left open. The wait, the terminate request and the office's exit now share
-  one 30-second limit. This changes the test runner, not the extension
-  ([#242](https://github.com/viell-dev/slop-calc-sheet-manager/issues/242)).
-- Make name syntax and conflicts in other rows available from New name in Rename Sheets.
-  Replace All and Rename also expose refusals through their accessible names, including an empty
-  Find field or a replacement with no matches
-  ([#254](https://github.com/viell-dev/slop-calc-sheet-manager/issues/254)).
-- Calibrate the rename dialog's real-input clicks on points of the dialog's own window, located
-  from its buttons, rather than of its accessible area, which includes the window manager's
-  frame. On the Windows desktop the frame's borders kept the dialog from reporting nearly every
-  point, and each calibration took about a minute; it now takes under a second there and on
-  Linux ([#253](https://github.com/viell-dev/slop-calc-sheet-manager/issues/253)).
-- Expose the selected proposal's name conflict on the focused New name field in Rename Sheets,
-  so a screen reader can announce the refusal while the user stays in the edit
-  ([#247](https://github.com/viell-dev/slop-calc-sheet-manager/issues/247)).
-- Record how long each integration-test installation of the package takes, as `install_seconds`
-  in the results, and keep the elapsed time and unopkg's output when an installation exceeds its
-  90-second limit, which still fails the session. The local testing guide says how to tell such a
-  timeout on a busy computer from a normal installation
-  ([#235](https://github.com/viell-dev/slop-calc-sheet-manager/issues/235)).
-- Calibrate the rename dialog's real-input clicks from two reports that follow the pointer's two
-  moves, rather than the first report after a fixed 0.15 seconds, which a busy office could send
-  late enough to be read for the next point tried
-  ([#232](https://github.com/viell-dev/slop-calc-sheet-manager/issues/232)).
-- Organise contributor testing guidance by task and platform, with dedicated Development pages
-  for native LibreOffice testing and hosted workflows
-  ([#198](https://github.com/viell-dev/slop-calc-sheet-manager/issues/198)).
-- Make more moves of a sheet whose name LibreOffice confuses with another sheet's, such as `fi`
-  beside `ﬁ`. When the usual way of making a move needs the confused name, the list tries one
-  other, equally short way, for example moving the sheet beside it, and refuses the move only if
-  that way needs a confused name too
-  ([#125](https://github.com/viell-dev/slop-calc-sheet-manager/issues/125)).
-- Retain painted Linux integration evidence before release-sweep input tests and require the
-  painted phase to succeed before input starts
-  ([#192](https://github.com/viell-dev/slop-calc-sheet-manager/issues/192)).
-- Check the documentation's availability markers at every marked version, including when
-  a newer test build appears beside an older stable release
-  ([#196](https://github.com/viell-dev/slop-calc-sheet-manager/issues/196)).
-- Plan moves that reorder many sheets faster: planning the reversal of 10,000 sheets takes under
-  a second instead of three to seven on a loaded laptop, with the same moves. The planning
-  budget test now measures CPU time and reports it with the elapsed time
-  ([#214](https://github.com/viell-dev/slop-calc-sheet-manager/issues/214)).
-- Add contributor references for LibreOffice packaging, sidebar design and interface checks
-  ([#201](https://github.com/viell-dev/slop-calc-sheet-manager/issues/201)).
-- Keep verified package SHA-256 digests in deployed release history, so a replaced OXT and
-  matching replacement checksum stop feed generation, and publish a release only when GitHub's
-  digests of its uploaded files equal the files the workflow built
-  ([#193](https://github.com/viell-dev/slop-calc-sheet-manager/issues/193)).
-- Keep the move buttons usable when LibreOffice treats the focused document window as
-  inactive. They could stay disabled while sheets were picked, until a dialog opened from the
-  list; clicking or typing in the list now makes its window active, as switching to it does
-  ([#211](https://github.com/viell-dev/slop-calc-sheet-manager/issues/211)).
-- Show a message with reopening and reporting guidance when the sheet list cannot open, instead
-  of an empty deck ([#188](https://github.com/viell-dev/slop-calc-sheet-manager/issues/188)).
-- Retry a failed list refresh, so that a changed tab colour, visibility or protection is still
-  shown afterwards ([#186](https://github.com/viell-dev/slop-calc-sheet-manager/issues/186)).
-- Finish closing the panel when part of its cleanup fails, and keep a failure in a move button's
-  callback from reaching LibreOffice
-  ([#187](https://github.com/viell-dev/slop-calc-sheet-manager/issues/187),
-  [#189](https://github.com/viell-dev/slop-calc-sheet-manager/issues/189)).
-- Refresh the Debian 13 integration image digest and the checks image's Python to 3.12.16.
-- Update the development checks image and local Node.js pin together to 24.22.3, including
-  the documentation container example.
-- Report unsupported rootless or UID-remapped Docker contexts before building the Linux lab
-  ([#191](https://github.com/viell-dev/slop-calc-sheet-manager/issues/191)).
-- Update development tools to pytest 9.2.0, Ruff 0.17.5, types-PyYAML 6.0.12.20261113 and
-  nodeenv 1.12.0. These dependencies do not ship in the extension.
-- Correct contributor guidance in the list, menu and Show module docstrings: a single click
-  picks without switching sheets, Hide alone dispatches synchronously, and Show is one of
-  several changes the list makes itself
-  ([#200](https://github.com/viell-dev/slop-calc-sheet-manager/issues/200)).
-- Move the sheet list's tab observation and refresh timing into modules of their own, with
-  documented state contracts; the list behaves as before
-  ([#194](https://github.com/viell-dev/slop-calc-sheet-manager/issues/194)).
-- Bound LibreOffice lab downloads and log their mirror and transfer measurements, so a slow
-  mirror fails during setup instead of consuming the native CI testing budget.
-- Cache the pinned LibreOffice test installers by SHA-256 and verify them before use, avoiding
-  repeat downloads from the TDF archive ([#215](https://github.com/viell-dev/slop-calc-sheet-manager/issues/215)).
-- Keep a failed real-input check's record when its screenshot, desktop evidence or input
-  clean-up also fails: the record is written first, and each later step's error is kept beside
-  it ([#190](https://github.com/viell-dev/slop-calc-sheet-manager/issues/190)).
-- Split the real-input test runner into a shared workbook fixture, the Xvfb lab, the check loop
-  and check modules by subject, so that the Windows and update-dialog runners no longer import
-  the Linux runner; the checks, their order and their evidence are unchanged
-  ([#195](https://github.com/viell-dev/slop-calc-sheet-manager/issues/195)).
-- Wait for the sheet list's own report of the lab's pointer calibration move instead of a fixed
-  0.2 seconds. A late report had shifted a workbook's calibrated origin by two pixels and failed
-  the painted-row check ([#209](https://github.com/viell-dev/slop-calc-sheet-manager/issues/209)).
+## 0.0.11 - 2026-11-25
 
-- Put installation and a worked example first in the README, and align the guide's Hide
-  summary and security policy with published behaviour
-  ([#197](https://github.com/viell-dev/slop-calc-sheet-manager/issues/197),
-  [#199](https://github.com/viell-dev/slop-calc-sheet-manager/issues/199)).
-- Make two intermittent test failures classify themselves. A failed pick after Reload keeps
-  the click's delivery, the list's selection events and later document modifications. The
-  real-input grid click is no longer repeated, and a failed one records whether it arrived late
-  ([#88](https://github.com/viell-dev/slop-calc-sheet-manager/issues/88),
-  [#42](https://github.com/viell-dev/slop-calc-sheet-manager/issues/42)).
-- Audit former macOS test process groups for a bounded time after each command exits, give
-  timed-out groups a bounded TERM drain before KILL, and detach the disk image when a failed
-  attach left it mounted ([#163](https://github.com/viell-dev/slop-calc-sheet-manager/issues/163)).
-- Update the maintaining agents' rules on scope, code quality in reviews, failure triage, security
-  fixes under the dependency cooldown, and documents that describe the current state.
+First release candidate for the stable release 0.1.0, following the 0.0.10 usability review. It
+fixes the move buttons that could stay disabled, makes quick or unusual input safer, and improves
+Rename Sheets for screen readers. Requires LibreOffice 26.2.1 or later with Python support. A
+[short human check of this candidate](https://github.com/viell-dev/slop-calc-sheet-manager/issues/337)
+precedes 0.1.0.
+
+**Moves and the panel**
+
+- The move buttons no longer stay disabled while sheets are picked when LibreOffice treats the
+  focused document window as inactive
+  ([#211](https://github.com/viell-dev/slop-calc-sheet-manager/issues/211)).
+- A sheet list that cannot open shows a message with what to do, instead of an empty deck
+  ([#188](https://github.com/viell-dev/slop-calc-sheet-manager/issues/188)). A failed list refresh
+  is retried, and the panel closes fully when part of its clean-up fails
+  ([#186](https://github.com/viell-dev/slop-calc-sheet-manager/issues/186),
+  [#187](https://github.com/viell-dev/slop-calc-sheet-manager/issues/187),
+  [#189](https://github.com/viell-dev/slop-calc-sheet-manager/issues/189)).
+- More moves work for a sheet whose name LibreOffice confuses with another's, such as `fi` beside
+  `ﬁ` ([#125](https://github.com/viell-dev/slop-calc-sheet-manager/issues/125)).
+- Planning a move that reorders thousands of sheets is faster
+  ([#214](https://github.com/viell-dev/slop-calc-sheet-manager/issues/214)).
+
+**Selecting sheets**
+
+- Commands and drags no longer act on a sheet you did not select when the list redraws or scrolls,
+  another window changes the sheets, or assistive technology selects rows just as you click, press
+  a key or drag. When the list cannot tell which sheets you meant, it leaves that input undone and
+  usually clears its selection with the notice: select again. See
+  [When the list clears its selection](https://viell-dev.github.io/slop-calc-sheet-manager/guide/use.html#when-the-list-clears-its-selection)
+  ([#288](https://github.com/viell-dev/slop-calc-sheet-manager/issues/288),
+  [#291](https://github.com/viell-dev/slop-calc-sheet-manager/issues/291),
+  [#293](https://github.com/viell-dev/slop-calc-sheet-manager/issues/293),
+  [#294](https://github.com/viell-dev/slop-calc-sheet-manager/issues/294),
+  [#295](https://github.com/viell-dev/slop-calc-sheet-manager/issues/295),
+  [#299](https://github.com/viell-dev/slop-calc-sheet-manager/issues/299),
+  [#304](https://github.com/viell-dev/slop-calc-sheet-manager/issues/304),
+  [#318](https://github.com/viell-dev/slop-calc-sheet-manager/issues/318),
+  [#326](https://github.com/viell-dev/slop-calc-sheet-manager/issues/326),
+  [#329](https://github.com/viell-dev/slop-calc-sheet-manager/issues/329)).
+- A selection made through assistive technology is kept, or cleared with the notice, rather than
+  replaced by older picks
+  ([#265](https://github.com/viell-dev/slop-calc-sheet-manager/issues/265),
+  [#280](https://github.com/viell-dev/slop-calc-sheet-manager/issues/280),
+  [#307](https://github.com/viell-dev/slop-calc-sheet-manager/issues/307)).
+- When LibreOffice fails to show a selection in the list, the list clears it rather than act on rows
+  nobody picked ([#257](https://github.com/viell-dev/slop-calc-sheet-manager/issues/257),
+  [#315](https://github.com/viell-dev/slop-calc-sheet-manager/issues/315),
+  [#316](https://github.com/viell-dev/slop-calc-sheet-manager/issues/316)).
+- Ranges made after Ctrl with an arrow, Home or End key start at the keyboard cursor
+  ([#313](https://github.com/viell-dev/slop-calc-sheet-manager/issues/313)). The cursor stays where
+  your keys moved it when the list refuses a held click, and keeps its row while another window
+  renames that sheet ([#71](https://github.com/viell-dev/slop-calc-sheet-manager/issues/71),
+  [#314](https://github.com/viell-dev/slop-calc-sheet-manager/issues/314)).
+- Double clicks, keys, drags and forwarded shortcuts no longer run inside a LibreOffice callback or
+  after their list or document has closed
+  ([#264](https://github.com/viell-dev/slop-calc-sheet-manager/issues/264),
+  [#269](https://github.com/viell-dev/slop-calc-sheet-manager/issues/269),
+  [#282](https://github.com/viell-dev/slop-calc-sheet-manager/issues/282),
+  [#284](https://github.com/viell-dev/slop-calc-sheet-manager/issues/284),
+  [#285](https://github.com/viell-dev/slop-calc-sheet-manager/issues/285)).
+
+**Rename Sheets**
+
+- Name conflicts and other refusals can be heard with a screen reader while you stay in **New
+  name**, **Replace All** or **Rename**
+  ([#247](https://github.com/viell-dev/slop-calc-sheet-manager/issues/247),
+  [#254](https://github.com/viell-dev/slop-calc-sheet-manager/issues/254)).
+- Replace All says so when it finds matches but changes no name
+  ([#259](https://github.com/viell-dev/slop-calc-sheet-manager/issues/259)).
+
+**Compatibility and verification**
+
+- Verified with LibreOffice 26.8.3.1 and 26.2.7.3 in place of 26.8.2.2 and 26.2.6.3. The minimum,
+  26.2.1, is still tested.
+- Release checks keep each package's digest in the published history, so a replaced download stops
+  publication ([#193](https://github.com/viell-dev/slop-calc-sheet-manager/issues/193)).
+- The guide's account of quick input and the known issues is shorter, and the package's description
+  no longer names a release stage.
+
+Install the OXT manually over 0.0.10 or an earlier build, restart LibreOffice when asked, and check
+its SHA-256 asset. LibreOffice's Extension Manager offers only stable releases, and there is none
+yet. See the [known issues](https://viell-dev.github.io/slop-calc-sheet-manager/guide/known-issues)
+for the remaining limits, and [#93](https://github.com/viell-dev/slop-calc-sheet-manager/issues/93)
+for the plan towards 0.1.0.
 
 ## 0.0.10 - 2026-11-03
 

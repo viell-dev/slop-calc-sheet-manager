@@ -19,8 +19,8 @@ LibreOffice, and follow Tools ▸ Extension Manager's installation prompts. Rest
 asked, then open a Calc workbook and select the Sheet Manager deck in the sidebar. Each release
 also includes an `.oxt.sha256` file for checking the download's SHA-256 hash.
 
-Sheet Manager is in beta towards its first stable release. GitHub marks test builds
-**Pre-release**. Download later test builds manually. LibreOffice's Extension Manager checks
+GitHub marks test builds **Pre-release**; download later test builds manually. LibreOffice's
+Extension Manager checks
 the [stable feed](https://viell-dev.github.io/slop-calc-sheet-manager/updates/stable.xml) through
 its own update mechanism. See [Install, update, and remove][install] for update and removal steps.
 
