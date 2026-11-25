@@ -29,6 +29,7 @@ import pytest
 from tests.unit.list_peer import (
     DOWN,
     END,
+    LABEL_X,
     LEFT,
     MOD1,
     SHIFT,
@@ -606,7 +607,7 @@ def test_the_refused_release_listener_makes_the_same_calls_as_for_the_pressed_sh
         calls, handles = len(owner.faults.calls), len(reads)
         node = owner.tree._installed()[PRESSED]
         owner.tree.selected, owner.tree.cursor = [node], node
-        owner.mouse_released(SimpleNamespace(Buttons=LEFT, X=0, Y=owner.tree.line(PRESSED)))
+        owner.mouse_released(SimpleNamespace(Buttons=LEFT, X=LABEL_X, Y=owner.tree.line(PRESSED)))
         return owner.faults.calls[calls:], len(reads) - handles
 
     assert listener_calls(hold) == listener_calls(nothing)

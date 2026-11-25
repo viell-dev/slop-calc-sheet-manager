@@ -178,7 +178,8 @@ the engine's add mode and the plain share need, once, before any UNO call.
 VCL's selection engine handles a press of any button but the right one before its listener runs
 (`SelectionEngine::SelMouseButtonDown`, `SvImpLBox::MouseButtonDown`, read in 26.8.2.2; add mode
 and the click counts measured with real input on gtk3 and gen, #294). It changes nothing for a
-click count above 1, as for a double or triple click's later presses, with Alt, or off a row. A
+click count above 1, as for a double or triple click's later presses, with Alt, or off a row, the
+gutter left of the rows' native hit area included (#342). A
 Ctrl press toggles its row, except in add mode, which a Ctrl+Shift press starts and a plain or a
 Shift press ends, of any button but the right one: there a Ctrl press on an unselected row only
 moves the cursor. A Ctrl+Shift press adds the rows from the tree's own anchor that it did not
@@ -242,20 +243,17 @@ press's change; a key that sets the selection,
 or Ctrl+A, between a Ctrl press and its listener, also when it leaves the picks as they were;
 Space, a Ctrl key or a right press after a press's or release's native change and before the
 list's write that follows it, or after a write that failed partway; an assistive deselection
-and reselection that cancel out, until two tab samples have found the tree showing the picks; a
-Ctrl press in the few pixels left of a row's native hit area, which `RowGeometry.row_at` maps to
-the row by height alone though the engine changed nothing, unless the last accounting point is a
-write that overwrote exactly one change; and a Shift or Ctrl+Shift press that the range hold
-refuses (#313, #326): one handled before the write of a Ctrl key with a cursor key that moved the
-cursor or the anchor or was refused, of a plain cursor key or type-ahead's jump, also one that
-moved nothing, or of a refused range press, or whose listener runs after such a key; one handled
-after that write whose listener VCL runs ahead of the hold's posted end; and, once, one made after
-a cursor write failed before it showed the cursor and left the hold on until a later write, or
-after an intake took a selection that a write left in the tree (#307). The
-listener's registration and its removal, beside the other listeners', are the only native calls
-added; the counts are Python state. Each notification crosses into Python, which makes a write that
-changes many rows take about 1.6 times as long: writing 1,000 picks took about 80 ms instead of 50
-on an idle machine (#294).
+and reselection that cancel out, until two tab samples have found the tree showing the picks; and a
+Shift or Ctrl+Shift press that the range hold refuses (#313, #326): one handled before the write of
+a Ctrl key with a cursor key that moved the cursor or the anchor or was refused, of a plain cursor
+key or type-ahead's jump, also one that moved nothing, or of a refused range press, or whose
+listener runs after such a key; one handled after that write whose listener VCL runs ahead of the
+hold's posted end; and, once, one made after a cursor write failed before it showed the cursor and
+left the hold on until a later write, or after an intake took a selection that a write left in the
+tree (#307). The listener's registration and its removal, beside the other listeners', and the
+press's hit test (#342) are the only native calls added; the counts are Python state. Each
+notification crosses into Python, which makes a write that changes many rows take about 1.6 times as
+long: writing 1,000 picks took about 80 ms instead of 50 on an idle machine (#294).
 
 Newer changes (#307). The count tells a queued write when the tree may show a change newer than the
 input whose picks it shows: an assistive selection made after a key or a press's native handling and
@@ -3118,7 +3116,12 @@ class SheetList:
         self.claim_window()
         geometry = self.geometry()
         row = geometry.row_at(event.Y)
-        hit = row is not None  # Whether the tree handled this press on a row, as far as known.
+        # Whether the tree handled this press on a row. Its hit test starts right of the gutter,
+        # where the arrow and the tab colour are painted; it changes nothing for a press there
+        # (#342), though `row_at`, which goes by the height alone, finds the row.
+        hit = row is not None and (
+            self.tree.getClosestNodeForLocation(event.X, event.Y) is not None
+        )
         # The engine handled this press, also one held below, before this listener ran (#294).
         engine = self._follow_engine(event, hit, add_mode)
         # The tree handled this press before this listener runs (#269). While presses are held,

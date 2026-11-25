@@ -25,6 +25,7 @@ import pytest
 
 from sheet_manager.keys import DOWN, END, HOME
 from tests.unit.list_peer import (
+    LABEL_X,
     LEFT,
     RIGHT,
     Book,
@@ -502,7 +503,7 @@ def test_a_drag_after_a_reorder_with_an_earlier_click_still_queued_drags_nothing
     tree = owner.tree
 
     def queued(handler: Callable[[Any], None], line: int) -> Callable[[], None]:
-        event = SimpleNamespace(Buttons=LEFT, X=0, Y=line, Modifiers=0, ClickCount=1)
+        event = SimpleNamespace(Buttons=LEFT, X=LABEL_X, Y=line, Modifiers=0, ClickCount=1)
         return lambda: listen(owner, handler, event)
 
     alfa, delta = tree.node("Alfa"), tree.node("Delta")

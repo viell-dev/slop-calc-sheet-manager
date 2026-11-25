@@ -86,8 +86,7 @@ If Sheet Manager does not work in an environment where it is expected to, please
   refused: the list clears its selection, with the selection notice, and you select again
   ([#294](https://github.com/viell-dev/slop-calc-sheet-manager/issues/294)).
   So can a Ctrl+click, Space or right click within about half a second after rows were
-  deselected and selected again through assistive technology, and a Ctrl+click at the very left
-  edge of a row.
+  deselected and selected again through assistive technology.
 - **Large lists.** The list rebuilds after changes. During rapid sheet switches the active-sheet
   marker, and <Unreleased since="0.0.9" /> the list's accessible name, can lag. LibreOffice's tree
   control cannot update a single row in place, so the rebuild stays; the measurements and that

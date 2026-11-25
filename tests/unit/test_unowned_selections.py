@@ -26,6 +26,7 @@ from sheet_manager.keys import A
 from tests.unit.list_peer import (
     DOWN,
     END,
+    LABEL_X,
     LEFT,
     MIDDLE,
     MOD1,
@@ -48,6 +49,7 @@ from tests.unit.list_peer import (
 
 NAMES = ["Alfa", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel"]
 INTAKE = "taking native list selection after queued input"
+ARROW_X = 8  # In the gutter, where the viewed sheet's arrow is painted.
 # Whether the tab sample has seen the selection when the input comes.
 SAMPLED = [pytest.param(False, id="before"), pytest.param(True, id="seen")]
 
@@ -463,7 +465,7 @@ def test_a_plain_press_below_the_rows_leaves_add_mode() -> None:
     owner = ranged_to_charlie()
     owner.tree.selected = []
     below = SimpleNamespace(
-        Buttons=LEFT, X=0, Y=owner.tree.line(len(NAMES)), Modifiers=0, ClickCount=1
+        Buttons=LEFT, X=LABEL_X, Y=owner.tree.line(len(NAMES)), Modifiers=0, ClickCount=1
     )
     listen(owner, owner.mouse_pressed, below)
     listen(owner, owner.mouse_released, below)
@@ -749,6 +751,52 @@ def test_ctrl_clicks_toggle_as_before() -> None:
     owner.run_queue()
     assert picks(owner) == ["Delta"] and owner.tree.shown() == ["Delta"]
     assert move_to_top(owner) == ["Delta"]
+
+
+@pytest.mark.parametrize("start", [(), ("Bravo",), ("Bravo", "Delta", "Foxtrot")])
+def test_a_ctrl_click_in_the_gutter_toggles_its_row(start: tuple[str, ...]) -> None:
+    """Left of the rows' native hit area, where the arrow and the tab colour are painted, the tree
+    changes nothing for a Ctrl press. The listener expected its row toggled there, and dropped
+    every pick (#342). Further Ctrl+clicks act too, in the gutter and on the labels."""
+    owner = picked(*start) if start else fresh()
+    notices = len(owner.notices)
+    queued_click(owner, row("Golf"), x=ARROW_X)
+    owner.run_queue()
+    assert picks(owner) == [*start, "Golf"] == owner.tree.shown()
+    queued_click(owner, row("Hotel"), x=ARROW_X)
+    owner.run_queue()
+    queued_click(owner, row("Golf"), x=ARROW_X)
+    owner.run_queue()
+    queued_click(owner, row("Echo"))
+    owner.run_queue()
+    expected = [name for name in NAMES if name in {*start, "Echo", "Hotel"}]
+    assert picks(owner) == expected == owner.tree.shown()
+    assert len(owner.notices) == notices and move_to_top(owner) == expected
+
+
+@pytest.mark.parametrize("modifiers", [0, SHIFT, MOD1 | SHIFT])
+def test_other_clicks_in_the_gutter_act_as_on_the_label(modifiers: int) -> None:
+    results: list[list[str]] = []
+    for x in (ARROW_X, LABEL_X):
+        owner = picked("Bravo")
+        queued_click(owner, row("Delta"), modifiers, x=x)
+        owner.run_queue()
+        results.append(picks(owner))
+        assert owner.tree.shown() == picks(owner) and move_to_top(owner) == picks(owner)
+        queued_click(owner, row("Hotel"), x=x)
+        owner.run_queue()
+        assert "Hotel" in picks(owner), "a Ctrl+click after it still acts"
+    assert results[0] == results[1]
+
+
+def test_a_ctrl_click_in_the_gutter_over_an_assistive_selection_is_refused() -> None:
+    """The tree shows Echo alone, which the list has not taken: a toggle against the older picks
+    would act on them, so the gutter press is refused as one on the label is (#294)."""
+    owner = picked("Bravo", "Delta")
+    owner.tree.assistive_only("Echo")
+    queued_click(owner, row("Golf"), x=ARROW_X)
+    owner.run_queue()
+    assert picks(owner) == [] == owner.tree.shown() and move_to_top(owner) is None
 
 
 def test_a_ctrl_shift_click_adds_its_range_as_before() -> None:
