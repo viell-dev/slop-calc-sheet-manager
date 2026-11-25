@@ -48,7 +48,7 @@ class CalcStatus:
     def show_notice(self, visible):
         self._notice = visible
         self._notice_control.getModel().Label = (
-            tr("Selection cleared after a sheet change or Undo/Redo. Select sheets again.")
+            tr("Selection cleared to avoid acting on the wrong sheets. Select again.")
             if visible
             else ""
         )

@@ -82,8 +82,7 @@ If Sheet Manager does not work in an environment where it is expected to, please
   [#334](https://github.com/viell-dev/slop-calc-sheet-manager/issues/334)).
 - **Quick input.** <Unreleased since="0.0.11" /> A click, key or drag made before the list has handled
   the one before it, as while LibreOffice is busy, can be refused and clear the selection; repeat it.
-  [Quick input](./use.md#when-the-list-clears-its-selection) lists the cases. A Ctrl+click at the very
-  left edge of a row can be refused too
+  [Quick input](./use.md#when-the-list-clears-its-selection) lists the cases
   ([#294](https://github.com/viell-dev/slop-calc-sheet-manager/issues/294)). A drag begun while a
   click and another click or key before it are still waiting can carry the sheet that they picked
   instead of the one you pressed; it has been seen only in simulation, and one Undo restores the order

@@ -108,6 +108,7 @@ KEYS = "src/sheet_manager/uno_keys.py"
 MOVES = "src/sheet_manager/uno_moves.py"
 LEFT, RIGHT, MIDDLE = 1, 2, 4  # Mouse buttons,
 SHIFT, MOD1, MOD2 = 1, 2, 4  # and key modifiers, as UNO numbers them.
+HIT_X, LABEL_X = 22, 40  # Where the rows' native hit area starts, and a point on the labels.
 METHODS = (
     "names",
     "_ref",
@@ -552,6 +553,13 @@ class Tree:
         index = next(i for i, item in enumerate(self._installed()) if item is own)
         if not self.start <= index < self.start + fit:
             self.start = min(index, self._last_start())
+
+    def getClosestNodeForLocation(self, x: int, y: int) -> Node | None:
+        """The row that the native hit test finds: none in the gutter left of `HIT_X` (measured on
+        gtk3 and gen with 26.8.3.1, #342), and none off the rows."""
+        self.faults.check("getClosestNodeForLocation")
+        index, nodes = y // self.height + self.start, self._installed()
+        return nodes[index] if x >= HIT_X and 0 <= index < len(nodes) else None
 
     def getNodeRect(self, node: Any) -> Any:
         """A row's bounds: its position in the view and its height, as the list's geometry reads."""
@@ -999,7 +1007,7 @@ def press(owner: Any, row: int, button: int = LEFT, modifiers: int = 0) -> None:
     """A press as the list's mouse listener runs it (`_Mouse.mousePressed`), on the line that shows
     the row at `row` now."""
     line = owner.tree.line(row)
-    event = SimpleNamespace(Buttons=button, X=0, Y=line, Modifiers=modifiers, ClickCount=1)
+    event = SimpleNamespace(Buttons=button, X=LABEL_X, Y=line, Modifiers=modifiers, ClickCount=1)
     listen(owner, owner.mouse_pressed, event)
 
 
@@ -1008,7 +1016,9 @@ def release(owner: Any, row: int, button: int = LEFT) -> None:
     if button == LEFT:
         node = owner.tree._installed()[row]
         owner.tree.selected, owner.tree.cursor = [node], node
-    event = SimpleNamespace(Buttons=button, X=0, Y=owner.tree.line(row), Modifiers=0, ClickCount=1)
+    event = SimpleNamespace(
+        Buttons=button, X=LABEL_X, Y=owner.tree.line(row), Modifiers=0, ClickCount=1
+    )
     listen(owner, owner.mouse_released, event)
 
 
@@ -1045,7 +1055,12 @@ def extend_natively(owner: Any, row: int) -> None:
 
 
 def queued_click(
-    owner: Any, row: int, modifiers: int = MOD1, clicks: int = 1, button: int = LEFT
+    owner: Any,
+    row: int,
+    modifiers: int = MOD1,
+    clicks: int = 1,
+    button: int = LEFT,
+    x: int = LABEL_X,
 ) -> None:
     """A click as LibreOffice delivers it (#85, #269, #288): the tree handles the press at once,
     and the press's and the release's listeners are queued behind all the work already posted,
@@ -1063,8 +1078,14 @@ def queued_click(
     right one reaches the engine, a middle press as a left one does; a right click changes no
     native selection (`SvImpLBox::MouseButtonDown` in 26.8.2.2). `row` is the pressed row's
     index as the tree shows it when the user presses; the events carry its line in the view, as
-    VCL's carry a position."""
-    if button == RIGHT or modifiers & MOD2 or (modifiers & MOD1 and clicks > 1):
+    VCL's carry a position. `x` left of `HIT_X` is in the gutter, where the tree changes nothing
+    (#342)."""
+    if (
+        button == RIGHT
+        or modifiers & MOD2
+        or (modifiers & MOD1 and clicks > 1)
+        or owner.tree.getClosestNodeForLocation(x, owner.tree.line(row)) is None
+    ):
         pass
     elif modifiers == MOD1:
         toggle_natively(owner, row)
@@ -1076,8 +1097,8 @@ def queued_click(
         owner.tree.anchor = None
         owner.tree.add_mode = owner.tree.add_mode and clicks > 1
     line = owner.tree.line(row)
-    pressed = SimpleNamespace(Buttons=button, X=0, Y=line, Modifiers=modifiers, ClickCount=clicks)
-    released = SimpleNamespace(Buttons=button, X=0, Y=line, Modifiers=modifiers, ClickCount=clicks)
+    pressed = SimpleNamespace(Buttons=button, X=x, Y=line, Modifiers=modifiers, ClickCount=clicks)
+    released = SimpleNamespace(Buttons=button, X=x, Y=line, Modifiers=modifiers, ClickCount=clicks)
     owner.post(lambda: listen(owner, owner.mouse_pressed, pressed), "a mouse press")
     owner.post(lambda: listen(owner, owner.mouse_released, released), "a mouse release")
 
@@ -1179,7 +1200,9 @@ def native_press(owner: Any, row: int) -> None:
     posted (`queued_click` without the release, which waits while the button is held)."""
     node = owner.tree._installed()[row]
     owner.tree.selected, owner.tree.cursor = [node], node
-    event = SimpleNamespace(Buttons=LEFT, X=0, Y=owner.tree.line(row), Modifiers=0, ClickCount=1)
+    event = SimpleNamespace(
+        Buttons=LEFT, X=LABEL_X, Y=owner.tree.line(row), Modifiers=0, ClickCount=1
+    )
     owner.post(lambda: listen(owner, owner.mouse_pressed, event), "a mouse press")
 
 

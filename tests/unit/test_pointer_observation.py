@@ -108,13 +108,14 @@ def test_native_ctrl_toggle_waits_for_the_owned_pointer_listener() -> None:
     owner.claim_window = Mock()
     owner._saw_position = Mock(return_value=False)  # The rows show where the list saw them (#299).
     owner._release_presses = Mock()
+    owner.tree = SimpleNamespace(getClosestNodeForLocation=Mock())  # The press is on the row.
     press = method(
         SOURCE,
         "SheetList",
         "mouse_pressed",
         {"LEFT": 1, "RIGHT": 2, "MOD1": 2, "MOD2": 4, "SHIFT": 1, "_Press": Mock()},
     )
-    press(owner, SimpleNamespace(Buttons=1, Modifiers=2, ClickCount=1, Y=33))
+    press(owner, SimpleNamespace(Buttons=1, Modifiers=2, ClickCount=1, X=40, Y=33))
     queued.pop()()  # Its old sample cannot toggle or replace the newer picks.
     assert owner._selection.names() == ["Bravo", "Delta"]
     owner.peer.invalidate.assert_not_called()
