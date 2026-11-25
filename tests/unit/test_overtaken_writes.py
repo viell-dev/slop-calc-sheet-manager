@@ -36,6 +36,7 @@ import pytest
 
 from tests.unit.list_peer import (
     DOWN,
+    LABEL_X,
     LEFT,
     MIDDLE,
     MOD1,
@@ -384,11 +385,11 @@ def test_a_click_released_over_another_row_does_not_show_its_pick_over_a_newer_s
     owner.tree.selected, owner.tree.cursor = [pressed], pressed
     owner.tree.assistive_only("Echo")
     line = owner.tree.line(row("Charlie"))
-    down = SimpleNamespace(Buttons=LEFT, X=0, Y=line, Modifiers=0, ClickCount=1)
+    down = SimpleNamespace(Buttons=LEFT, X=LABEL_X, Y=line, Modifiers=0, ClickCount=1)
     owner.post(lambda: listen(owner, owner.mouse_pressed, down), "a mouse press")
     owner.run_queue()
     up = SimpleNamespace(
-        Buttons=LEFT, X=0, Y=owner.tree.line(row("Delta")), Modifiers=0, ClickCount=1
+        Buttons=LEFT, X=LABEL_X, Y=owner.tree.line(row("Delta")), Modifiers=0, ClickCount=1
     )
     listen(owner, owner.mouse_released, up)
     owner.run_queue()
@@ -411,7 +412,7 @@ def narrowing_release(owner: Any, name: str, assistive: Callable[[Any], None] | 
     if assistive is not None:
         assistive(owner)
     line = owner.tree.line(row(name))
-    event = SimpleNamespace(Buttons=LEFT, X=0, Y=line, Modifiers=0, ClickCount=1)
+    event = SimpleNamespace(Buttons=LEFT, X=LABEL_X, Y=line, Modifiers=0, ClickCount=1)
     listen(owner, owner.mouse_released, event)
     owner.run_queue()
 
@@ -693,7 +694,7 @@ def test_a_failed_write_after_keys_during_the_hold_leaves_the_pressed_row_to_no_
     pressed = owner.tree._installed()[row("Foxtrot")]
     owner.tree.selected, owner.tree.cursor = [pressed], pressed
     event = SimpleNamespace(
-        Buttons=LEFT, X=0, Y=owner.tree.line(row("Bravo")), Modifiers=0, ClickCount=1
+        Buttons=LEFT, X=LABEL_X, Y=owner.tree.line(row("Bravo")), Modifiers=0, ClickCount=1
     )
     listen(owner, owner.mouse_released, event)
     owner.run_queue()
@@ -802,7 +803,7 @@ def native_release_over_bravo(owner: Any) -> None:
 
 def release_listener_over_bravo(owner: Any) -> None:
     up = SimpleNamespace(
-        Buttons=LEFT, X=0, Y=owner.tree.line(row("Bravo")), Modifiers=0, ClickCount=1
+        Buttons=LEFT, X=LABEL_X, Y=owner.tree.line(row("Bravo")), Modifiers=0, ClickCount=1
     )
     listen(owner, owner.mouse_released, up)
 
@@ -862,7 +863,7 @@ def test_a_held_click_released_over_another_row_still_shows_its_pick() -> None:
 
 def press_listener_on(owner: Any, name: str, modifiers: int = 0) -> None:
     down = SimpleNamespace(
-        Buttons=LEFT, X=0, Y=owner.tree.line(row(name)), Modifiers=modifiers, ClickCount=1
+        Buttons=LEFT, X=LABEL_X, Y=owner.tree.line(row(name)), Modifiers=modifiers, ClickCount=1
     )
     listen(owner, owner.mouse_pressed, down)
 
@@ -967,7 +968,7 @@ def vcl_shift_click(owner: Any, first: str, last: str) -> None:
     owner.tree.selected = nodes[row(first) : row(last) + 1]
     owner.tree.cursor, owner.tree.add_mode = nodes[row(last)], False
     line = owner.tree.line(row(last))
-    event = SimpleNamespace(Buttons=LEFT, X=0, Y=line, Modifiers=SHIFT, ClickCount=1)
+    event = SimpleNamespace(Buttons=LEFT, X=LABEL_X, Y=line, Modifiers=SHIFT, ClickCount=1)
     owner.post(lambda: listen(owner, owner.mouse_pressed, event), "a mouse press")
     owner.post(lambda: listen(owner, owner.mouse_released, event), "a mouse release")
 
@@ -1211,7 +1212,7 @@ def test_a_command_after_an_unread_press_ahead_of_the_take_refuses() -> None:
     node = owner.tree.node("Charlie")
     owner.tree.selected, owner.tree.cursor = [node], node
     line = owner.tree.line(row("Charlie"))
-    middle = SimpleNamespace(Buttons=MIDDLE, X=0, Y=line, Modifiers=0, ClickCount=1)
+    middle = SimpleNamespace(Buttons=MIDDLE, X=LABEL_X, Y=line, Modifiers=0, ClickCount=1)
     listen(owner, owner.mouse_pressed, middle)  # Ahead of the queued intake.
     assert move_to_top(owner) is None, "Bravo, which the tree never showed, was moved"
 
@@ -1323,7 +1324,7 @@ def vcl_shift_press(owner: Any, name: str) -> None:
     tree.selected = [item for item in nodes if item in wanted]
     tree.cursor, tree.add_mode = node, False
     event = SimpleNamespace(
-        Buttons=LEFT, X=0, Y=owner.tree.line(row(name)), Modifiers=SHIFT, ClickCount=1
+        Buttons=LEFT, X=LABEL_X, Y=owner.tree.line(row(name)), Modifiers=SHIFT, ClickCount=1
     )
     owner.post(lambda: listen(owner, owner.mouse_pressed, event), "a mouse press")
     owner.post(lambda: listen(owner, owner.mouse_released, event), "a mouse release")

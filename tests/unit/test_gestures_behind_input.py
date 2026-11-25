@@ -35,6 +35,7 @@ from tests.unit.list_peer import (
     DOWN,
     END,
     HOME,
+    LABEL_X,
     LEFT,
     MOD1,
     SHIFT,
@@ -198,7 +199,7 @@ def press_keeping(owner: Any, name: str) -> None:
         owner.tree.selected = [node]
     owner.tree.cursor = node
     event = SimpleNamespace(
-        Buttons=LEFT, X=0, Y=owner.tree.line(row(name)), Modifiers=0, ClickCount=1
+        Buttons=LEFT, X=LABEL_X, Y=owner.tree.line(row(name)), Modifiers=0, ClickCount=1
     )
     owner.post(lambda: listen(owner, owner.mouse_pressed, event), "a mouse press")
 
@@ -357,7 +358,7 @@ def test_a_drag_after_a_press_listener_that_failed_after_deciding_drags_nothing(
     owner.post = failing
     toggle_natively(owner, row("Delta"))
     event = SimpleNamespace(
-        Buttons=LEFT, X=0, Y=owner.tree.line(row("Delta")), Modifiers=MOD1, ClickCount=1
+        Buttons=LEFT, X=LABEL_X, Y=owner.tree.line(row("Delta")), Modifiers=MOD1, ClickCount=1
     )
     listen(owner, owner.mouse_pressed, event)
     owner.post = post

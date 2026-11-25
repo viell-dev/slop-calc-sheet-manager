@@ -178,6 +178,36 @@ def check_ctrl_shift_selection(book):
     return evidence
 
 
+def check_ctrl_clicks_in_the_gutter(book):
+    """Ctrl+clicks on the arrow and the tab colour toggle their rows, as on the labels (#342).
+
+    Both are painted left of the rows' native hit area, where the tree itself changes nothing.
+    """
+    evidence = {}
+    lines = [view.row_point(book.tree, index)[1] for index in range(9)]
+    for place, x in (("arrow", 8), ("tab colour", 18), ("label", 40)):
+        book.click(2)
+        book.click(4, modifiers=("Control_L",))
+        wait_until(lambda: book.selection() == [NAMES[2], NAMES[4]], "two sheets to pick")
+        steps = []
+        for index in (6, 8, 6, 2):
+            book.pointer.click(x, lines[index], modifiers=("Control_L",))
+            time.sleep(0.4)
+            steps.append(book.selection())
+        evidence[place] = steps
+        assert steps == [
+            [NAMES[2], NAMES[4], NAMES[6]],
+            [NAMES[2], NAMES[4], NAMES[6], NAMES[8]],
+            [NAMES[2], NAMES[4], NAMES[8]],
+            [NAMES[4], NAMES[8]],
+        ], evidence
+        book.pointer.click(x, lines[6])
+        wait_until(lambda: book.selection() == [NAMES[6]], "a plain click in the same place")
+        book.pointer.click(x, lines[8], modifiers=("Shift_L",))
+        wait_until(lambda: book.selection() == NAMES[6:9], "a Shift+click in the same place")
+    return evidence
+
+
 def check_plain_click_ends_group(book):
     """Activation leaves one selected tab; subsequent typing edits only that sheet (#25)."""
     book.click(1)
