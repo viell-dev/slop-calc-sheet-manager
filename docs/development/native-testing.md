@@ -98,8 +98,9 @@ gtk3 sessions save `deck.png`; `--screenshot` remains an alias for running both 
 The Linux helper needs curl 7.71 or newer and Docker with BuildKit. It keeps each verified
 archive under `.cache/libreoffice-packages/<sha256>/` and supplies it to the build in a read-only
 context. On a miss, curl tries TDF's stable mirror network when the archive pin names a versioned
-build, then falls back to the archive if that route cannot supply the exact bytes. Both routes
-require HTTPS with certificate verification and share the download budget. The archive route
+build, then two of its mirrors by name, and falls back to the archive if none supplies the exact
+bytes ([#345](https://github.com/viell-dev/slop-calc-sheet-manager/issues/345)). Every route
+requires HTTPS with certificate verification, and they share the download budget. The archive route
 allows at most three retries, including after a redirected mirror's certificate failure. An
 exhausted download or checksum mismatch on the final source fails setup. Remove the affected
 cache file before retrying a corrupt local entry. See [Hosted checks](./hosted-checks.md#installer-cache)

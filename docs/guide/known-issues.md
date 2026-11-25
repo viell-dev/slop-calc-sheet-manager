@@ -64,29 +64,35 @@ If Sheet Manager does not work in an environment where it is expected to, please
   read LibreOffice's accessibility interface. Separate screen-reader probes used Orca on Linux
   (gtk3) and NVDA on Windows. NVDA did not read the focused list rows in the Windows probe
   ([#249](https://github.com/viell-dev/slop-calc-sheet-manager/issues/249)).
-  <Unreleased /> In Rename Sheets, Orca and NVDA spoke name refusals in **New name** and on the
-  focused **Replace All** and **Rename** buttons in the tested configurations. Orca repeated
-  “New name” before the reason. Use **Sheets** to hear each affected proposal and its reason.
+  In Rename Sheets, <Unreleased since="0.0.11" /> Orca and NVDA spoke name refusals in **New name**
+  and on the focused **Replace All** and **Rename** buttons in the tested configurations. Orca
+  repeated “New name” before the reason. Use **Sheets** to hear each affected proposal and its reason.
   When a synthetic paste contained an embedded null character, the Linux gtk3 edit retained it
   and refused the name. The Windows edit took the text before the null character, so the dialog
   validated that shorter name.
   The speech probes cover Orca on gtk3/X11 and NVDA on Windows in English. Braille, other
   configurations, and other backends remain unverified
   ([#254](https://github.com/viell-dev/slop-calc-sheet-manager/issues/254)).
-  A selection made through assistive technology just after a click or key in the list, before
-  the list has drawn that input, is replaced by what the input selected. <Unreleased /> The list
-  now keeps that selection, or clears it with the selection notice where it cannot tell what was
-  selected, as after a right click there, whose menu opens for the clicked sheet alone
-  ([#307](https://github.com/viell-dev/slop-calc-sheet-manager/issues/307)). A command made
-  before the list has drawn the input, a refresh just then, and typing a sheet's first letters can
-  still act on or show what the input selected
-  ([#323](https://github.com/viell-dev/slop-calc-sheet-manager/issues/323)).
-  <Unreleased /> Two clicks or keys in the list made so quickly that the list has not handled the
-  first when the second arrives, such as two Ctrl+clicks while LibreOffice is busy, can be
-  refused: the list clears its selection, with the selection notice, and you select again
-  ([#294](https://github.com/viell-dev/slop-calc-sheet-manager/issues/294)).
-  So can a Ctrl+click, Space or right click within about half a second after rows were
-  deselected and selected again through assistive technology.
+  A selection made through assistive technology just after a click or key, before the list has drawn
+  that input, can be replaced by what the input selected. <Unreleased since="0.0.11" /> The list now
+  keeps that selection, or clears it with the notice
+  ([#307](https://github.com/viell-dev/slop-calc-sheet-manager/issues/307)). A refresh, a typed letter
+  or a drag within that moment can still use the earlier picks
+  ([#323](https://github.com/viell-dev/slop-calc-sheet-manager/issues/323),
+  [#334](https://github.com/viell-dev/slop-calc-sheet-manager/issues/334)).
+- **Quick input.** <Unreleased since="0.0.11" /> A click, key or drag made before the list has handled
+  the one before it, as while LibreOffice is busy, can be refused and clear the selection; repeat it.
+  [Quick input](./use.md#when-the-list-clears-its-selection) lists the cases
+  ([#294](https://github.com/viell-dev/slop-calc-sheet-manager/issues/294)). A drag begun while a
+  click and another click or key before it are still waiting can carry the sheet that they picked
+  instead of the one you pressed; it has been seen only in simulation, and one Undo restores the order
+  ([#335](https://github.com/viell-dev/slop-calc-sheet-manager/issues/335)).
+- **After renaming one sheet.** A picked sheet renamed by Rename Sheet, on Calc's tabs or in another
+  window leaves the list's selection. If it was under the keyboard cursor, the cursor leaves its row
+  too ([#327](https://github.com/viell-dev/slop-calc-sheet-manager/issues/327)).
+  <Unreleased since="0.0.11" /> The first Shift+click or Ctrl+Shift+click after that can then be
+  refused: the list clears its selection, with the notice. Click again, or start the range with a
+  plain click ([#321](https://github.com/viell-dev/slop-calc-sheet-manager/issues/321)).
 - **Large lists.** The list rebuilds after changes. During rapid sheet switches the active-sheet
   marker, and <Unreleased since="0.0.9" /> the list's accessible name, can lag. LibreOffice's tree
   control cannot update a single row in place, so the rebuild stays; the measurements and that
@@ -97,8 +103,8 @@ If Sheet Manager does not work in an environment where it is expected to, please
 - **Refused held clicks.** If a held click is refused after the list changes, its picks are restored
   and, when any survive, the keyboard cursor returns to one of them. An unpicked position made
   during that hold is not preserved
-  ([#71](https://github.com/viell-dev/slop-calc-sheet-manager/issues/71)). <Unreleased /> The
-  keyboard cursor now stays where your keys moved it during the hold, also outside the picks,
+  ([#71](https://github.com/viell-dev/slop-calc-sheet-manager/issues/71)).
+  <Unreleased since="0.0.11" /> The keyboard cursor now stays where your keys moved it during the hold, also outside the picks,
   while the list can still identify that sheet.
 - **Rename Sheets.** <Unreleased since="0.0.6" /> Sheet names written as text are not changed: after
   a rename, a formula such as `INDIRECT("'WIP North'.A1")` refers to no sheet, or to whichever sheet
@@ -119,8 +125,8 @@ If Sheet Manager does not work in an environment where it is expected to, please
   commands, moves, and Rename Sheets act on the sheet you picked. Calc moves a sheet only by its
   name, so the list refuses a move that would need the name of the sheet that does not come first,
   and says which two names Calc confuses
-  ([#125](https://github.com/viell-dev/slop-calc-sheet-manager/issues/125)). <Unreleased /> The
-  list then tries one other, equally short way to make the move, for example by moving the sheet
+  ([#125](https://github.com/viell-dev/slop-calc-sheet-manager/issues/125)).
+  <Unreleased since="0.0.11" /> The list then tries one other, equally short way to make the move, for example by moving the sheet
   beside it instead. If Calc also confuses a name that this second way needs, the list refuses the
   move. Renaming one of the two sheets makes every move possible. Rename Sheets still
   refuses to create such a pair. Calc's Undo of Delete Sheet can also fail to restore either

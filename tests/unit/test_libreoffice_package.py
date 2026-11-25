@@ -76,35 +76,70 @@ def test_bad_download_never_publishes_a_cache_entry(
     assert not list(cache.glob("download-*"))
 
 
-@pytest.mark.parametrize("mirror_result", ["verified", "wrong digest", "missing"])
-def test_stable_tdf_route_uses_the_same_pin_and_cold_transfer_budget(
-    cache: Path, monkeypatch: pytest.MonkeyPatch, mirror_result: str
+ARCHIVE = (
+    "https://downloadarchive.documentfoundation.org/libreoffice/old/"
+    "26.8.2.2/deb/x86_64/LibreOffice_26.8.2.2_Linux_x86-64_deb.tar.gz"
+)
+STABLE = [
+    f"{route}/26.8.2/deb/x86_64/LibreOffice_26.8.2_Linux_x86-64_deb.tar.gz"
+    for route in package.STABLE_ROUTES
+]
+
+
+@pytest.mark.parametrize("failure", ["wrong digest", "untrusted certificate"])
+@pytest.mark.parametrize("supplier", [0, 1, 2, 3])
+def test_stable_routes_use_the_same_pin_and_leave_time_for_the_archive(
+    cache: Path, monkeypatch: pytest.MonkeyPatch, supplier: int, failure: str
 ) -> None:
-    archive = (
-        "https://downloadarchive.documentfoundation.org/libreoffice/old/"
-        "26.8.2.2/deb/x86_64/LibreOffice_26.8.2.2_Linux_x86-64_deb.tar.gz"
-    )
-    mirror = (
-        "https://download.documentfoundation.org/libreoffice/stable/"
-        "26.8.2/deb/x86_64/LibreOffice_26.8.2_Linux_x86-64_deb.tar.gz"
-    )
+    """The first route that supplies the pinned bytes is used; the archive comes last."""
+    routes = [*STABLE, ARCHIVE]
 
     def download(url: str, output: Path, *, seconds: int, retries: int) -> None:
+        assert not output.exists(), "an earlier route's bytes must not remain"
         calls.append((url, seconds, retries))
-        if url == mirror:
-            if mirror_result == "missing":
-                raise subprocess.CalledProcessError(22, "curl")
-            output.write_bytes(PAYLOAD if mirror_result == "verified" else b"another build")
-        else:
-            assert not output.exists()
+        if url == routes[supplier]:
             output.write_bytes(PAYLOAD)
+        elif failure == "wrong digest":
+            output.write_bytes(b"another build")
+        else:
+            raise subprocess.CalledProcessError(60, "curl")
 
     calls: list[tuple[str, int, int]] = []
     monkeypatch.setattr(package, "download_package", download)
-    monkeypatch.setattr(package, "monotonic", Mock(side_effect=[0, 90]))
-    path = package.ensure_package("current-26.8", {**PIN, "url": archive})
+    monkeypatch.setattr(package, "monotonic", Mock(side_effect=[0, 0, 1, 2, 3]))
+    path = package.ensure_package("current-26.8", {**PIN, "url": ARCHIVE})
     assert path.read_bytes() == PAYLOAD
-    expected = [(mirror, 90, 0)]
-    if mirror_result != "verified":
-        expected.append((archive, 150, 3))
-    assert calls == expected
+    stable = [(url, 90, 0) for url in STABLE]
+    assert calls == [*stable, (ARCHIVE, 237, 3)][: supplier + 1]
+
+
+def test_slow_stable_routes_leave_the_archive_its_time(
+    cache: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    now = 0
+
+    def download(url: str, output: Path, *, seconds: int, retries: int) -> None:
+        nonlocal now
+        calls.append((url, seconds))
+        now += seconds
+        if url != ARCHIVE:
+            raise subprocess.CalledProcessError(28, "curl")
+        output.write_bytes(PAYLOAD)
+
+    calls: list[tuple[str, int]] = []
+    monkeypatch.setattr(package, "download_package", download)
+    monkeypatch.setattr(package, "monotonic", lambda: now)
+    package.ensure_package("current-26.8", {**PIN, "url": ARCHIVE})
+    assert calls == [(STABLE[0], 90), (STABLE[1], 90), (ARCHIVE, 60)]
+    assert now == 240, "the whole transfer stays within the budget"
+
+
+def test_every_route_is_https_and_a_total_failure_is_reported(
+    cache: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert all(route.startswith("https://") for route in package.STABLE_ROUTES)
+    fetch = Mock(side_effect=subprocess.CalledProcessError(60, "curl"))
+    monkeypatch.setattr(package, "download_package", fetch)
+    with pytest.raises(subprocess.CalledProcessError):
+        package.ensure_package("current-26.8", {**PIN, "url": ARCHIVE})
+    assert fetch.call_count == len(STABLE) + 1 and not list(cache.rglob("*.tar.gz"))

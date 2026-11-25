@@ -19,8 +19,8 @@ LibreOffice, and follow Tools ▸ Extension Manager's installation prompts. Rest
 asked, then open a Calc workbook and select the Sheet Manager deck in the sidebar. Each release
 also includes an `.oxt.sha256` file for checking the download's SHA-256 hash.
 
-Sheet Manager is in beta towards its first stable release. GitHub marks test builds
-**Pre-release**. Download later test builds manually. LibreOffice's Extension Manager checks
+GitHub marks test builds **Pre-release**; download later test builds manually. LibreOffice's
+Extension Manager checks
 the [stable feed](https://viell-dev.github.io/slop-calc-sheet-manager/updates/stable.xml) through
 its own update mechanism. See [Install, update, and remove][install] for update and removal steps.
 
@@ -62,11 +62,11 @@ separately from the list's own picks. It includes:
 
 | Environment                                                                       | Status                                             |
 | --------------------------------------------------------------------------------- | -------------------------------------------------- |
-| Linux x86-64, libreoffice.org 26.8.2.2: headless integration; gtk3/gen real input | Verified in routine CI for every change |
-| Linux x86-64, libreoffice.org 26.2.1.2, 26.2.6.3, and 26.8.2.2: headless/gtk3 integration; gtk3/gen real input | Verified in manual CI; required by the manual release sweep |
-| Windows x86-64, libreoffice.org 26.8.2.2: headless | Verified in manual CI; required by the manual release sweep |
-| Windows x86-64, libreoffice.org 26.8.2.2: a visible window with real input | Verified in manual CI; required by the manual release sweep |
-| macOS Intel, macOS 15, libreoffice.org 26.8.2.2: headless integration | Verified in manual CI; required by the manual release sweep |
+| Linux x86-64, libreoffice.org 26.8.3.1: headless integration; gtk3/gen real input | Verified in routine CI for every change |
+| Linux x86-64, libreoffice.org 26.2.1.2, 26.2.7.3, and 26.8.3.1: headless/gtk3 integration; gtk3/gen real input | Verified in manual CI; required by the manual release sweep |
+| Windows x86-64, libreoffice.org 26.8.3.1: headless | Verified in manual CI; required by the manual release sweep |
+| Windows x86-64, libreoffice.org 26.8.3.1: a visible window with real input | Verified in manual CI; required by the manual release sweep |
+| macOS Intel, macOS 15, libreoffice.org 26.8.3.1: headless integration | Verified in manual CI; required by the manual release sweep |
 | Other 26.2 and 26.8 releases, and later versions, from libreoffice.org            | Expected to work, not verified                     |
 | Distribution packages, other interfaces such as kf6 or gtk4, Wayland, macOS GUI input | Expected to work, not verified                     |
 | Flatpak, Snap, and Arm builds                                                     | Expected to work, not verified                     |

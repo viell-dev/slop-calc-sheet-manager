@@ -19,14 +19,32 @@ Additional capabilities need an owner scope decision. The
 agreement and release conditions; the
 [release tracker](https://github.com/viell-dev/slop-calc-sheet-manager/issues/93) owns progress.
 Betas may deliver subsets of the fixes. A release candidate waits for the required focused
-human usability review and resolution of its blockers.
-[#130](https://github.com/viell-dev/slop-calc-sheet-manager/issues/130) tracks preparation of the
-new request after engineering fixes and bug-finding checks; it is not an outstanding human
-checklist. Stable publication also requires the human-testing and defect-resolution gates below.
-The first stable 0.1.0 must be listed on extensions.libreoffice.org. Near readiness, prepare the
-listing material and an assigned owner issue with the exact account/sign-in actions before
-requesting access. Check the tracker before either stage; a prepared package or merged
-preparation PR does not settle readiness.
+human usability review and resolution of its blockers. Stable publication also requires the
+human-testing and defect-resolution gates below. The first stable 0.1.0 must be listed on
+extensions.libreoffice.org. Near readiness, prepare the listing material and an assigned owner
+issue with the exact account/sign-in actions before requesting access. Check the tracker before
+either stage; a prepared package or merged preparation PR does not settle readiness.
+
+### What blocks a candidate or stable release
+
+A release is the goal; finding and fixing every defect is not. A defect blocks a candidate or the
+stable release when a person can plausibly meet it in ordinary use of a supported host, with the
+mouse, keyboard, menus or a screen reader at human speed and up to 1,000 sheets, and it:
+
+- makes a command or drag act on sheets the person did not select, loses or changes document
+  content, or breaks undo or recovery;
+- crashes or hangs LibreOffice;
+- makes a main task unusable, or is a regression that a person would notice;
+- breaks installation, updates or removal, allows publication without the required release
+  evidence, or makes a safety statement untrue.
+
+A blocker the owner identified always blocks. Record a defect that needs an injected failure of a
+LibreOffice call, input or a programmatic selection within one pass of LibreOffice's event queue, or
+a deliberately constructed edit; state the limit in the guide where a user could meet it, and
+schedule the fix after the release. Evidence that it happens in ordinary use makes it a blocker.
+Searching for more such cases is not a release step: reviews and randomized checks that keep finding
+them, each rarer than the last, are a reason to stop and release. The release PR lists every open
+defect with its disposition.
 
 ## Versions and titles
 
@@ -375,12 +393,14 @@ Screenshots, accessibility trees, HTTP requests and both office lifecycles are r
 artifacts. This runs after the UI suite in each routine and full-sweep Linux UI job.
 
 The dialog check uses **gen** because its public UNO accessibility tree exposes the deployment
-dialogs; GTK's native weld manager is absent from Toolkit top windows in this lab. It invokes
+dialogs; GTK's native weld manager is absent from Toolkit top windows in this lab. Its loopback
+feed uses HTTPS, with a certificate that only the test image trusts: LibreOffice 26.8.3 refuses
+plain HTTP there ([#344](https://github.com/viell-dev/slop-calc-sheet-manager/issues/344)). It invokes
 the selected extension's **Check for Updates** context command, which uses the same update
 queue without checking bundled extensions against external services. The fixture keeps the full
 built package payload and changes only its version, minimum and loopback update URL. Production
 packages retain the stable feed, checked separately by integration tests. GTK-specific dialog
-presentation, Windows GUI updates, automatic scheduling, and public HTTPS/redirect behavior are
+presentation, Windows GUI updates, automatic scheduling, and public HTTPS and redirect behavior are
 outside this loopback check. The release workflow verifies public asset checksums and packaged
 metadata; the live LibreOffice provider and installation of downloaded public bytes need the
 separate post-publication checks.

@@ -18,6 +18,16 @@ from typing import cast
 
 ROOT = Path(__file__).resolve().parents[1]
 CACHE = ROOT / ".cache" / "libreoffice-packages"
+# TDF's own download service chooses a mirror by the client's place, and it sent GitHub's runners
+# only to one whose certificate did not verify (#345). These are two of TDF's listed mirrors, named
+# directly; the pin's SHA-256 decides whether any route's bytes are used.
+STABLE_ROUTES = (
+    "https://download.documentfoundation.org/libreoffice/stable",
+    "https://ftp.osuosl.org/pub/tdf/libreoffice/stable",
+    "https://mirrors.ocf.berkeley.edu/tdf/libreoffice/stable",
+)
+ROUTE_SECONDS = 90  # The most one stable route may take of the transfer budget.
+ARCHIVE_SECONDS = 60  # Kept for the archive, the last route.
 LANES = ("minimum", "current-26.2", "current-26.8", "unsupported", "windows", "macos")
 
 
@@ -82,7 +92,7 @@ def download_package(url: str, output: Path, *, seconds: int, retries: int) -> N
     )
 
 
-def stable_download_url(archive: str) -> str | None:
+def stable_download_urls(archive: str) -> list[str]:
     # TDF publishes final builds under the three-part release name on its mirror network.
     match = re.fullmatch(
         r"https://downloadarchive\.documentfoundation\.org/libreoffice/old/"
@@ -90,24 +100,25 @@ def stable_download_url(archive: str) -> str | None:
         archive,
     )
     if match is None:
-        return None
+        return []
     build, release, path = match.groups()
-    return f"https://download.documentfoundation.org/libreoffice/stable/{release}/" + path.replace(
-        f"LibreOffice_{build}_", f"LibreOffice_{release}_", 1
-    )
+    name = path.replace(f"LibreOffice_{build}_", f"LibreOffice_{release}_", 1)
+    return [f"{route}/{release}/{name}" for route in STABLE_ROUTES]
 
 
 def download_pinned(pin: dict[str, str], output: Path, *, desktop: bool) -> None:
     deadline = monotonic() + (600 if desktop else 240)
     archive = pin["url"]
-    mirror = stable_download_url(archive)
-    if mirror is not None:
+    for mirror in stable_download_urls(archive):
+        seconds = min(ROUTE_SECONDS, math.floor(deadline - monotonic()) - ARCHIVE_SECONDS)
+        if seconds <= 0:
+            break
         try:
-            download_package(mirror, output, seconds=90, retries=0)
+            download_package(mirror, output, seconds=seconds, retries=0)
             verify_package(output, pin["sha256"])
         except (subprocess.CalledProcessError, ValueError) as error:
             print(
-                f"Stable mirror did not supply the pinned package; trying the archive: {error}",
+                f"{mirror} did not supply the pinned package; trying the next route: {error}",
                 flush=True,
             )
             output.unlink(missing_ok=True)

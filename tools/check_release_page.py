@@ -94,6 +94,15 @@ FIRST_PUBLISHED = {
         "opens this guide in your browser",
         "opens a short bundled English help page",
     ),
+    "0.0.11": (
+        "reports the selected proposal's refusal",
+        "reports when Find is empty",
+        "a range made with Shift or Ctrl+Shift, by key or by click, starts at the cursor",
+        "keys keep moving from that row until the list shows the new name",
+        "Hold or repeat Alt+Up or Alt+Down to move the selection one place at a time",
+        "LibreOffice shows a click or key in the list before the list itself handles it",
+        "or clears it with the notice when it cannot tell which sheets it means",
+    ),
 }
 
 
