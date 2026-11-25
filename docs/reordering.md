@@ -137,6 +137,7 @@ scenario flags, and preserves the initiating view's active sheet and native tab 
 | Status | Meaning |
 | --- | --- |
 | `done` | The target order was verified; a view-restoration warning may accompany it. |
+| `unchanged` | The sheets were in place, in a current snapshot; nothing was attempted. |
 | `refused` | No move was attempted; `message` explains why. |
 | `failed-restored` | Applying failed; the original order was verified restored; a view warning may accompany it. |
 | `failed-not-restored` | Applying failed and restoration could not be verified; the user must check the document. |

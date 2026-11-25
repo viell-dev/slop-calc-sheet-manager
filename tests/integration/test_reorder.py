@@ -348,7 +348,7 @@ def assert_scenarios(context, desktop):
             observed = snapshot(document)
             plan = plan_move(observed.sheets, selected, cast(Action, action), gap)
             if not plan.moves:
-                assert apply_order(context, document, observed, plan).status == "refused"
+                assert apply_order(context, document, observed, plan).status == "unchanged"
                 assert order(document) == original
                 assert document.UndoManager.AllUndoActionTitles == ()
                 continue

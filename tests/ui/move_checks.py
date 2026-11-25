@@ -82,7 +82,8 @@ def check_move_controls(book, shortcuts, buttons=False):
 
 
 def check_repeated_move_shortcut(book):
-    """Repeated and held shortcuts move one step at a time and never open a message (#340).
+    """Repeated and held shortcuts move one step at a time and never open a message (#340), also
+    once the sheet is at the end of the list (#353).
 
     Keys that arrive while a move runs are delivered together after it. The list drops those that
     come while another request waits, so the number of steps depends on the machine's speed; each
@@ -123,6 +124,29 @@ def check_repeated_move_shortcut(book):
             book.document.getUndoManager().undo()
         wait_until(lambda: view.names(book.tree) == before, "the undone moves in the list")
         wait_until(lambda: book.order() == before, "the original order")
+    book.click(2)
+    wait_until(lambda: book.selection() == [NAMES[2]], "the sheet to move to the top picked")
+    book.lab.input.repeat("Up", modifiers=("Alt_L",), seconds=3.0)
+    evidence["held_to_the_top"] = {"dialog": native_dialog(book), "order": book.order()[:4]}
+    if evidence["held_to_the_top"]["dialog"]:
+        book.lab.screenshot("repeated-move-held-to-the-top")
+    assert not evidence["held_to_the_top"]["dialog"], evidence
+    # However many steps the held key made, the sheet is at the top now, and the list is settled.
+    book.lab.input.tap("Home", modifiers=("Alt_L",), pause=0.5)
+    top = [NAMES[2], *[name for name in before if name != NAMES[2]]]
+    wait_until(lambda: book.order() == top == view.names(book.tree), "the sheet at the top")
+    wait_until(lambda: book.selection() == [NAMES[2]], "the sheet at the top to stay picked")
+    steps = len(book.undo_titles()) - len(history)
+    for key in ("Up", "Home"):
+        time.sleep(1.0)
+        book.lab.input.tap(key, modifiers=("Alt_L",), pause=1.0)
+        evidence[f"{key}_at_the_top"] = dialog = native_dialog(book)
+        assert not dialog and book.tree.hasFocus(), evidence
+        assert len(book.undo_titles()) - len(history) == steps, evidence
+        assert book.order() == top and book.selection() == [NAMES[2]], evidence
+    for _ in range(steps):
+        book.document.getUndoManager().undo()
+    wait_until(lambda: view.names(book.tree) == before, "the undone moves in the list")
     return evidence
 
 

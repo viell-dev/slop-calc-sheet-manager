@@ -261,6 +261,8 @@ repeat Alt+Up or Alt+Down to move the selection one place at a time. The list dr
 that arrive while a move is waiting, as when a large workbook takes longer for a move than the keys
 take to repeat
 ([#340](https://github.com/viell-dev/slop-calc-sheet-manager/issues/340)).
+At the end of the list, <Unreleased /> a move shortcut does nothing
+([#353](https://github.com/viell-dev/slop-calc-sheet-manager/issues/353)).
 
 **Move-button shortcuts.** <Unreleased since="0.0.4" /> Move shortcuts also apply while a move
 button has focus.

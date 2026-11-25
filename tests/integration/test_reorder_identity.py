@@ -131,6 +131,11 @@ def check_lifetime(context, desktop):
                 first.dispose()
             # A recorded ordinary edit does not change structural continuity.
             document.Sheets.getByIndex(0).getCellRangeByName("A1").Value = 42
+            titles = tuple(document.UndoManager.AllUndoActionTitles)
+            in_place = plan_move(original.sheets, [original.sheets[0].name], "top")
+            assert not preflight(context, document, original, in_place).allowed
+            assert apply_order(context, document, original, in_place).status == "unchanged"
+            assert tuple(document.UndoManager.AllUndoActionTitles) == titles
             plan = plan_move(original.sheets, [original.sheets[0].name], "bottom")
             assert preflight(context, document, original, plan).allowed
             assert apply_order(context, document, original, plan).status == "done"
@@ -144,6 +149,8 @@ def check_lifetime(context, desktop):
             history = tuple(document.UndoManager.AllUndoActionTitles)
             assert not preflight(context, document, original, plan).allowed
             assert apply_order(context, document, original, plan).status == "refused"
+            # A stale snapshot is refused as such, also where it would leave the sheets in place.
+            assert apply_order(context, document, original, in_place).status == "refused"
             assert tuple(document.UndoManager.AllUndoActionTitles) == history
             fresh = snapshot(document)
             assert fresh.monitor is monitor and fresh.generation != original.generation

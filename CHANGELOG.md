@@ -12,6 +12,8 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
   Ctrl+Shift+click starts there rather than being refused
   ([#321](https://github.com/viell-dev/slop-calc-sheet-manager/issues/321),
   [#327](https://github.com/viell-dev/slop-calc-sheet-manager/issues/327)).
+- A move shortcut does nothing once the sheets are at that end of the list, as when it is held. It
+  opened an error message ([#353](https://github.com/viell-dev/slop-calc-sheet-manager/issues/353)).
 - A Ctrl+click after a Ctrl+Shift+click and a middle click adds its sheet rather than clear the
   selection ([#328](https://github.com/viell-dev/slop-calc-sheet-manager/issues/328)).
 

@@ -269,7 +269,7 @@ class Book:
         self.active = self.sheets[0]
         self.generation = 0
         self.planned: list[str] = []  # The sheets the last planned move was asked to move,
-        self.moved: list[list[str]] = []  # and those of each move made, in order.
+        self.moved: list[list[str]] = []  # and those of each accepted one, in order.
 
     def names(self) -> list[str]:
         return [sheet.name for sheet in self.sheets]
@@ -359,6 +359,10 @@ class Book:
         for move in plan.moves:
             self.move(move.name, move.index)
         self.moved.append(list(self.planned))
+        if not plan.moves:
+            return SimpleNamespace(
+                status="unchanged", message="The sheets are already in that position."
+            )
         return SimpleNamespace(status="done", message="Sheets moved.")
 
     def plan(self, sheets: Any, selected: Any, action: Any, gap: int | None = None) -> Plan:
@@ -1127,9 +1131,9 @@ def changed(owner: Any) -> None:
 
 def move_to_top(owner: Any) -> list[str] | str | None:
     """Press Move to Top, through the button's action listener (`MoveButtons.actionPerformed`),
-    then the work it queued: the sheets it moved, None if it refused, or "failed" if it did
-    neither, as when a native failure ended it before its message. A failure before the move is
-    queued ends only that press, recorded as "a move button"."""
+    then the work it queued: the sheets it moved, or found at the top, None if it refused, or
+    "failed" if it did neither, as when a native failure ended it before its message. A failure
+    before the move is queued ends only that press, recorded as "a move button"."""
     moves, errors = len(owner.book.moved), len(owner.errors)
     owner.move_buttons.actionPerformed(SimpleNamespace(ActionCommand="top"))
     owner.run_queue()
