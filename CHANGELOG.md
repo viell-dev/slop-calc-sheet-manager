@@ -5,6 +5,10 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 
 ## Unreleased
 
+- Move the maintaining agents' rules for all code, review details, and procedures for dependency
+  defects and security fixes from AGENTS.md into two developer guide pages, so that the agents'
+  instruction file stays short enough for agent tools to read in full.
+
 ## 0.0.12 - 2026-11-26
 
 Second release candidate for the stable release 0.1.0. It replaces 0.0.11, which could clear the

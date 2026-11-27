@@ -555,11 +555,11 @@ def test_the_refused_release_listener_makes_the_same_calls_as_for_the_pressed_sh
 ) -> None:
     """The mouse listener runs without LibreOffice's solar mutex, and it may only read the tree,
     the handles and the document and write a refused release's picks back (`SheetList`,
-    AGENTS.md "Listeners"). Keeping the cursor adds no call there: the listener writes the picks
-    with the tree's cursor on one of them and reads the same handles, as for a cursor left on
-    the pressed sheet, and the queued write moves the tree's cursor to the list's. Only that
-    posted write makes the clear an unpicked cursor's row needs, and a failure there leaves the
-    record unknown (#257)."""
+    docs/development/code-rules.md "Listeners"). Keeping the cursor adds no call there: the
+    listener writes the picks with the tree's cursor on one of them and reads the same handles,
+    as for a cursor left on the pressed sheet, and the queued write moves the tree's cursor to
+    the list's. Only that posted write makes the clear an unpicked cursor's row needs, and a
+    failure there leaves the record unknown (#257)."""
     reads: list[str] = []
     read = Handle.getName
 

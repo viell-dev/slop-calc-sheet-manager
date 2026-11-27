@@ -109,8 +109,12 @@ export default defineConfigWithTheme<ThemeConfig>({
           },
           {
             text: "Implementation",
-            items: [{ text: "Reordering interface", link: "/reordering" }],
+            items: [
+              { text: "Rules for all code", link: "/development/code-rules" },
+              { text: "Reordering interface", link: "/reordering" },
+            ],
           },
+          { text: "Maintainer procedures", link: "/development/maintenance" },
         ],
       },
     ],
