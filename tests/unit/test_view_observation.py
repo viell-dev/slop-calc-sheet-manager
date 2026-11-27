@@ -1356,9 +1356,10 @@ def test_a_double_clicks_posted_activation_refuses_after_a_refresh_at_a_newer_ge
     """The posted work checks the generation its release verified, not the list's newer proof.
 
     Another thread deletes Bravo and renames as "Bravo" the sheet that Bravo's retained handle
-    turned to (AGENTS.md, "Sheet identity"), so the pressed handle passes the name and
-    visibility checks. The selection flush queued ahead of the activation then refreshes at
-    the new generation, which drops the picks and proves the list there, as `_refresh` does.
+    turned to (docs/development/code-rules.md, "Sheet identity"), so the pressed handle passes
+    the name and visibility checks. The selection flush queued ahead of the activation then
+    refreshes at the new generation, which drops the picks and proves the list there, as
+    `_refresh` does.
     Activating would go to a sheet the user did not double-click.
     """
     owner, live, listener, queued = click_list()

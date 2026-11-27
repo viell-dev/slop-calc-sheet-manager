@@ -122,53 +122,13 @@ weighing sensitivity, complexity, impact, and uncertainty, and records the choic
 such as Dependabot, the agent that merges it does the author review.
 
 Every review, the author's own or an independent one, judges how the code is written as well as
-whether it works:
+whether it works. Follow the [review procedure](docs/development/maintenance.md#review) for code
+quality, deliberate departures, profiling, weak precedents, and when and how to use an independent
+reviewer.
 
-- **Code quality.** Confirm the behaviour, then judge the code: readable, idiomatic for Python and
-  PyUNO, or for Vue and VitePress in the guide, consistent in structure and naming, appropriately
-  tested, and in line with current best practices where reasonable. Working code that adds poor or
-  smelly patterns still needs changes. Check the current LibreOffice and dependency documentation
-  rather than remembered conventions.
-- **Deliberate departures.** A departure from the better practice is acceptable when a host,
-  dependency, or compatibility constraint makes that practice infeasible, or when the chosen form
-  is measured to be significantly faster; a marginal gain does not justify the inconsistency.
-  Explain the constraint or measured difference in a code comment at that site, with the condition
-  for revisiting it where one exists. Treat an unexplained departure as a finding.
-- **Profiling.** Support performance departures with profiles and benchmarks, and check from time
-  to time whether idiomatic code on hot paths costs more than expected. A finding that becomes a
-  regression gate gets an explicit limit and correctness assertions, as in
-  [Performance measurements](docs/verification.md#performance-measurements).
-- **Weak precedents.** Look for the source of a weak pattern, not only its instance. When a pull
-  request copies merged code, examples, templates, or guidance that teach the pattern, the
-  precedent is the defect, the submitter is not at fault, and the finding names the precedent.
-  Correct the source in separate pull requests before settling the original: one refactoring the
-  precedent code and one updating the guidance that taught it, as applicable. Then either replace
-  the original with a new pull request on the corrected base or refactor it in place. Link these
-  pull requests to each other so that the history shows why the original changed.
-- **Proportionate findings.** Weigh style findings by scope and maturity: prefer established
-  practices with a clear benefit over churn for novelty, and keep each recommendation proportionate
-  to the code it touches.
-
-Independent review and its record:
-
-- **When to use independent review.** The maintainer decides whether another agent's perspective
-  would materially improve confidence, considering complexity, sensitivity, impact, and uncertainty.
-  Sheet identity, undo and recovery, native dispatch, and release authority deserve particular
-  attention because a mistake can change documents or published artifacts. They do not create a
-  blanket review gate for every change in those areas. Record the choice and its reason.
 - **Every release pull request gets independent review** of all changes since the previous release,
   unresolved defects, verification evidence, compatibility, packaging, documentation, installation,
   and updates. For the first release, review the complete maintained implementation.
-- **Who reviews.** An independent reviewer is a separate agent with fresh context, not the
-  author's second pass. Use the same or another model with strong reasoning suited to the work.
-  Prefer a different model provider for release pull requests and particularly sensitive or
-  complex changes, when one is available.
-- **Rounds.** Reviewers report findings and do not push to the branch. The review names the commit
-  it covered. The author fixes or answers each finding and decides whether the remaining uncertainty
-  warrants a focused follow-up. Do not restart broad review rounds for straightforward fixes or
-  unrelated suggestions.
-- **Review apps** supplement this process; their quotas do not decide whether a change has been
-  verified enough.
 - Every pull request has a "Verification" section listing the commands run, the inputs tried beyond
   the tests, what was checked on which platform and LibreOffice version, and the review choice.
 
@@ -200,43 +160,11 @@ bug reports or patches to LibreOffice: reporting there is not a route this proje
 defect is handled here, with a workaround or a documented limit. Do not ask the owner to
 reconsider. The owner may report a defect themselves, in their own words.
 
-- **The overview.** The pinned issue
-  [#33](https://github.com/viell-dev/slop-calc-sheet-manager/issues/33) lists every LibreOffice or
-  other dependency defect that affects Sheet Manager, in one of four states:
-  - **Blocked upstream:** no local remedy; the affected behaviour waits for LibreOffice.
-  - **Worked around:** a verified local workaround handles it; the overview records its limits and
-    when it can be removed.
-  - **Resolved upstream:** a fix is verified in a named LibreOffice release, and the overview
-    tracks what remains here, such as adoption or removing a workaround.
-  - **Upstream route unavailable:** used only for defects in a dependency other than LibreOffice
-    whose project is unresponsive, declines the relevant collaboration, or prohibits the proposed
-    contribution. Defects in LibreOffice itself use the first three states, since reports there are
-    ruled out for every defect.
-
-  The overview also records the user-visible limits and any release impact.
-- **One issue per defect,** labelled `Status: Blocked`. It records the affected versions, the
-  impact, a reproduction, the local handling, and what would reopen work. An issue for actionable
-  local work around a defect, such as reducing a workaround's cost, stays open with its own
-  status and is linked from the overview.
-- **Parked issues.** When no local work remains, close the issue as not planned and keep
-  `Status: Blocked`: it is parked, not fixed or declined.
-- **Reopening.** Reopen the issue when a LibreOffice release fixes the defect, so that the
-  workaround can be narrowed or dropped for fixed versions, or when the workaround falls short.
-  Close it as completed only after verifying the local result.
-- **Checking new releases.** During maintenance, and before each release, check new LibreOffice
-  releases against the overview. Log each check, and each change of state, in the overview.
-- **Other dependencies.** Before reporting a defect to any other dependency's project, read its
-  contribution guide, code of conduct, templates, and AI policy, and record in the overview what
-  they permit, with the evidence. Disclose that an agent wrote the report.
-  - **A prohibition settles the route.** Handle the defect here, and do not ask the owner to
-    overrule the prohibition or to set up an account for it.
-  - **Access needs acceptance first.** Establish that the intended agent-written contribution is
-    acceptable before asking the owner for any account, tracker access, or credentials.
-  - **Unknown acceptance.** Where the project's acceptance of agent-written reports is unknown,
-    send one initial report and invite its maintainers to say if they want no further agent
-    reports. Send more only after a maintainer's response establishes acceptance. Silence,
-    automated replies, and the absence of a ban do not establish it.
-  - **Code.** Offer code only once code contributions are shown to be welcome, and stop when asked.
+The pinned overview issue [#33](https://github.com/viell-dev/slop-calc-sheet-manager/issues/33)
+lists every LibreOffice or other dependency defect that affects Sheet Manager. Follow the
+[dependency defect procedure](docs/development/maintenance.md#dependency-defects) for its states,
+the per-defect issues, parking and reopening them, checking new LibreOffice releases, and reporting
+to other dependencies.
 
 ## Security fixes and release-age gates
 
@@ -247,32 +175,9 @@ one. Resolving the advisory takes precedence over the cooldown and over routine 
 but only for the versions the fix needs, and only after checking that the fix is genuine. The
 cooldown does not delay Dependabot's security updates; they get the same checks before merging.
 
-- Confirm that the advisory covers the resolved version, and that the fixed release comes from the
-  package's usual publisher and source and is identified as the fix by the advisory, changelog, or
-  release notes.
-- Apply the fix without waiting for the cooldown, at the closest level that works:
-  1. The vulnerable package has a fixed release within the project's or its dependant's declared
-     range: update to it, moving the exact pin where there is one (`requirements-dev.txt`,
-     `package.json` and its lockfile, workflow actions, `ci/` base images).
-  2. The vulnerable package is transitive and its dependant has not yet adopted the fix: override
-     or pin it with the ecosystem's mechanism (such as npm `overrides` or a hash-pinned entry in
-     `requirements-dev.txt`) when the dependant's tests or the project's checks show it still
-     works. Record the override, its advisory, and its removal condition in a code comment or the
-     pull request. Once the dependant releases a version that adopts the fix, update to it, also
-     without waiting for the cooldown, and remove the override.
-  3. No working fixed version exists: track the advisory as blocked upstream or worked around in
-     the overview, [#33](https://github.com/viell-dev/slop-calc-sheet-manager/issues/33), as
-     [Defects in LibreOffice](#defects-in-libreoffice) describes.
-- Take the smallest version that resolves the advisory, normally its patch release. Unrelated
-  updates and later releases of the same package keep the normal cooldown.
-- Bypassing the cooldown moves its check to the agent. Decide whether the fix needs an independent
-  review of the change between the current and fixed versions, using the published package contents
-  rather than only the repository. For a widely used, actively maintained package with an
-  established release process, checking its release notes and diff may suffice; get an independent
-  review for a less widely used package, a recent change of maintainer or publishing method, or a
-  fix release carrying substantial unrelated changes.
-- Record the advisory, affected and fixed versions, dependency path, bypassed cooldown, and review
-  decision with its reason in the pull request. Ordinary required checks still apply.
+Follow the [security fix procedure](docs/development/maintenance.md#security-fixes) to verify the
+fix, choose the level to apply it at, decide on review of the bypassed cooldown, and record it in
+the pull request.
 
 ## Public surfaces and documentation
 
@@ -306,13 +211,14 @@ cooldown does not delay Dependabot's security updates; they get the same checks 
   read the live GitHub settings and correct them.
 - **Document ownership.** Keep the README focused on purpose, capabilities, compatibility and entry
   points. CONTRIBUTING.md owns setup, routine commands, and task entry points. The linked
-  Development pages own native test procedures, docs/verification.md owns coverage and limits,
-  and RELEASING.md owns release procedures. This file holds agent instructions
-  and non-obvious safeguards. Primary documents describe the current state and
-  how to work in the repository, not a journal of past sessions. Stated status names the current
-  release, blockers, and pending decisions, links their issues or PRs, and replaces the previous
-  status. Issues and PRs own decisions, progress and detailed verification receipts; do not
-  duplicate their history here or create a replacement ledger.
+  Development pages own native test procedures, the rules for all code, and the maintainer
+  procedures this file links; docs/verification.md owns coverage and limits, and RELEASING.md owns
+  release procedures. This file holds agent instructions and non-obvious safeguards. Primary
+  documents describe the current state and how to work in the repository, not a journal of past
+  sessions. Stated status names the current release, blockers, and pending decisions, links their
+  issues or PRs, and replaces the previous status. Issues and PRs own decisions, progress and
+  detailed verification receipts; do not duplicate their history here or create a replacement
+  ledger.
 - **Historical records.** Keep one only when a future reader needs rationale or experiment results
   that Git history, issues, and PRs cannot serve. Put it in a `docs/` subdirectory named for its
   content, and state at its top why it is kept. On finding session history in a primary document, or
@@ -364,55 +270,9 @@ publication and feed procedures.
 For package, metadata and interface changes, use the
 [LibreOffice extension and interface guidance](docs/development/index.md#libreoffice-extension-and-interface-guidance).
 
-### Rules for all code
-
-Breaking one of these has hung or crashed LibreOffice, or let an action reach the wrong sheet:
-
-- **Sheet identity.** A retained sheet handle is not an identity: when a sheet is deleted, its
-  handle turns to another sheet and can later report the deleted sheet's name. Whatever holds
-  handles across user time keeps refs made at the user's input, never from a name later, and
-  checks the shared structure monitor's generation when it acts (`selection.py`, `structure.py`).
-  Every action checks its sheets when it runs, never against the list's cached rows. Read handles
-  by index: Calc's lookup by name can find another sheet (`uno_reorder.py`,
-  [#113](https://github.com/viell-dev/slop-calc-sheet-manager/issues/113)).
-- **Listeners** can be called on other threads, without LibreOffice's solar mutex (the toolkit's
-  mouse listeners, [#269](https://github.com/viell-dev/slop-calc-sheet-manager/issues/269), and
-  the drag gesture's, [#264](https://github.com/viell-dev/slop-calc-sheet-manager/issues/264)), or
-  in the middle of a change. They only record state or post work to the main thread
-  (`uno_calc.MainThread`, an `AsyncCallback`, whose work holds that mutex). The documented
-  exceptions are the structure monitor's state reads (`uno_structure.py`), the drag gesture's
-  checks before it starts a drag, and the mouse handlers' reads of the tree, the handles and the
-  document and their writes of a refused release's picks, which use calls that lock for
-  themselves so that a gesture is decided and shown at once (`uno_list.SheetList`). Code that
-  runs without the mutex, the drag gesture's and the mouse handlers' checks included, reads the
-  structure monitor's `generation` and never calls its `check()`, which updates shared state
-  from separately locked reads and relies on the mutex to keep other threads' change reports out
-  between them ([#284](https://github.com/viell-dev/slop-calc-sheet-manager/issues/284)). The
-  gesture compares its snapshot with `uno_reorder.is_current_as_reported`.
-- **Threads** start only through `uno_calc.start_thread`, never with `threading`: Calc hung when
-  `Thread.start` waited for a thread that was waiting for LibreOffice's main lock
-  ([#55](https://github.com/viell-dev/slop-calc-sheet-manager/issues/55)).
-- **Test observation.** Tests observe only public UNO: the `XPanel.getDialog()` window, its child
-  tree control (`tests/integration/sheet_list_view.py`), and its `XEventListener`. Keep test hooks
-  and failure-injection seams out of the shipped extension; inject failures through test-only
-  forwarding adapters.
-- **Test documents** are visible before native UI assertions and input, even in headless runs.
-  The theme fixture alone prepares its workbook with `Hidden=True`, finishes edits and cleanup,
-  then shows the frame before opening the panel. This measured preparation exception prevents
-  cleanup from invalidating an already-visible list's structure proof
-  ([#160](https://github.com/viell-dev/slop-calc-sheet-manager/issues/160#issuecomment-6565110912)).
-  Windows proof-state controls and eight normal-package Mac cases verify the correction; all
-  theme, input and workbook-state checks still run visibly. Revisit the exception if Calc's
-  panel initialization or this fixture's cleanup changes. Every Calc document is closed through
-  `main_thread.close_document`: on Windows, closing one from the test's own thread crashed
-  LibreOffice ([#47](https://github.com/viell-dev/slop-calc-sheet-manager/issues/47)).
-- **PyUNO exceptions** reject a new `__traceback__`, so a UNO exception leaving a
-  `@contextmanager` block, such as `office_session`, arrives as a RuntimeException about a
-  traceback object ([#41](https://github.com/viell-dev/slop-calc-sheet-manager/issues/41)). Keep
-  UNO calls whose exceptions a caller catches out of generator-based context managers; in a
-  failed run, read the first traceback.
-- **Shipped files.** Add a new shipped module to the allowlist in `tools/build.py` and to the
-  package-content test.
+Before changing code, read the [rules for all code](docs/development/code-rules.md): sheet
+identity, listeners, threads, test observation, test documents, PyUNO exceptions, and shipped files.
+Breaking one of them has hung or crashed LibreOffice, or let an action reach the wrong sheet.
 
 ## Releases
 

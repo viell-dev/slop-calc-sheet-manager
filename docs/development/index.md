@@ -36,6 +36,8 @@ together with the extension's update feeds.
 - [Verification map](../verification.md): each promise, the checks that show it, and their limits.
 - [Reordering interface](../reordering.md): the contract between the sheet list and the
   operation that moves sheets.
+- [Rules for all code](./code-rules.md): safeguards for changing the extension and its tests.
+- [Maintainer procedures](./maintenance.md): review, dependency defects, and security fixes.
 
 ## LibreOffice extension and interface guidance
 
