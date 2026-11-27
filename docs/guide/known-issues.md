@@ -87,6 +87,11 @@ If Sheet Manager does not work in an environment where it is expected to, please
   click and another click or key before it are still waiting can carry the sheet that they picked
   instead of the one you pressed; it has been seen only in simulation, and one Undo restores the order
   ([#335](https://github.com/viell-dev/slop-calc-sheet-manager/issues/335)).
+- **A quick short drag of many sheets on gtk3.** With several hundred sheets picked and
+  LibreOffice's gtk3 interface, a drag that comes back to the row where it began within about a
+  tenth of a second can act as a click on that row: only its sheet stays picked, and nothing moves.
+  Pick the sheets again. To abandon a drag, press Esc before you release the button
+  ([#359](https://github.com/viell-dev/slop-calc-sheet-manager/issues/359)).
 - **Correcting a range in 0.0.11.** After a range made with Shift, a Shift+click further in, or on
   the other side of its start, clears the selection, with the notice. Click again. Later builds
   pick the corrected range, <Unreleased since="0.0.12" /> as 0.0.10 does

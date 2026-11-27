@@ -8,8 +8,11 @@ Notable changes to Sheet Manager, newest first. Version numbers are plain dotted
 - Move the maintaining agents' rules for all code, review details, and procedures for dependency
   defects and security fixes from AGENTS.md into two developer guide pages, so that the agents'
   instruction file stays short enough for agent tools to read in full.
+- Describe in the guide's known issues that, with LibreOffice's gtk3 interface and several hundred
+  sheets picked, a quick short drag back to its own row can act as a click
+  ([#359](https://github.com/viell-dev/slop-calc-sheet-manager/issues/359)).
 
-## 0.0.12 - 2026-11-26
+## 0.0.12 - 2026-12-02
 
 Second release candidate for the stable release 0.1.0. It replaces 0.0.11, which could clear the
 selection when a range was corrected and after a drag, and after a drag could pick a sheet that was
